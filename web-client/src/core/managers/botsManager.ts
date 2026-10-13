@@ -63,13 +63,14 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
     // пути, разворачивает их сервер. Развернуть здесь значило бы завести на
     // витрине вторую форму того же значения и переделывать это место на фазе 2.
     //
-    // `messageId` — КЛИЕНТСКИЙ номер (кнопку жмут в окне); на провод уходит
-    // серверный, как у оригинала (`msg_id: getServerMessageId(mid)`).
-    async callback(botId: number, peerId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
+    // `messageId` — КЛИЕНТСКИЙ номер (кнопку жмут в окне), обязателен: оригинал
+    // шлёт номер всегда; на провод уходит серверный, под именем TL-параметра
+    // (`msg_id: getServerMessageId(mid)`, tweb appInlineBotsManager.ts:245-250).
+    async callback(botId: number, peerId: number, data: string, messageId: number): Promise<CallbackAnswer> {
       // Ответ — конструктор `messages.botCallbackAnswer`. «Показать плашкой»
       // это ФЛАГ: его ОТСУТСТВИЕ и есть «тостом».
       const r = await rest.post<{ _: 'messages.botCallbackAnswer'; pFlags?: { alert?: true }; message?: string }>(
-        `/bots/${botId}/callback`, { peer_id: peerId, message_id: messageId ? getServerMessageId(messageId) : 0, data })
+        `/bots/${botId}/callback`, { peer_id: peerId, msg_id: getServerMessageId(messageId), data })
       return { text: r.message ?? '', alert: !!r.pFlags?.alert }
     },
     // Кнопка-меню mini-app бота (пусто — не задана).

@@ -443,55 +443,46 @@ paths:
                   expires_at: { type: string, format: date-time }
         "401": { description: unauthorized, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /auth/qr/new:
+  /auth/export_login_token:
     post:
       tags: [auth]
-      summary: Start a QR login (ephemeral pending record + scan URL)
+      summary: Export a QR login code (auth.exportLoginToken); poll every ~3s
+      description: >
+        The caller (not signed in yet) generates a 32-byte random login key and
+        sends it as lowercase hex in X-Login-Key; it is never shown. The code is
+        bound to the key, so only the key's owner can take the session.
       security: []
+      parameters:
+        - { name: X-Login-Key, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
-              properties: { platform: { type: string, example: web } }
+              properties:
+                except_ids: { type: array, items: { type: integer, format: int64 }, description: accounts already signed in on this device }
+                platform: { type: string, example: web }
       responses:
         "200":
-          description: pending QR login created
+          description: auth.loginToken (code waits) | auth.loginTokenSuccess (authorization is auth.authorization or auth.passwordNeeded)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  token: { type: string }
-                  url: { type: string, example: "https://app.example/qr/<token>" }
-                  expires_at: { type: string, format: date-time }
+                  _: { type: string, enum: [auth.loginToken, auth.loginTokenSuccess] }
+                  token: { type: string, format: byte }
+                  expires: { type: integer }
+                  authorization: { type: object }
+        "400": { description: "LOGIN_KEY_INVALID (no/malformed X-Login-Key) or invalid body", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "420": { description: "FLOOD_WAIT_<N>", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /auth/qr/{token}:
-    get:
-      tags: [auth]
-      summary: Poll a QR login (confirmed records are single-use)
-      security: []
-      parameters:
-        - { name: token, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: status (pending | confirmed | expired)
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status: { type: string, enum: [pending, confirmed, expired] }
-                  session_token: { type: string }
-                  user: { $ref: "#/components/schemas/User" }
-        "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-
-  /auth/qr/confirm:
+  /auth/accept_login_token:
     post:
       tags: [auth]
-      summary: Confirm a pending QR login (mints a session for the caller)
+      summary: Accept a QR login code shown by another device (auth.acceptLoginToken)
       requestBody:
         required: true
         content:
@@ -499,11 +490,12 @@ paths:
             schema:
               type: object
               required: [token]
-              properties: { token: { type: string } }
+              properties: { token: { type: string, description: hex code from the QR } }
       responses:
-        "200": { description: confirmed, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
+        "200": { description: "authorization of the new session (hash = device id); with a cloud password - no session yet: hash 0 and pFlags.password_pending", content: { application/json: { schema: { type: object } } } }
         "400": { description: token required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "404": { description: invalid or expired token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "404": { description: "AUTH_TOKEN_EXPIRED (unknown/expired/accepted code, or the account is in the exporter's except_ids)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "420": { description: "FLOOD_WAIT_<N>", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: qr login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/logout:

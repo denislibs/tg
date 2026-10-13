@@ -187,8 +187,8 @@ func TestMention_Lifecycle_Postgres(t *testing.T) {
 	want("пересылка", bob, 2)
 
 	// 4. Прочтение содержимого ответа — Бобу −1, mentioned остаётся.
-	if err := in.ReadMedia(ctx, chatID, bob, reply.ID); err != nil {
-		t.Fatalf("ReadMedia: %v", err)
+	if err := in.ReadMessageContents(ctx, chatID, bob, []int64{reply.Seq}); err != nil {
+		t.Fatalf("ReadMessageContents: %v", err)
 	}
 	want("readMessageContents", bob, 1)
 	if f := flags(bob, reply); !f["mentioned"] || f["media_unread"] {
@@ -212,5 +212,50 @@ func TestMention_Lifecycle_Postgres(t *testing.T) {
 	}
 	if f := flags(bob, fwd[0]); !f["mentioned"] || f["media_unread"] {
 		t.Fatalf("пересланное у Боба после прочтения: pFlags = %v", f)
+	}
+}
+
+// ReadMentions гасит упоминания нескольких сообщений одним запросом и один раз
+// пересчитывает счётчик; уже прочитанное и чужое в ответ не попадает.
+func TestReadMentions_Batch_Postgres(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+
+	alice := seedUser(t, pool, "+79990000321")
+	bob := seedUser(t, pool, "+79990000322")
+	setUsername(t, pool, bob, "bob_batch")
+	groups := NewGroupRepo(pool)
+	chatID := createGroupLike(t, pool, "group", alice)
+	if err := groups.AddMember(ctx, chatID, bob, domain.RoleMember, 0); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	chats := NewChatsRepo(pool)
+	in := usecasechat.New(NewTxManager(pool), chats, NewMessagesRepo(pool), NewUpdatesRepo(pool),
+		NewReactionsRepo(pool), nil, groups, nil, nil, nil, nil)
+	var ids []int64
+	for range 3 {
+		m, err := in.Send(ctx, usecasechat.SendInput{ChatID: chatID, SenderID: alice, Type: "text", Text: "@bob_batch"})
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+		ids = append(ids, m.ID)
+	}
+	if got := unreadMentions(t, pool, chatID, bob); got != 3 {
+		t.Fatalf("до чтения = %d, want 3", got)
+	}
+
+	read, err := chats.ReadMentions(ctx, chatID, bob, []int64{ids[0], ids[1], 999999})
+	if err != nil || len(read) != 2 {
+		t.Fatalf("ReadMentions = %v %v, want 2 id", read, err)
+	}
+	if got := unreadMentions(t, pool, chatID, bob); got != 1 {
+		t.Fatalf("после чтения двух = %d, want 1", got)
+	}
+	// Повтор и чужой читатель: пусто, счётчик не трогают.
+	if again, err := chats.ReadMentions(ctx, chatID, bob, ids[:2]); err != nil || len(again) != 0 {
+		t.Fatalf("повтор = %v %v, want пусто", again, err)
+	}
+	if other, err := chats.ReadMentions(ctx, chatID, alice, ids); err != nil || len(other) != 0 {
+		t.Fatalf("чужой читатель = %v %v, want пусто", other, err)
 	}
 }

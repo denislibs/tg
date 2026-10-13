@@ -12,13 +12,15 @@ import { newRealtime } from './realtime'
 import { newConnectionManager } from './connectionManager'
 import { newSyncEngine } from './syncEngine'
 import { RT } from './events'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { MessageOp } from './messageOps'
 import type { Cursor } from './cursor'
 
 describe('realtime.markMediaRead', () => {
   it('broadcasts the MessageOp[] returned by cacheMediaRead as rt:message_op', async () => {
     const ops: MessageOp[] = [{ op: 'patch', key: '1', msgId: 7, fields: { pFlags: {} } }]
-    const conn = { markMediaRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
+    const markMediaRead = vi.fn()
+    const conn = { markMediaRead } as unknown as Parameters<typeof newRealtime>[0]['conn']
     const messages = { cacheMediaRead: vi.fn(() => ops) }
     const broadcast = vi.fn()
     const rt = newRealtime({
@@ -32,9 +34,11 @@ describe('realtime.markMediaRead', () => {
       threadReads: { readHistory: async () => {} },
     })
 
-    await rt.markMediaRead({ peerId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: generateMessageId(7) })
 
     expect(broadcast).toHaveBeenCalledWith(RT.messageOp, { ops })
+    // На провод — вектор из одного СЕРВЕРНОГО номера (readMessageContents.id)
+    expect(markMediaRead).toHaveBeenCalledWith(1, [getServerMessageId(7)])
   })
 
   it('does not broadcast rt:message_op when cacheMediaRead produces no ops (idempotent replay)', async () => {
