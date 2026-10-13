@@ -44,6 +44,7 @@ import SendMenu from '@components/chat/sendContextMenu'
 import showScheduleSendingPopup from '@components/popups/scheduleSendingPopup'
 import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
+import PaidMessagesInterceptor, { PAYMENT_REJECTED } from '@components/chat/paidMessagesInterceptor'
 
 export type ForwardPeerIdMids = { [fromPeerId: PeerId]: number[] }
 
@@ -75,7 +76,15 @@ async function sendMessageWithForward(peerId: PeerId, forwarding: ForwardPeerIdM
   const { silent, scheduleDate, scheduleRepeatPeriod } = sendingParams
   try {
     for(const fromPeerId in forwarding) {
-      await managers.messages.forwardMessages(peerId, +fromPeerId, forwarding[fromPeerId], { silent, scheduleDate, scheduleRepeatPeriod })
+      // Платный получатель: согласие на всю пачку этого источника (tweb `forwardMessages`
+      // шлёт `allow_paid_stars` = цена × число сообщений, appMessagesManager.ts:5634); у
+      // tweb такой путь (несколько получателей) согласия не просит и падает ошибкой
+      // сообщения, у моста сообщения-ошибки нет — спрашиваем заранее, как `shareUrl.ts`.
+      const mids = forwarding[fromPeerId]
+      const confirmedPaymentResult = await PaidMessagesInterceptor.prepareStarsForPayment({ peerId, messageCount: mids.length })
+      if(confirmedPaymentResult === PAYMENT_REJECTED) return false
+
+      await managers.messages.forwardMessages(peerId, +fromPeerId, mids, { silent, scheduleDate, scheduleRepeatPeriod, confirmedPaymentResult })
     }
 
     return true

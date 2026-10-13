@@ -2279,6 +2279,7 @@ const ru = {
     many_value: 'Оплатить %d сообщений',
     other_value: 'Оплатить %d сообщения',
   },
+  'PaidMessages.PriceChanged': 'Цена изменилась: %s',
   'PaidMessages.UserChargesForMultipleMessageWarning': '**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s** за отправку сообщений (**%d**)?',
   'PaidMessages.UserChargesForOneMessageWarning': '**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s**, чтобы отправить одно сообщение?',
   SlowModeHint: 'Включён медленный режим. Следующее сообщение\nможно отправить через %1$s.',

@@ -933,7 +933,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     /** tweb `confirmRepayRequest` (appMessagesManager): пользователь согласился
      *  заплатить новую цену — повтор отправки получает сумму. */
-    confirmRepayRequest(id: number, confirmedPaymentResult: ConfirmedPaymentResult): void {
+    confirmRepayRequest(id: number, confirmedPaymentResult?: ConfirmedPaymentResult): void {
       repay.confirmRepayRequest(id, confirmedPaymentResult)
     },
     /** tweb `cancelRepayRequest`: отказ от повторной оплаты. */

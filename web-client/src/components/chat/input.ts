@@ -751,12 +751,18 @@ export default class ChatInput {
 
         openCreatePollPopup({
           isBroadcast: this.chat.isBroadcast,
-          onSubmit: (payload) => {
+          onSubmit: async(payload) => {
             const sendingParams = this.getMessageSendingParams()
+
+            // tweb `:1247-1251`: согласие на плату за сообщение опроса
+            const preparedPaymentResult = await this.paidMessageInterceptor.prepareStarsForPayment(1)
+            if(preparedPaymentResult === PAYMENT_REJECTED) return
+
             void this.managers.messages.sendPoll(this.chat.peerId, {
               ...payload,
               clientMsgId: crypto.randomUUID(),
               ...sendingParams,
+              confirmedPaymentResult: preparedPaymentResult,
             }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
           },
         })
@@ -2697,8 +2703,12 @@ export default class ChatInput {
         return false
       }
 
-      if(messageCount && await this.paidMessageInterceptor.prepareStarsForPayment(messageCount) === PAYMENT_REJECTED) {
-        return false
+      if(messageCount) {
+        const preparedPaymentResult = await this.paidMessageInterceptor.prepareStarsForPayment(messageCount)
+        if(preparedPaymentResult === PAYMENT_REJECTED) return false
+        // tweb `:4604` `sendingParams.confirmedPaymentResult = preparedPaymentResult`: цена
+        // ОДНОГО сообщения; текстовые части уходят кадрами по ней, пересылка — × число.
+        sendingParams = { ...sendingParams, confirmedPaymentResult: preparedPaymentResult }
       }
     }
 
@@ -2715,6 +2725,7 @@ export default class ChatInput {
       void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, {
         ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
         scheduleDate: sendingParams.scheduleDate, scheduleRepeatPeriod: sendingParams.scheduleRepeatPeriod,
+        confirmedPaymentResult: sendingParams.confirmedPaymentResult,
       }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
     }
 
@@ -2804,12 +2815,13 @@ export default class ChatInput {
       return false
     }
 
-    if(await this.paidMessageInterceptor.prepareStarsForPayment(1) === PAYMENT_REJECTED) {
+    const preparedPaymentResult = await this.paidMessageInterceptor.prepareStarsForPayment(1)
+    if(preparedPaymentResult === PAYMENT_REJECTED) {
       return false
     }
 
     const { peerId } = this.chat
-    const sendingParams = this.getMessageSendingParams()
+    const sendingParams: MessageSendingParams = { ...this.getMessageSendingParams(), confirmedPaymentResult: preparedPaymentResult }
     const clientMsgId = crypto.randomUUID()
     if(isUser(peerId) && !this.getDialog(peerId)) {
       await this.managers.chats.createPrivate(peerId)

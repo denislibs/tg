@@ -259,6 +259,13 @@ export type BroadcastEvents = {
   'scheduled_new': [MyMessage]
   'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
 
+  // tweb rootScope.ts — запрос на повторную оплату платного сообщения (имя оригинала
+  // с опечаткой): отправка отвергнута `ALLOW_PAYMENT_REQUIRED_<N>`, сумма согласия
+  // меньше цены. Шлёт воркер (`messages/repayRequestHandler.ts`), слушает перехватчик
+  // чата (`chat/priceChangedInterceptor`); `fulfill_repaid_message` — запрос закрыт.
+  'insufficent_stars_for_message': [{ requestId: number; messageCount: number; peerId: PeerId }]
+  'fulfill_repaid_message': [{ requestId: number }]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]

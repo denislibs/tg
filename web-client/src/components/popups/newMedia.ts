@@ -42,6 +42,7 @@ import type { Managers } from '@/client/bootstrap'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 import type { SendMessageAction } from '@core/realtime/events'
 import { ChatType } from '@components/chat/chatType'
+import { PAYMENT_REJECTED, type PreparedPaymentResult } from '@components/chat/paidMessagesInterceptor'
 
 /** tweb `newMedia.tsx` `WillAttachType` в объёме выбора файлов, вставки и сброса. */
 export type WillAttachType = 'media' | 'document'
@@ -74,6 +75,8 @@ export interface NewMediaChat {
     onHelperCancel(): void
     /** tweb `input.ts:4493-4497` — снимает разовые флаги пакета (время, повтор, без звука) */
     resetSendingFlags(): void
+    /** tweb `newMedia.tsx:1033` — согласие на плату за все сообщения выборки */
+    paidMessageInterceptor: { prepareStarsForPayment(messageCount: number): Promise<PreparedPaymentResult> }
   }
 }
 
@@ -174,14 +177,14 @@ function send(
   force = false,
 ) {
   try {
-    performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
+    void performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
   } finally {
     chat.input.resetSendingFlags()
   }
 }
 
 /** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
-function performSend(
+async function performSend(
   chat: NewMediaChat,
   files: File[],
   caption: string,
@@ -197,8 +200,14 @@ function performSend(
     return
   }
 
-  // tweb :1022 — пакет один на всю выборку
-  const sendingParams = chat.input.getMessageSendingParams()
+  // tweb :1022 — пакет один на всю выборку. Снимается ДО ожидания согласия: разовые
+  // флаги композера (время, без звука) `send` сбросит, не дожидаясь ответа.
+  const baseParams = chat.input.getMessageSendingParams()
+  // tweb :1032-1036 — согласие на плату за все сообщения выборки; цена одного
+  // уезжает пакетом `confirmedPaymentResult` в каждый кадр
+  const preparedPaymentResult = await chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length)
+  if(preparedPaymentResult === PAYMENT_REJECTED) return
+  const sendingParams: MessageSendingParams = { ...baseParams, confirmedPaymentResult: preparedPaymentResult }
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).
   const asAlbum = !asFile &&
     files.length > 1 &&

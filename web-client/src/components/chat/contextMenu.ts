@@ -75,8 +75,8 @@
  * либо они принадлежат другому компоненту tweb; два портированы («Кто
  * просмотрел», «Копировать медиа»).
  *  • «Переотправить» упавшее сообщение — пункта «повторить сорванную отправку»
- *    у оригинала НЕТ. Единственный `Resend` (:1260-1265) — повторная ОПЛАТА
- *    платного сообщения (`handleRepay`, :2166-2176), он назван выше. Ручного
+ *    у оригинала НЕТ. Единственный `Resend` (:1390-1395) — повторная ОПЛАТА
+ *    платного сообщения (`handleRepay`, :2394-2404), он портирован (Ф7-Г). Ручного
  *    повтора tweb не знает по построению: сорванную отправку переигрывает
  *    транспорт, а `message.error` даёт лишь право удалить бабл
  *    (`canDeleteMessage`, appMessagesManager.ts:5841-5848 — то же слагаемое
@@ -238,6 +238,7 @@ import showSendNowPopup from '@components/popups/sendNow'
 import AppStatisticsTab from '@components/sidebarRight/tabs/statistics.solid'
 import { canViewStatistics } from '@core/chatFullCache'
 import { ChatType } from './chatType'
+import { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
 export interface ContextMenuManagers {
@@ -253,6 +254,9 @@ export interface ContextMenuManagers {
      *  сейчас» в ленте отложенных (`popups/sendNow.ts`). Необязателен: без него
      *  пункта нет (тест, которому отложенные не нужны). */
     sendScheduledMessages?(peerId: number, mids: number[]): Promise<void>
+    /** Порт `appMessagesManager.confirmRepayRequest` (пункт «Resend», `handleRepay`
+     *  :2394-2404) — воркер повторяет неудавшуюся платную отправку. */
+    confirmRepayRequest?(id: number, confirmedPaymentResult?: { starsAmount: number }): void | Promise<void>
     /** Порт `appMessagesManager.editMessage` (:2183-2223) — у отложенного с
      *  `scheduleDate` («Изменить время», tweb `MessageScheduleEditTime` :973-987).
      *  Необязателен: без него пункта нет. */
@@ -919,6 +923,12 @@ export default class ChatContextMenu {
       verify: () => !isUser(this.peerId) &&
         (!!this.message?.reactions?.recent_reactions?.length || this.canViewMessageReadParticipants()),
       localName: 'views',
+    }, {
+      // tweb :1390-1395 — повторная оплата неудавшегося платного сообщения
+      icon: 'rotate_right',
+      text: 'Resend',
+      onClick: () => { void this.handleRepay() },
+      verify: () => !!this.message && 'repayRequest' in this.message && !!this.message.repayRequest,
     }, {
       icon: 'delete',
       className: 'danger',
@@ -1634,6 +1644,21 @@ export default class ChatContextMenu {
     const media = this.getPollMedia()
     if(!media) return
     void this.managers.messages.closePoll(media.poll.id)
+  }
+
+  /** Порт `handleRepay` (:2394-2404): согласие на плату за все сообщения запроса,
+   *  затем воркер повторяет отправку с новой суммой. */
+  private async handleRepay() {
+    const message = this.message
+    if(!message || !('repayRequest' in message) || !message.repayRequest) return
+
+    const preparedPaymentResult = await this.chat.input.paidMessageInterceptor.prepareStarsForPayment(
+      message.repayRequest.messageCount,
+    )
+
+    if(preparedPaymentResult === PAYMENT_REJECTED) return
+
+    void this.managers.messages.confirmRepayRequest?.(message.repayRequest.id, preparedPaymentResult)
   }
 
   /** Порт `onStatisticsClick` (:2333-2336). */

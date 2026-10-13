@@ -27,7 +27,9 @@ export type ConfirmedPaymentResult = NonNullable<MessageSendingParams['confirmed
 /** tweb `RepayRequest` — то, что остаётся на неудавшемся сообщении окна. */
 export type RepayRequest = { id: number; messageCount: number }
 
-type RepayCallback = (confirmedPaymentResult: ConfirmedPaymentResult) => void
+/** `undefined` — платить больше не нужно (цена стала нулевой): tweb `prepareStarsForPayment`
+ *  тогда отвечает `undefined`, и повтор уходит без суммы. */
+type RepayCallback = (confirmedPaymentResult: ConfirmedPaymentResult | undefined) => void
 
 export type RepayDispatch = (event: 'insufficent_stars_for_message' | 'fulfill_repaid_message', payload: unknown) => void
 
@@ -68,7 +70,7 @@ export function newRepayRequestHandler({ dispatch }: { dispatch: RepayDispatch }
     },
 
     /** tweb `confirmRepayRequest` (:98-104). */
-    confirmRepayRequest(id: number, confirmedPaymentResult: ConfirmedPaymentResult): void {
+    confirmRepayRequest(id: number, confirmedPaymentResult: ConfirmedPaymentResult | undefined): void {
       const repay = requests.get(id)
       remove(id)
       repay?.(confirmedPaymentResult)

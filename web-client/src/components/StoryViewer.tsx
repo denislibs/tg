@@ -17,6 +17,7 @@ import StealthModePopup from './StealthModePopup'
 import StoryMediaAreas from './StoryMediaAreas'
 import RepostStorySheet from './RepostStorySheet'
 import { ForwardPicker } from './messages/ChatDialogs'
+import { shareStoryToChats } from './stories/share'
 import type { ChatRights } from '../core/peers/rights'
 import { useChatsStore } from '../stores/chatsStore'
 import { useStoriesStore } from '../stores/storiesStore'
@@ -618,7 +619,7 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           onPick={(chatIds) => {
             setShareOpen(false)
             if (!chatIds.length) return
-            void managers.stories.share(vm.group!.author.id, vm.story!.id, chatIds).then((n) => {
+            void shareStoryToChats(managers, vm.group!.author.id, vm.story!.id, chatIds).then((n) => {
               rootScope.dispatchEvent('ui:toast', n > 0 ? 'История отправлена' : 'Не удалось отправить')
             }).catch(() => rootScope.dispatchEvent('ui:toast', 'Не удалось отправить'))
           }}

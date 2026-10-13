@@ -177,7 +177,7 @@ interface PendingDetails {
    *  appMessagesManager.ts:2824-2828): снять этот бабл и отправить то же
    *  содержимое ЗАНОВО с новым clientMsgId. Ставит путь отправки; пути без
    *  повтора (секретный чат, пост канала) его не заводят. */
-  resend?: (confirmedPaymentResult: ConfirmedPaymentResult) => void
+  resend?: (confirmedPaymentResult: ConfirmedPaymentResult | undefined) => void
   /** Настоящий id уже загруженного файла: повтору байты грузить незачем. */
   mediaId?: number
 }
