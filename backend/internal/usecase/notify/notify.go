@@ -63,10 +63,11 @@ func (i *Interactor) Update(ctx context.Context, userID int64, t domain.NotifyTy
 		m := *in.MuteUntil > i.now().Unix()
 		muted = &m
 	}
-	if muted != nil || in.ShowPreviews != nil {
-		if err := i.repo.PatchType(ctx, userID, t, muted, in.ShowPreviews); err != nil {
-			return err
-		}
+	if muted == nil && in.ShowPreviews == nil {
+		return nil // пустое тело: менять нечего, журнал не раздуваем
+	}
+	if err := i.repo.PatchType(ctx, userID, t, muted, in.ShowPreviews); err != nil {
+		return err
 	}
 	// Мутация закоммичена: сбой журнала ответ не портит (клиент получит
 	// результат ответом, второе устройство — при следующей синхронизации).

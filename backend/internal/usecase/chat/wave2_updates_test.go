@@ -420,3 +420,45 @@ func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
 		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", got)
 	}
 }
+
+// Настройки уведомлений чата читаются ПОСЛЕ замка курсора владельца и в той же
+// транзакции, что запись: снимок с большим pts не бывает старее (та же гарантия,
+// что у ownsync.EmitSnapshot). Тест порядка: на момент чтения замок уже взят.
+func TestChatNotifySnapshot_ReadAfterCursorLock(t *testing.T) {
+	in, s, fg, _ := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lockedAtRead int
+	in.groups = lockProbeGroupRepo{fakeGroupRepo: fg, onRead: func() {
+		s.mu.Lock()
+		lockedAtRead = s.locked[owner]
+		s.mu.Unlock()
+	}}
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, owner, &off, nil); err != nil {
+		t.Fatal(err)
+	}
+	if lockedAtRead != 1 {
+		t.Fatalf("настройки прочитаны без замка курсора (locked=%d)", lockedAtRead)
+	}
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if lockedAtRead != 2 {
+		t.Fatalf("SetMute читает настройки без замка курсора (locked=%d)", lockedAtRead)
+	}
+}
+
+type lockProbeGroupRepo struct {
+	*fakeGroupRepo
+	onRead func()
+}
+
+func (r lockProbeGroupRepo) NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	r.onRead()
+	return r.fakeGroupRepo.NotifySettings(ctx, chatID, userID)
+}

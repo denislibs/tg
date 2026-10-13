@@ -51,6 +51,10 @@ func (h *NotifyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
+	if in.Underscore != "" && in.Underscore != domain.InputPeerNotifySettingsTag {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
 	if err := h.uc.Update(r.Context(), user.ID, t, in); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return

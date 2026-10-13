@@ -8,9 +8,10 @@
 package ownsync
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"slices"
 	"time"
 
@@ -35,6 +36,17 @@ type Publisher interface {
 type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
+
+// batchPublisher — необязательное расширение издателя (rtredis.RedisPublisher):
+// кадры N получателей одним конвейером Redis вместо N подряд идущих PUBLISH.
+type batchPublisher interface {
+	PublishToUsers(ctx context.Context, userIDs []int64, frames [][]byte) error
+}
+
+// ErrBodyWithoutConstructor — у тела нет дискриминатора `_`. Без него
+// foldJournal подставил бы дискриминатором тип строки журнала, а курсор лёг бы
+// в тело не по схеме: потребитель обязан отдавать конструктор TL.
+var ErrBodyWithoutConstructor = errors.New("ownsync: body without constructor \"_\"")
 
 // Emitter пишет журнал и шлёт кадры. Нулевые порты допустимы: без log не делает
 // ничего, без pub только пишет, без tx EmitSnapshot работает как Emit одному
@@ -65,6 +77,9 @@ func (e *Emitter) Emit(ctx context.Context, userIDs []int64, typ string, body ma
 	if e == nil || e.log == nil || len(userIDs) == 0 {
 		return nil
 	}
+	if _, ok := body["_"].(string); !ok {
+		return ErrBodyWithoutConstructor
+	}
 	ids := slices.Clone(userIDs)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
@@ -77,9 +92,7 @@ func (e *Emitter) Emit(ctx context.Context, userIDs []int64, typ string, body ma
 	if err != nil {
 		return err
 	}
-	for _, uid := range ids {
-		e.publish(ctx, uid, typ, body, ptsByUser[uid])
-	}
+	e.publishAll(ctx, ids, typ, body, ptsByUser)
 	return nil
 }
 
@@ -92,6 +105,11 @@ func (e *Emitter) Emit(ctx context.Context, userIDs []int64, typ string, body ma
 // pts 11 → A выпустил pts 12 со старым состоянием). Перечитывание после
 // блокировки гарантирует: у большего pts состояние не старее. Саму мутацию в
 // эту транзакцию класть не нужно — она закоммичена раньше.
+//
+// build обязан читать состояние ЧЕРЕЗ ctx, который ему передан (репозитории
+// берут транзакцию из него), и не писать в журнал: одно соединение пула на весь
+// вызов, а запись журнала владельца изнутри build заблокировала бы сама себя на
+// замке LockState. Тело — конструктор TL с `_` (ErrBodyWithoutConstructor).
 func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 	build func(ctx context.Context) (map[string]any, error)) error {
 	if e == nil || e.log == nil {
@@ -110,6 +128,9 @@ func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 		b, err := build(ctx)
 		if err != nil {
 			return err
+		}
+		if _, ok := b["_"].(string); !ok {
+			return ErrBodyWithoutConstructor
 		}
 		payload, err := json.Marshal(b)
 		if err != nil {
@@ -131,45 +152,102 @@ func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 	if err != nil {
 		return err
 	}
-	e.publish(ctx, userID, typ, body, pts)
+	e.publishAll(ctx, []int64{userID}, typ, body, map[int64]int64{userID: pts})
 	return nil
 }
 
-func (e *Emitter) publish(ctx context.Context, userID int64, typ string, body map[string]any, pts int64) {
+// publishAll — живые кадры получателям. Общее для всех (тело, ссылки на пиров)
+// считается один раз; на получателя меняется только курсор. Ошибка публикации не
+// теряет апдейт: строка уже в журнале, клиент догонит её через getDifference —
+// но потерю кадров видно в логе.
+func (e *Emitter) publishAll(ctx context.Context, ids []int64, typ string, body map[string]any, ptsByUser map[int64]int64) {
 	if e.pub == nil {
 		return
 	}
-	// Ошибка публикации не теряет апдейт: строка уже в журнале, клиент догонит
-	// её через getDifference.
-	if f := frame(typ, body, pts); f != nil {
-		_ = e.pub.PublishToUser(ctx, userID, f)
+	shared, err := newSharedFrame(typ, body)
+	if err != nil {
+		log.Printf("ownsync: frame %s: %v", typ, err)
+		return
+	}
+	userIDs := make([]int64, 0, len(ids))
+	frames := make([][]byte, 0, len(ids))
+	for _, uid := range ids {
+		f := shared.forUser(ptsByUser[uid])
+		if f == nil {
+			continue
+		}
+		userIDs = append(userIDs, uid)
+		frames = append(frames, f)
+	}
+	if bp, ok := e.pub.(batchPublisher); ok {
+		if err := bp.PublishToUsers(ctx, userIDs, frames); err != nil {
+			log.Printf("ownsync: publish %s users=%d: %v", typ, len(userIDs), err)
+		}
+		return
+	}
+	for i, uid := range userIDs {
+		if err := e.pub.PublishToUser(ctx, uid, frames[i]); err != nil {
+			log.Printf("ownsync: publish %s user=%d: %v", typ, uid, err)
+		}
 	}
 }
 
-// frame — {t, d, pts}. Курсор едет в теле у конструктора с параметром pts, у
-// остальных — в конверте (своего pts у них в схеме нет). Конверт несёт ссылки
-// тела на пиров (domain.FrameRefsKey): по ним соединение доклеивает карточки.
-func frame(typ string, body map[string]any, pts int64) []byte {
-	env := map[string]any{"t": typ}
-	d := body
-	if tag, ok := body["_"].(string); ok && !domain.UpdateDeclaresPts(tag) {
-		env["pts"] = pts
-	} else {
-		d = make(map[string]any, len(body)+1)
-		for k, v := range body {
-			d[k] = v
-		}
-		d["pts"] = pts
+// sharedFrame — часть кадра, одинаковая у всех получателей.
+type sharedFrame struct {
+	typ  string
+	body map[string]any
+	// Курсор в конверте (у конструктора нет параметра pts): тело и ссылки на
+	// пиров маршалятся один раз.
+	envelope bool
+	raw      json.RawMessage
+	refs     *domain.PeerRefs
+}
+
+func newSharedFrame(typ string, body map[string]any) (*sharedFrame, error) {
+	sf := &sharedFrame{typ: typ, body: body}
+	tag, _ := body["_"].(string)
+	if domain.UpdateDeclaresPts(tag) {
+		return sf, nil // курсор в теле: тело у каждого своё
 	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	sf.envelope, sf.raw = true, raw
+	if refs := domain.CollectPeerRefsJSON(raw); !refs.Empty() {
+		sf.refs = &refs
+	}
+	return sf, nil
+}
+
+// forUser — кадр {t, d, pts} с курсором получателя. Курсор едет в теле у
+// конструктора с параметром pts, у остальных — в конверте (своего pts у них в
+// схеме нет). Конверт несёт ссылки тела на пиров (domain.FrameRefsKey): по ним
+// соединение доклеивает карточки.
+func (sf *sharedFrame) forUser(pts int64) []byte {
+	if sf.envelope {
+		env := map[string]any{"t": sf.typ, "pts": pts, "d": sf.raw}
+		if sf.refs != nil {
+			env[domain.FrameRefsKey] = *sf.refs
+		}
+		out, err := json.Marshal(env)
+		if err != nil {
+			return nil
+		}
+		return out
+	}
+	d := make(map[string]any, len(sf.body)+1)
+	for k, v := range sf.body {
+		d[k] = v
+	}
+	d["pts"] = pts
 	raw, err := json.Marshal(d)
 	if err != nil {
 		return nil
 	}
-	env["d"] = json.RawMessage(raw)
-	if bytes.Contains(raw, []byte(`"_":`)) {
-		if refs := domain.CollectPeerRefsJSON(raw); !refs.Empty() {
-			env[domain.FrameRefsKey] = refs
-		}
+	env := map[string]any{"t": sf.typ, "d": json.RawMessage(raw)}
+	if refs := domain.CollectPeerRefsJSON(raw); !refs.Empty() {
+		env[domain.FrameRefsKey] = refs
 	}
 	out, err := json.Marshal(env)
 	if err != nil {

@@ -314,3 +314,56 @@ func TestEmitSnapshot_WithoutTxDegradesToEmit(t *testing.T) {
 		t.Fatalf("строк %d, кадров %d", len(log.rows[7]), len(pub.frames[7]))
 	}
 }
+
+// Тело без конструктора отвергается: иначе foldJournal подставит дискриминатором
+// тип строки, а курсор ляжет в тело не по схеме.
+func TestEmit_BodyWithoutConstructorRejected(t *testing.T) {
+	log := newFakeLog()
+	e := New(log, nil, fakeTx{})
+	if err := e.Emit(context.Background(), []int64{1}, "x", map[string]any{"v": 1}); err != ErrBodyWithoutConstructor {
+		t.Fatalf("Emit err = %v", err)
+	}
+	err := e.EmitSnapshot(context.Background(), 1, "x", func(context.Context) (map[string]any, error) {
+		return map[string]any{"v": 1}, nil
+	})
+	if err != ErrBodyWithoutConstructor {
+		t.Fatalf("EmitSnapshot err = %v", err)
+	}
+	if len(log.rows[1]) != 0 {
+		t.Fatal("строка записана при теле без конструктора")
+	}
+}
+
+// batchPub умеет пачку (как rtredis.RedisPublisher): кадры N получателей уходят
+// одним вызовом, а не N подряд.
+type batchPub struct {
+	fakePub
+	batches int
+	users   []int64
+	frames  [][]byte
+}
+
+func (b *batchPub) PublishToUsers(_ context.Context, ids []int64, frames [][]byte) error {
+	b.batches++
+	b.users, b.frames = ids, frames
+	return nil
+}
+
+func TestEmit_UsesBatchPublisherWithPerUserCursor(t *testing.T) {
+	log := newFakeLog()
+	log.pts[9] = 40 // у получателей разные курсоры
+	pub := &batchPub{fakePub: *newFakePub()}
+	body := map[string]any{"_": domain.UpdateNotifySettingsTag}
+	if err := New(log, pub, nil).Emit(context.Background(), []int64{9, 7}, "notify_settings", body); err != nil {
+		t.Fatal(err)
+	}
+	if pub.batches != 1 || !reflect.DeepEqual(pub.users, []int64{7, 9}) || len(pub.frames) != 2 {
+		t.Fatalf("batches=%d users=%v frames=%d", pub.batches, pub.users, len(pub.frames))
+	}
+	if len(pub.fakePub.frames) != 0 {
+		t.Fatal("кадры ушли и поштучно")
+	}
+	if p7, p9 := *decode(t, pub.frames[0]).Pts, *decode(t, pub.frames[1]).Pts; p7 != 1 || p9 != 41 {
+		t.Fatalf("курсоры в конвертах: %d, %d", p7, p9)
+	}
+}

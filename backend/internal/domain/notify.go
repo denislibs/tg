@@ -71,19 +71,6 @@ func (s NotifySettings) ForType(t NotifyType) NotifyTypeSettings {
 	}
 }
 
-// WithType возвращает копию, где настройки типа t заменены на v.
-func (s NotifySettings) WithType(t NotifyType, v NotifyTypeSettings) NotifySettings {
-	switch t {
-	case NotifyTypeChats:
-		s.Groups = v
-	case NotifyTypeBroadcasts:
-		s.Channels = v
-	default:
-		s.Private = v
-	}
-	return s
-}
-
 // PeerNotifySettings — настройки типа в форме конструктора схемы. Хранилище
 // держит мьют типа булевым, поэтому «замьючен» выражается сроком
 // MuteUntilForever, а «включен» — явным нулём MuteUntilNever (не отсутствием
@@ -98,6 +85,9 @@ func (t NotifyTypeSettings) PeerNotifySettings() PeerNotifySettings {
 	return NewPeerNotifySettings(time.Unix(until, 0), &preview, nil)
 }
 
+// InputPeerNotifySettingsTag — дискриминатор `_` тела account.updateNotifySettings.
+const InputPeerNotifySettingsTag = "inputPeerNotifySettings"
+
 // InputPeerNotifySettings — тело account.updateNotifySettings:
 //
 //	inputPeerNotifySettings#cacb6ae2 flags:# show_previews:flags.0?Bool
@@ -110,15 +100,4 @@ type InputPeerNotifySettings struct {
 	Underscore   string `json:"_,omitempty"`
 	ShowPreviews *bool  `json:"show_previews,omitempty"`
 	MuteUntil    *int64 `json:"mute_until,omitempty"`
-}
-
-// Apply накладывает переданные поля на настройки типа; now — для сравнения срока.
-func (in InputPeerNotifySettings) Apply(cur NotifyTypeSettings, now time.Time) NotifyTypeSettings {
-	if in.ShowPreviews != nil {
-		cur.Preview = *in.ShowPreviews
-	}
-	if in.MuteUntil != nil {
-		cur.Muted = *in.MuteUntil > now.Unix()
-	}
-	return cur
 }

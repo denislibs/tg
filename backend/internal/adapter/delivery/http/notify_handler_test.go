@@ -41,7 +41,14 @@ func (r *memNotifyRepo) PatchType(_ context.Context, _ int64, t domain.NotifyTyp
 	if preview != nil {
 		cur.Preview = *preview
 	}
-	s = s.WithType(t, cur)
+	switch t {
+	case domain.NotifyTypeChats:
+		s.Groups = cur
+	case domain.NotifyTypeBroadcasts:
+		s.Channels = cur
+	default:
+		s.Private = cur
+	}
 	r.row = &s
 	return nil
 }
@@ -109,5 +116,14 @@ func TestNotifyHandler_PartialPutKeepsOtherField(t *testing.T) {
 	_ = json.Unmarshal(notifyCall(h.Get, http.MethodGet, "/me/notify_settings?peer=notifyChats", "").Body.Bytes(), &got)
 	if got["show_previews"] != false || got["mute_until"] != float64(domain.MuteUntilForever) {
 		t.Fatalf("%v", got)
+	}
+}
+
+// Чужой конструктор в `_` — 400, а не молчаливое «похоже на настройки».
+func TestNotifyHandler_RejectsForeignConstructor(t *testing.T) {
+	h := NewNotifyHandler(usecasenotify.New(&memNotifyRepo{}))
+	rec := notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyUsers", `{"_":"peerNotifySettings","mute_until":1}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT = %d", rec.Code)
 	}
 }

@@ -42,7 +42,15 @@ func (r *fakeRepo) PatchType(_ context.Context, userID int64, t domain.NotifyTyp
 	if preview != nil {
 		cur.Preview = *preview
 	}
-	r.rows[userID] = s.WithType(t, cur)
+	switch t {
+	case domain.NotifyTypeChats:
+		s.Groups = cur
+	case domain.NotifyTypeBroadcasts:
+		s.Channels = cur
+	default:
+		s.Private = cur
+	}
+	r.rows[userID] = s
 	return nil
 }
 
@@ -200,5 +208,16 @@ func TestUpdate_WithoutEmitter(t *testing.T) {
 	uc := New(newFakeRepo())
 	if err := uc.Update(context.Background(), 1, domain.NotifyTypeUsers, domain.InputPeerNotifySettings{ShowPreviews: ptr(false)}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Пустой запрос ничего не меняет и не пишет в журнал.
+func TestUpdate_EmptyInputWritesNothing(t *testing.T) {
+	uc, log, pub := newUC()
+	if err := uc.Update(context.Background(), 1, domain.NotifyTypeUsers, domain.InputPeerNotifySettings{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.rows[1]) != 0 || len(pub.frames[1]) != 0 {
+		t.Fatalf("строк %d, кадров %d", len(log.rows[1]), len(pub.frames[1]))
 	}
 }

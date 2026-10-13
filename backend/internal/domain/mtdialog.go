@@ -444,7 +444,7 @@ func NewInputReplyToMessage(msgID int64) InputReplyToMessage {
 //     не строка списка, а фильтр;
 //   - notifyCommunity — сообществ в этом порту нет.
 // Глобальные настройки по ТИПУ пира (notifyUsers/notifyChats/notifyBroadcasts)
-// есть: страница «Уведомления и звуки» (notify_settings.go, domain/notify.go).
+// есть: страница «Уведомления и звуки» (notify_handler.go, domain/notify.go).
 
 // DialogPeerTag — дискриминатор `_` конструктора dialogPeer.
 const DialogPeerTag = "dialogPeer"

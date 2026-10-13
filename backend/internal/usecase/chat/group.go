@@ -462,14 +462,7 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	if err := i.groups.SetMuted(ctx, chatID, userID, muteUntil); err != nil {
 		return err
 	}
-	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
-	if err != nil {
-		return err
-	}
-	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
-		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
-	return nil
+	return i.emitChatNotifySettings(ctx, chatID, userID)
 }
 
 // SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не
@@ -483,13 +476,36 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 	if err := i.groups.SetNotify(ctx, chatID, userID, preview, sound); err != nil {
 		return err
 	}
-	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
-	if err != nil {
-		return err
+	return i.emitChatNotifySettings(ctx, chatID, userID)
+}
+
+// emitChatNotifySettings пишет настройки уведомлений чата ЦЕЛИКОМ в журнал
+// владельца (dialog_mute) и живым кадром. Замок курсора берётся ДО чтения
+// настроек: иначе два устройства, меняющие мьют, превью и звук, ложились бы в
+// журнал в обратном порядке (A перечитал -> B записал pts 11 -> A записал pts 12
+// со старым состоянием). Мутация уже закоммичена; сбой лога/публикации ответ не
+// портит (best-effort), как у остальных кадров диалога.
+func (i *Interactor) emitChatNotifySettings(ctx context.Context, chatID, userID int64) error {
+	if i.updates == nil {
+		return nil
 	}
-	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
-		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
+	var publish func(context.Context)
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := i.updates.LockState(ctx, userID); err != nil {
+			return err
+		}
+		settings, err := i.groups.NotifySettings(ctx, chatID, userID)
+		if err != nil {
+			return err
+		}
+		publish, err = i.appendPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
+			func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
+		return err
+	})
+	if err != nil {
+		return nil
+	}
+	publish(ctx)
 	return nil
 }
 
