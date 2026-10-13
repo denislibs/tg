@@ -124,7 +124,7 @@ func TestFetchAndStatusErrors(t *testing.T) {
 			t.Errorf("%s: в ошибке путь/query: %v", c.name, got)
 		}
 	}
-	for code, want := range map[int]bool{502: true, 503: true, 429: false, 404: false, 403: false} {
+	for code, want := range map[int]bool{502: true, 503: true, 408: true, 425: true, 429: false, 404: false, 403: false} {
 		if err := statusError("a.example", code); err == nil || transient(err) != want {
 			t.Errorf("status %d: %v; временная want %v", code, err, want)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -124,7 +125,7 @@ func TestBuildWebPreview_RetriesPageOnce(t *testing.T) {
 // плашки (его ставит только сохранённая картинка).
 func TestWebPageCache_KeyAndLeaks(t *testing.T) {
 	e := newPreviewEnv(t)
-	e.prev.large, e.prev.imageURL = true, "https://cdn.example/og.png"
+	e.prev.imageURL = "https://cdn.example/og.png"
 	ctx := context.Background()
 	raw := "https://a.example/путь"
 	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
@@ -133,9 +134,9 @@ func TestWebPageCache_KeyAndLeaks(t *testing.T) {
 	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
 		t.Fatalf("плашка из кэша = %+v", wp)
 	}
-	page, _ := e.in.webPages.page(ctx, "https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
-	if page == nil || page.ImageURL == "" || page.HasLargeMedia {
-		t.Fatalf("страница для сборки = %+v; ждали адрес картинки и без has_large_media", page)
+	page, _ := e.in.webPages.pageEntry("https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
+	if page == nil || page.ImageURL == "" {
+		t.Fatalf("страница для сборки = %+v; ждали адрес картинки", page)
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок страницы %d; ждали 1", n)
@@ -248,17 +249,52 @@ func TestBuildWebPreview_DoesNotWaitPlaqueImageHead(t *testing.T) {
 	}
 }
 
-// Временный сбой плашки «карточки нет» не кэширует: следующий запрос того же
-// адреса снова идёт на сайт.
-func TestGetWebPage_TransientNotCached(t *testing.T) {
+// Временный сбой плашки запоминается коротко (webPageTransientTTL): ждущие
+// принимают его, а после срока следующий запрос снова идёт на сайт.
+func TestGetWebPage_TransientCachedBriefly(t *testing.T) {
 	e := newPreviewEnv(t)
 	e.prev.fail = 1
 	ctx := context.Background()
-	if e.in.GetWebPage(ctx, "https://a.example/x") != nil {
+	const u = "https://a.example/x"
+	if e.in.GetWebPage(ctx, u) != nil {
 		t.Fatal("карточка при сбое")
 	}
-	if e.in.GetWebPage(ctx, "https://a.example/x") == nil {
-		t.Fatal("временный сбой закэширован")
+	if e.in.GetWebPage(ctx, u) != nil || len(e.prev.calls()) != 1 {
+		t.Fatalf("в пределах срока сбоя снова пошли на сайт (%d)", len(e.prev.calls()))
+	}
+	expireCacheEntry(e.in, u)
+	if e.in.GetWebPage(ctx, u) == nil {
+		t.Fatal("после срока сбоя карточки нет")
+	}
+}
+
+// expireCacheEntry — срок записи кэша истёк.
+func expireCacheEntry(in *Interactor, u string) {
+	in.webPages.mu.Lock()
+	defer in.webPages.mu.Unlock()
+	k := cacheKey(u)
+	e := in.webPages.m[k]
+	e.expires = time.Now().Add(-time.Second)
+	in.webPages.m[k] = e
+}
+
+// Отказ по существу живёт webPageRefusalTTL; после срока — новая загрузка.
+func TestWebPageCache_RefusalExpires(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.prev.permanent = true
+	ctx := context.Background()
+	const u = "https://a.example/file.pdf"
+	e.in.GetWebPage(ctx, u)
+	e.in.webPages.mu.Lock()
+	left := time.Until(e.in.webPages.m[cacheKey(u)].expires)
+	e.in.webPages.mu.Unlock()
+	if left > webPageRefusalTTL || left < webPageRefusalTTL-time.Second {
+		t.Fatalf("срок отказа %v; ждали %v", left, webPageRefusalTTL)
+	}
+	expireCacheEntry(e.in, u)
+	e.in.GetWebPage(ctx, u)
+	if n := len(e.prev.calls()); n != 2 {
+		t.Fatalf("после срока отказа загрузок %d; ждали 2", n)
 	}
 }
 
@@ -379,7 +415,7 @@ func TestGetWebPage_LoadingMarkCleared(t *testing.T) {
 		t.Fatalf("меток загрузки осталось %d", n)
 	}
 	done := make(chan struct{})
-	go func() { e.in.webPages.page(ctx, "https://a.example/x"); close(done) }()
+	go func() { e.in.webPages.waitLoading(ctx, "https://a.example/x"); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -535,5 +571,145 @@ func TestBuildWebPreview_SameURLBuildsShareLoad(t *testing.T) {
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// slowFullHTTP — картинка целиком (FetchURL сборки) отдаётся только по
+// release; заголовок (FetchPrefix плашки) — сразу.
+type slowFullHTTP struct {
+	fakeOutHTTP
+	release chan struct{}
+}
+
+func (h *slowFullHTTP) FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	select {
+	case <-h.release:
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
+	return h.fakeOutHTTP.FetchURL(ctx, url, maxBytes)
+}
+
+func (h *slowFullHTTP) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	return h.fakeOutHTTP.FetchURL(ctx, url, maxBytes)
+}
+
+// Ревью 5, п.1: плашка, пришедшая во время обогащения сборки (картинка,
+// проба IV), не ждёт его — страница уже в кэше, метка снята.
+func TestGetWebPage_DoesNotWaitBuildEnrichment(t *testing.T) {
+	e := newPreviewEnv(t)
+	img := &slowFullHTTP{fakeOutHTTP: fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"}, release: make(chan struct{})}
+	e.in.SetBotHTTP(img)
+	e.in.SetBotMedia(&fakeMediaStore{})
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	waitFor(t, func() bool { _, ok := e.in.webPages.pageEntry(u); return ok })
+	got := make(chan *domain.WebPagePreview, 1)
+	go func() { got <- e.in.GetWebPage(ctx, u) }()
+	select {
+	case wp := <-got:
+		if wp == nil {
+			t.Fatal("плашка без карточки")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("плашка ждёт обогащение сборки")
+	}
+	close(img.release)
+	e.in.bg.Wait()
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// Ревью 5, пп.2-3: десять сборок одной ссылки на медленном сайте — одна
+// загрузка страницы (при временном сбое — ещё одна, повтор загрузившего), и
+// ждущие не держат слоты семафора.
+func TestBuildWebPreview_SlowSiteHerd(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://slow.example/x"
+	release := e.prev.hold(u)
+	for k := 0; k < 10; k++ {
+		e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	}
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	time.Sleep(50 * time.Millisecond) // остальные девять дошли до ожидания
+	if n := len(e.in.previewFlights.slots); n > 1 {
+		t.Fatalf("слотов занято %d при одной загрузке в сети", n)
+	}
+	close(release)
+	e.in.bg.Wait()
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// failingGetMsgs — GetByID падает fails раз (сбой БД), дальше — как обычно.
+type failingGetMsgs struct {
+	MessageRepo
+	mu    sync.Mutex
+	fails int
+}
+
+func (m *failingGetMsgs) GetByID(ctx context.Context, id int64) (domain.Message, error) {
+	m.mu.Lock()
+	fail := m.fails > 0
+	if fail {
+		m.fails--
+	}
+	m.mu.Unlock()
+	if fail {
+		return domain.Message{}, errors.New("db: connection reset")
+	}
+	return m.MessageRepo.GetByID(ctx, id)
+}
+
+// Ревью 4, п.9: один сбой чтения строки перед записью — повтор, карточка
+// записана; два — карточки нет, но и ложного «правили».
+func TestAttachWebPreview_ReadFailureRetried(t *testing.T) {
+	for _, c := range []struct {
+		fails int
+		want  bool
+	}{{1, true}, {2, false}} {
+		e := newPreviewEnv(t)
+		e.in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+		e.in.SetBotMedia(&fakeMediaStore{})
+		e.prev.imageURL = "https://cdn.example/og.png"
+		release := e.prev.hold("https://a.example/x")
+		msg, _ := e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+		waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+		fm := &failingGetMsgs{MessageRepo: e.in.msgs, fails: c.fails}
+		e.in.msgs = fm
+		close(release)
+		e.in.bg.Wait()
+		if got := storedMsg(t, e.s, msg.ID).WebPage != nil; got != c.want {
+			t.Fatalf("сбоев чтения %d: карточка %v; ждали %v", c.fails, got, c.want)
+		}
+	}
+}
+
+// Порядок ссылок как у tweb (input.ts:3563-3577): первая по положению среди
+// text_url и голых ссылок; смещения сущностей — UTF-16.
+func TestFirstURL_OrderAndForms(t *testing.T) {
+	text := "😀 см. https://a.example и ссылка"
+	// «ссылка» — text_url на b.example ПОСЛЕ голой ссылки.
+	after := domain.MessageEntities{domain.NewMessageEntityTextURL(utf16Len("😀 см. https://a.example и "), 6, "https://b.example")}
+	if got := firstURL(text, after); got != "https://a.example" {
+		t.Errorf("text_url после голой: %q", got)
+	}
+	before := domain.MessageEntities{domain.NewMessageEntityTextURL(0, 2, "https://b.example")}
+	if got := firstURL(text, before); got != "https://b.example" {
+		t.Errorf("text_url до голой: %q", got)
+	}
+	for in, want := range map[string]string{
+		"https://user:pw@a.example/p":   "https://user:pw@a.example/p",
+		"https://a.example:8080 и":      "https://a.example:8080",
+		"https://xn--d1acufc.xn--p1ai/": "https://xn--d1acufc.xn--p1ai/",
+	} {
+		if got := firstURL(in, nil); got != want {
+			t.Errorf("%q → %q; want %q", in, got, want)
+		}
 	}
 }

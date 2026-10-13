@@ -21,8 +21,6 @@ type urlPreviewer struct {
 	mu    sync.Mutex
 	urls  []string
 	holds map[string]chan struct{}
-	// large — карточки с has_large_media (как после крупного og:image).
-	large bool
 	// imageURL — og:image карточек (картинку отдаёт фейковый BotHTTP).
 	imageURL string
 	// fail — сколько ближайших загрузок страницы вернуть временным сбоем
@@ -57,7 +55,7 @@ func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPage
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPreviewTransient, err)
 	}
-	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large, ImageURL: p.imageURL}, nil
+	return &domain.WebPagePreview{URL: url, Title: url, ImageURL: p.imageURL}, nil
 }
 
 func (p *urlPreviewer) calls() []string {
@@ -313,7 +311,10 @@ func TestWebPageInput_NoWebpage(t *testing.T) {
 // messageMediaWebPage.pFlags.
 func TestWebPageInput_MediaChoosesURLAndSize(t *testing.T) {
 	e := newPreviewEnv(t)
-	e.prev.large = true
+	// Крупная картинка (has_large_media ставит сохранённая картинка).
+	e.in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+	e.in.SetBotMedia(&fakeMediaStore{})
+	e.prev.imageURL = "https://cdn.example/og.png"
 	ctx := context.Background()
 	media := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://chosen.example/",
 		PFlags: map[string]bool{"force_small_media": true, "optional": true}}

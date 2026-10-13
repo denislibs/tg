@@ -116,13 +116,13 @@ func permanentFetchError(err error) bool {
 		errors.As(err, &hostErr) || errors.As(err, &recErr)
 }
 
-// statusError — ответ не 2xx. 5xx — временная; 429 — нет: сайт просит
+// statusError — ответ не 2xx. 5xx, 408 и 425 — временная; 429 — нет: сайт просит
 // снизить частоту, и повтор через секунду почти наверняка снова получит 429.
 func statusError(host string, code int) error {
 	switch {
 	case code >= 200 && code <= 299:
 		return nil
-	case code >= 500:
+	case code >= 500, code == http.StatusRequestTimeout, code == http.StatusTooEarly:
 		return fmt.Errorf("link preview %s: status %d: %w", host, code, usecasechat.ErrPreviewTransient)
 	}
 	return fmt.Errorf("link preview %s: status %d", host, code)

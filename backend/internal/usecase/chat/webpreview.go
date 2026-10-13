@@ -44,8 +44,11 @@ var (
 // urlRe — порт URL_REG_EXP tweb (lib/richTextProcessor/index.ts:40-58) для
 // ссылок со схемой http/https: учётная запись, IPv4 или хост с доменом и TLD,
 // порт, путь — только после «/» (до 255 символов, последний — не из
-// `.;,([]{}<>"'`); схема без учёта регистра. Буквы ALPHA_CHARS tweb — здесь
-// \p{L}. Ссылка без пути обрывается на хосте или порту: «https://ya.ru!» —
+// `.;,([]{}<>"'`); схема без учёта регистра. Буквы ALPHA_CHARS tweb (набор
+// диапазонов: латиница, кириллица, греческий, иврит, арабский, тайский,
+// корейский и др., index.ts:5-35) здесь приближены классом \p{L}: он шире
+// (CJK-иероглифы) — ссылка с такими буквами в домене у нас найдётся, у tweb
+// нет; на адресах латиницей и кириллицей разницы нет. Ссылка без пути обрывается на хосте или порту: «https://ya.ru!» —
 // это https://ya.ru, как у tweb.
 var urlRe = regexp.MustCompile(`(?i)https?://` +
 	`(?:[\p{L}\p{N}]{1,64}(?::[\p{L}\p{N}]{0,64})?@)?` +
@@ -57,14 +60,42 @@ var urlRe = regexp.MustCompile(`(?i)https?://` +
 
 // firstURL — первая http/https-ссылка сообщения: сначала messageEntityTextUrl
 // (несут явный URL), затем голая ссылка в тексте. Пусто — ссылок нет.
+//
+// Порядок — как у tweb (input.ts:3563-3577): первая по положению в тексте
+// ссылка среди сущностей text_url и голых ссылок (смещения сущностей — в
+// UTF-16).
 func firstURL(text string, entities domain.MessageEntities) string {
+	textURL, textURLAt := "", -1
 	for _, e := range entities {
 		v, ok := e.(domain.MessageEntityTextURL)
-		if ok && (strings.HasPrefix(v.URL, "http://") || strings.HasPrefix(v.URL, "https://")) {
-			return v.URL
+		if ok && isHTTPURL(v.URL) && (textURLAt < 0 || v.Offset < textURLAt) {
+			textURL, textURLAt = v.URL, v.Offset
 		}
 	}
-	return checkBrackets(urlRe.FindString(text))
+	loc := urlRe.FindStringIndex(text)
+	if loc != nil && (textURLAt < 0 || utf16Len(text[:loc[0]]) < textURLAt) {
+		return checkBrackets(text[loc[0]:loc[1]])
+	}
+	return textURL
+}
+
+// isHTTPURL — схема http/https без учёта регистра (как флаг i у tweb).
+func isHTTPURL(u string) bool {
+	l := strings.ToLower(u)
+	return strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://")
+}
+
+// utf16Len — длина строки в единицах UTF-16 (единица смещений сущностей).
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		if r >= 0x10000 {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
 }
 
 // checkBrackets — непарные закрывающие скобки в хвосте ссылки срезаются
@@ -228,16 +259,22 @@ func (i *Interactor) rebuildWebPreviewOnEdit(msg domain.Message, opt []domain.We
 	i.startWebPreview(msg, in, members)
 }
 
-// buildInSlot — сетевая часть сборки в слоте семафора; слот возвращается и
-// при панике (проба Instant View разбирает чужой HTML) — иначе утёкшие слоты
-// остановили бы все сборки до рестарта.
+// buildInSlot — сборка карточки для идущей сборки fl.
 func (i *Interactor) buildInSlot(fl *previewFlight) *builtPreview {
+	return i.buildWebPreview(fl.url, fl.key)
+}
+
+// inBuildSlot — сетевая работа в слоте семафора фоновых сборок; слот
+// возвращается и при панике (проба Instant View разбирает чужой HTML).
+// false — слот не получен за previewTimeout, работа не сделана.
+func (i *Interactor) inBuildSlot(key string, fn func()) bool {
 	if !i.previewFlights.acquireBuild() {
-		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", fl.key, previewTimeout)
-		return nil
+		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", key, previewTimeout)
+		return false
 	}
 	defer i.previewFlights.releaseBuild()
-	return i.buildWebPreview(fl.url, fl.key)
+	fn()
+	return true
 }
 
 // builtPreview — собранная карточка и её картинка, скачанная, но ещё не
@@ -249,69 +286,84 @@ type builtPreview struct {
 	img *previewImage
 }
 
-// buildWebPreview собирает карточку ссылки: og-теги (Preview), картинка
-// (downloadPreviewPhoto), проба Instant View. nil — карточки нет. Каждый
-// сетевой этап — со своим бюджетом (см. таймауты выше).
+// buildWebPreview собирает карточку ссылки: страница (loadPage — общая для
+// всех сборок и плашек этого адреса), картинка (downloadPreviewPhoto), проба
+// Instant View. nil — карточки нет. Каждый сетевой этап — со своим бюджетом
+// (см. таймауты выше), сетевые — в слоте семафора.
 func (i *Interactor) buildWebPreview(url, key string) *builtPreview {
-	// Ожидание идущей загрузки плашки и своя загрузка — каждое со своим
-	// бюджетом: не дождались (или плашка ничего не дала) — грузим сами с
-	// полным previewTimeout, а не с остатком.
-	var wp *domain.WebPagePreview
-	var known bool
-	withBudget(previewTimeout, func(ctx context.Context) {
-		wp, known = i.webPages.page(ctx, url)
-	})
-	if wp == nil && known {
-		log.Printf("webpreview: %s: страница %s без карточки (отказ, уже полученный плашкой)", key, previewHost(url))
+	wp := i.loadPage(url, key)
+	if wp == nil {
 		return nil
 	}
-	if wp == nil {
-		// Загрузку страницы этого адреса делят все: другая сборка (бот шлёт
-		// одну ссылку во много чатов) или плашка, пришедшая за ней, ждут её
-		// результат в кэше, а не грузят сайт параллельно.
+	// Своя копия: страница из кэша общая (has_large_media у неё снят — его
+	// ставит только сохранённая картинка).
+	wp = wp.Clone()
+	wp.HasLargeMedia = false
+	b := &builtPreview{wp: wp}
+	ok := i.inBuildSlot(key, func() {
+		// Обогащения — каждое со СВОИМ бюджетом, не из бюджета сбора: оба
+		// ходят в сеть ещё раз, и медленный сайт не должен стоить нам карточки
+		// целиком.
+		withBudget(enrichTimeout, func(ectx context.Context) {
+			b.img = i.downloadPreviewPhoto(ectx, wp)
+		})
+		// Проба Instant View — тем же путём, что и открытие статьи: результат
+		// ложится в кэш iv-usecase, поэтому клик по кнопке отдаёт статью уже
+		// из него.
+		if i.ivProbe != nil {
+			withBudget(enrichTimeout, func(ictx context.Context) {
+				wp.HasIV = i.ivProbe.HasArticle(ictx, wp.URL)
+			})
+		}
+	})
+	if !ok {
+		return nil
+	}
+	return b
+}
+
+// loadPage — страница адреса для карточки сообщения. Загрузку делят все:
+// пока её грузит другая сборка (бот шлёт одну ссылку во много чатов) или
+// плашка, ждём её результат в кэше вне слота, а не грузим сайт параллельно;
+// грузим сами, только заняв метку загрузки. Результат — и временный сбой (на
+// короткий срок) — кладётся в кэш, так что ждущие принимают его, а не
+// повторяют каждый по очереди. Всё ожидание — в пределах двух previewTimeout.
+func (i *Interactor) loadPage(url, key string) *domain.WebPagePreview {
+	deadline := time.Now().Add(2 * previewTimeout)
+	for time.Now().Before(deadline) {
+		if wp, known := i.webPages.pageEntry(url); known {
+			if wp == nil {
+				log.Printf("webpreview: %s: страница %s без карточки (отказ в кэше)", key, previewHost(url))
+			}
+			return wp
+		}
 		finish, ok := i.webPages.claimLoading(url)
 		if !ok {
-			withBudget(previewTimeout, func(ctx context.Context) {
-				wp, known = i.webPages.page(ctx, url)
-			})
-			if wp == nil && known {
-				return nil
-			}
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			i.webPages.waitLoading(ctx, url)
+			cancel()
+			continue
 		}
-		if wp == nil {
-			if ok {
-				defer finish()
-			}
-			var transient bool
+		// Метка наша; пока её занимали, загрузка могла закончиться.
+		if wp, known := i.webPages.pageEntry(url); known {
+			finish()
+			return wp
+		}
+		var wp *domain.WebPagePreview
+		var transient bool
+		got := i.inBuildSlot(key, func() {
 			withBudget(previewTimeout, func(ctx context.Context) {
 				wp, transient = i.fetchPage(ctx, url, key)
 			})
-			if ok && !transient {
-				i.webPages.put(url, wp, wp == nil)
-			}
-		}
-	}
-	if wp == nil {
-		return nil
-	}
-	// Своя копия: страница из кэша общая (has_large_media у неё уже снят —
-	// его ставит только сохранённая картинка).
-	wp = wp.Clone()
-	b := &builtPreview{wp: wp}
-	// Обогащения — каждое со СВОИМ бюджетом, не из бюджета сбора (см. таймауты
-	// выше): оба ходят в сеть ещё раз, и медленный сайт не должен стоить нам
-	// карточки целиком.
-	withBudget(enrichTimeout, func(ectx context.Context) {
-		b.img = i.downloadPreviewPhoto(ectx, wp)
-	})
-	// Проба Instant View — тем же путём, что и открытие статьи: результат ложится
-	// в кэш iv-usecase, поэтому клик по кнопке отдаёт статью уже из него.
-	if i.ivProbe != nil {
-		withBudget(enrichTimeout, func(ictx context.Context) {
-			wp.HasIV = i.ivProbe.HasArticle(ictx, wp.URL)
 		})
+		if got {
+			i.webPages.putPage(url, wp, transient)
+		}
+		finish() // страница в кэше — ждущие сразу её получают
+		return wp
 	}
-	return b
+	log.Printf("webpreview: %s: страница %s: не дождались загрузки", key, previewHost(url))
+	return nil
 }
 
 // attachWebPreview строит превью ссылки уже записанного сообщения (фоном ПОСЛЕ
@@ -717,7 +769,7 @@ func (i *Interactor) applyScheduledEditWebPage(ctx context.Context, row *domain.
 // (inputMediaWebPage несёт ссылку).
 func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPagePreview {
 	url = strings.TrimSpace(url)
-	if i.preview == nil || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
+	if i.preview == nil || !isHTTPURL(url) {
 		return nil
 	}
 	if wp, ok := i.webPages.get(url); ok {
@@ -772,8 +824,8 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	// Страница — в кэш и ждущим СРАЗУ, до размера картинки: has_large_media
 	// плашки сборке не нужен (его ставит сохранённая картинка). Оборванный
 	// запрос и временный сбой «карточки нет» не запоминают.
-	if ctx.Err() == nil && !errors.Is(err, ErrPreviewTransient) {
-		i.webPages.put(url, wp, wp == nil) // «карточки нет» — сразу полная
+	if ctx.Err() == nil {
+		i.webPages.putPage(url, wp, errors.Is(err, ErrPreviewTransient))
 	}
 	done()
 	return i.completePlaqueCard(ctx, url, wp)
@@ -788,9 +840,10 @@ func (i *Interactor) completePlaqueCard(ctx context.Context, url string, wp *dom
 		return nil
 	}
 	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
-	wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
+	large, read := i.previewHasLargeMedia(ectx, wp.ImageURL)
 	cancel()
-	if ctx.Err() == nil {
+	wp.HasLargeMedia = large
+	if read && ctx.Err() == nil {
 		i.webPages.put(url, wp, true)
 	}
 	return plaqueCard(wp)
@@ -978,12 +1031,17 @@ const imageHeadBytes = 256 << 10
 // картинку к нам не сохраняем и целиком не качаем — читаем только её
 // заголовок тем же правилом, что и у карточки сообщения, иначе плашка не
 // покажет «крупнее/мельче» (input.ts:3619).
-func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) bool {
+// read=false — размер узнать не удалось (сбой или таймаут CDN): такую
+// карточку не запоминаем достроенной, следующая плашка попробует снова.
+func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) (large, read bool) {
 	if imageURL == "" || i.botHTTP == nil {
-		return false
+		return false, true // картинки нет — крупной быть нечему
 	}
 	data, mime, err := i.botHTTP.FetchPrefix(ctx, imageURL, imageHeadBytes)
-	return err == nil && strings.HasPrefix(mime, "image/") && largePreviewPhoto(data)
+	if err != nil {
+		return false, false
+	}
+	return strings.HasPrefix(mime, "image/") && largePreviewPhoto(data), true
 }
 
 // Кэш карточек плашки. tweb зовёт getWebPage на каждую новую найденную
@@ -995,10 +1053,15 @@ func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) 
 // наш адаптер уже разобранным (appMessagesManager.ts:4872).
 const (
 	webPageCacheTTL = 10 * time.Minute
-	// webPageRefusalTTL — срок записи «карточки нет».
+	// webPageRefusalTTL — срок записи «карточки нет» (отказ по существу:
+	// 403 антибот, 404, 429 — сайт оживёт, а отказ гасит и плашку, и сборку).
 	webPageRefusalTTL = time.Minute
-	webPageCacheMax   = 2048
-	// webPageFetchSlots — сколько сборок плашки идёт одновременно на сервер.
+	// webPageTransientTTL — срок временного сбоя: ждущие загрузку принимают
+	// его, а не повторяют по очереди (повтор уже сделал загрузивший).
+	webPageTransientTTL = 15 * time.Second
+	webPageCacheMax     = 2048
+	// webPageFetchSlots — сколько загрузок страниц для плашки идёт
+	// одновременно (слот держится только на загрузку страницы).
 	webPageFetchSlots = 8
 )
 
@@ -1098,8 +1161,7 @@ func (c *webPageCache) pageEntry(url string) (*domain.WebPagePreview, bool) {
 	return e.wp.Clone(), true
 }
 
-// page — страница из кэша плашки для сборки карточки сообщения, без второго
-// похода на сайт. НАШЕ серверное решение: tweb шлёт серверу только
+// Кэш страниц — НАШЕ серверное решение: tweb шлёт серверу только
 // inputMediaWebPage{url, pFlags} (getInputMediaWebPage,
 // appMessagesManager.ts:4865-4879), а карточку плашки кладёт лишь в своё
 // оптимистичное сообщение (generateOutgoingWebPage :4895-4908); как сервер
@@ -1107,39 +1169,34 @@ func (c *webPageCache) pageEntry(url string) (*domain.WebPagePreview, bool) {
 // глобально по URL, у нас — в памяти процесса (допущение: один процесс
 // бэкенда; при нескольких — промах и обычная загрузка). Страница, показанная
 // плашкой, и уходит в сообщение — как у Telegram с его кэшем webpage; её
-// возраст — до webPageCacheTTL, и временная страница (заглушка антибота с
-// заголовком), пойманная плашкой, ляжет в снимок так же, как легла бы при
-// своей загрузке в ту же минуту.
-//
-// Загрузка плашки того же адреса ещё идёт — ждём её (не больше ctx), а не
-// грузим медленный сайт вторым запросом параллельно. Копия с адресом
-// картинки и без has_large_media: флаг ставит сборка по картинке, которую
-// сама сохранит. known=true и nil — плашка уже получила отказ по существу
-// (не HTML, нет заголовка, 4xx/429; временные сбои не кэшируются): второй
-// раз на сайт не идём. known=false — страницы в кэше нет.
-func (c *webPageCache) page(ctx context.Context, url string) (wp *domain.WebPagePreview, known bool) {
-	c.mu.Lock()
-	wait := c.loading[cacheKey(url)]
-	onWait := c.onWait
-	c.mu.Unlock()
-	if wait != nil {
-		if onWait != nil {
-			onWait()
-		}
-		select {
-		case <-wait:
-		case <-ctx.Done():
-			return nil, false
-		}
+// возраст — до webPageCacheTTL от загрузки (достройка карточки срок не
+// продлевает), и временная страница (заглушка антибота с заголовком),
+// пойманная плашкой, ляжет в снимок так же, как легла бы при своей загрузке в
+// ту же минуту.
+
+// putPage — результат загрузки страницы: страница (недостроенная — для
+// сборки карточек), отказ по существу (webPageRefusalTTL) или временный сбой
+// (webPageTransientTTL — ждущие его принимают, а не грузят по очереди сами).
+func (c *webPageCache) putPage(url string, wp *domain.WebPagePreview, transient bool) {
+	switch {
+	case wp != nil:
+		c.store(url, wp, false, webPageCacheTTL, true)
+	case transient:
+		c.store(url, nil, true, webPageTransientTTL, false)
+	default:
+		c.store(url, nil, true, webPageRefusalTTL, false)
 	}
-	wp, known = c.pageEntry(url)
-	if wp != nil {
-		wp.HasLargeMedia = false
-	}
-	return wp, known
 }
 
+// put — достроенная карточка плашки (или страница): срок записи того же
+// адреса не продлевается.
 func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool) {
+	c.store(url, wp, complete, webPageCacheTTL, false)
+}
+
+// store — запись в кэш; fresh — новая загрузка (срок с нуля), иначе
+// обновление записи того же адреса сохраняет её срок.
+func (c *webPageCache) store(url string, wp *domain.WebPagePreview, complete bool, ttl time.Duration, fresh bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
@@ -1147,9 +1204,14 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool)
 		c.m = map[string]webPageCacheEntry{}
 	}
 	key := cacheKey(url)
-	// Обновление записи того же адреса (страница → достроенная карточка)
-	// места не прибавляет — вытеснять незачем.
-	if _, exists := c.m[key]; !exists && len(c.m) >= webPageCacheMax {
+	expires := now.Add(ttl)
+	cur, exists := c.m[key]
+	if exists && !fresh && cur.wp != nil && now.Before(cur.expires) {
+		expires = cur.expires
+	}
+	// Обновление записи того же адреса места не прибавляет — вытеснять
+	// незачем.
+	if !exists && len(c.m) >= webPageCacheMax {
 		for k, e := range c.m {
 			if now.After(e.expires) {
 				delete(c.m, k)
@@ -1167,13 +1229,7 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool)
 			delete(c.m, oldest)
 		}
 	}
-	ttl := webPageCacheTTL
-	if wp == nil {
-		// Отказ по существу (403 антибот, 404, 429) — короткий срок: сайт
-		// оживёт, а отказ гасит и плашку, и сборку карточек этой ссылки.
-		ttl = webPageRefusalTTL
-	}
-	c.m[key] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(ttl), complete: complete}
+	c.m[key] = webPageCacheEntry{wp: wp.Clone(), expires: expires, complete: complete}
 }
 
 // acquire занимает слот сборки; false — контекст кончился раньше.
