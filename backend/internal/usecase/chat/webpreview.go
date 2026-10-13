@@ -997,7 +997,7 @@ const (
 	webPageCacheTTL = 10 * time.Minute
 	// webPageRefusalTTL — срок записи «карточки нет».
 	webPageRefusalTTL = time.Minute
-	webPageCacheMax = 2048
+	webPageCacheMax   = 2048
 	// webPageFetchSlots — сколько сборок плашки идёт одновременно на сервер.
 	webPageFetchSlots = 8
 )
