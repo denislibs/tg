@@ -98,6 +98,13 @@ func registerServer(p serverParams) {
 	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
 	p.ContactsUC.SetCustomPhotos(contactPhotos)
 
+	// Фото профиля и личное фото контакта ставятся только своим файлом: проверка
+	// владельца читает строку media. Без этого чужой media_id открывался бы
+	// всем по правилу приватности подложившего. Не подключить — 500, не 404.
+	mediaRepo := pgadapter.NewMediaRepo(p.Pool)
+	p.AuthUC.SetMediaReader(mediaRepo)
+	p.ContactsUC.SetMediaReader(mediaRepo)
+
 	// Близкие друзья: признак едет ФЛАГОМ карточки контакта
 	// (`user.pFlags.close_friend`), как у оригинала — метода чтения списка в
 	// схеме нет вовсе. Владелец списка — подсистема историй, она же его и
@@ -143,6 +150,10 @@ func registerServer(p serverParams) {
 	// стикера публично (шлётся и читается не-владельцем).
 	stickersRepo := pgadapter.NewStickersRepo(p.Pool)
 	stickersUC := usecasestickers.New(stickersRepo)
+	// Стикер — только файл создателя набора, гиф — только видимый и анимированный:
+	// IsStickerMedia открывает файл всем, saved_gifs отдаёт его метаданные.
+	stickersUC.SetMediaReader(mediaRepo)
+	stickersUC.SetMediaAccess(p.ChatUC)
 	p.ChatUC.SetStickerAccess(stickersRepo)
 	if p.Cfg.TenorAPIKey != "" {
 		stickersUC.SetGifSearch(gifsearch.NewTenor(p.Cfg.TenorAPIKey))

@@ -8,9 +8,26 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
+
+// seedMedia кладёт строку media владельца ownerID с заданным mime и отдаёт её id
+// (загрузку байтов в хранилище эти тесты не требуют).
+func seedMedia(t *testing.T, pool *pgxpool.Pool, ownerID int64, mime string) int64 {
+	t.Helper()
+	m, err := pgadapter.NewMediaRepo(pool).Create(context.Background(), domain.Media{
+		OwnerID: ownerID, Bucket: "test", ObjectKey: fmt.Sprintf("%d/%s/%d", ownerID, mime, time.Now().UnixNano()), Mime: mime, Size: 1,
+	})
+	if err != nil {
+		t.Fatalf("seedMedia: %v", err)
+	}
+	return m.ID
+}
 
 // reqJSONAuth issues an authenticated request with an optional JSON body.
 func reqJSONAuth(t *testing.T, h http.Handler, method, path string, body any, token string) *httptest.ResponseRecorder {
@@ -38,7 +55,7 @@ func signInToken(t *testing.T, h http.Handler, phone string) (string, int64) {
 func TestProfileEndpoints_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	token, _ := signInToken(t, h, "+79990000001")
+	token, userID := signInToken(t, h, "+79990000001")
 
 	// PATCH /me — set names, bio, birthday. phone_visibility здесь больше нет:
 	// видимость номера это правило приватности (/me/privacy/phone_number).
@@ -105,11 +122,16 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 	// тем числом, которого ждёт клиентский downloadMediaURL. Строки
 	// «/media/N/content» на проводе больше нет. Превьюер не подключён (медиа в
 	// этих тестах не поднимается) — stripped_thumb просто отсутствует.
-	rec = reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 42}, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"_":"userProfilePhoto","photo_id":42`)) {
+	avatarID := seedMedia(t, pool, userID, "image/jpeg")
+	rec = reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": avatarID}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add photo: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = reqJSONAuth(t, h, http.MethodGet, "/me", nil, token)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(fmt.Sprintf(`"_":"userProfilePhoto","photo_id":%d`, avatarID))) {
 		t.Fatalf("set avatar: %d %s", rec.Code, rec.Body.String())
 	}
-	if bytes.Contains(rec.Body.Bytes(), []byte(`/media/42/content`)) {
+	if bytes.Contains(rec.Body.Bytes(), []byte(fmt.Sprintf(`/media/%d/content`, avatarID))) {
 		t.Fatalf("content-путь аватарки уехал на провод: %s", rec.Body.String())
 	}
 	if bytes.Contains(rec.Body.Bytes(), []byte(`"stripped_thumb"`)) {
@@ -168,13 +190,15 @@ func TestDeletePhoto_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	token, userID := signInToken(t, h, "+79990000030")
+	id501 := seedMedia(t, pool, userID, "image/jpeg")
+	id502 := seedMedia(t, pool, userID, "image/jpeg")
 
 	// Две фотографии в галерее; вторая (502) становится текущей аватаркой.
-	rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": 501}, token)
+	rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": id501}, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /me/photos (501): %d %s", rec.Code, rec.Body.String())
 	}
-	rec = reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": 502}, token)
+	rec = reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": id502}, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("POST /me/photos (502): %d %s", rec.Code, rec.Body.String())
 	}
@@ -189,8 +213,8 @@ func TestDeletePhoto_HTTP(t *testing.T) {
 		t.Fatalf("разбор списка: %v (%s)", err, rec.Body.String())
 	}
 	deletedID := list.Photos[0].ID // newest-first → 502
-	if deletedID != 502 {
-		t.Fatalf("ожидался id 502 первым, получено %d", deletedID)
+	if deletedID != id502 {
+		t.Fatalf("ожидался id %d первым, получено %d", id502, deletedID)
 	}
 
 	// Удаление этим id — 200 boolTrue, и фото реально пропадает из галереи.
@@ -228,21 +252,71 @@ func (p httpFakePreviewer) StrippedPreview(context.Context, int64) ([]byte, erro
 }
 
 // С подключённым превьюером установка аватарки кладёт stripped-превью в DTO
-// (base64 в JSON) — и в ответ PUT /me/avatar, и в последующий GET /me.
+// (base64 в JSON) — и в ответ POST /me/photos, и в последующий GET /me.
 func TestSetAvatarPreview_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	authUC := newAuthUC(pool)
 	authUC.SetAvatarPreviewer(httpFakePreviewer{preview: []byte{0xff, 0xd8, 0xff, 0xe0, 5}})
 	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	token, _ := signInToken(t, h, "+79990000021")
+	token, userID := signInToken(t, h, "+79990000021")
+	mediaID := seedMedia(t, pool, userID, "image/jpeg")
 
 	const wantB64 = `"stripped_thumb":"/9j/4AU="` // base64([ff d8 ff e0 05])
-	rec := reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": 7}, token)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(wantB64)) {
-		t.Fatalf("set avatar with preview: %d %s", rec.Code, rec.Body.String())
+	rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": mediaID}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add photo with preview: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodGet, "/me", nil, token)
 	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(wantB64)) {
 		t.Fatalf("GET /me preview: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// F7-A (MC-01): фото профиля ставится только своим файлом. Файл, загруженный
+// другим пользователем, — 404 (как «нет файла»), аватарка не меняется; свой —
+// проходит.
+func TestAddPhoto_ForeignMediaIs404(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	tokenA, idA := signInToken(t, h, "+79990000061")
+	_, idB := signInToken(t, h, "+79990000062")
+	foreign := seedMedia(t, pool, idB, "image/jpeg")
+	pdf := seedMedia(t, pool, idA, "application/pdf")
+	own := seedMedia(t, pool, idA, "image/jpeg")
+
+	for name, id := range map[string]int64{"чужой файл": foreign, "не картинка": pdf, "нет файла": 987654} {
+		rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": id}, tokenA)
+		if rec.Code != http.StatusNotFound || !bytes.Contains(rec.Body.Bytes(), []byte(`not_found`)) {
+			t.Fatalf("%s: %d %s; want 404 not_found", name, rec.Code, rec.Body.String())
+		}
+	}
+	rec := reqJSONAuth(t, h, http.MethodGet, "/me", nil, tokenA)
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"_":"userProfilePhoto"`)) {
+		t.Fatalf("после отказов у A появилась аватарка: %s", rec.Body.String())
+	}
+	if rec := reqJSONAuth(t, h, http.MethodPost, "/me/photos", map[string]any{"media_id": own}, tokenA); rec.Code != http.StatusOK {
+		t.Fatalf("свой файл: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// F7-A (MC-01, MC-17): PUT /me/avatar принимал любой media_id мимо проверки
+// владельца, DELETE /me не вызывается клиентом (удаление — 2FA-сброс).
+func TestRouter_RemovedProfileRoutes(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	token, id := signInToken(t, h, "+79990000063")
+	own := seedMedia(t, pool, id, "image/jpeg")
+
+	rec := reqJSONAuth(t, h, http.MethodPut, "/me/avatar", map[string]any{"media_id": own}, token)
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PUT /me/avatar: %d %s; want 404/405", rec.Code, rec.Body.String())
+	}
+	rec = reqJSONAuth(t, h, http.MethodDelete, "/me", nil, token)
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("DELETE /me: %d %s; want 404/405", rec.Code, rec.Body.String())
+	}
+	// Аккаунт жив: сессия работает.
+	if rec := reqJSONAuth(t, h, http.MethodGet, "/me", nil, token); rec.Code != http.StatusOK {
+		t.Fatalf("GET /me после DELETE /me: %d", rec.Code)
 	}
 }

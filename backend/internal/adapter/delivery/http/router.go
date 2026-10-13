@@ -102,7 +102,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Patch("/me", ph.Update)
 		pr.Put("/me/username", ph.SetUsername)
 		pr.Get("/username/available", ph.CheckUsername)
-		pr.Put("/me/avatar", ph.SetAvatar)
 		pr.Put("/me/emoji_status", ph.SetEmojiStatus)
 		pr.Post("/me/premium", ph.ActivatePremium)
 		pr.Post("/me/premium/checkout", ph.Checkout)
@@ -111,7 +110,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/me/photos", ph.AddPhoto)
 		pr.Delete("/me/photos/{mediaID}", ph.DeletePhoto)
 		pr.Get("/users/{userID}/photos", ph.ListPhotos)
-		pr.Delete("/me", ph.DeleteAccount)
 
 		nh := NewNotifyHandler(notifyUC)
 		pr.Get("/me/notify_settings", nh.Get)
