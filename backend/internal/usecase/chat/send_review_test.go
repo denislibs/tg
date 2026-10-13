@@ -210,7 +210,7 @@ func TestReplyQuote_InvisibleOriginalNoOracle(t *testing.T) {
 	ctx := context.Background()
 	chat, _ := in.CreatePrivateChat(ctx, 1, 2)
 	secret, _ := in.Send(ctx, SendInput{ChatID: chat, SenderID: 1, Text: "пароль: abc"})
-	if err := in.ClearHistory(ctx, chat, 2); err != nil {
+	if _, err := in.ClearHistory(ctx, chat, 2); err != nil {
 		t.Fatal(err)
 	}
 	for _, q := range []string{"пароль: a", "пароль: z"} {

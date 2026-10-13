@@ -655,7 +655,7 @@ func TestMessagesRepo_ThreadReplyCounts(t *testing.T) {
 	insert(chatID, &root1)
 	insert(chatID, &root2)
 	gone := insert(chatID, &root2)
-	if err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, gone.ID); err != nil {
 		t.Fatalf("SoftDelete: %v", err)
 	}
 	// тот же корень в ДРУГОМ чате не должен подмешаться в счёт

@@ -6589,6 +6589,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
       })
     })
 
+    // tweb bubbles.ts:1144: история очищена — снимается всё отрисованное
+    this.listenerSetter.add(rootScope)('dialog_flush', ({ peerId }) => {
+      if (this.peerId === peerId) {
+        this.deleteMessagesByIds(this.getRenderedHistory('asc'))
+      }
+    })
+
     // tweb bubbles.ts:1903, гейт отложенных — :2283 (их номера — ключи очереди,
     // с номерами чата пересекаются)
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {

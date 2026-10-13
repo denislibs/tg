@@ -25,7 +25,7 @@ func TestChatsRepo_ListDialogs_TopMessageSkipsHiddenForViewer(t *testing.T) {
 	second := insertMsg(t, msgs, chatID, b, "text", "скрыто у a")
 	third := insertMsg(t, msgs, chatID, a, "text", "тоже скрыто у a")
 	for _, m := range []int64{second.ID, third.ID} {
-		if err := msgs.HideForUser(ctx, a, m); err != nil {
+		if _, err := msgs.HideForUser(ctx, a, m); err != nil {
 			t.Fatalf("hide: %v", err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestChatsRepo_ListDialogs_OrderByLastVisible(t *testing.T) {
 	insertMsg(t, msgs, chatY, y, "text", "старое видимое в Y")
 	insertMsg(t, msgs, chatX, x, "text", "среднее в X")
 	hidden := insertMsg(t, msgs, chatY, y, "text", "свежее в Y, скрыто у меня")
-	if err := msgs.HideForUser(ctx, me, hidden.ID); err != nil {
+	if _, err := msgs.HideForUser(ctx, me, hidden.ID); err != nil {
 		t.Fatalf("hide: %v", err)
 	}
 

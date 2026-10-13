@@ -235,7 +235,7 @@ func TestClearHistory(t *testing.T) {
 		_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "m"})
 	}
 
-	if err := in.ClearHistory(ctx, chatID, b); err != nil {
+	if _, err := in.ClearHistory(ctx, chatID, b); err != nil {
 		t.Fatalf("ClearHistory: %v", err)
 	}
 
@@ -265,7 +265,7 @@ func TestClearHistory(t *testing.T) {
 	}
 
 	// Не член → ErrNotFound.
-	if err := in.ClearHistory(ctx, chatID, 999); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.ClearHistory(ctx, chatID, 999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("ClearHistory non-member = %v, want ErrNotFound", err)
 	}
 }

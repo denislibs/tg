@@ -75,6 +75,7 @@ const lang = {
   AreYouSureDeleteSingleMessage: 'Are you sure you want to delete this message?',
   AreYouSureDeleteSingleMessageBot: 'Do you want to delete this message?\nThis will delete it just for you.',
   AreYouSureDeleteSingleMessageMega: 'Are you sure you want to delete this message for everyone?',
+  AreYouSureDeleteThisChatSavedMessages: 'Are you sure you want to delete **Saved Messages**?',
   AreYouSureDeleteThisChatWithUser: 'Are you sure you want to delete the chat with **%1$s**?',
   AreYouSureSessionTitle: 'Terminate session',
   AreYouSureSessions: 'Are you sure you want to terminate all other sessions?',

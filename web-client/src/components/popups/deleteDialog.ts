@@ -14,22 +14,18 @@
 //     (`DELETE /chats/{id}`), выйти — `groups.removeMember(peerId, myId)` +
 //     `dialogs.applyRemoved`. `flush` у `leaveChat` оригинала нет: выход у нас
 //     снимает строку сам.
-//  2. Удаление «Избранного» (`saved`, `AreYouSureDeleteThisChatSavedMessages`):
-//     ручка его уже умеет (`chats.deleteHistory`), но ключа строки нет в нашем
-//     словаре — пункт `Delete` у «Избранного» меню пока не показывает
-//     (`dialogsContextMenu.ts`, расхождение 9).
-//  3. Ветки `monoforum`, `monoforum_thread`, `savedDialog`, `botforum_thread` и
+//  2. Ветки `monoforum`, `monoforum_thread`, `savedDialog`, `botforum_thread` и
 //     тем форума (`threadId`) — О-4, О-3, задачи 1-6/1-7 (`core/peers/dialogType.ts`).
-//  4. Отступление В7-1: секретный чат (наш продукт, у tweb его нет) — это личка:
+//  3. Отступление В7-1: секретный чат (наш продукт, у tweb его нет) — это личка:
 //     тексты `chat`, действие — выход, как у шапки секретного чата; чекбокса
 //     `revoke` у него нет (`deleteHistory` секретному чату не адресуется).
-//  5. `onSelect` оригинала передаёт только редактор чата (`editChat.solid.tsx`,
+//  4. `onSelect` оригинала передаёт только редактор чата (`editChat.solid.tsx`,
 //     tweb `editChat.tsx:579`: закрыть вкладку по исходу); меню диалога его не
 //     передаёт. Закрыть открытый удалённый чат у tweb — дело класса `Chat`
 //     (`dialog_drop`, `chat.ts:658-668`), у нас его нет: ВРЕМЕННО до К-3 это
 //     делает сам попап (`appImManager.setPeer({isDeleting: true})`).
 //     Порядок параметров — наш: `managers` вторым, `onSelect` последним.
-//  6. Имя в тексте — `PeerTitle` с миддлварью, которую попап снимает на закрытии
+//  5. Имя в тексте — `PeerTitle` с миддлварью, которую попап снимает на закрытии
 //     (`wrapPeerTitle` у нас — узел, которому надо знать, когда его снять).
 import type { FormatterArguments, LangPackKey } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
@@ -45,7 +41,7 @@ import type { Managers } from '@/client/bootstrap'
 export type DeleteDialogManagers = PeerTitleManagers & {
   chats: Pick<Managers['chats'], 'deleteHistory'>
   groups: Pick<Managers['groups'], 'deleteGroup' | 'removeMember'>
-  dialogs: Pick<Managers['dialogs'], 'applyRemoved'>
+  dialogs: Pick<Managers['dialogs'], 'applyRemoved'> // только `leaveChat`
 }
 
 /** `:11-15` — расхождение 1: выход у нас снимает диалог сам, `flush` не нужен. */
@@ -53,9 +49,13 @@ export function leaveChat(peerId: PeerId, managers: DeleteDialogManagers) {
   return managers.groups.removeMember(peerId, rootScope.myId).then(() => managers.dialogs.applyRemoved(peerId))
 }
 
-/** `flushHistory({peerId, justClear: false, revoke})` (`:62`) — расхождение 1. */
+/**
+ * `flushHistory({peerId, justClear: false, revoke})` (`:62`) — расхождение 1.
+ * Курсор, окна и строку диалога сбрасывает сам менеджер воркера (tweb
+ * `doFlushHistory` + `dropDialogOnDeletion`), здесь ничего локально не снимается.
+ */
 function deleteHistory(peerId: PeerId, revoke: boolean, managers: DeleteDialogManagers) {
-  return managers.chats.deleteHistory(peerId, revoke).then(() => managers.dialogs.applyRemoved(peerId))
+  return managers.chats.deleteHistory(peerId, revoke)
 }
 
 export default function showDeleteDialogPopup(
@@ -65,15 +65,15 @@ export default function showDeleteDialogPopup(
   isSecret?: boolean,
   onSelect?: (promise: Promise<unknown>) => void,
 ) {
-  const middlewareHelper = getMiddleware() // расхождение 6
+  const middlewareHelper = getMiddleware() // расхождение 5
   const wrapPeerTitle = () => new PeerTitle({ peerId, middleware: middlewareHelper.get(), managers }).element
   const peerTitleElement = wrapPeerTitle()
 
   if(peerType === undefined) {
-    peerType = isSecret ? 'chat' : getDialogType(peerId) // расхождение 4
+    peerType = isSecret ? 'chat' : getDialogType(peerId) // расхождение 3
   }
 
-  // расхождение 5
+  // расхождение 4
   const select = (promise: Promise<unknown>) => {
     onSelect?.(promise)
     void promise.then(() => {
@@ -90,9 +90,9 @@ export default function showDeleteDialogPopup(
   const callbackDelete = (checked?: Set<LangPackKey>) => {
     let promise: Promise<unknown>
 
-    if(peerType === 'chat') {
+    if(peerType === 'chat' || peerType === 'saved') {
       promise = isSecret ?
-        leaveChat(peerId, managers) : // расхождение 4
+        leaveChat(peerId, managers) : // расхождение 3
         deleteHistory(peerId, !!checked?.size, managers)
     } else {
       if(checked?.size) {
@@ -149,7 +149,7 @@ export default function showDeleteDialogPopup(
         callback: callbackDelete,
       }]
 
-      if(!isSecret) { // расхождение 4
+      if(!isSecret) { // расхождение 3
         checkboxes = [{
           text: 'DeleteMessagesOptionAlso',
           textArgs: [wrapPeerTitle()],
@@ -159,10 +159,17 @@ export default function showDeleteDialogPopup(
       break
     }
 
-    case 'saved':
-      // расхождение 2: ключа текста нет — меню пункт не показывает
-      middlewareHelper.destroy()
-      return
+    case 'saved': {
+      title = 'DeleteChatUser'
+      description = 'AreYouSureDeleteThisChatSavedMessages'
+      buttons = [{
+        langKey: 'DeleteChatUser',
+        isDanger: true,
+        callback: callbackDelete,
+      }]
+
+      break
+    }
 
     case 'megagroup':
     case 'group': {

@@ -257,8 +257,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/media", ch.MediaHistory)
 		pr.Get("/chats/{peerID}/search_counters", ch.SearchCounters)
 		pr.Post("/chats/{peerID}/read", ch.Read)
-		pr.Post("/chats/{peerID}/clear", ch.ClearHistory)
-		pr.Delete("/chats/{peerID}/history", ch.DeleteDialog)              // messages.deleteHistory just_clear=false
+		pr.Delete("/chats/{peerID}/history", ch.DeleteHistory)             // messages.deleteHistory (just_clear, revoke)
 		pr.Get("/updates/state", ch.UpdatesState)                          // updates.getState
 		pr.Get("/updates/difference", ch.UpdatesDifference)                // updates.getDifference
 		pr.Get("/updates/channel_difference", ch.UpdatesChannelDifference) // updates.getChannelDifference
