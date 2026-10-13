@@ -192,7 +192,7 @@ func TestMediaAccessRepo_CanAccessFollowsSource(t *testing.T) {
 	if ok, _ := access.CanAccess(ctx, stranger, photo); ok {
 		t.Fatal("посторонний качает фото из чужой лички")
 	}
-	if err := msgs.SoftDelete(ctx, m.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, m.ID); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := access.CanAccess(ctx, bob, photo); ok {

@@ -655,8 +655,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Ф-5 C2 (превью ссылки): у ru +6 ключей tweb lang.ts:583-587, :2318 — меню плашки
 // (`AboveMessage`/`BelowMessage`/`LargerMedia`/`SmallerMedia`/`WebPage.RemovePreview`)
 // и футер карточки `OpenMessage`.
+// Ф-6 f6-hist («Удалить» у «Избранного»): у ru +1 ключ tweb lang.ts:1614 —
+// `AreYouSureDeleteThisChatSavedMessages`.
 const COMPOSITION = {
-  ru: { keys: 1815, plural: 65 },
+  ru: { keys: 1816, plural: 65 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -867,7 +869,7 @@ const COMPOSITION = {
 // Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
 // Ф-5 C2 — у ru +6 ключей превью ссылки (разбор — там же).
 const FINGERPRINT = {
-  ru: 'd44c3fbd',
+  ru: '1e7a90eb',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',
