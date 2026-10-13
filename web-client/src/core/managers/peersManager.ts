@@ -71,13 +71,18 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
  * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
  */
-export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum }: {
+export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onSelfUser }: {
   rest: Pick<RestClient, 'get'>
   onPeerOps?: (ops: PeerOp[]) => void
   onUserStatus?: (evt: PresenceEvt) => void
   /** tweb `chat_toggle_forum` (`appChatsManager.ts:268`, `:304-306`): у
    *  известной карточки чата сменился `pFlags.forum`. Слушает хранилище тем. */
   onChatToggleForum?: (peerId: PeerId, enabled: boolean) => void
+  /** Своя карточка пришла кадром `user_update` (другое устройство сменило
+   *  эмодзи-статус, включило Premium). Приёмник — `me` воркера: tweb держит
+   *  себя в том же кэше `users`, а у нас `me` живёт отдельно, и карточки «я» в
+   *  кэше пиров может не быть вовсе. */
+  onSelfUser?: (user: UserReal) => void
 }) {
   const cache = new Map<PeerId, User | Chat>()
   /**
@@ -324,10 +329,15 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * витрина оставалась со старым аватаром, а кэш воркера — ни с чем.
    *
    * Неизвестного пира не заводим — правило владельца: карточку, которой в кэше
-   * ещё не было, зеркало держать не может, и объявлять её некому.
+   * ещё не было, зеркало держать не может, и объявлять её некому. Исключение —
+   * своя карточка: её получает `onSelfUser` ДО этого гварда (tweb `saveApiUser`
+   * кладёт её в тот же кэш при любом ответе, а `checkPremium` :793-800 сверяет
+   * признак Premium именно у неё).
    */
   function applyUserUpdate(user: UserReal): void {
-    if (!user || !cache.has(peerKey(user))) return
+    if (!user) return
+    if (user.pFlags?.self) onSelfUser?.(user)
+    if (!cache.has(peerKey(user))) return
     publish(save([user]).replaced)
   }
 

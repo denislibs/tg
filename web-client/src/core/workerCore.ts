@@ -395,6 +395,13 @@ export function createWorkerCore() {
     rest,
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
+    // Своё обновление карточки с другого устройства (эмодзи-статус, Premium):
+    // `me` обновляется и без записи в кэше пиров. Тот же кадр от собственной
+    // мутации (сервер шлёт его и инициатору) на `me` не влияет — карточка равна.
+    onSelfUser: (u) => {
+      if (!me || JSON.stringify(me.user) === JSON.stringify(u)) return
+      setMe({ ...me, user: u })
+    },
     // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата
     // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192),
     // выключенный форум — и окна тредов (appMessagesManager.ts:921-932).

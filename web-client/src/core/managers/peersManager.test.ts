@@ -453,3 +453,47 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
     expect(statuses).toHaveLength(2)
   })
 })
+
+// Своя карточка (VA2-02): второе устройство получает `user_update` о самом себе —
+// смену эмодзи-статуса, Premium, — а в кэше пиров своей карточки может не быть
+// (в списках чатов «я» бывает только в «Избранном»). Гвард «неизвестного пира не
+// заводим» не должен её проглатывать: `me` воркера обновляется отдельным приёмником.
+describe('PeersManager — своя карточка из user_update (onSelfUser)', () => {
+  const me = (over: Partial<UserReal> = {}) => user(7, { pFlags: { self: true }, phone: '+79990000007', ...over })
+
+  it('своей карточки нет в кэше → onSelfUser всё равно зовётся, в зеркало она не публикуется', () => {
+    const selfs: UserReal[] = []
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onPeerOps: (o) => ops.push(...o), onSelfUser: (u) => selfs.push(u) })
+
+    const card = me({ pFlags: { self: true, premium: true } })
+    mgr.applyUserUpdate(card)
+
+    expect(selfs).toEqual([card])
+    expect(ops).toEqual([])
+  })
+
+  it('своя карточка в кэше → и приёмник, и публикация', async () => {
+    const selfs: UserReal[] = []
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest: fakeRest([me()]).rest, onPeerOps: (o) => ops.push(...o), onSelfUser: (u) => selfs.push(u) })
+    await mgr.getUsers([7])
+    ops.length = 0
+
+    const fresh = me({ emoji_status_emoticon: '🔥' })
+    mgr.applyUserUpdate(fresh)
+
+    expect(selfs).toEqual([fresh])
+    expect(ops).toEqual([{ op: 'upsert', peers: [fresh] }])
+  })
+
+  it('чужая неизвестная карточка приёмник не будит', () => {
+    const selfs: UserReal[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onSelfUser: (u) => selfs.push(u) })
+
+    mgr.applyUserUpdate(user(404))
+
+    expect(selfs).toEqual([])
+  })
+})
+

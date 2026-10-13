@@ -20,6 +20,8 @@ import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import I18n from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import { applyLang } from '@/test/lang'
+import { useChatsStore } from '@stores/chatsStore'
+import type { PeerProfile } from '@core/managers/authManager'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
@@ -559,5 +561,33 @@ describe('карточки пустой колонки (tweb :375-377, :824-833)
     await im.setPeer({})
     await settle()
     expect(pushRecentlyClosedChat.mock.calls).toEqual([[1], [2]])
+  })
+})
+
+// tweb `appImManager.ts:388-397`: класс `is-premium` на body следует за признаком Premium
+// собственной карточки. Своё обновление карточки с другого устройства (VA2-02) доходит
+// кадром `rt:me` в `chatsStore.setMe` — значок и класс меняются без перезагрузки.
+describe('is-premium следует за карточкой me (tweb :388-397)', () => {
+  const meCard = (premium: boolean): PeerProfile => ({
+    user: { _: 'user', id: 7, pFlags: premium ? { self: true, premium: true } : { self: true }, photo: { _: 'userProfilePhotoEmpty' } },
+    fullUser: { _: 'userFull', id: 7 },
+    canMessage: true,
+  })
+
+  afterEach(() => { useChatsStore.getState().setMe(null) })
+
+  it('rt:me с premium включает класс и событие premium_toggle, без premium — выключает', () => {
+    useChatsStore.getState().setMe(meCard(false))
+    construct()
+    const toggles: boolean[] = []
+    im.addEventListener('premium_toggle', (premium) => { toggles.push(premium as boolean) })
+    expect(document.body.classList.contains('is-premium')).toBe(false)
+
+    useChatsStore.getState().setMe(meCard(true))
+    expect(document.body.classList.contains('is-premium')).toBe(true)
+
+    useChatsStore.getState().setMe(meCard(false))
+    expect(document.body.classList.contains('is-premium')).toBe(false)
+    expect(toggles).toEqual([true, false])
   })
 })
