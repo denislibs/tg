@@ -117,9 +117,11 @@ func TestScheduledPreview_StaleBuildDropped(t *testing.T) {
 		Text: "https://new.example/", ScheduleDate: date, WebPage: &domain.WebPageInput{}}); err != nil {
 		t.Fatal(err)
 	}
+	// Карточка новой ссылки И её кадр: в фейке транзакции нет изоляции, и
+	// строка видна раньше, чем кадр лёг в журнал (постановка, правка, карточка).
 	waitFor(t, func() bool {
 		wp := scheduledRow(t, fs, sm.Seq).WebPage
-		return wp != nil && wp.URL == "https://new.example/"
+		return wp != nil && wp.URL == "https://new.example/" && len(logOf(s, 1, scheduledNewFrame)) == 3
 	})
 	framesBefore := len(logOf(s, 1, scheduledNewFrame))
 	close(release)
