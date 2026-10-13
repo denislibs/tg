@@ -11,6 +11,7 @@ import { setStarsBalance } from '../../stores/starsStore'
 import { mapSuggestedPost } from '../../core/models'
 import { getPeerId } from '../../core/peers/peerId'
 import { useNotifyStore } from '../../stores/notifyStore'
+import { applyPrivacyUpdate } from '../../stores/privacyStore'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
@@ -174,6 +175,9 @@ const APPLY: Projector = {
   // Глобальные настройки уведомлений по типу чатов — зеркало одно, `notifyStore`
   // (tweb `onUpdateNotifySettings` → `savePeerSettings`, `appNotificationsManager.ts:504-538`).
   notify_settings: (e) => { useNotifyStore.getState().apply(e.peer._, e.notify_settings) },
+  // Правило приватности одного ключа (tweb `onUpdatePrivacy`, `appPrivacyManager.ts:12-19`):
+  // зеркало одно — `privacyStore`, роль кэша `privacy[key]`.
+  privacy_update: (e) => { applyPrivacyUpdate(e) },
   // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
   // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
   // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки

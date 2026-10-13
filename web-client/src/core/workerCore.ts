@@ -31,7 +31,7 @@ import { newThreadReads } from './managers/threadReads'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
-import { newPrivacyManager } from './managers/privacyManager'
+import { newPrivacyManager, privacyFrameKey, type PeerBlockEvt } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
 import { newBoostsManager } from './managers/boostsManager'
 import { newStickersManager } from './managers/stickersManager'
@@ -57,7 +57,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -472,9 +472,18 @@ export function createWorkerCore() {
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
     onContactsUpdate: (userId) => broadcast('contacts_update', userId),
   })
-  // `peer_block` — событие tweb `toggleBlock` (`appUsersManager.ts:520-536`);
-  // broadcast объявлен ниже — стрелка дёргает его лениво.
-  const privacy = newPrivacyManager({ rest, peers, onPeerBlock: (e) => broadcast('peer_block', e) })
+  // Местный апдейт после своего ответа (tweb `apiUpdatesManager.processLocalUpdate`,
+  // `toggleBlock` :520-536, `setPrivacy` :30-56) идёт тем же `dispatch`, что живой
+  // кадр: `peer_block` и `privacy_update` вкладкам рассылает он. `dispatch` ниже —
+  // стрелка дёргает его лениво. Счётчик кадров по предмету — защита от затирания
+  // свежего кадра местным апдейтом, собранным из опоздавшего ответа.
+  const privacyFrames: Record<string, number> = {}
+  const privacy = newPrivacyManager({
+    rest,
+    peers,
+    processLocalUpdate: (u) => dispatch(u._, u),
+    frameVersion: (key) => privacyFrames[key] ?? 0,
+  })
   // Черновики — порт `appDraftsManager`: черновик чата — поле диалога
   // (`dialogs.applyDraft`), черновик треда — словарь менеджера и строка темы
   // (`forumTopics.applyDraft`); вкладкам — `draft_updated` (tweb rootScope.ts:162).
@@ -654,6 +663,23 @@ export function createWorkerCore() {
     if (twin) { dispatch(twin._, twin, meta); return }
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
+    }
+    // Блок и правило приватности (журнал `peer_blocked` / `privacy_update`, а
+    // также местный апдейт после своего ответа): события tweb `peer_block`
+    // (`appProfileManager.ts:1506-1533` — тело из `pFlags`) и `privacy_update`
+    // (`appPrivacyManager.ts:12-19` — тело само апдейт). Сырой кадр дальше не идёт.
+    if (pred === 'updatePeerBlocked') {
+      const e = d as PeerBlockedEvt
+      privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      const evt: PeerBlockEvt = { peerId: getPeerId(e.peer_id), blocked: e.pFlags?.blocked ? true : undefined }
+      broadcast('peer_block', evt, meta)
+      return
+    }
+    if (pred === 'updatePrivacy') {
+      const e = d as PrivacyEvt
+      privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      broadcast('privacy_update', e, meta)
+      return
     }
     // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
     // `onUpdateDeleteScheduledMessages`, appMessagesManager.ts:11773-11815):

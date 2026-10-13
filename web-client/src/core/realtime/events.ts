@@ -139,6 +139,11 @@ export const RT = {
   story: 'rt:story',
   storyReaction: 'rt:story_reaction',
   storyRead: 'rt:story_read',
+  // Блок и правило приватности с другого устройства (Ф-6): воркер переводит их в
+  // события tweb `peer_block` / `privacy_update` (rootScope.ts:53, :166); имена
+  // нужны полноте реестра `UPDATE_RT`.
+  peerBlocked: 'rt:peer_blocked',
+  privacy: 'rt:privacy',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -738,6 +743,23 @@ export interface SentStoryReactionEvt { _: 'updateSentStoryReaction'; peer: Peer
  *  на ДРУГИЕ устройства зрителя: кольцо непрочитанного гаснет везде. */
 export interface ReadStoriesEvt { _: 'updateReadStories'; peer: Peer; max_id: number }
 /**
+ * updatePeerBlocked#ebe07752 flags:# blocked:flags.0?true
+ * blocked_my_stories_from:flags.1?true peer_id:Peer = Update;
+ *
+ * Чёрный список изменился на другом устройстве владельца (или местный апдейт
+ * после своего ответа). «Разблокировали» — отсутствие бита `pFlags.blocked`.
+ * `blocked_my_stories_from` не производится. Курсор едет в конверте.
+ */
+export interface PeerBlockedEvt { _: 'updatePeerBlocked'; pFlags?: { blocked?: true }; peer_id: Peer }
+/**
+ * updatePrivacy#ee3b272a key:PrivacyKey rules:Vector<PrivacyRule> = Update;
+ *
+ * Правило одного ключа сменилось: вектор правил целиком (абсолютный снимок).
+ * Ключ — конструктор схемы (`privacyKeyStatusTimestamp`), перевод в наш ключ —
+ * `privacyKeyOfTag`. Курсор едет в конверте.
+ */
+export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: import('../managers/privacyManager').PrivacyRuleWire[] }
+/**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
  * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
@@ -788,6 +810,8 @@ export type Update =
   | ReadStoriesEvt
   | NewScheduledMessageEvt
   | DeleteScheduledMessagesEvt
+  | PeerBlockedEvt
+  | PrivacyEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']
