@@ -3,6 +3,8 @@ package contacts
 import (
 	"context"
 	"errors"
+	"log"
+	"slices"
 	"strings"
 	"unicode/utf16"
 
@@ -30,6 +32,7 @@ type Interactor struct {
 	photos  CustomPhotoRepo
 	close   CloseFriendsRepo
 	media   MediaReader
+	emit    SnapshotEmitter
 }
 
 // errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
@@ -50,6 +53,83 @@ func (i *Interactor) SetCloseFriends(p CloseFriendsRepo) { i.close = p }
 
 // SetMediaReader подключает проверку «файл свой» для личных фото контактов.
 func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
+
+// SetEmitter подключает журнал своих устройств (optional): мутации книги
+// отдают владельцу карточку контакта строкой user_update.
+func (i *Interactor) SetEmitter(e SnapshotEmitter) { i.emit = e }
+
+// emitContactCard — владельцу книги на остальные устройства: карточка userID
+// ГЛАЗАМИ ВЛАДЕЛЬЦА после мутации (имя из книги, pFlags.contact, личное фото,
+// close_friend). У оригинала это апдейт с users:[user] — клиент кладёт карточку
+// в кэш и по смене pFlags.contact двигает книгу (tweb appUsersManager
+// saveApiUser :663-782 → onContactUpdated :1216-1228). Контакту строки нет: его
+// карточка от этой мутации не меняется.
+//
+// Зовётся ПОСЛЕ коммита мутации. Сбой журнала ответ не ломает: устройство
+// догонит книгу следующим чтением.
+func (i *Interactor) emitContactCard(ctx context.Context, ownerID, userID int64) {
+	if i.emit == nil {
+		return
+	}
+	err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
+		u, err := i.seenByOwner(ctx, ownerID, userID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"_": domain.UpdateUserSnapshotTag, "user": u}, nil
+	})
+	if err != nil {
+		log.Printf("[user_update] contact card owner=%d user=%d: %v", ownerID, userID, err)
+	}
+}
+
+// seenByOwner — краткая карточка userID глазами ownerID: имя и pFlags.contact
+// из его книги (SeenUser), аватарка по правилу profile_photo пользователя и
+// поверх неё личное фото владельца, номер по правилу phone_number,
+// pFlags.close_friend. Без проверяющего приватности фото видно, номер скрыт —
+// та же мягкая деградация, что у domain.UncheckedUserViewRules.
+func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64) (domain.UserReal, error) {
+	u, err := i.repo.SeenUser(ctx, ownerID, userID)
+	if err != nil {
+		return domain.UserReal{}, err
+	}
+	users := []domain.UserReal{u}
+	rules := domain.UncheckedUserViewRules(ownerID, users)
+	// Присутствие в снимок не входит: своё место у него — updateUserStatus, а
+	// «ничего не известно» в карточке стёрло бы у клиента настоящий статус.
+	rules.Status = nil
+	if i.privacy != nil {
+		photo, err := i.privacy.VisibleMap(ctx, ownerID, []int64{userID}, domain.PrivacyProfilePhoto)
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		phone, err := i.privacy.VisibleMap(ctx, ownerID, []int64{userID}, domain.PrivacyPhoneNumber)
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		rules.Photo, rules.Phone = photo, phone
+	}
+	// Личное фото задано ЗРИТЕЛЕМ (pFlags.personal): правило аватарки его не гасит.
+	if i.photos != nil {
+		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID})
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		if mediaID, ok := custom[userID]; ok {
+			users[0].Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
+		}
+	}
+	rules.Apply(users)
+	u = users[0]
+	if i.close != nil {
+		friends, err := i.close.CloseFriends(ctx, ownerID)
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		u.MarkCloseFriend(slices.Contains(friends, userID))
+	}
+	return u, nil
+}
 
 // SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
 // аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
@@ -74,7 +154,11 @@ func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID,
 	if m.OwnerID != ownerID || !strings.HasPrefix(m.Mime, "image/") {
 		return domain.ErrNotFound
 	}
-	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID)
+	if err := i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID); err != nil {
+		return err
+	}
+	i.emitContactCard(ctx, ownerID, contactUserID)
+	return nil
 }
 
 // ClearCustomPhoto сбрасывает личное фото контакта — владелец снова видит его
@@ -83,7 +167,11 @@ func (i *Interactor) ClearCustomPhoto(ctx context.Context, ownerID, contactUserI
 	if i.photos == nil {
 		return domain.ErrNotFound
 	}
-	return i.photos.ClearCustomPhoto(ctx, ownerID, contactUserID)
+	if err := i.photos.ClearCustomPhoto(ctx, ownerID, contactUserID); err != nil {
+		return err
+	}
+	i.emitContactCard(ctx, ownerID, contactUserID)
+	return nil
 }
 
 // AddInput is the payload for saving (or editing) a contact.
@@ -129,6 +217,7 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 		_, _ = i.repo.Delete(ctx, ownerID, in.UserID)
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
+	i.emitContactCard(ctx, ownerID, in.UserID)
 	return c, nil
 }
 
@@ -191,6 +280,7 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		_, _ = i.repo.Delete(ctx, ownerID, userID)
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
+	i.emitContactCard(ctx, ownerID, userID)
 	return c, nil
 }
 
@@ -310,21 +400,10 @@ func (i *Interactor) Delete(ctx context.Context, ownerID, userID int64) (domain.
 	if err != nil || !found {
 		return domain.UserReal{}, found, err
 	}
-	u, err := i.repo.SeenUser(ctx, ownerID, userID)
+	u, err := i.seenByOwner(ctx, ownerID, userID)
 	if err != nil {
 		return domain.UserReal{}, true, err
 	}
-	if i.privacy != nil {
-		if ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyProfilePhoto); err != nil || !ok {
-			u.Photo = domain.NewUserProfilePhotoEmpty()
-		}
-	}
-	if i.photos != nil {
-		if custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID}); err == nil {
-			if mediaID, ok := custom[userID]; ok {
-				u.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
-			}
-		}
-	}
+	i.emitContactCard(ctx, ownerID, userID)
 	return u, true, nil
 }
