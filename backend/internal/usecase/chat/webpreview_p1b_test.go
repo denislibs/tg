@@ -249,9 +249,9 @@ func TestBuildWebPreview_DoesNotWaitPlaqueImageHead(t *testing.T) {
 	}
 }
 
-// Временный сбой плашки запоминается коротко (webPageTransientTTL): ждущие
-// принимают его, а после срока следующий запрос снова идёт на сайт.
-func TestGetWebPage_TransientCachedBriefly(t *testing.T) {
+// Временный сбой плашки (она не повторяет загрузку) не запоминается:
+// следующий запрос того же адреса снова идёт на сайт.
+func TestGetWebPage_TransientNotCached(t *testing.T) {
 	e := newPreviewEnv(t)
 	e.prev.fail = 1
 	ctx := context.Background()
@@ -259,12 +259,8 @@ func TestGetWebPage_TransientCachedBriefly(t *testing.T) {
 	if e.in.GetWebPage(ctx, u) != nil {
 		t.Fatal("карточка при сбое")
 	}
-	if e.in.GetWebPage(ctx, u) != nil || len(e.prev.calls()) != 1 {
-		t.Fatalf("в пределах срока сбоя снова пошли на сайт (%d)", len(e.prev.calls()))
-	}
-	expireCacheEntry(e.in, u)
 	if e.in.GetWebPage(ctx, u) == nil {
-		t.Fatal("после срока сбоя карточки нет")
+		t.Fatal("временный сбой плашки закэширован")
 	}
 }
 
@@ -311,7 +307,7 @@ func TestFirstURL_Parens(t *testing.T) {
 		"https://google.com?q=1":                  "https://google.com",
 		"https://a.example:8443/p?q=1!":           "https://a.example:8443/p?q=1!",
 		"путь https://a.example/путь/x»":          "https://a.example/путь/x»",
-		"HTTPS://A.example/x":                     "HTTPS://A.example/x",
+		"HTTPS://A.example/x":                     "", // tweb: схема плашки — в нижнем регистре (input.ts:3570)
 		"адрес https://localhost/x":               "",
 		"ip https://1.2.3.4/x":                    "https://1.2.3.4/x",
 	} {
@@ -711,5 +707,165 @@ func TestFirstURL_OrderAndForms(t *testing.T) {
 		if got := firstURL(in, nil); got != want {
 			t.Errorf("%q → %q; want %q", in, got, want)
 		}
+	}
+}
+
+// panicPreviewer — разбор чужой страницы падает паникой.
+type panicPreviewer struct{ calls atomic.Int32 }
+
+func (p *panicPreviewer) Preview(context.Context, string) (*domain.WebPagePreview, error) {
+	if p.calls.Add(1) == 1 {
+		panic("html")
+	}
+	return &domain.WebPagePreview{URL: "https://a.example/x", Title: "T"}, nil
+}
+
+// Ревью 6, п.1: паника разбора страницы в сборке снимает метку загрузки и
+// возвращает слот — адрес не мертвеет до рестарта.
+func TestLoadPage_PanicReleasesMarkAndSlot(t *testing.T) {
+	e := newPreviewEnv(t)
+	pp := &panicPreviewer{}
+	e.in.SetLinkPreviewer(pp)
+	e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	e.in.bg.Wait()
+	if e.in.webPages.loadingNow("https://a.example/x") || len(e.in.previewFlights.slots) != 0 {
+		t.Fatal("после паники осталась метка загрузки или слот")
+	}
+	if e.in.GetWebPage(context.Background(), "https://a.example/x") == nil {
+		t.Fatal("плашка после паники не грузит")
+	}
+}
+
+// Ревью 6, п.2: временный сбой плашки (без повтора) не лишает сообщение
+// своей загрузки с повтором.
+func TestBuildWebPreview_PlaqueTransientNotInherited(t *testing.T) {
+	old := pageRetryDelay
+	pageRetryDelay = time.Millisecond
+	defer func() { pageRetryDelay = old }()
+	e := newPreviewEnv(t)
+	e.prev.fail = 1
+	ctx := context.Background()
+	if e.in.GetWebPage(ctx, "https://a.example/x") != nil {
+		t.Fatal("карточка при сбое")
+	}
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	e.in.bg.Wait()
+	if storedMsg(t, e.s, msg.ID).WebPage == nil {
+		t.Fatal("сообщение без карточки после сбоя плашки")
+	}
+}
+
+// Ревью 6, п.3: слот на обогащение не дали — карточка уходит без картинки,
+// а не теряется.
+func TestBuildWebPreview_EnrichSlotTimeoutKeepsCard(t *testing.T) {
+	defer swapBudgets(30*time.Millisecond, 30*time.Millisecond, time.Second)()
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	if e.in.GetWebPage(ctx, u) == nil { // страница в кэше от плашки
+		t.Fatal("плашка без карточки")
+	}
+	for k := 0; k < buildSlots; k++ {
+		e.in.previewFlights.acquireBuild()
+	}
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	e.in.bg.Wait()
+	for k := 0; k < buildSlots; k++ {
+		e.in.previewFlights.releaseBuild()
+	}
+	if storedMsg(t, e.s, msg.ID).WebPage == nil {
+		t.Fatal("карточка потеряна из-за очереди обогащения")
+	}
+}
+
+// Ревью 6, п.4: очередь фоновых сборок полна — плашка этого адреса не ждёт
+// её (держатель метки занимает её только со слотом на руках).
+func TestGetWebPage_DoesNotWaitBuildQueue(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	for k := 0; k < buildSlots; k++ {
+		e.in.previewFlights.acquireBuild()
+	}
+	e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	time.Sleep(20 * time.Millisecond) // сборка встала в очередь слотов
+	got := make(chan *domain.WebPagePreview, 1)
+	go func() { got <- e.in.GetWebPage(ctx, u) }()
+	select {
+	case wp := <-got:
+		if wp == nil {
+			t.Fatal("плашка без карточки")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("плашка ждёт очередь фоновых сборок")
+	}
+	for k := 0; k < buildSlots; k++ {
+		e.in.previewFlights.releaseBuild()
+	}
+	e.in.bg.Wait()
+}
+
+// Ревью 5-6: достройка карточки не продлевает срок страницы и не создаёт
+// запись поверх истёкшей; отказ поверх живой страницы — свой короткий срок.
+func TestWebPageCache_ExpiryRules(t *testing.T) {
+	var c webPageCache
+	const u = "https://a.example/x"
+	c.putPage(u, &domain.WebPagePreview{URL: u}, false)
+	c.mu.Lock()
+	first := c.m[cacheKey(u)].expires
+	c.mu.Unlock()
+	time.Sleep(5 * time.Millisecond)
+	c.put(u, &domain.WebPagePreview{URL: u, HasLargeMedia: true}, true)
+	c.mu.Lock()
+	if got := c.m[cacheKey(u)].expires; !got.Equal(first) {
+		t.Fatalf("достройка продлила срок: %v → %v", first, got)
+	}
+	e := c.m[cacheKey(u)]
+	e.expires = time.Now().Add(-time.Second)
+	c.m[cacheKey(u)] = e
+	c.mu.Unlock()
+	c.put(u, &domain.WebPagePreview{URL: u}, true)
+	if _, ok := c.get(u); ok {
+		t.Fatal("достройка создала запись поверх истёкшей")
+	}
+	c.putPage(u, &domain.WebPagePreview{URL: u}, false)
+	c.putPage(u, nil, true)
+	c.mu.Lock()
+	left := time.Until(c.m[cacheKey(u)].expires)
+	c.mu.Unlock()
+	if left > webPageTransientTTL {
+		t.Fatalf("сбой унаследовал срок страницы: %v", left)
+	}
+}
+
+// failHeadHTTP — заголовок картинки не читается (сбой CDN).
+type failHeadHTTP struct{ fakeOutHTTP }
+
+func (*failHeadHTTP) FetchPrefix(context.Context, string, int64) ([]byte, string, error) {
+	return nil, "", errors.New("cdn timeout")
+}
+
+// Размер картинки плашки не прочитан — карточка не запоминается
+// достроенной: следующая плашка достраивает её снова.
+func TestGetWebPage_HeadFailureLeavesIncomplete(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.in.SetBotHTTP(&failHeadHTTP{})
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	if e.in.GetWebPage(ctx, u) == nil {
+		t.Fatal("плашка без карточки")
+	}
+	if _, ok := e.in.webPages.get(u); ok {
+		t.Fatal("карточка без прочитанного размера запомнена достроенной")
+	}
+}
+
+// Ссылка внутри code/pre — не ссылка (как у tweb).
+func TestFirstURL_SkipsCode(t *testing.T) {
+	text := "код https://a.example/x и https://b.example/y"
+	code := domain.MessageEntities{domain.NewMessageEntityCode(4, utf16Len("https://a.example/x"))}
+	if got := firstURL(text, code); got != "https://b.example/y" {
+		t.Fatalf("ссылка в code: %q", got)
 	}
 }
