@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -202,9 +204,11 @@ func TestBuildWebPreview_WaitsForPlaqueLoad(t *testing.T) {
 type slowHeadHTTP struct {
 	fakeOutHTTP
 	release chan struct{}
+	waiting atomic.Int32 // сколько запросов заголовка ждут release
 }
 
 func (h *slowHeadHTTP) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	h.waiting.Add(1)
 	select {
 	case <-h.release:
 	case <-ctx.Done():
@@ -265,8 +269,15 @@ func TestFirstURL_Parens(t *testing.T) {
 		"см. https://ru.wikipedia.org/wiki/X_(y)": "https://ru.wikipedia.org/wiki/X_(y)",
 		"(см. https://a.example/c)":               "https://a.example/c",
 		"смотри https://a.example/c.":             "https://a.example/c",
-		"«https://a.example/c»":                   "https://a.example/c»", // tweb оставляет «»» в адресе
 		"https://ru.wikipedia.org/wiki/X_(y)).":   "https://ru.wikipedia.org/wiki/X_(y)",
+		"Зацени https://example.com!":             "https://example.com",
+		"«https://ya.ru»":                         "https://ya.ru",
+		"https://google.com?q=1":                  "https://google.com",
+		"https://a.example:8443/p?q=1!":           "https://a.example:8443/p?q=1!",
+		"путь https://a.example/путь/x»":          "https://a.example/путь/x»",
+		"HTTPS://A.example/x":                     "HTTPS://A.example/x",
+		"адрес https://localhost/x":               "",
+		"ip https://1.2.3.4/x":                    "https://1.2.3.4/x",
 	} {
 		if got := firstURL(in, nil); got != want {
 			t.Errorf("%q → %q; want %q", in, got, want)
@@ -415,5 +426,114 @@ func TestGetWebPage_ConcurrentPlaquesShareLoad(t *testing.T) {
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок %d; ждали 1", n)
+	}
+}
+
+// panicIVProber — проба Instant View, падающая паникой (чужой HTML).
+type panicIVProber struct{}
+
+func (panicIVProber) HasArticle(context.Context, string) bool { panic("readability") }
+
+// Ревью 4, п.1: паника в сборке возвращает слот семафора.
+func TestBuildWebPreview_PanicReturnsSlot(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.in.SetIVProber(panicIVProber{})
+	e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	e.in.bg.Wait()
+	if n := len(e.in.previewFlights.slots); n != 0 {
+		t.Fatalf("занято слотов после паники: %d", n)
+	}
+}
+
+// Все слоты заняты дольше previewTimeout — сборка не начинается (и не висит).
+func TestBuildWebPreview_SlotTimeout(t *testing.T) {
+	defer swapBudgets(20*time.Millisecond, 20*time.Millisecond, time.Second)()
+	e := newPreviewEnv(t)
+	e.in.previewFlights.acquireBuild()
+	for k := 1; k < buildSlots; k++ {
+		e.in.previewFlights.slots <- struct{}{}
+	}
+	msg, _ := e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	e.in.bg.Wait()
+	if storedMsg(t, e.s, msg.ID).WebPage != nil || len(e.prev.calls()) != 0 {
+		t.Fatal("сборка прошла без слота")
+	}
+}
+
+// failCommitTx — транзакция, у которой падает коммит (fn отработал).
+type failCommitTx struct{}
+
+func (failCommitTx) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	if err := fn(ctx); err != nil {
+		return err
+	}
+	return errors.New("commit failed")
+}
+
+// Ревью 3/4: упавший коммит записи карточки — кадра нет (карточка откачена).
+func TestWebPageFrame_NotSentWhenCommitFails(t *testing.T) {
+	e := newPreviewEnv(t)
+	release := e.prev.hold("https://a.example/x")
+	e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	e.in.tx = failCommitTx{}
+	close(release)
+	e.in.bg.Wait()
+	if n := countFrames(e.pub, 2, "web_page_update"); n != 0 {
+		t.Fatalf("кадров карточки %d при упавшем коммите", n)
+	}
+}
+
+// Ревью 4, п.3: вторая плашка, пока первая читает заголовок картинки, —
+// страница не грузится второй раз.
+func TestGetWebPage_SecondPlaqueDuringImageHead(t *testing.T) {
+	e := newPreviewEnv(t)
+	head := &slowHeadHTTP{fakeOutHTTP: fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"}, release: make(chan struct{})}
+	e.in.SetBotHTTP(head)
+	e.in.SetBotMedia(&fakeMediaStore{})
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	res := make(chan *domain.WebPagePreview, 2)
+	go func() { res <- e.in.GetWebPage(ctx, u) }()
+	waitFor(t, func() bool { _, ok := e.in.webPages.pageEntry(u); return ok })
+	go func() { res <- e.in.GetWebPage(ctx, u) }()
+	// Обе плашки читают заголовок картинки: вторая — по странице из кэша.
+	waitFor(t, func() bool { return head.waiting.Load() == 2 })
+	close(head.release)
+	for k := 0; k < 2; k++ {
+		if wp := <-res; wp == nil || !wp.HasLargeMedia {
+			t.Fatalf("плашка = %+v", wp)
+		}
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// Ревью 4, п.4: одна ссылка в нескольких сообщениях (бот шлёт во много
+// чатов) — одна загрузка страницы на все сборки.
+func TestBuildWebPreview_SameURLBuildsShareLoad(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://slow.example/x"
+	release := e.prev.hold(u)
+	waiting := make(chan struct{}, 4)
+	e.in.webPages.mu.Lock()
+	e.in.webPages.onWait = func() { waiting <- struct{}{} }
+	e.in.webPages.mu.Unlock()
+	a, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	b, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 2, Text: u})
+	<-waiting // вторая сборка ждёт первую
+	close(release)
+	e.in.bg.Wait()
+	for _, m := range []domain.Message{a, b} {
+		if storedMsg(t, e.s, m.ID).WebPage == nil {
+			t.Fatalf("сообщение %d без карточки", m.ID)
+		}
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
 	}
 }

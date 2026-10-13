@@ -32,6 +32,9 @@ type previewTarget struct {
 type previewFlight struct {
 	key, url string
 	t        previewTarget
+	// readErr — проверку строки остановил сбой чтения (пишет только своя
+	// горутина сборки).
+	readErr bool
 }
 
 // buildSlots — сколько фоновых сборок карточек ходит в сеть одновременно:
