@@ -218,7 +218,7 @@ export function createWorkerCore() {
   // (`peer_pinned_deleted`). Вектор кадра `updateDeletePeerMessages` расходится по
   // номерам (`evictAndBuildRemoveOps`), а очистка истории шлёт кадры по 1000 номеров, —
   // события одного пира склеены в одно на микротаске: после операций окна того же кадра
-  // и без `postMessage` на каждый номер. `broadcast` объявлен ниже — вызов ленивый.
+  // и с одним обработчиком на вкладке вместо обработчика на каждый номер. `broadcast` объявлен ниже — вызов ленивый.
   const pinnedDeleted = new Map<number, { mids: number[]; pinned: number[] }>()
   const queuePinnedDeleted = (peerId: number, mids: number[], pinned: number[]) => {
     let batch = pinnedDeleted.get(peerId)

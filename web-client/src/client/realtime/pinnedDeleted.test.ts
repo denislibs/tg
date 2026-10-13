@@ -96,6 +96,17 @@ describe('refetchSubscriber: удаление закреплённого сбр�
     expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({ [PEER]: 3 })
   })
 
+  it('запрос закрепов упал: пустая запись совпадением не считается', async () => {
+    setAppState('hiddenPinnedMessages', { [PEER]: 3 })
+    listPins.mockRejectedValueOnce(new Error('offline'))
+    await getPinnedMessage(managers as never, PEER).catch(() => {})
+
+    rootScope.dispatchEventSingle('peer_pinned_deleted', { peerId: PEER, mids: [9], pinned: [] })
+
+    expect(listener).not.toHaveBeenCalled()
+    expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({ [PEER]: 3 })
+  })
+
   it('удаление закрепа снимает скрытие плашки (tweb :14303-14311)', async () => {
     setAppState('hiddenPinnedMessages', { [PEER]: 3 })
     rootScope.dispatchEventSingle('peer_pinned_deleted', { peerId: PEER, mids: [3], pinned: [3] })
