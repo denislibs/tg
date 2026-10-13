@@ -27,14 +27,17 @@ type reportResolver interface {
 	MessageResolver
 }
 
-// Report — POST /report {peer_id, id?, reason, comment?}. id опционален
-// (жалоба на чат целиком) и означает НОМЕР сообщения у этого пира.
-// Причина — из белого списка usecase.
+// Report — POST /report {peer_id, id, reason, comment?}. id — ВЕКТОР номеров
+// сообщений у этого пира (messages.report{id: Vector<int>}, tweb
+// appMessagesManager.ts:7807-7827); пустой или отсутствующий — жалоба на чат
+// целиком (reportAd.tsx:372). Номеров больше usecasereport.MaxIDs — 400
+// «invalid report»; неизвестный номер — 404 «message not found». Причина — из
+// белого списка usecase.
 func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {
 		PeerID  domain.PeerID `json:"peer_id"`
-		Seq     *int64        `json:"id"`
+		Seqs    []int64       `json:"id"`
 		Reason  string        `json:"reason"`
 		Comment string        `json:"comment"`
 	}
@@ -42,19 +45,32 @@ func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
+	if len(b.Seqs) > usecasereport.MaxIDs {
+		writeError(w, http.StatusBadRequest, "invalid report")
+		return
+	}
 	chatID, ok := resolveBodyPeer(w, r, h.peers, b.PeerID, false)
 	if !ok {
 		return
 	}
-	var msgID *int64
-	if b.Seq != nil {
-		id, ok := resolveMsgSeq(w, r, h.peers, chatID, *b.Seq)
-		if !ok {
+	var msgIDs []int64
+	if len(b.Seqs) > 0 {
+		bySeq, err := h.peers.MessageIDsBySeqs(r.Context(), chatID, b.Seqs)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "message lookup failed")
 			return
 		}
-		msgID = &id
+		msgIDs = make([]int64, 0, len(b.Seqs))
+		for _, seq := range b.Seqs {
+			id, found := bySeq[seq]
+			if !found {
+				writeError(w, http.StatusNotFound, "message not found")
+				return
+			}
+			msgIDs = append(msgIDs, id)
+		}
 	}
-	err := h.uc.Report(r.Context(), user.ID, chatID, msgID, domain.ReportReason(b.Reason), b.Comment)
+	err := h.uc.Report(r.Context(), user.ID, chatID, msgIDs, domain.ReportReason(b.Reason), b.Comment)
 	if errors.Is(err, domain.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "invalid report")
 		return

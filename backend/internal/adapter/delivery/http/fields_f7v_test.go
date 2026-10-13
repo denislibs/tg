@@ -56,3 +56,73 @@ func TestBotCallback_MsgIDName(t *testing.T) {
 		t.Fatalf("callback на несуществующее сообщение = %d; want 404", rec.Code)
 	}
 }
+
+// MC-05: жалоба на сообщения несёт id — ВЕКТОР серверных номеров (TL
+// messages.report{id: Vector<int>}, tweb appMessagesManager.ts:7807-7827);
+// на каждое сообщение — своя строка. Клиент слал msg_id, и жалоба молча
+// превращалась в жалобу на чат.
+func TestReport_VectorOfMessages(t *testing.T) {
+	h, pool := newF7vRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000073")
+	_, idB := signUp(t, h, pool, "+79990000074")
+	peer := createdPeerFrom(t, authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB}))
+	var seqs []int64
+	for _, text := range []string{"раз", "два"} {
+		rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(peer)+"/messages", tokenA, map[string]any{"text": text})
+		var sent struct {
+			ID int64 `json:"id"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &sent)
+		seqs = append(seqs, sent.ID)
+	}
+	count := func(withMsg bool) int {
+		t.Helper()
+		var n int
+		q := `SELECT count(*) FROM reports WHERE msg_id IS NULL`
+		if withMsg {
+			q = `SELECT count(*) FROM reports WHERE msg_id IS NOT NULL`
+		}
+		if err := pool.QueryRow(t.Context(), q).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+
+	rec := authedReq(t, h, http.MethodPost, "/report", tokenA,
+		map[string]any{"peer_id": peer, "id": seqs, "reason": "spam", "comment": "x"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("report = %d %s; want 204", rec.Code, rec.Body.String())
+	}
+	if got := count(true); got != 2 {
+		t.Fatalf("строк с msg_id = %d; want 2 (по одной на сообщение)", got)
+	}
+	var chatRows int
+	_ = pool.QueryRow(t.Context(), `SELECT count(*) FROM reports WHERE msg_id IN (SELECT id FROM messages)`).Scan(&chatRows)
+	if chatRows != 2 {
+		t.Fatalf("msg_id не ссылаются на внутренние ключи сообщений: %d", chatRows)
+	}
+
+	// id: [] — жалоба на чат.
+	rec = authedReq(t, h, http.MethodPost, "/report", tokenA, map[string]any{"peer_id": peer, "id": []int64{}, "reason": "spam"})
+	if rec.Code != http.StatusNoContent || count(false) != 1 {
+		t.Fatalf("жалоба на чат: %d %s, строк без msg_id=%d; want 204 и 1", rec.Code, rec.Body.String(), count(false))
+	}
+
+	// Неизвестный номер — 404, и НИЧЕГО не записано (в том числе известные).
+	before := count(true)
+	rec = authedReq(t, h, http.MethodPost, "/report", tokenA,
+		map[string]any{"peer_id": peer, "id": []int64{seqs[0], 9999}, "reason": "spam"})
+	if rec.Code != http.StatusNotFound || count(true) != before {
+		t.Fatalf("неизвестный номер: %d %s, строк %d→%d; want 404 без записи", rec.Code, rec.Body.String(), before, count(true))
+	}
+
+	// Больше 100 номеров — 400 до разбора адресов.
+	many := make([]int64, 101)
+	for n := range many {
+		many[n] = int64(n + 1)
+	}
+	rec = authedReq(t, h, http.MethodPost, "/report", tokenA, map[string]any{"peer_id": peer, "id": many, "reason": "spam"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("101 номер = %d %s; want 400", rec.Code, rec.Body.String())
+	}
+}
