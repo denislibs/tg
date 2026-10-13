@@ -23,15 +23,20 @@ const deleteFrameChunk = 1000
 // очищает окно и строку живьём, а не держит историю и бейджи до перезагрузки
 // (оригинал: другие сессии получают updateDeleteMessages). Не член →
 // domain.ErrNotFound.
-func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) error {
+//
+// Ответ — messages.affectedHistory с курсором актора (pts его журнала после
+// операции, число записанных ему строк): клиент двигает по нему свой pts.
+func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) (domain.MessagesAffectedHistory, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
 	if !ok {
-		return domain.ErrNotFound
+		return domain.MessagesAffectedHistory{}, domain.ErrNotFound
 	}
 	var deliver func(context.Context)
+	var lastPts int64
+	var rows int
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		maxSeq, e := i.chats.MaxSeq(ctx, chatID)
 		if e != nil {
@@ -47,15 +52,15 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 		}
 		peer := addr.forViewer(userID)
 		frames := append(deleteChunks(peer, gone), ownFrame{"read", readPayload(peer, maxSeq, 0, true)})
-		deliver, e = i.journalOwn(ctx, userID, frames)
+		deliver, lastPts, rows, e = i.journalOwn(ctx, userID, frames)
 		return e
 	})
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
 	i.invalidateDialogs(ctx, userID)
 	deliver(ctx)
-	return nil
+	return domain.NewMessagesAffectedHistory(lastPts, rows), nil
 }
 
 // DeleteDialog — «Удалить чат» в личке и «Избранном» (Telegram
@@ -69,21 +74,33 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 //
 // Группа и канал так не удаляются (выход — RemoveMember, удаление для всех —
 // DeleteGroup): domain.ErrInvalid.
-func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, revoke bool) error {
+//
+// Ответ — messages.affectedHistory с курсором актора; строки собеседника в
+// pts_count не входят (у него свой журнал).
+func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, revoke bool) (domain.MessagesAffectedHistory, error) {
 	a, err := i.chats.Access(ctx, chatID, userID)
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
 	if !a.Member {
-		return domain.ErrNotFound
+		return domain.MessagesAffectedHistory{}, domain.ErrNotFound
 	}
 	if a.Type != domain.ChatTypePrivate && a.Type != domain.ChatTypeSaved {
-		return domain.ErrInvalid
+		return domain.MessagesAffectedHistory{}, domain.ErrInvalid
 	}
 	revoke = revoke && a.Type == domain.ChatTypePrivate
 	var deliver []func(context.Context)
 	var touched []int64
+	var lastPts int64
+	var rows int
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		// Встречные удаления у обоих в одной личке берут строки участников в
+		// разном порядке: замок на чат разводит их до первой блокировки строк.
+		if revoke {
+			if e := i.chats.LockDialogDelete(ctx, chatID); e != nil {
+				return e
+			}
+		}
 		addr, e := i.peerAddress(ctx, chatID)
 		if e != nil {
 			return e
@@ -122,10 +139,11 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 		// у выхода из группы, адресом пира ГЛАЗАМИ удалившего.
 		frames := append(deleteChunks(peer, gone), ownFrame{"chat_removed",
 			map[string]any{"_": domain.UpdateChatRemovedTag, "peer": domain.NewPeer(peer)}})
-		d, e := i.journalOwn(ctx, userID, frames)
+		d, pts, n, e := i.journalOwn(ctx, userID, frames)
 		if e != nil {
 			return e
 		}
+		lastPts, rows = pts, n
 		deliver = append(deliver, d)
 		touched = append(touched, userID)
 		if !revoke {
@@ -145,7 +163,7 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 			upeer := addr.forViewer(uid)
 			frames := append(deleteChunks(upeer, seqs), ownFrame{"chat_removed",
 				map[string]any{"_": domain.UpdateChatRemovedTag, "peer": domain.NewPeer(upeer)}})
-			d, e := i.journalOwn(ctx, uid, frames)
+			d, _, _, e := i.journalOwn(ctx, uid, frames)
 			if e != nil {
 				return e
 			}
@@ -155,13 +173,13 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 		return i.chats.RecountCounters(ctx, chatID, members)
 	})
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
 	i.invalidateDialogs(ctx, touched...)
 	for _, d := range deliver {
 		d(ctx)
 	}
-	return nil
+	return domain.NewMessagesAffectedHistory(lastPts, rows), nil
 }
 
 // clearForUser — очистка истории у одного участника до горизонта maxSeq
@@ -211,20 +229,23 @@ func deleteChunks(peer domain.PeerID, seqs []int64) []ownFrame {
 
 // journalOwn пишет кадры frames в журнал ОДНОГО пользователя (внутри
 // транзакции вызывающего) и возвращает доставку живых кадров его устройствам —
-// звать после коммита.
-func (i *Interactor) journalOwn(ctx context.Context, userID int64, frames []ownFrame) (func(context.Context), error) {
+// звать после коммита, — pts последней записанной строки и число строк (по
+// ним строится messages.affectedHistory).
+func (i *Interactor) journalOwn(ctx context.Context, userID int64, frames []ownFrame) (deliver func(context.Context), lastPts int64, rows int, err error) {
 	live := make([][]byte, 0, len(frames))
 	date := nowUnix()
 	for _, f := range frames {
 		payload, err := json.Marshal(f.body)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		pts, err := i.updates.AppendUpdate(ctx, userID, 1, date, f.typ, payload)
 		if err != nil {
-			return nil, err
+			return nil, 0, 0, err
 		}
 		live = append(live, framePts(f.typ, f.body, pts))
+		lastPts = pts
+		rows++
 	}
 	return func(ctx context.Context) {
 		if i.publisher == nil {
@@ -233,5 +254,5 @@ func (i *Interactor) journalOwn(ctx context.Context, userID int64, frames []ownF
 		for _, f := range live {
 			_ = i.publisher.PublishToUser(ctx, userID, f)
 		}
-	}, nil
+	}, lastPts, rows, nil
 }

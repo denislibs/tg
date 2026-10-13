@@ -149,7 +149,7 @@ func TestHistoryCount_IsViewerVisible(t *testing.T) {
 			t.Errorf("count истории у %d = %d; want %d", tc.viewer, h.Count, tc.want)
 		}
 	}
-	if err := in.ClearHistory(ctx, chatID, a); err != nil {
+	if _, err := in.ClearHistory(ctx, chatID, a); err != nil {
 		t.Fatalf("ClearHistory: %v", err)
 	}
 	if h, _ := in.GetHistory(ctx, chatID, a, 0, 0, 40, nil, ""); h.Count != 0 {
