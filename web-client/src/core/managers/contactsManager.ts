@@ -138,9 +138,10 @@ export interface ContactsDeps {
  *     папки, и экран контакта): каждое чтение книги — тот же «свежий снимок»,
  *     что у оригинала `contacts.getContacts` в `fillContacts`, и он же
  *     перестраивает индекс. Контакт, появившийся/пропавший пушем карточки
- *     (`onContactUpdated` из `saveApiUser`, :655), индекс не двигает — у нас
- *     этого канала нет; двигают его `add`/`del` (через `onContactUpdated`, с
- *     событием `contacts_update`).
+ *     (`saveApiUser` :738-754 → `onContactUpdated`), индекс двигает так же, как
+ *     у оригинала: `peersManager` зовёт `onContactUpdated` на смене
+ *     `pFlags.contact` (и для неизвестной карточки живого кадра `user_update`);
+ *     `add`/`del` двигают его сами, с событием `contacts_update`.
  */
 export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate }: ContactsDeps) {
   const createSearchIndex = () => new SearchIndex<number>(SEARCH_OPTIONS)
@@ -275,6 +276,14 @@ export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate
     testSelfSearch(query: string): boolean {
       return testSelfSearch(query)
     },
+
+    /**
+     * Порт `onContactUpdated` (:1216-1228) — вход для владельца карточек: у
+     * карточки сменился `pFlags.contact` (`peersManager` → `saveApiUser`
+     * :738-754, кадр `user_update` со второго устройства). `wasContact` — флаг
+     * карточки ДО замены; без него сравнение идёт с членством в книге.
+     */
+    onContactUpdated,
 
     /**
      * Порт `getContactsPeerIds` (:467-481) — локальный поиск по книге для

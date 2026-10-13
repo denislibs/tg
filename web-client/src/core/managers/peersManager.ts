@@ -71,13 +71,17 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
  * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
  */
-export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum }: {
+export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onContactToggle }: {
   rest: Pick<RestClient, 'get'>
   onPeerOps?: (ops: PeerOp[]) => void
   onUserStatus?: (evt: PresenceEvt) => void
   /** tweb `chat_toggle_forum` (`appChatsManager.ts:268`, `:304-306`): у
    *  известной карточки чата сменился `pFlags.forum`. Слушает хранилище тем. */
   onChatToggleForum?: (peerId: PeerId, enabled: boolean) => void
+  /** tweb `onContactUpdated(userId, newContact, wasContact)` (`appUsersManager.ts:
+   *  738-754`): у карточки сменился `pFlags.contact`. Владелец книги двигает
+   *  индекс и объявляет `contacts_update`. */
+  onContactToggle?: (userId: number, isContact: boolean, wasContact: boolean) => void
 }) {
   const cache = new Map<PeerId, User | Chat>()
   /**
@@ -183,6 +187,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     // раньше давал сам персист диалогов.
     const persistChatCards: Chat[] = []
     const toggledForum: [PeerId, boolean][] = []
+    const toggledContact: [number, boolean][] = []
     for (const incoming of peers) {
       // Статус — СВЕЖИЙ снимок сервера, поэтому отдаётся и тогда, когда
       // карточка целиком совпала с лежащей: между двумя снимками присутствие
@@ -201,12 +206,18 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
       if (prev && peer._ === 'channel' && prev._ === 'channel' && !!prev.pFlags?.forum !== !!peer.pFlags?.forum) {
         toggledForum.push([key, !!peer.pFlags?.forum])
       }
+      // Книга двигается на ЗАМЕНЕ карточки со сменой флага (tweb :738-754). Новая
+      // карточка книгу не трогает: её читает fillContacts, он же её перестраивает.
+      if (prev && peer._ === 'user' && prev._ === 'user' && !!prev.pFlags?.contact !== !!peer.pFlags?.contact) {
+        toggledContact.push([peer.id, !!peer.pFlags?.contact])
+      }
       if (peer._ === 'user') persist.push(peer)
       else if (peer._ !== 'userEmpty') persistChatCards.push(peer)
     }
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
     if (persistChatCards.length) void persistChats(persistChatCards)
     for (const [peerId, enabled] of toggledForum) onChatToggleForum?.(peerId, enabled)
+    for (const [userId, isContact] of toggledContact) onContactToggle?.(userId, isContact, !isContact)
     return { written, replaced }
   }
 
@@ -323,12 +334,20 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * карточку приходилось перезапрашивать отдельной ручкой; на упавшем до-фетче
    * витрина оставалась со старым аватаром, а кэш воркера — ни с чем.
    *
-   * Неизвестного пира не заводим — правило владельца: карточку, которой в кэше
-   * ещё не было, зеркало держать не может, и объявлять её некому.
+   * Порт `saveApiUser` (tweb `appUsersManager.ts:663-782`): карточка сохраняется
+   * и когда её в кэше ещё не было (`oldUser === undefined` → `mirrorUser`), —
+   * так приходит «добавил в контакты» со второго устройства про человека, чью
+   * карточку этот воркер ещё не читал. Объявляется всё записанное, как в
+   * `saveApiPeers`. Неизвестный контакт двигает книгу: у tweb книга — полный
+   * список `getContacts`, у нас ленивый, и без этого вызова новый контакт не
+   * попал бы в индекс до следующего чтения книги.
    */
   function applyUserUpdate(user: UserReal): void {
-    if (!user || !cache.has(peerKey(user))) return
-    publish(save([user]).replaced)
+    if (!user) return
+    const key = peerKey(user)
+    const known = cache.has(key)
+    publish(save([user]).written)
+    if (!known && user.pFlags?.contact) onContactToggle?.(user.id, true, false)
   }
 
   /**
