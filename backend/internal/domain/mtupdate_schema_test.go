@@ -149,6 +149,7 @@ func updateCases() []struct {
 			NewChannelParticipantBanned(9, 7, 0, AllMemberPerms, time.Time{}, true), nil, nil)},
 		{"заявки", NewUpdatePendingJoinRequests(NewPeerChannel(5), 2, []int64{9, 10})},
 		{"заявок нет", NewUpdatePendingJoinRequests(NewPeerChannel(5), 0, nil)},
+		{"теги «Избранного»", NewUpdateSavedReactionTags()},
 	}
 }
 
@@ -251,6 +252,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdatePinnedForumTopicTag,
 		UpdateReadChannelDiscussionInboxTag,
 		UpdateReadChannelDiscussionOutboxTag,
+		UpdateSavedReactionTagsTag,
 		NotifyForumTopicTag,
 		NotifyUsersTag,
 		NotifyChatsTag,
