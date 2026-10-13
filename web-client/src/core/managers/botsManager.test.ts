@@ -22,20 +22,22 @@ describe('BotsManager.callback', () => {
     // (usecase/chat/bot.go: switch data { case "alert": … }) уже после разбора.
     await newBotsManager({ rest }).callback(42, 7, 'YWxlcnQ=', 100)
 
-    expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, message_id: 100, data: 'YWxlcnQ=' })
+    expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, msg_id: 100, data: 'YWxlcnQ=' })
   })
 
   it('клиентский номер сообщения уходит серверным (getServerMessageId)', async () => {
     const { rest, post } = fakeRest()
     await newBotsManager({ rest }).callback(1, 2, 'Y2I=', generateMessageId(15))
 
-    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, message_id: 15, data: 'Y2I=' })
+    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, msg_id: 15, data: 'Y2I=' })
   })
 
-  it('message_id необязателен — уходит 0, как ждёт ручка', async () => {
+  it('ключ тела — msg_id (getBotCallbackAnswer.msg_id), прежнего message_id нет', async () => {
     const { rest, post } = fakeRest()
-    await newBotsManager({ rest }).callback(1, 2, 'Y2I=')
+    await newBotsManager({ rest }).callback(1, 2, 'Y2I=', generateMessageId(9))
 
-    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, message_id: 0, data: 'Y2I=' })
+    const body = post.mock.calls[0][1] as Record<string, unknown>
+    expect(body.msg_id).toBe(9)
+    expect(body).not.toHaveProperty('message_id')
   })
 })

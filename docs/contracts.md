@@ -89,34 +89,37 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 `POST /auth/check_password`, `POST /auth/password/recover/confirm` и
 `POST /auth/passkey/finish`.
 
-### POST /auth/qr/new  · public
-Заводит эфемерную запись входа по коду (Redis, ~60s TTL) и отдаёт сам код.
-Ссылки для сканера в ответе НЕТ: её строит клиент от своего origin (серверная
-выводилась из заголовков прокси и теряла порт — адрес ехал дважды).
-- Request: `{ "platform": "web" }` (`platform` optional)
-- 200: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
-  — `token` в схеме БАЙТЫ; маршрут `/auth/qr/{token}` берёт ту же величину
-  шестнадцатеричной записью
-- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }` (no QRStore / Redis down)
-
-### GET /auth/qr/{token}  · public
-Опрос записи. Подтверждённая запись одноразовая — читается один раз.
-- 200 ждёт подтверждения: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
+### POST /auth/export_login_token  · public
+Экспорт кода QR-входа (`auth.exportLoginToken`). Устройство, ещё не вошедшее,
+генерирует ключ входа (32 случайных байта) и шлёт его заголовком
+`X-Login-Key` строчным hex из 64 символов; в QR ключ НЕ попадает. Запись
+(Redis, ~60 с) принадлежит ключу: сессию забирает только его владелец, а не тот,
+кто увидел код. Опрос — раз в ~3 с (цикл `iterate` tweb).
+- Request: `{ "except_ids": [<id аккаунтов, уже вошедших на устройстве>], "platform": "web" }`
+- 200 код ждёт: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
+  — `token` в схеме БАЙТЫ; клиент рисует его hex в QR (`/qr/<hex>`)
 - 200 подтверждено: `{ "_": "auth.loginTokenSuccess", "authorization": { "_": "auth.authorization", "token": "<opaque>", "user": { "_": "user", … } } }`
-  — ТОТ ЖЕ исход входа, что у обычного шага
-- 404: `{ "_": "error", "code": 404, "text": "AUTH_TOKEN_EXPIRED" }` — код протух,
-  уже прочитан либо неизвестен. Это ОТКАЗ, а не третий конструктор объединения
-  (форма оригинала); прежде тут ехало `{"status":"expired"}` со статусом 200
-- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }`
+  — ТОТ ЖЕ исход входа, что у обычного шага; запись живёт до TTL (60 с): повторный опрос тем же ключом отдаёт ту же сессию (потерянный ответ не теряет её)
+- 200 у аккаунта с облачным паролем: `{ "_": "auth.loginTokenSuccess", "authorization": { "_": "auth.passwordNeeded", "password_token": "…", "hint": "…" } }`
+  — шаг пароля: `POST /auth/check_password`
+- 400: `LOGIN_KEY_INVALID` (нет заголовка или не 64 hex нижнего регистра); `invalid body`
+- 420: `FLOOD_WAIT_<N>` (сначала лимит по IP, затем по ключу входа)
+- 503: `qr login unavailable` (хранилище QR не подключено); сбой Redis — 500
+- При запросе через DNP-канал заголовок не передаётся — клиент ходит этим методом
+  обычным `fetch` (мимо канала).
 
-### POST /auth/qr/confirm  · auth
-Called by an already-authenticated device (the scanner) to approve a pending QR
-login. Mints a fresh session for the caller and attaches it to the record.
-- Request: `{ "token": "<opaque>" }`
-- 200: `{ "_": "boolTrue" }`
-- 400: `{ "_": "error", "code": 400, "text": "token is required" }`
-- 404: `{ "_": "error", "code": 404, "text": "invalid or expired token" }` (unknown/expired/already used)
-- 503: `{ "_": "error", "code": 503, "text": "qr login unavailable" }`
+### POST /auth/accept_login_token  · auth
+Вызывает уже вошедшее устройство (сканер): подтверждает код с экрана другого.
+Сессия выпускается экспортёру, а не сканеру.
+- Request: `{ "token": "<hex из QR>" }`
+- 200: `authorization` новой сессии (`hash` = id строки сессии); у аккаунта с
+  облачным паролем сессии ещё нет — `authorization` с `hash: 0` и
+  `pFlags.password_pending: true`
+- 400: `token is required`
+- 404: `AUTH_TOKEN_EXPIRED` — код неизвестен, протух, уже принят, либо аккаунт
+  входит в `except_ids` экспортёра (запись при этом не меняется)
+- 420: `FLOOD_WAIT_<N>`
+- 503: `qr login unavailable` (хранилище QR не подключено)
 
 ### GET /me  · auth
 - 200 — та же ПАРА, что и `GET /users/{id}`: конструктор
@@ -1123,7 +1126,7 @@ Delete the caller's own story.
 |-----|-----|--------|
 | `send_message` | `{ peer_id, type?, text?, entities?, reply_to_id?, reply_to_peer_id?, client_msg_id, media_id?, thread_root_id?, … }` | То же, что `POST /chats/{id}/messages`; отвечает `message_ack` и рассылает `new_message` |
 | `read` | `{ peer_id, up_to_seq }` | То же, что `POST /chats/{id}/read`; рассылает `read` |
-| `read_media` | `{ peer_id, id }` | Вложение прослушано; рассылает `media_read` |
+| `read_media` | `{ peer_id, id: [серверные номера, ≤ 10] }` | Вложение прослушано; рассылает `media_read`. Длиннее 10 номеров сервер отбрасывает кадр — клиент режет вектор |
 | `typing` | `{ peer_id, action: { _ } }` | Эфемерно; `action` — конструктор `SendMessageAction` (`sendMessageTypingAction`, `sendMessageRecordAudioAction`, …), а не строка |
 | `subscribe_channel` | `{ peer_id }` | Подписать это соединение на живые посты канала (Hub лениво входит в Redis-топик `channel:{id}`) |
 | `unsubscribe_channel` | `{ peer_id }` | Отписать; снимается и автоматически на разрыве |

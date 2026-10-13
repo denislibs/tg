@@ -243,8 +243,8 @@ func TestWirePayloads_AddressMessageBySeqOnly(t *testing.T) {
 	check("reaction", "reaction", msg.Seq)
 
 	pub.reset()
-	if err := in.ReadMedia(ctx, chatID, b, msg.ID); err != nil {
-		t.Fatalf("ReadMedia: %v", err)
+	if err := in.ReadMessageContents(ctx, chatID, b, []int64{msg.Seq}); err != nil {
+		t.Fatalf("ReadMessageContents: %v", err)
 	}
 	check("media_read", "media_read", msg.Seq)
 

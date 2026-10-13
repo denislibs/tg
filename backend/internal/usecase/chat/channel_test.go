@@ -337,8 +337,8 @@ func (c groupMembershipChats) LastReadAt(context.Context, int64, int64) (time.Ti
 func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, int64) error {
 	return nil
 }
-func (c groupMembershipChats) ReadMention(context.Context, int64, int64, int64) (bool, error) {
-	return false, nil
+func (c groupMembershipChats) ReadMentions(context.Context, int64, int64, []int64) ([]int64, error) {
+	return nil, nil
 }
 func (c groupMembershipChats) RemoveMention(context.Context, int64, int64, int64) error { return nil }
 func (c groupMembershipChats) MessageMentions(context.Context, int64) (map[int64]bool, error) {

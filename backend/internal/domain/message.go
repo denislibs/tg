@@ -204,7 +204,7 @@ type Message struct {
 	Forwards int64
 	// MediaUnread mirrors Telegram's pFlags.media_unread: a voice/round-video
 	// message whose content hasn't been played by the recipient yet. Set on
-	// send, cleared by ReadMedia.
+	// send, cleared by ReadMessageContents.
 	MediaUnread bool
 	// Гео-точка сообщения типа 'geo' (nil у остальных типов).
 	GeoLat *float64

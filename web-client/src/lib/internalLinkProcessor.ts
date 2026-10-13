@@ -460,7 +460,7 @@ export class InternalLinkProcessor {
         buttons: [{
           langKey: 'QrLogin.Confirm.Action',
           callback: () => {
-            void this.managers.auth.qrConfirm(token).catch(() => {
+            void this.managers.auth.acceptLoginToken(token).catch(() => {
               toastNew({ langPackKey: 'Error.AnError' })
             })
           },
