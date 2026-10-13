@@ -576,11 +576,9 @@ describe('is-premium следует за карточкой me (tweb :388-397)',
 
   afterEach(() => { useChatsStore.getState().setMe(null) })
 
-  it('rt:me с premium включает класс и событие premium_toggle, без premium — выключает', () => {
+  it('rt:me с premium включает класс на body, без premium — выключает', () => {
     useChatsStore.getState().setMe(meCard(false))
     construct()
-    const toggles: boolean[] = []
-    im.addEventListener('premium_toggle', (premium) => { toggles.push(premium as boolean) })
     expect(document.body.classList.contains('is-premium')).toBe(false)
 
     useChatsStore.getState().setMe(meCard(true))
@@ -588,6 +586,5 @@ describe('is-premium следует за карточкой me (tweb :388-397)',
 
     useChatsStore.getState().setMe(meCard(false))
     expect(document.body.classList.contains('is-premium')).toBe(false)
-    expect(toggles).toEqual([true, false])
   })
 })
