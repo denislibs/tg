@@ -89,6 +89,8 @@ beforeEach(async() => {
 afterEach(() => {
   mounted?.input.destroy()
   mounted?.chat.container.remove()
+  // попап «Отменить изменения?» живёт в body — соседний тест не должен его видеть
+  document.querySelectorAll('.popup').forEach((popup) => popup.remove())
   mounted = undefined
   useChatsStore.setState({ dialogs: [] })
 })
@@ -391,6 +393,55 @@ describe('ChatInput: превью ссылки в черновике (tweb :2275
     const saved = mounted.managers.drafts.syncDraft.mock.lastCall?.[0].localDraft
     expect(saved?.media?.url).toBe(URL1)
     expect(saved?.pFlags?.no_webpage).toBeUndefined()
+  })
+})
+
+// Отступление от tweb (баг tweb input.ts:307/:830 — `invertMedia` никто не сбрасывал),
+// решение пользователя 2026-10-13
+describe('ChatInput: «над сообщением» сбрасывается после отправки и выхода из правки', () => {
+  it('после отправки с «над» следующий черновик без invert_media', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    expect(input.invertMedia).toBe(true)
+    await input.sendMessage()
+    await flush()
+
+    await type(input, 'обычный текст')
+    expect(input.getCurrentInputAsDraft()?.pFlags?.invert_media).toBeUndefined()
+  })
+
+  it('после «над» правка сообщения без ссылки отменяется без ложного «Отменить изменения?»', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, messages } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    await input.sendMessage()
+    await flush()
+
+    messages.set(8, { _: 'message', id: 8, peerId: PEER, fromId: ME, date: 1, message: 'без ссылки', pFlags: { out: true } } as MyMessage)
+    await input.initMessageEditing(8)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.helperType).toBeUndefined()
+    expect(document.querySelector('.popup')).toBeNull()
+  })
+
+  it('выход из правки сбрасывает флаг, выбранный в её плашке', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, messages } = mounted
+    messages.set(9, { _: 'message', id: 9, peerId: PEER, fromId: ME, date: 1, message: 'было ' + URL1, pFlags: { out: true, invert_media: true },
+      media: { _: 'messageMediaWebPage', pFlags: {}, webpage: card(URL1) } } as MyMessage)
+    await input.initMessageEditing(9)
+    await flush()
+    expect(input.invertMedia).toBe(true)
+    input.clearHelper()
+    expect(input.invertMedia).toBeUndefined()
   })
 })
 
