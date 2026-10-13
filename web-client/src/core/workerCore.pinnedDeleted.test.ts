@@ -56,21 +56,45 @@ function boot() {
 }
 
 describe('workerCore: удаление сообщения → peer_pinned_deleted', () => {
-  it('известное закреплённое: номер в mids и в pinned', () => {
+  it('известное закреплённое: номер в mids и в pinned', async () => {
     const { got, deleted } = boot()
     deleted(PEER, [msg(5, true)], 0, [5])
-    expect(got).toEqual([{ peerId: PEER, mids: [5], pinned: [5] }])
+    await vi.waitFor(() => expect(got).toEqual([{ peerId: PEER, mids: [5], pinned: [5] }]))
   })
 
-  it('известное, но не закреплённое: pinned пуст, событие всё равно шлётся', () => {
+  it('известное, но не закреплённое: pinned пуст, событие всё равно шлётся', async () => {
     const { got, deleted } = boot()
     deleted(PEER, [msg(6, false)], 0, [6])
-    expect(got).toEqual([{ peerId: PEER, mids: [6], pinned: [] }])
+    await vi.waitFor(() => expect(got).toEqual([{ peerId: PEER, mids: [6], pinned: [] }]))
   })
 
-  it('неизвестное воркеру (закреп вне окна): mids несёт номер, pinned пуст', () => {
+  it('неизвестное воркеру (закреп вне окна): mids несёт номер, pinned пуст', async () => {
     const { got, deleted } = boot()
     deleted(PEER, [], 1, [9])
-    expect(got).toEqual([{ peerId: PEER, mids: [9], pinned: [] }])
+    await vi.waitFor(() => expect(got).toEqual([{ peerId: PEER, mids: [9], pinned: [] }]))
+  })
+
+  // Вектор кадра расходится по номерам, очистка истории шлёт кадры по 1000 номеров:
+  // одно событие на пира за такт, а не `postMessage` на каждый номер.
+  it('пачка удалений одного такта склеена в одно событие на пира', async () => {
+    const { got, deleted } = boot()
+    deleted(PEER, [msg(1, false)], 0, [1])
+    deleted(PEER, [msg(2, true)], 0, [2])
+    deleted(PEER, [], 1, [3])
+    deleted(8, [], 1, [4])
+    await vi.waitFor(() => expect(got).toHaveLength(2))
+    expect(got).toEqual([
+      { peerId: PEER, mids: [1, 2, 3], pinned: [2] },
+      { peerId: 8, mids: [4], pinned: [] },
+    ])
+  })
+
+  it('следующий такт — новое событие', async () => {
+    const { got, deleted } = boot()
+    deleted(PEER, [], 1, [1])
+    await vi.waitFor(() => expect(got).toHaveLength(1))
+    deleted(PEER, [], 1, [2])
+    await vi.waitFor(() => expect(got).toHaveLength(2))
+    expect(got[1]).toEqual({ peerId: PEER, mids: [2], pinned: [] })
   })
 })

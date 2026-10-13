@@ -212,6 +212,30 @@ export function createWorkerCore() {
     },
     broadcast: (event, payload) => broadcast(event, payload),
   })
+  // Закреп удалён вместе с сообщением (tweb :14078-14080, `resetPinnedMessagesCache`):
+  // кэш закрепов живёт на главном потоке и сообщений вне окна воркера не знает, поэтому
+  // воркер шлёт вкладкам номера удалённых и те из них, что сам знает закреплёнными
+  // (`peer_pinned_deleted`). Вектор кадра `updateDeletePeerMessages` расходится по
+  // номерам (`evictAndBuildRemoveOps`), а очистка истории шлёт кадры по 1000 номеров, —
+  // события одного пира склеены в одно на микротаске: после операций окна того же кадра
+  // и без `postMessage` на каждый номер. `broadcast` объявлен ниже — вызов ленивый.
+  const pinnedDeleted = new Map<number, { mids: number[]; pinned: number[] }>()
+  const queuePinnedDeleted = (peerId: number, mids: number[], pinned: number[]) => {
+    let batch = pinnedDeleted.get(peerId)
+    if (!batch) {
+      batch = { mids: [], pinned: [] }
+      pinnedDeleted.set(peerId, batch)
+      if (pinnedDeleted.size === 1) {
+        queueMicrotask(() => {
+          const flush = [...pinnedDeleted]
+          pinnedDeleted.clear()
+          for (const [id, b] of flush) broadcast('peer_pinned_deleted', { peerId: id, ...b })
+        })
+      }
+    }
+    batch.mids.push(...mids)
+    batch.pinned.push(...pinned)
+  }
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
@@ -264,10 +288,7 @@ export function createWorkerCore() {
     // стрелка ленивая.
     onMessagesDeleted: (peerId, deleted, missing, mids) => {
       dialogs.applyDeletedMessages(peerId, deleted, missing)
-      // закреп удалён вместе с сообщением (tweb :14078-14080, `resetPinnedMessagesCache`):
-      // кэш закрепов живёт на главном потоке и сообщений вне окна воркера не знает,
-      // поэтому воркер шлёт все номера и те из них, что сам знает закреплёнными
-      broadcast('peer_pinned_deleted', { peerId, mids, pinned: deleted.filter((m) => m.pFlags.pinned).map((m) => m.id) })
+      queuePinnedDeleted(peerId, mids, deleted.filter((m) => m.pFlags.pinned).map((m) => m.id))
       // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
       // объявлен ниже — стрелка дёргает его лениво
       forumTopics.applyDeletedMessages(peerId, deleted)

@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { getPinnedMessageByMid, getPinnedMessage, resetPinnedMessagesCache } from '../../core/pinnedMessages'
+import { setAppState, useAppStateStore } from '../../stores/appState'
 import type { MyMessage } from '../../core/models'
 import type { Managers } from '../bootstrap'
 
@@ -27,6 +28,7 @@ describe('refetchSubscriber: удаление закреплённого сбр�
     resetPinnedMessagesCache()
     listPins.mockReset()
     listener.mockClear()
+    setAppState('hiddenPinnedMessages', {})
   })
 
   it('воркер знает закреплённое: сброс кэша и peer_pinned_messages {pinned: false}', async () => {
@@ -82,23 +84,34 @@ describe('refetchSubscriber: удаление закреплённого сбр�
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it('запрос закрепов ещё в полёте: ответ мог предшествовать удалению → сброс', () => {
-    listPins.mockReturnValue(new Promise(() => {}))
+  // Иначе любое удаление в чате (бот, антиспам) снимало бы скрытие плашки, пока `/pins` грузится.
+  it('запрос закрепов в полёте или упал: удаление чужого сообщения скрытие плашки не трогает', async () => {
+    setAppState('hiddenPinnedMessages', { [PEER]: 3 })
+    listPins.mockReturnValueOnce(new Promise(() => {}))
     void getPinnedMessage(managers as never, PEER)
 
     rootScope.dispatchEventSingle('peer_pinned_deleted', { peerId: PEER, mids: [9], pinned: [] })
 
-    expect(listener).toHaveBeenCalledWith({ peerId: PEER, mids: [9], pinned: false })
+    expect(listener).not.toHaveBeenCalled()
+    expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({ [PEER]: 3 })
+  })
+
+  it('удаление закрепа снимает скрытие плашки (tweb :14303-14311)', async () => {
+    setAppState('hiddenPinnedMessages', { [PEER]: 3 })
+    rootScope.dispatchEventSingle('peer_pinned_deleted', { peerId: PEER, mids: [3], pinned: [3] })
+    expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({})
   })
 
   // Очистка истории (tweb `flushStoragesByPeerId` :6747 → `flushPinnedMessagesCache`).
-  it('dialog_flush → кэш закрепов пира сброшен, плашка перечитывает', async () => {
+  it('dialog_flush → кэш закрепов пира сброшен, скрытие цело, плашка перечитывает без номеров', async () => {
     listPins.mockResolvedValue(pinned(5))
     await getPinnedMessage(managers as never, PEER)
+    setAppState('hiddenPinnedMessages', { [PEER]: 5 })
 
     rootScope.dispatchEventSingle('dialog_flush', { peerId: PEER, dialog: undefined })
 
     expect(getPinnedMessageByMid(PEER, 5)).toBeUndefined()
-    expect(listener).toHaveBeenCalledWith({ peerId: PEER, mids: [], pinned: false })
+    expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({ [PEER]: 5 })
+    expect(listener).toHaveBeenCalledWith({ peerId: PEER, pinned: false })
   })
 })

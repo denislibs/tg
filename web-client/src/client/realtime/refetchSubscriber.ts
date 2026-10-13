@@ -12,7 +12,7 @@ import { cachedPeerFull } from '../../core/chatFullCache'
 import { refreshFullPeer } from '../../stores/fullPeers.solid'
 import { useChatsStore } from '../../stores/chatsStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
-import { onPinnedMessagesUpdate, hasPinnedMessageCached } from '../../core/pinnedMessages'
+import { onPinnedMessagesUpdate, hasPinnedMessageCached, flushPinnedMessagesCache } from '../../core/pinnedMessages'
 import { generateMessageId } from '../../core/history/messageId'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
@@ -68,9 +68,13 @@ export function registerRefetchSubscriber(managers: Managers): void {
   rootScope.addEventListener('peer_pinned_deleted', ({ peerId, mids, pinned }) => {
     if (pinned.length || hasPinnedMessageCached(peerId, mids)) onPinnedMessagesUpdate(peerId, mids, false)
   })
-  // Очистка истории: tweb `flushStoragesByPeerId` сбрасывает и кэш закрепов (:6747).
+  // Очистка истории: tweb `flushStoragesByPeerId` сбрасывает только кэш закрепов (:6747,
+  // `flushPinnedMessagesCache` :6800) — скрытие плашки не трогает. Плашка и экран закрепов
+  // перечитывают список по `peer_pinned_messages`, поэтому объявляем его без номеров
+  // (отступление от tweb, план f6 задача 17: у нас нет другого сигнала вкладкам).
   rootScope.addEventListener('dialog_flush', ({ peerId }) => {
-    onPinnedMessagesUpdate(peerId, [], false)
+    flushPinnedMessagesCache(peerId)
+    rootScope.dispatchEventSingle('peer_pinned_messages', { peerId, pinned: false })
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
   // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число
