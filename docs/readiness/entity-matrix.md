@@ -63,7 +63,7 @@
 | Действие | tweb | У нас |
 |---|---|---|
 | Создать | ✅ | ✅ `createGroup` |
-| Название, описание, фото | ✅ | ✅ `editInfo` / `setPhoto` |
+| Название, описание, фото | ✅ | ✅ `editTitle` / `editAbout` / `setPhoto` |
 | Тип (публичная/приватная), username | ✅ | ✅ `setType` |
 | Права по умолчанию | ✅ | ✅ `setPermissions` |
 | Видимость истории новым | ✅ | ✅ `setHistory` |

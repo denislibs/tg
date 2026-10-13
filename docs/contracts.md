@@ -282,9 +282,18 @@ must be a member of the chat. Supports `?offset=` (default `0`) and `?limit=`
   is always `false` and clients should overlay their own presence store.
 - 403: `{ "_": "error", "code": 403, "text": "forbidden" }` (caller is not a member)
 
-### PATCH /chats/{chatID}  · auth · needs `CHANGE_INFO`
-Edit group info.
-- Request: `{ "title": "New", "about": "desc", "username": "team" }`
+### PUT /chats/{chatID}/title  · auth · needs `CHANGE_INFO`
+Rename the group (`channels.editTitle`). A changed title posts the
+`messageActionChatEditTitle` service message.
+- Request: `{ "title": "New" }`
+- 200: `updates` with the viewer's chat card in `chats[0]`
+- 400: `{ "_": "error", "code": 400, "text": "invalid body" }` (empty title)
+- 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
+
+### PUT /chats/{chatID}/about  · auth · needs `CHANGE_INFO`
+Change the description (`messages.editChatAbout`). The public username is
+changed only by `PUT /chats/{chatID}/type` (creator).
+- Request: `{ "about": "desc" }`
 - 200: `{ "_": "boolTrue" }`
 - 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
@@ -302,7 +311,7 @@ Remove a member. Kicking another user needs `BAN_USERS`; removing **yourself**
 - 403: `{ "_": "error", "code": 403, "text": "forbidden" }`
 
 ### POST /chats/{chatID}/admins  · auth · needs `MANAGE_ADMINS`
-Promote a member to `admin` with the given rights bitmask.
+Promote to `admin` with the given rights bitmask. A target who is not yet a member joins first (like an invite, `USER_PRIVACY_RESTRICTED` if they forbid invites), as `channels.editAdmin` does.
 - Request: `{ "user_id": 9, "rights": 17 }`
 - 200: `{ "_": "boolTrue" }`
 - 400: `{ "_": "error", "code": 400, "text": "user_id required" }`

@@ -560,8 +560,19 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
       peers.saveApiPeers(r)
       return mapChatCard(r)
     },
-    async editInfo(peerId: number, args: { title: string; about?: string; username?: string }): Promise<void> {
-      await rest.patch(`/chats/${peerId}`, { title: args.title, about: args.about ?? '', username: args.username ?? '' })
+    /**
+     * Порт `appChatsManager.editTitle` (tweb 812502980 `:922-937`):
+     * `channels.editTitle` → `Updates`; чат ответа — в зеркало пиров
+     * (`onChatUpdated` оригинала). Публичное имя здесь не едет — его пишет только
+     * `setType`.
+     */
+    async editTitle(peerId: number, title: string): Promise<void> {
+      const r = await rest.put<MessagesInvitedUsers['updates']>(`/chats/${peerId}/title`, { title })
+      peers.saveApiPeers(r)
+    },
+    /** Порт `appChatsManager.editAbout` (tweb `:939-950`): `messages.editChatAbout` → `Bool`. */
+    async editAbout(peerId: number, about: string): Promise<void> {
+      await rest.put(`/chats/${peerId}/about`, { about })
     },
     /**
      * Свободно ли публичное имя для ЭТОГО чата — порт `appChatsManager.checkUsername`
