@@ -125,7 +125,7 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 }
 
 // SetPhoto points the chat's photo at an uploaded media object (PUT
-// /chats/{chatID}/photo). Access to the bytes is enforced by the media GET.
+// /chats/{chatID}/photo). Владельца файла проверяет usecase (SetChatPhoto); байты гейтит media GET.
 func (h *GroupHandler) SetPhoto(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)

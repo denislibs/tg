@@ -9,8 +9,8 @@ import (
 
 // SuggestProfilePhoto posts a service message into the private chat between
 // fromUserID and toUserID offering a new profile photo. The suggested photo
-// rides on the message's media_id (preview) and the same media id is kept in
-// the action JSON so the recipient can accept it later. Mirrors Telegram
+// rides on the message's media_id (the single place it lives; Send checks that
+// the suggester owns the file). Mirrors Telegram
 // photos.uploadContactProfilePhoto with suggest=true.
 func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUserID, mediaID int64) (domain.Message, error) {
 	if fromUserID == toUserID {
@@ -73,7 +73,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if m.MediaID == nil || *m.MediaID <= 0 {
 		return domain.ErrInvalid
 	}
-	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, *m.MediaID, nil); err != nil {
+	if _, err := i.profilePics.AddSuggestedProfilePhoto(ctx, userID, m.SenderID, *m.MediaID); err != nil {
 		return err
 	}
 

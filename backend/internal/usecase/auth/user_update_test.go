@@ -192,8 +192,9 @@ func TestUserUpdate_JournalKeepsPhoto(t *testing.T) {
 	log := newFakeUpdateLog()
 	i.SetUpdateLog(log)
 	i.SetPublisher(newFakeAuthPub())
-	if _, err := i.SetAvatar(ctx, u.ID, 555); err != nil {
-		t.Fatalf("SetAvatar: %v", err)
+	ownImages(i, u.ID, 555)
+	if _, err := i.AddProfilePhoto(ctx, u.ID, 555, nil); err != nil {
+		t.Fatalf("AddProfilePhoto: %v", err)
 	}
 	rows := log.payloads[u.ID]
 	if len(rows) == 0 {

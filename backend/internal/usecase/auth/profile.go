@@ -257,14 +257,18 @@ func (i *Interactor) avatarPreviewFor(ctx context.Context, mediaID int64) []byte
 	return p
 }
 
+// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
+// domain-ошибка, чтобы ручка ответила 500 и записала в лог, а не тихим 404.
+var errMediaReaderUnwired = errors.New("media reader не подключён")
+
 // squareAvatar — id квадратного варианта аватарки (см. AvatarSquarer). Отказ
 // кропа не мешает поставить фото: ставится исходник (мягкая деградация, как
-// у превью).
-func (i *Interactor) squareAvatar(ctx context.Context, mediaID int64) int64 {
+// у превью). ownerID — владелец файла (копия наследует его).
+func (i *Interactor) squareAvatar(ctx context.Context, ownerID, mediaID int64) int64 {
 	if i.squarer == nil || mediaID <= 0 {
 		return mediaID
 	}
-	id, err := i.squarer.SquareAvatar(ctx, mediaID)
+	id, err := i.squarer.SquareAvatar(ctx, ownerID, mediaID)
 	if err != nil {
 		i.logf("[avatar] square crop for media %d: %v", mediaID, err)
 		return mediaID
@@ -272,25 +276,50 @@ func (i *Interactor) squareAvatar(ctx context.Context, mediaID int64) int64 {
 	return id
 }
 
-// SetAvatar points the user's avatar at an uploaded media object and appends it
-// to the profile-photo gallery so the two stay consistent (Telegram keeps every
-// avatar as a gallery photo). Returns the fresh user.
-func (i *Interactor) SetAvatar(ctx context.Context, id, mediaID int64) (domain.UserRecord, error) {
-	mediaID = i.squareAvatar(ctx, mediaID)
-	if _, err := i.users.AddProfilePhoto(ctx, id, mediaID, nil, i.avatarPreviewFor(ctx, mediaID)); err != nil {
-		return domain.UserRecord{}, err
+// ownedMedia — медиа принадлежит owner и его mime начинается с prefix. Иначе
+// ErrNotFound без различия «нет файла / чужой» (как SetChatPhoto и Send):
+// tweb ставит фото только загрузкой своих частей (uploadProfilePhoto{file},
+// appProfileManager.ts:1047-1053).
+func (i *Interactor) ownedMedia(ctx context.Context, owner, id int64, prefix string) error {
+	if i.media == nil {
+		return errMediaReaderUnwired
 	}
-	u, err := i.users.GetByID(ctx, id)
-	if err == nil {
-		i.emitUserUpdate(ctx, u)
+	m, err := i.media.GetByID(ctx, id)
+	if err != nil {
+		return err
 	}
-	return u, err
+	if m.OwnerID != owner || !strings.HasPrefix(m.Mime, prefix) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // AddProfilePhoto adds a photo to the user's gallery and promotes it to the
-// current avatar. videoMediaID — необязательный видео-вариант аватарки.
+// current avatar. videoMediaID — необязательный видео-вариант аватарки. Оба
+// файла обязаны быть загружены самим пользователем (image/*, video/*).
 func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
-	mediaID = i.squareAvatar(ctx, mediaID)
+	if err := i.ownedMedia(ctx, userID, mediaID, "image/"); err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	if videoMediaID != nil {
+		if err := i.ownedMedia(ctx, userID, *videoMediaID, "video/"); err != nil {
+			return domain.ProfilePhoto{}, err
+		}
+	}
+	return i.addProfilePhoto(ctx, userID, userID, mediaID, videoMediaID)
+}
+
+// AddSuggestedProfilePhoto — принятое предложение фото: файл принадлежит
+// предложившему (его владельца проверил Send при отправке предложения).
+func (i *Interactor) AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error) {
+	if err := i.ownedMedia(ctx, suggesterID, mediaID, "image/"); err != nil {
+		return domain.ProfilePhoto{}, err
+	}
+	return i.addProfilePhoto(ctx, userID, suggesterID, mediaID, nil)
+}
+
+func (i *Interactor) addProfilePhoto(ctx context.Context, userID, ownerID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
+	mediaID = i.squareAvatar(ctx, ownerID, mediaID)
 	ph, err := i.users.AddProfilePhoto(ctx, userID, mediaID, videoMediaID, i.avatarPreviewFor(ctx, mediaID))
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {

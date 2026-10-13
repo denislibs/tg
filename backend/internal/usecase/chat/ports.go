@@ -23,11 +23,12 @@ type ContactPhotoLookup interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
-// ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
-// to the current avatar (implemented by the auth usecase). Used when a user
-// accepts a suggested profile photo. Optional.
+// ProfilePhotoAdder appends a suggested photo to a user's profile gallery and
+// promotes it to the current avatar (implemented by the auth usecase). Used
+// when a user accepts a suggested profile photo; the file belongs to the
+// suggester (suggesterID), whom the implementation checks as its owner. Optional.
 type ProfilePhotoAdder interface {
-	AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error)
+	AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error)
 }
 
 type ChatRepo interface {

@@ -2,6 +2,7 @@ package stickers
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -37,11 +38,24 @@ var slugRe = regexp.MustCompile(`^[a-z0-9_]{3,64}$`)
 
 // Interactor — бизнес-логика стикеров/GIF поверх портов Repo и GifSearcher.
 type Interactor struct {
-	repo Repo
-	gifs GifSearcher
+	repo   Repo
+	gifs   GifSearcher
+	media  MediaReader // обязателен: проверки «файл свой» и «это гиф»
+	access MediaAccess // обязателен для SaveGif: файл виден пользователю
 }
 
+// errMediaReaderUnwired — забытая проводка MediaReader/MediaAccess в
+// app/server.go: не domain-ошибка, чтобы ручка ответила 500 и записала в лог,
+// а не тихим 404.
+var errMediaReaderUnwired = errors.New("media reader не подключён")
+
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
+
+// SetMediaReader подключает чтение строк media (владелец, mime, Animated).
+func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
+
+// SetMediaAccess подключает проверку «пользователь видит файл» для SaveGif.
+func (i *Interactor) SetMediaAccess(a MediaAccess) { i.access = a }
 
 // SetGifSearch подключает внешний поиск GIF (optional; без него — пустая выдача).
 func (i *Interactor) SetGifSearch(g GifSearcher) { i.gifs = g }
@@ -198,7 +212,34 @@ func (i *Interactor) CreateSet(ctx context.Context, ownerID int64, slug, title, 
 	return i.repo.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID})
 }
 
-// AddSticker пополняет набор: только владелец, media должно существовать.
+// stickerMimes — форматы файла стикера (tweb appDocsManager.ts:207-218, :271:
+// webp, webm, tgs) плюс те, что кладёт сид (png, lottie-json). Проверяется mime
+// из строки media; Content-Type объекта в хранилище при многочастной загрузке
+// может разойтись со строкой (FinalizeUpload) — это открытый пункт, см. PR.
+var stickerMimes = map[string]bool{
+	"image/webp": true, "image/png": true, "video/webm": true,
+	"application/x-tgsticker": true, "application/json": true,
+}
+
+// requireSetCreatorMedia — файл стикера загружен создателем набора и имеет
+// формат стикера. Иначе «свой набор» делал бы любой чужой media_id (или файл
+// любого mime) публичным: IsStickerMedia отдаёт файл стикера всем. Нет файла,
+// чужой файл и не-стикер — один ErrNotFound.
+func (i *Interactor) requireSetCreatorMedia(ctx context.Context, creatorID, mediaID int64) error {
+	if i.media == nil {
+		return errMediaReaderUnwired
+	}
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	if m.OwnerID != creatorID || !stickerMimes[m.Mime] {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// AddSticker пополняет набор: только владелец, файл — его загрузка.
 func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int64, emoji string) (domain.Sticker, error) {
 	if len(emoji) > maxEmojiBytes {
 		return domain.Sticker{}, domain.ErrInvalid
@@ -210,18 +251,14 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 	if set.CreatedBy != ownerID {
 		return domain.Sticker{}, domain.ErrForbidden
 	}
-	ok, err := i.repo.MediaExists(ctx, mediaID)
-	if err != nil {
+	if err := i.requireSetCreatorMedia(ctx, set.CreatedBy, mediaID); err != nil {
 		return domain.Sticker{}, err
-	}
-	if !ok {
-		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return i.repo.AddSticker(ctx, domain.Sticker{SetID: setID, MediaID: mediaID, Emoji: emoji})
 }
 
 // AddStickerAt пополняет набор на явную позицию — те же проверки, что у
-// AddSticker (владелец, существование media), но используется только сидом
+// AddSticker (владелец набора, файл — его загрузка), но используется только сидом
 // (cmd/seed-stickers): публичному API взять позицию неоткуда, там позицию
 // назначает хранилище через AddSticker.
 func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
@@ -235,12 +272,8 @@ func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID i
 	if set.CreatedBy != ownerID {
 		return domain.Sticker{}, domain.ErrForbidden
 	}
-	ok, err := i.repo.MediaExists(ctx, mediaID)
-	if err != nil {
+	if err := i.requireSetCreatorMedia(ctx, set.CreatedBy, mediaID); err != nil {
 		return domain.Sticker{}, err
-	}
-	if !ok {
-		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position, pathThumb)
 }
@@ -250,10 +283,31 @@ func (i *Interactor) SavedGifs(ctx context.Context, userID int64) ([]domain.Save
 	return i.repo.SavedGifs(ctx, userID)
 }
 
-// SaveGif сохраняет GIF (upsert; хранится не больше savedGifsLimit — старые
-// по saved_at вытесняются). media должно существовать.
+// SaveGif — messages.saveGif: документ адресуется доступом (InputDocument с
+// access_hash, tweb appGifsManager.ts:109-120), поэтому сохраняется только то,
+// что пользователь видит (CanAccessMedia), и только гиф (documentAttributeAnimated).
+// Хранится не больше savedGifsLimit — старые по saved_at вытесняются.
 func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
-	ok, err := i.repo.MediaExists(ctx, mediaID)
+	if i.access == nil || i.media == nil {
+		return errMediaReaderUnwired
+	}
+	// Дешёвое чтение по PK — до дорогой проверки доступа: отказ «нет файла /
+	// не гиф» и отказ «не виден» отвечают одинаково (404).
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	// Вид: documentAttributeAnimated и mime gif/mp4 (tweb appDocsManager.ts:
+	// 230-235) либо image/gif. Свой video/mp4, у которого фоновая обработка
+	// ещё не отдала постер (ThumbKey пуст, Animated ещё false), — тоже: клиент
+	// Tenor-гифа зовёт saveGif сразу после sendFile (input.ts:2843-2866). Своё
+	// обработанное видео без Animated гифом не станет.
+	animated := m.Animated && (m.Mime == "image/gif" || m.Mime == "video/mp4")
+	ownFresh := m.OwnerID == userID && m.Mime == "video/mp4" && m.ThumbKey == ""
+	if !animated && m.Mime != "image/gif" && !ownFresh {
+		return domain.ErrNotFound
+	}
+	ok, err := i.access.CanAccessMedia(ctx, userID, mediaID)
 	if err != nil {
 		return err
 	}
