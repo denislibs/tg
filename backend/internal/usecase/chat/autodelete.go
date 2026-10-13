@@ -88,10 +88,18 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		var channelPts int64
 		var del *deleteDelivery
 		var mirrors []*deleteDelivery
+		// changed=false — соседний путь удалил сообщение между чтением строки и
+		// транзакцией: журнал, кадр и счётчик не трогаем.
+		changed := true
 		err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 			if broadcast {
-				if e := i.msgs.SoftDelete(ctx, msg.ID); e != nil {
+				done, e := i.msgs.SoftDelete(ctx, msg.ID)
+				if e != nil {
 					return e
+				}
+				if !done {
+					changed = false
+					return nil
 				}
 				channelBody = channelDeletePayload(msg.ChatID, []int64{msg.Seq})
 				p, e := i.appendChannelUpdate(ctx, msg.ChatID, "delete_message", channelBody)
@@ -120,10 +128,16 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			}
 			var e error
 			del, e = i.fanOutDelete(ctx, msg, author, extra)
+			if e == nil && del == nil {
+				changed = false
+			}
 			return e
 		})
 		if err != nil {
 			return purged, err
+		}
+		if !changed {
+			continue
 		}
 		purged++
 		if broadcast {

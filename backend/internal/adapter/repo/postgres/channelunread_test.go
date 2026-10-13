@@ -58,7 +58,7 @@ func TestChannelUnread_ComputedOnRead(t *testing.T) {
 	postTo(t, msgs, ch, author, "первый")
 	gone := postTo(t, msgs, ch, author, "удалят")
 	postTo(t, msgs, ch, author, "третий")
-	if err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, gone.ID); err != nil {
 		t.Fatal(err)
 	}
 

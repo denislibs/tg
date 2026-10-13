@@ -943,6 +943,14 @@ func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
 	return err
 }
 
+// LockDialogDelete — см. ChatRepo.LockDialogDelete. Ключ с пространством имён
+// (как scheduledrepo.go LockQueue, topicsrepo.go).
+func (r *ChatsRepo) LockDialogDelete(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('dialog_delete:' || $1::bigint, 0))`, chatID)
+	return err
+}
+
 // RecountCounters — см. ChatRepo.RecountCounters. Формулы те же, что у
 // пересчёта при прочтении (CountUnread), у syncUnreadMentions и у
 // RecountUnreadReactions; упоминания удалённых сообщений чата выбрасываются

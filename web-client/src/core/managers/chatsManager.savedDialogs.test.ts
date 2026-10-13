@@ -28,6 +28,7 @@ function fakeMessages() {
     getMessageByPeer(peerId: number, seq: number) {
       return byChat.get(peerId)?.get(seq)
     },
+    flushHistoryWindows() {},
   }
 }
 
