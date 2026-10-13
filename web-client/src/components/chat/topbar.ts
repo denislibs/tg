@@ -77,11 +77,8 @@
 //     `isPeerLocalMuted({threadId})` по теме из хранилища тем воркера. «Без звука»
 //     перенесён буквально: у tweb `showMutePopup(this.peerId)` (`:1220-1222`) без
 //     `threadId` — попап из темы глушит ВЕСЬ форум.
-//     «Удалить» у «Избранного» (`ChatType.Saved` и свой пир) не показывается — ручка
-//     удаления уже есть (`chats.deleteHistory`), но ключа текста попапа
-//     `AreYouSureDeleteThisChatSavedMessages` в словаре нет (так же `dialogsContextMenu.ts`).
 //     Секретный чат попап получает признаком строки (`dialog.secret`): у него «удалить»
-//     — выход, а не `deleteHistory` (В7-1, `popups/deleteDialog.ts`, расхождение 4).
+//     — выход, а не `deleteHistory` (В7-1, `popups/deleteDialog.ts`, расхождение 3).
 //     Удаление темы/сохранённого диалога (`threadId` в `showDeleteDialogPopup`) — О-3.
 //  9. Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» помнится настройкой
 //     `chatContextMenuHintWasShown` нашего `useSettingsStore` (tweb `appSettings`).
@@ -404,8 +401,7 @@ export default class ChatTopbar {
   }
 
   private verifyIfCanDeleteChat = () => {
-    // расхождение 8: `ChatType.Saved` → `true` у tweb
-    if(this.peerId === rootScope.myId) return false
+    if(this.chat.type === ChatType.Saved) return true
 
     return (
       this.chat.type === ChatType.Chat &&

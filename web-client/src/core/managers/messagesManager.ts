@@ -943,6 +943,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
 
     /**
+     * Порт `flushStoragesByPeerId` (tweb `appMessagesManager.ts:6677-6679`,
+     * `:6700-6730`) — окна ВСЕХ ключей чата, включая основное: после очистки или
+     * удаления истории (`flushHistory`) в них не остаётся ничего, пока их не
+     * переспросят у сервера. Объекты сообщений в хранилище остаются: их снимает
+     * `delete_message` (кадр или местный путь), а ссылок окна на них уже нет.
+     */
+    flushHistoryWindows(peerId: number): void {
+      for (const key of winKeysOf(peerId)) {
+        slices.delete(key)
+        historyCounts.delete(key)
+      }
+    },
+
+    /**
      * Положить в SSOT сообщения, приехавшие ПОПУТНО с чужим ответом, — вектор
      * `messages` контейнера `messages.dialogs` (`GET /chats`). Порт
      * `appMessagesManager.saveMessages`: в оригинале КАЖДЫЙ ответ прогоняется

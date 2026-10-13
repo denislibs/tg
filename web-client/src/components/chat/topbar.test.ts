@@ -660,11 +660,12 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
     expect(sidebar.toggleSidebar).toHaveBeenCalledWith(true)
   })
 
-  it('«Избранное»: выбрать и очистить, без мьюта, контактов, блокировки и удаления (О-89)', async() => {
+  it('«Избранное»: выбрать, очистить и удалить, без мьюта, контактов и блокировки', async() => {
     const topbar = await open(makeChat({ peerId: ME }))
     expect(menuTexts(await openMenu(topbar))).toEqual([
       t('Chat.Menu.SelectMessages'),
       t('ClearHistory'),
+      t('ChatList.Context.DeleteChat'),
     ])
   })
 

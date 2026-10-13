@@ -86,6 +86,22 @@ describe('MessagesManager.getHistory', () => {
   })
 })
 
+describe('MessagesManager.flushHistoryWindows (tweb flushStoragesByPeerId)', () => {
+  it('после сброса окно основного чата снова идёт в сеть; соседний чат не тронут', async () => {
+    const { rest, calls } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
+    await mgr.getHistory({ peerId: 2, offsetId: 0, addOffset: 0, limit: 3 })
+    expect(calls()).toBe(2)
+
+    mgr.flushHistoryWindows(1)
+    await mgr.getHistory({ peerId: 2, offsetId: 0, addOffset: 0, limit: 3 })
+    expect(calls()).toBe(2) // чат 2 из кэша
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
+    expect(calls()).toBe(3) // чат 1 — заново
+  })
+})
+
 describe('MessagesManager.sendMessage', () => {
   it('POSTs and returns the created message, caching it', async () => {
     const created = makeRawMessage({ id: 6, peerId: 1, fromId: 1, text: 'hey', createdAt: '2026-06-24T11:00:00Z' })
