@@ -16,14 +16,11 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 	if err := i.users.SoftDelete(ctx, userID); err != nil {
 		return err
 	}
-	// Карточка «Deleted Account» уходит партнёрам и своим устройствам ДО отзыва
-	// сессий: DeleteAll закрывает сокеты, и после него живой кадр владельцу не
-	// дойдёт. Сбой чтения не отменяет удаление — оно уже записано.
-	if u, err := i.users.GetByID(ctx, userID); err == nil {
-		i.emitUserUpdate(ctx, u)
-	} else {
-		i.logf("[user_update] reread deleted user %d: %v", userID, err)
-	}
+	// Снимок читаем сразу после анонимизации, но рассылаем ПОСЛЕ отзыва сессий:
+	// отзыв — мера безопасности (сброс чужого аккаунта), и растягивать его на
+	// время рассылки партнёрам нельзя. Свои устройства в рассылке не участвуют:
+	// их сессии отозваны, клиент выходит по отзыву.
+	deleted, readErr := i.users.GetByID(ctx, userID)
 	removed, err := i.devices.DeleteAll(ctx, userID)
 	if err != nil {
 		return err
@@ -36,6 +33,13 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 			_ = i.revoker.NotifyRevoked(ctx, d.ID)
 		}
 	}
+	if readErr != nil {
+		i.logf("[user_update] reread deleted user %d: %v", userID, readErr)
+		return nil
+	}
+	// Отмена запроса (клиент закрыл соединение) рассылку не обрывает: удаление
+	// уже записано, а партнёры иначе не узнают о нём до перезагрузки.
+	i.emitUserCard(context.WithoutCancel(ctx), deleted, false)
 	return nil
 }
 

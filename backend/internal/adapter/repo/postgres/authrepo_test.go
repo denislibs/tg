@@ -384,3 +384,28 @@ func TestAuthRepo_AccountReset(t *testing.T) {
 		t.Fatalf("исполненный сброс = %v, want ErrNotFound", err)
 	}
 }
+
+// Удалённый аккаунт не хранит значков: карточка «Deleted Account» уходит
+// партнёрам без Premium и галочки (строка users иначе отдала бы их через ToUser).
+func TestAuthRepo_SoftDeleteDropsBadges(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+	u, err := repo.CreateWithName(ctx, "+79000000076", "Премиум", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SetPremium(ctx, u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SoftDelete(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetByID(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Deleted || got.IsPremium || got.IsVerified {
+		t.Fatalf("после удаления: %+v", got)
+	}
+}

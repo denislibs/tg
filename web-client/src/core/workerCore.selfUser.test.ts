@@ -55,7 +55,10 @@ function pair(): [Endpoint, Endpoint] {
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
-  vi.stubGlobal('fetch', vi.fn(async (url: unknown) => { throw new Error('unexpected fetch ' + String(url)) }))
+  vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+    if (String(url).includes('/chats/1/history')) return new Response(JSON.stringify({ messages: [], count: 0 }), { status: 200 })
+    throw new Error('unexpected fetch ' + String(url))
+  }))
   capturedConnDeps = null
 })
 
@@ -68,9 +71,10 @@ async function bootWithMe(): Promise<{ meEvents: PeerProfile[] }> {
   const meEvents: PeerProfile[] = []
   new SuperMessagePort(epTab).on(RT.me, (p) => meEvents.push(p as PeerProfile))
   core.start()
-  // Гидрация `me` с диска (`start()` → loadMe) идёт без rt:me и асинхронно: ждём,
-  // пока IndexedDB отдаст профиль, прежде чем слать кадр.
-  await new Promise((r) => setTimeout(r, 100))
+  // Гидрация `me` с диска (`start()` → loadMe) идёт без rt:me и асинхронно. Страница
+  // истории ждёт гейт `meReady` (его снимает та же гидрация) — дождавшись её ответа,
+  // знаем, что `me` в воркере уже стоит.
+  await core.registry.messages.getHistory({ peerId: 1 })
   expect(capturedConnDeps).not.toBeNull()
   return { meEvents }
 }
@@ -97,6 +101,26 @@ describe('createWorkerCore(): кадр updateUserSnapshot со своим id', (
     capturedConnDeps!.onFrame('user_update', {
       _: 'updateUserSnapshot',
       user: { _: 'user', id: 99, first_name: 'Чужой', photo: { _: 'userProfilePhotoEmpty' } },
+    })
+
+    expect(meEvents).toEqual([])
+  })
+
+  it('карточка, равная me (в том числе с другим порядком ключей), rt:me не будит', async () => {
+    const { meEvents } = await bootWithMe()
+    const reordered = { photo: ME.user.photo, first_name: 'Я', username: 'me', phone: '+79990000007', id: 7, pFlags: { self: true }, _: 'user' }
+
+    capturedConnDeps!.onFrame('user_update', { _: 'updateUserSnapshot', user: reordered })
+
+    expect(meEvents).toEqual([])
+  })
+
+  it('кадр с pFlags.self и ЧУЖИМ id (запоздавший кадр прежнего аккаунта) me не подменяет', async () => {
+    const { meEvents } = await bootWithMe()
+
+    capturedConnDeps!.onFrame('user_update', {
+      _: 'updateUserSnapshot',
+      user: { _: 'user', id: 99, pFlags: { self: true, premium: true }, first_name: 'Прежний', photo: { _: 'userProfilePhotoEmpty' } },
     })
 
     expect(meEvents).toEqual([])

@@ -182,7 +182,7 @@ func (r *AuthRepo) UpdatePhone(ctx context.Context, id int64, phone string) (dom
 }
 
 // SoftDelete anonymizes the account: the phone is freed (NULL), the username is
-// cleared, personal fields are reset to the "Deleted Account" placeholder and
+// cleared, the Premium/verified badges are dropped (карточка удалённого их не несёт), personal fields are reset to the "Deleted Account" placeholder and
 // deleted_at is stamped. The cloud password (2FA) is also cleared. Message rows
 // are untouched.
 func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
@@ -190,6 +190,7 @@ func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
 		`UPDATE users SET phone=NULL, username=NULL,
 		        first_name='Deleted', last_name='Account', display_name='Deleted Account',
 		        bio='', avatar_media_id=NULL, avatar_preview=NULL, emoji_status='',
+		        is_premium=false, is_verified=false,
 		        password_hash=NULL, password_hint='', recovery_email='',
 		        deleted_at=now()
 		 WHERE id=$1`, id)

@@ -10,6 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
+import deepEqual from '@helpers/object/deepEqual'
 import { newAuthManager, type PeerProfile } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
@@ -396,10 +397,13 @@ export function createWorkerCore() {
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
     // Своё обновление карточки с другого устройства (эмодзи-статус, Premium):
-    // `me` обновляется и без записи в кэше пиров. Тот же кадр от собственной
-    // мутации (сервер шлёт его и инициатору) на `me` не влияет — карточка равна.
+    // `me` обновляется и без записи в кэше пиров. Сверка по id — запоздавший кадр
+    // прежнего аккаунта не подменяет карточку нынешнего. Равная карточка (кадр
+    // сервера, продублировавший то, что `me` уже знает) rt:me не будит; кадр
+    // собственной мутации часто обгоняет HTTP-ответ, тогда второй rt:me от
+    // `onMeChanged` неизбежен и безвреден — вкладки сравнивают значения.
     onSelfUser: (u) => {
-      if (!me || JSON.stringify(me.user) === JSON.stringify(u)) return
+      if (!me || u.id !== me.user.id || deepEqual(me.user, u)) return
       setMe({ ...me, user: u })
     },
     // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата

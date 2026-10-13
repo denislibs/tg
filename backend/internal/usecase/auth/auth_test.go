@@ -122,6 +122,7 @@ func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
 	u.FirstName, u.LastName = "Deleted", "Account"
 	u.Deleted = true
 	u.Bio, u.PhotoID, u.EmojiStatus = "", nil, ""
+	u.IsPremium, u.IsVerified = false, false
 	// Re-key under a unique sentinel so multiple deleted users can coexist
 	// (the real store keys on id; the fake keys on phone).
 	r.byPhone["deleted:"+strconv.FormatInt(id, 10)] = u

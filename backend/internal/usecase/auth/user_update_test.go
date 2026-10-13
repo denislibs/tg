@@ -331,12 +331,16 @@ func (r orderedRevoker) NotifyRevoked(context.Context, int64) error {
 	return nil
 }
 
-// VA2-02: удаление аккаунта — партнёры получают карточку с pFlags.deleted, и
-// строка журнала пишется ДО отзыва устройств (сокеты ещё живы).
-func TestDeleteAccount_EmitsDeletedCardBeforeRevoke(t *testing.T) {
+// VA2-02: удаление аккаунта — партнёры получают карточку с pFlags.deleted. Отзыв
+// сессий идёт ДО рассылки (мера безопасности не ждёт P получателей), а свои
+// устройства в рассылке не участвуют: их сессии отозваны.
+func TestDeleteAccount_RevokesBeforeEmitToPartnersOnly(t *testing.T) {
 	ctx := context.Background()
-	i, users, _, _ := newInteractor()
+	i, _, _, _ := newInteractor()
 	res := registerUser(t, i, "+70000000013", "Удаляемый", "", "web", "browser")
+	if _, err := i.ActivatePremium(ctx, res.User.ID); err != nil { // значок до удаления
+		t.Fatal(err)
+	}
 	log, pub := newFakeUpdateLog(), newFakeAuthPub()
 	rec := &orderRecorder{}
 	i.SetUpdateLog(orderedLog{log, rec})
@@ -348,29 +352,81 @@ func TestDeleteAccount_EmitsDeletedCardBeforeRevoke(t *testing.T) {
 	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
-	if _, err := users.GetByID(ctx, res.User.ID); err != nil {
-		t.Fatal(err)
-	}
 	if len(pub.frames[peer]) != 1 {
 		t.Fatalf("кадров у партнёра: %d, want 1", len(pub.frames[peer]))
 	}
 	card := userFromFrame(t, pub.frames[peer][0])
-	if !card.Deleted() || card.Username != "" {
+	if !card.Deleted() || card.Username != "" || card.PFlags["premium"] {
 		t.Fatalf("карточка удалённого: %+v", card)
 	}
 	if len(log.rows[peer]) != 1 || log.rows[peer][0] != "user_update" {
 		t.Fatalf("журнал партнёра = %v", log.rows[peer])
 	}
-	lastAppend, firstRevoke := -1, -1
-	for n, e := range rec.events {
-		if e == "append" {
-			lastAppend = n
-		}
-		if e == "revoke" && firstRevoke < 0 {
-			firstRevoke = n
-		}
+	if len(log.rows[res.User.ID]) != 0 || len(pub.frames[res.User.ID]) != 0 {
+		t.Fatalf("удалённому владельцу ушло: журнал %v, кадров %d", log.rows[res.User.ID], len(pub.frames[res.User.ID]))
 	}
-	if lastAppend < 0 || firstRevoke < 0 || lastAppend > firstRevoke {
-		t.Fatalf("порядок вызовов %v: журнал должен предшествовать отзыву", rec.events)
+	if len(rec.events) != 2 || rec.events[0] != "revoke" || rec.events[1] != "append" {
+		t.Fatalf("порядок вызовов %v: отзыв должен предшествовать записи в журнал", rec.events)
+	}
+}
+
+// Рассылка переживает отмену запроса: удаление уже записано.
+func TestDeleteAccount_EmitSurvivesCancelledRequest(t *testing.T) {
+	i, _, _, _ := newInteractor()
+	res := registerUser(t, i, "+70000000014", "Удаляемый", "", "web", "browser")
+	pub := newFakeAuthPub()
+	i.SetPublisher(&ctxCheckPub{fakeAuthPub: pub})
+	const peer int64 = 999
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{peer}, nil })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if len(pub.frames[peer]) != 1 {
+		t.Fatalf("кадров у партнёра: %d, want 1", len(pub.frames[peer]))
+	}
+}
+
+// ctxCheckPub отказывает, если контекст рассылки отменён.
+type ctxCheckPub struct{ *fakeAuthPub }
+
+func (p *ctxCheckPub) PublishToUser(ctx context.Context, userID int64, frame []byte) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return p.fakeAuthPub.PublishToUser(ctx, userID, frame)
+}
+
+// Повтор без изменения (то же эмодзи, Premium уже включён, продление подписки)
+// не пишет строк журнала и не шлёт кадров.
+func TestOwnProfileMutations_UnchangedValueDoesNotEmit(t *testing.T) {
+	ctx := context.Background()
+	i, u, peer, log, pub := newOwnSyncFixture(t, "+70000000015")
+	i.SetPremiumRepo(newFakePremiumRepo())
+	if _, err := i.SetEmojiStatus(ctx, u.ID, "🔥"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.ActivatePremium(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	rows := len(log.rows[u.ID])
+	frames := len(pub.frames[peer])
+	if rows != 2 || frames != 2 {
+		t.Fatalf("первые мутации: строк %d, кадров %d; want по 2", rows, frames)
+	}
+
+	if _, err := i.SetEmojiStatus(ctx, u.ID, "🔥"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.ActivatePremium(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := i.CheckoutPremium(ctx, u.ID, "6m"); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.rows[u.ID]) != rows || len(pub.frames[peer]) != frames {
+		t.Fatalf("повтор без изменения разослан: строк %d, кадров %d", len(log.rows[u.ID]), len(pub.frames[peer]))
 	}
 }
