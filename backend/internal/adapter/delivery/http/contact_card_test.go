@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
@@ -334,28 +335,27 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 // F7-A2: серверной ручки принятия предложенного фото нет — в tweb «Установить
 // фото» скачивает файл и ставит его СВОЕЙ загрузкой (bubbles.ts:8236-8246 →
 // avatarEdit.ts uploadProfilePhoto), а наш клиент ручку не звал. Предложение
-// остаётся сообщением; принять его через сервер нельзя.
+// остаётся сообщением. Проверяется по таблице маршрутов роутера: ни одного пути
+// с photo_suggestions (запрос к несуществующему маршруту проверял бы лишь 404 от
+// «нет чата»).
 func TestPhotoSuggestion_AcceptRouteRemoved_HTTP(t *testing.T) {
-	h, pool := newContactCardRouterDB(t)
-	tokenA, idA := signInToken(t, h, "+79990000321")
-	tokenB, idB := signInToken(t, h, "+79990000322")
-	photoB := seedMedia(t, pool, idB, "image/jpeg")
-
-	rec := authedReq(t, h, http.MethodPost, "/contacts/"+itoa(idA)+"/suggest_photo", tokenB, map[string]any{"media_id": photoB})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("suggest: %d %s", rec.Code, rec.Body.String())
+	h, _ := newContactCardRouterDB(t)
+	routes, ok := h.(chi.Routes)
+	if !ok {
+		t.Fatalf("роутер %T не отдаёт таблицу маршрутов", h)
 	}
-	var msg struct {
-		ID int64 `json:"id"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &msg)
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(idB)+"/photo_suggestions/"+itoa(msg.ID)+"/accept", tokenA, map[string]any{})
-	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("accept: %d %s; want 404/405", rec.Code, rec.Body.String())
-	}
-	if card := getProfile(t, h, tokenA, idA); card.Users[0]["photo"] != nil {
-		if ph, _ := card.Users[0]["photo"].(map[string]any); ph["_"] != "userProfilePhotoEmpty" {
-			t.Fatalf("фото предложившего стало аватаркой: %v", ph)
+	var seen, suggest int
+	_ = chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		seen++
+		if strings.Contains(route, "photo_suggestions") {
+			t.Errorf("остался маршрут %s %s", method, route)
 		}
+		if strings.Contains(route, "suggest_photo") {
+			suggest++
+		}
+		return nil
+	})
+	if seen == 0 || suggest == 0 {
+		t.Fatalf("обход маршрутов не сработал: всего %d, suggest_photo %d", seen, suggest)
 	}
 }

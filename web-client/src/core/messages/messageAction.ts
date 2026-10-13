@@ -131,15 +131,10 @@ export interface MessageActionTopicEdit {
   hidden?: boolean
 }
 
-/** messageActionSuggestProfilePhoto#57de635e photo:Photo = MessageAction;
- *
- *  `accepted` — НАШ параметр вне схемы (объявлен в
- *  `schema_additional_params.json`): у оригинала принятое предложение видно по
- *  тому, что фото стало аватаркой, у нас признак хранится на действии. */
+/** messageActionSuggestProfilePhoto#57de635e photo:Photo = MessageAction; */
 export interface MessageActionSuggestProfilePhoto {
   _: 'messageActionSuggestProfilePhoto'
   photo?: MyPhoto
-  accepted?: boolean
 }
 
 /** messageActionSuggestBirthday#2c8f2a25 birthday:Birthday = MessageAction;

@@ -810,7 +810,7 @@ type SendInput struct {
 	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
 	ScheduleRepeatPeriod int
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
-	// media принадлежит автору истории, а видимость уже проверена story-usecase).
+	// media принадлежит автору истории, а видимость и публичность уже проверены story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
 	skipMediaOwner bool
 	// userAction — служебное действие ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ (предложить дату

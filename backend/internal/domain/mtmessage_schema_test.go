@@ -206,8 +206,7 @@ func allMessageConstructors() []any {
 			a.Hidden = ptr(true)
 			return a
 		}(),
-		NewMessageActionSuggestProfilePhoto(photo, true),
-		NewMessageActionSuggestProfilePhoto(photo, false),
+		NewMessageActionSuggestProfilePhoto(photo),
 		// Предложение даты рождения — с годом и без: год необязателен и
 		// исчезает ключом, как у самого birthday.
 		NewMessageActionSuggestBirthday(NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC))),

@@ -25,7 +25,7 @@ import rootScope from '@lib/rootScope'
 import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
 import type { StoryGroup } from '../core/managers/storiesManager'
-import { isStoryEdited, realStory, storyCaption, storyDate, storyMediaId } from '../core/stories/story'
+import { isStoryEdited, realStory, storyCaption, storyDate, storyMediaId, storyPrivacy } from '../core/stories/story'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
@@ -227,6 +227,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
   // 4d: share истории в чаты + репост.
   const [shareOpen, setShareOpen] = useState(false)
   const [repostOpen, setRepostOpen] = useState(false)
+  // «Поделиться»/«Репост» — только у публичной истории (tweb viewer.tsx:2222-2224:
+  // `pFlags.public && !noforwards`); сервер для остальных отвечает 403.
+  const canShare = storyPrivacy(vm.story) === 'everyone'
 
   // Звук: tweb стартует с muted (store.tsx:166) и даёт кнопку mute в шапке.
   const [muted, setMuted] = useState(true)
@@ -539,11 +542,13 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           label={t('Edit')}
           onClick={() => { setMenuOpen(false); setEditOpen(true) }}
         />
-        <MenuItem
-          icon={<TgIcon name="forward" size={20} />}
-          label={t('Share')}
-          onClick={() => { setMenuOpen(false); setShareOpen(true) }}
-        />
+        {canShare && (
+          <MenuItem
+            icon={<TgIcon name="forward" size={20} />}
+            label={t('Share')}
+            onClick={() => { setMenuOpen(false); setShareOpen(true) }}
+          />
+        )}
         {/* tweb ViewStatistics (viewer.tsx:2199-2201) — пункт меню, не кнопка шапки */}
         <MenuItem
           icon={<TgIcon name="statistics_filled" size={20} />}
@@ -565,16 +570,20 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
           label={t('Stories.StealthMode.View')}
           onClick={() => { setOthersMenuOpen(false); setStealthOpen(true) }}
         />
-        <MenuItem
-          icon={<TgIcon name="storyrepost" size={20} />}
-          label={t('Story.Repost')}
-          onClick={() => { setOthersMenuOpen(false); setRepostOpen(true) }}
-        />
-        <MenuItem
-          icon={<TgIcon name="forward" size={20} />}
-          label={t('Share')}
-          onClick={() => { setOthersMenuOpen(false); setShareOpen(true) }}
-        />
+        {canShare && (
+          <>
+            <MenuItem
+              icon={<TgIcon name="storyrepost" size={20} />}
+              label={t('Story.Repost')}
+              onClick={() => { setOthersMenuOpen(false); setRepostOpen(true) }}
+            />
+            <MenuItem
+              icon={<TgIcon name="forward" size={20} />}
+              label={t('Share')}
+              onClick={() => { setOthersMenuOpen(false); setShareOpen(true) }}
+            />
+          </>
+        )}
       </Menu>
 
       {/* Оверлеи ниже раньше жили под framer-AnimatePresence — её тут больше нет
