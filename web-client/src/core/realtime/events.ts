@@ -140,8 +140,8 @@ export const RT = {
   storyReaction: 'rt:story_reaction',
   storyRead: 'rt:story_read',
   // Блок и правило приватности с другого устройства (Ф-6): воркер переводит их в
-  // события tweb `peer_block` / `privacy_update` (rootScope.ts:53, :166); имена
-  // нужны полноте реестра `UPDATE_RT`.
+  // события tweb `peer_block` / `privacy_update` (rootScope.ts:53, :166) и сами не
+  // рассылаются: имена нужны только полноте реестра `UPDATE_RT`.
   peerBlocked: 'rt:peer_blocked',
   privacy: 'rt:privacy',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ

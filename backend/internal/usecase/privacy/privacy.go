@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -21,7 +22,8 @@ type Repo interface {
 	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) error
 	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) // domain.ErrNotFound → дефолт
 
-	Block(ctx context.Context, blockerID, blockedID int64) error
+	// Block — false, если запись уже была (повторный блок ничего не меняет).
+	Block(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	IsBlocked(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	BlockedList(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error)
@@ -79,10 +81,23 @@ type Interactor struct {
 	// async запускает пересчёт у собеседников вне запроса: он идёт по всем
 	// партнёрам с проверкой правила на каждого. Подменяется в тестах.
 	async func(func())
+	// flights — пересчёт у собеседников «один на (пользователь, ключ)»: пока он идёт,
+	// новая смена того же правила лишь помечает его грязным, и по завершении
+	// проход повторяется. Без этого два быстрых PUT запускали бы две горутины, и
+	// старая могла дописать собеседникам вид по прежнему правилу ПОСЛЕ новой.
+	flightsMu sync.Mutex
+	flights   map[flightKey]*flight
 }
 
+type flightKey struct {
+	userID int64
+	key    domain.PrivacyKey
+}
+
+type flight struct{ dirty bool }
+
 func New(repo Repo) *Interactor {
-	return &Interactor{repo: repo, async: func(f func()) { go f() }}
+	return &Interactor{repo: repo, async: func(f func()) { go f() }, flights: map[flightKey]*flight{}}
 }
 
 // SetEmitter подключает журнал своих устройств; без него мутация проходит, но
@@ -156,10 +171,26 @@ func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.Privacy
 	// Сам себе пользователь всегда «виден» — себя в списках не храним.
 	r.AllowUserIDs = dropID(r.AllowUserIDs, userID)
 	r.DenyUserIDs = dropID(r.DenyUserIDs, userID)
+	old, err := i.repo.Get(ctx, userID, r.Key)
+	if errors.Is(err, domain.ErrNotFound) {
+		old, err = domain.DefaultPrivacyRule(r.Key), nil
+	}
+	if err != nil {
+		return domain.PrivacyRuleRecord{}, err
+	}
 	if err := i.repo.Upsert(ctx, userID, r); err != nil {
 		return domain.PrivacyRuleRecord{}, err
 	}
-	err := i.emit.EmitSnapshot(ctx, userID, "privacy_update", func(ctx context.Context) (map[string]any, error) {
+	// Правило не изменилось — другим устройствам и собеседникам сообщать нечего:
+	// повторное сохранение того же не должно раздувать журналы партнёров.
+	if old.Same(r) {
+		return r, nil
+	}
+	// Мутация закоммичена: журнал и пересчёт не должен оборвать закрытый клиентом
+	// запрос.
+	ctx, cancel := detached(ctx, syncTimeout)
+	defer cancel()
+	err = i.emit.EmitSnapshot(ctx, userID, "privacy_update", func(ctx context.Context) (map[string]any, error) {
 		cur, err := i.repo.Get(ctx, userID, r.Key)
 		if errors.Is(err, domain.ErrNotFound) {
 			cur, err = domain.DefaultPrivacyRule(r.Key), nil
@@ -180,29 +211,61 @@ func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.Privacy
 	return r, nil
 }
 
+// Сроки: запись в журнал после коммита — секунды; полный пересчёт у тысяч
+// партнёров — минуты.
+const (
+	syncTimeout      = 15 * time.Second
+	recomputeTimeout = 3 * time.Minute
+)
+
+// detached — контекст, переживающий отмену запроса: мутация уже закоммичена, и
+// закрытая клиентом вкладка не должна лишать второе устройство строки журнала.
+func detached(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), d)
+}
+
 // recomputeForPeers — пересчёт у собеседников после смены правила: «был(а)»
 // живёт в статусе присутствия, фото — в карточке user. Остальные ключи
 // собеседники узнают при следующей загрузке профиля.
 func (i *Interactor) recomputeForPeers(ctx context.Context, userID int64, key domain.PrivacyKey) {
-	ctx = context.WithoutCancel(ctx)
-	switch key {
-	case domain.PrivacyLastSeen:
-		if i.reannouncer != nil {
-			i.async(func() {
-				if err := i.reannouncer.Reannounce(ctx, userID); err != nil {
-					log.Printf("privacy: reannounce user=%d: %v", userID, err)
-				}
-			})
-		}
-	case domain.PrivacyProfilePhoto:
-		if i.announcer != nil {
-			i.async(func() {
-				if err := i.announcer.AnnounceUser(ctx, userID); err != nil {
-					log.Printf("privacy: announce user=%d: %v", userID, err)
-				}
-			})
-		}
+	var run func(context.Context) error
+	switch {
+	case key == domain.PrivacyLastSeen && i.reannouncer != nil:
+		run = func(ctx context.Context) error { return i.reannouncer.Reannounce(ctx, userID) }
+	case key == domain.PrivacyProfilePhoto && i.announcer != nil:
+		run = func(ctx context.Context) error { return i.announcer.AnnounceUser(ctx, userID) }
+	default:
+		return
 	}
+	fk := flightKey{userID, key}
+	i.flightsMu.Lock()
+	if f, ok := i.flights[fk]; ok {
+		f.dirty = true // идущий проход повторится сам и увидит новое правило
+		i.flightsMu.Unlock()
+		return
+	}
+	f := &flight{}
+	i.flights[fk] = f
+	i.flightsMu.Unlock()
+
+	ctx = context.WithoutCancel(ctx)
+	i.async(func() {
+		for {
+			pctx, cancel := detached(ctx, recomputeTimeout)
+			if err := run(pctx); err != nil {
+				log.Printf("privacy: recompute %s user=%d: %v", key, userID, err)
+			}
+			cancel()
+			i.flightsMu.Lock()
+			if !f.dirty {
+				delete(i.flights, fk)
+				i.flightsMu.Unlock()
+				return
+			}
+			f.dirty = false
+			i.flightsMu.Unlock()
+		}
+	})
 }
 
 // bodyOf — тело строки журнала из конструктора домена (ownsync принимает карту
@@ -263,15 +326,19 @@ func (i *Interactor) VisibleMap(ctx context.Context, viewerID int64, ownerIDs []
 // Block добавляет пользователя в чёрный список. Своим устройствам уходит
 // updatePeerBlocked; заблокированному — не он, а пересчитанные карточка (фото
 // закрыто) и статус («недавно»): ему пересылают вид, а не факт блока. Пересчёт
-// адресный, одному человеку: вид меняется только для него.
+// адресный, одному человеку: вид меняется только для него. Повторный блок
+// ничего не меняет — ни строки, ни пересчёта.
 func (i *Interactor) Block(ctx context.Context, userID, targetID int64) error {
 	if userID == targetID {
 		return ErrSelfBlock
 	}
-	if err := i.repo.Block(ctx, userID, targetID); err != nil {
+	changed, err := i.repo.Block(ctx, userID, targetID)
+	if err != nil {
 		return err
 	}
-	i.afterBlockChange(ctx, userID, targetID, true)
+	if changed {
+		i.afterBlockChange(ctx, userID, targetID)
+	}
 	return nil
 }
 
@@ -282,18 +349,28 @@ func (i *Interactor) Unblock(ctx context.Context, userID, targetID int64) error 
 		return err
 	}
 	if changed {
-		i.afterBlockChange(ctx, userID, targetID, false)
+		i.afterBlockChange(ctx, userID, targetID)
 	}
 	return nil
 }
 
 // afterBlockChange — следствия закоммиченной смены блокировки: строка журнала
 // себе и пересчёт вида у заблокированного. Сбои пишутся в лог.
-func (i *Interactor) afterBlockChange(ctx context.Context, userID, targetID int64, blocked bool) {
-	body, err := bodyOf(domain.NewUpdatePeerBlocked(domain.NewPeerUser(targetID), blocked))
-	if err == nil {
-		err = i.emit.Emit(ctx, []int64{userID}, "peer_blocked", body)
-	}
+//
+// Тело строки — СОСТОЯНИЕ пары (блокирован ли сейчас), а не сигнал: его
+// перечитывают под замком журнала (EmitSnapshot). Иначе два устройства, почти
+// одновременно блокирующие и разблокирующие, записали бы строки в порядке,
+// обратном коммитам, и оба показывали бы устаревшее состояние до перезагрузки.
+func (i *Interactor) afterBlockChange(ctx context.Context, userID, targetID int64) {
+	ctx, cancel := detached(ctx, syncTimeout)
+	defer cancel()
+	err := i.emit.EmitSnapshot(ctx, userID, "peer_blocked", func(ctx context.Context) (map[string]any, error) {
+		blocked, err := i.repo.IsBlocked(ctx, userID, targetID)
+		if err != nil {
+			return nil, err
+		}
+		return bodyOf(domain.NewUpdatePeerBlocked(domain.NewPeerUser(targetID), blocked))
+	})
 	if err != nil {
 		log.Printf("ownsync: peer_blocked user=%d target=%d: %v", userID, targetID, err)
 	}

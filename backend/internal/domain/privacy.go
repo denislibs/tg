@@ -59,6 +59,22 @@ func DefaultPrivacyRule(key PrivacyKey) PrivacyRuleRecord {
 	return PrivacyRuleRecord{Key: key, Value: DefaultPrivacyValue(key)}
 }
 
+// Same — правила совпадают по смыслу: тот же ключ, значение и те же исключения
+// (порядок id не важен).
+func (r PrivacyRuleRecord) Same(o PrivacyRuleRecord) bool {
+	sameSet := func(a, b []int64) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		a, b = slices.Clone(a), slices.Clone(b)
+		slices.Sort(a)
+		slices.Sort(b)
+		return slices.Equal(a, b)
+	}
+	return r.Key == o.Key && r.Value == o.Value &&
+		sameSet(r.AllowUserIDs, o.AllowUserIDs) && sameSet(r.DenyUserIDs, o.DenyUserIDs)
+}
+
 // ValidPrivacyKey сообщает, известен ли ключ.
 func ValidPrivacyKey(k PrivacyKey) bool {
 	return slices.Contains(PrivacyKeys, k)

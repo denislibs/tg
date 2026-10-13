@@ -77,8 +77,8 @@ type Manager struct {
 	store    PresenceStore
 	pub      Publisher
 	partners PartnersFunc
-	// partnersIn — необязателен: без него ReannounceTo пересекает с полным
-	// списком партнёров.
+	// partnersIn — точечная проверка «кто из этих партнёр»; без неё ReannounceTo
+	// ничего не шлёт.
 	partnersIn PartnersAmongFunc
 	ttl        time.Duration
 	privacy    PrivacyChecker
@@ -270,15 +270,25 @@ func (m *Manager) fanout(ctx context.Context, userID int64, status domain.UserSt
 	return nil
 }
 
+// reannounceBatch — сколько партнёров обслуживается по одному снимку статуса.
+// Пересчёт идёт долго, и снимок, взятый один раз в начале, к концу устарел бы:
+// после ухода в офлайн часть партнёров осталась бы с «онлайн».
+const reannounceBatch = 200
+
 // Reannounce шлёт всем партнёрам ТЕКУЩИЙ статус пользователя заново: правило
 // last_seen поменялось, и вид статуса у каждого партнёра пересчитывается по
-// новому правилу, не дожидаясь следующей смены присутствия.
+// новому правилу, не дожидаясь следующей смены присутствия. Статус читается
+// заново на каждой пачке партнёров.
 func (m *Manager) Reannounce(ctx context.Context, userID int64) error {
 	partners, err := m.partners(ctx, userID)
 	if err != nil {
 		return err
 	}
-	m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners)
+	for len(partners) > 0 {
+		n := min(reannounceBatch, len(partners))
+		m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners[:n])
+		partners = partners[n:]
+	}
 	return nil
 }
 
@@ -286,39 +296,15 @@ func (m *Manager) Reannounce(ctx context.Context, userID int64) error {
 // партнёр (viewers ∩ партнёры): блок меняет вид статуса для одного человека, и
 // полный веер с privacy.Check на каждого тут лишний.
 func (m *Manager) ReannounceTo(ctx context.Context, userID int64, viewers []int64) error {
-	if len(viewers) == 0 {
+	if len(viewers) == 0 || m.partnersIn == nil {
 		return nil
 	}
-	partners, err := m.partnersAmong(ctx, userID, viewers)
+	partners, err := m.partnersIn(ctx, userID, viewers)
 	if err != nil {
 		return err
 	}
 	m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners)
 	return nil
-}
-
-// partnersAmong — какие из candidates партнёры userID. Точечный запрос
-// (SetPartnersAmong) не тянет всех партнёров; без него — пересечение с полным
-// списком.
-func (m *Manager) partnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
-	if m.partnersIn != nil {
-		return m.partnersIn(ctx, userID, candidates)
-	}
-	all, err := m.partners(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	have := make(map[int64]struct{}, len(all))
-	for _, id := range all {
-		have[id] = struct{}{}
-	}
-	var out []int64
-	for _, c := range candidates {
-		if _, ok := have[c]; ok {
-			out = append(out, c)
-		}
-	}
-	return out, nil
 }
 
 // fanoutTo — кадр статуса каждому из recipients, скрытый правилом last_seen —

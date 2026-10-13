@@ -489,6 +489,15 @@ func TestManager_ReannounceToNamedPartnerOnly(t *testing.T) {
 	}
 	m := NewManager(store, pub, partners, 30*time.Second)
 	m.now = store.clock
+	m.SetPartnersAmong(func(_ context.Context, _ int64, cand []int64) ([]int64, error) {
+		var out []int64
+		for _, c := range cand {
+			if c == 2 || c == 3 {
+				out = append(out, c)
+			}
+		}
+		return out, nil
+	})
 	ctx := context.Background()
 	_ = m.Online(ctx, 1)
 	_ = m.Offline(ctx, 1)
@@ -512,6 +521,7 @@ func TestManager_ReannounceToNamedPartnerOnly(t *testing.T) {
 // разблок — снова точное время.
 func TestManager_ReannounceToHonoursBlock(t *testing.T) {
 	m, pub, _ := newManager(t)
+	m.SetPartnersAmong(func(_ context.Context, _ int64, cand []int64) ([]int64, error) { return cand, nil })
 	ctx := context.Background()
 	priv := &fakePrivacy{deny: map[int64]bool{}}
 	m.SetPrivacy(priv)

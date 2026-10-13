@@ -170,7 +170,7 @@ const APPLY: Projector = {
   [RT.chatThemeUpdate]: (e) => { applyChatTheme(getPeerId(e.peer), e.theme_id) },
   // Флаг блокировки — то же исключение, что у темы: он живёт в `userFull.pFlags`
   // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
-  // здесь. Событие объявляет владелец блокировки (`privacy.toggleBlock`).
+  // здесь. Событие выводит воркер из кадра `updatePeerBlocked` (журнал либо местный апдейт после ответа `privacy.toggleBlock`).
   peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
   // Глобальные настройки уведомлений по типу чатов — зеркало одно, `notifyStore`
   // (tweb `onUpdateNotifySettings` → `savePeerSettings`, `appNotificationsManager.ts:504-538`).

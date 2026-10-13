@@ -84,14 +84,17 @@ func orEmpty(ids []int64) []int64 {
 	return ids
 }
 
-func (r *PrivacyRepo) Block(ctx context.Context, blockerID, blockedID int64) error {
-	_, err := querier(ctx, r.pool).Exec(ctx,
+func (r *PrivacyRepo) Block(ctx context.Context, blockerID, blockedID int64) (bool, error) {
+	tag, err := querier(ctx, r.pool).Exec(ctx,
 		`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
 		blockerID, blockedID)
 	if isForeignKeyViolation(err) {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *PrivacyRepo) Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error) {

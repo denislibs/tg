@@ -38,11 +38,18 @@ func (r *syncRepo) Get(_ context.Context, _ int64, key domain.PrivacyKey) (domai
 	return domain.PrivacyRuleRecord{}, domain.ErrNotFound
 }
 
-func (r *syncRepo) Block(_ context.Context, a, b int64) error {
+func (r *syncRepo) Block(_ context.Context, a, b int64) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	had := r.blocked[[2]int64{a, b}]
 	r.blocked[[2]int64{a, b}] = true
-	return nil
+	return !had, nil
+}
+
+func (r *syncRepo) IsBlocked(_ context.Context, a, b int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.blocked[[2]int64{a, b}], nil
 }
 
 func (r *syncRepo) Unblock(_ context.Context, a, b int64) (bool, error) {
@@ -60,14 +67,18 @@ type loggedRow struct {
 }
 
 type fakeLog struct {
-	mu   sync.Mutex
-	pts  map[int64]int64
-	rows map[int64][]loggedRow
+	onLock func()
+	mu     sync.Mutex
+	pts    map[int64]int64
+	rows   map[int64][]loggedRow
 }
 
 func newFakeLog() *fakeLog { return &fakeLog{pts: map[int64]int64{}, rows: map[int64][]loggedRow{}} }
 
-func (l *fakeLog) AppendUpdate(_ context.Context, userID int64, n int, _ int64, typ string, payload json.RawMessage) (int64, error) {
+func (l *fakeLog) AppendUpdate(ctx context.Context, userID int64, n int, _ int64, typ string, payload json.RawMessage) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err // как настоящий журнал: отменённый контекст рвёт запись
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.pts[userID] += int64(n)
@@ -84,7 +95,12 @@ func (l *fakeLog) AppendUpdateBulk(ctx context.Context, ids []int64, n int, d in
 	return out, nil
 }
 
-func (l *fakeLog) LockState(context.Context, int64) error { return nil }
+func (l *fakeLog) LockState(context.Context, int64) error {
+	if l.onLock != nil {
+		l.onLock() // «другое устройство успело записать до нашего замка»
+	}
+	return nil
+}
 
 type fakePub struct {
 	mu     sync.Mutex
@@ -100,6 +116,11 @@ func (p *fakePub) PublishToUser(_ context.Context, userID int64, f []byte) error
 	p.frames[userID] = append(p.frames[userID], f)
 	return nil
 }
+
+// fakeTx — транзакция без изоляции: LockState у журнала зовётся, как в проде.
+type fakeTx struct{}
+
+func (fakeTx) WithinTx(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 
 type announcerCall struct {
 	userID   int64
@@ -132,14 +153,20 @@ func (a *fakeReannouncer) ReannounceTo(_ context.Context, userID int64, viewers 
 }
 
 func newSyncUC() (*Interactor, *fakeLog, *fakePub, *fakeAnnouncer, *fakeReannouncer) {
+	uc, log, pub, ann, re, _ := newSyncUCRepo()
+	return uc, log, pub, ann, re
+}
+
+func newSyncUCRepo() (*Interactor, *fakeLog, *fakePub, *fakeAnnouncer, *fakeReannouncer, *syncRepo) {
 	log, pub := newFakeLog(), &fakePub{}
 	ann, re := &fakeAnnouncer{}, &fakeReannouncer{}
-	uc := New(newSyncRepo())
+	repo := newSyncRepo()
+	uc := New(repo)
 	uc.async = func(f func()) { f() }
-	uc.SetEmitter(ownsync.New(log, pub, nil))
+	uc.SetEmitter(ownsync.New(log, pub, fakeTx{}))
 	uc.SetAnnouncer(ann)
 	uc.SetReannouncer(re)
-	return uc, log, pub, ann, re
+	return uc, log, pub, ann, re, repo
 }
 
 func rowBody(t *testing.T, row loggedRow) map[string]any {
@@ -314,5 +341,128 @@ func TestMutationsWorkWithoutWiring(t *testing.T) {
 	}
 	if _, err := uc.SetRule(ctx, 1, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Строка блока — СОСТОЯНИЕ, перечитанное под замком журнала: если до нашего
+// замка другое устройство успело снять блок, в журнал уходит «не заблокирован»,
+// а не устаревший факт нашего вызова. Иначе строки лягут в порядке, обратном
+// коммитам, и оба устройства застрянут на «заблокирован».
+func TestBlock_SnapshotRereadUnderLock(t *testing.T) {
+	uc, log, _, _, _, repo := newSyncUCRepo()
+	log.onLock = func() { _, _ = repo.Unblock(context.Background(), 1, 2) }
+
+	if err := uc.Block(context.Background(), 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	rows := log.rows[1]
+	if len(rows) != 1 {
+		t.Fatalf("журнал = %+v", rows)
+	}
+	if _, has := rowBody(t, rows[0])["pFlags"]; has {
+		t.Fatalf("в журнал ушёл устаревший факт блока: %s", rows[0].payload)
+	}
+}
+
+// То же для правила: тело строки — правило из базы под замком, а не входное.
+func TestSetRule_SnapshotRereadUnderLock(t *testing.T) {
+	uc, log, _, _, _, repo := newSyncUCRepo()
+	log.onLock = func() {
+		_ = repo.Upsert(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyNobody})
+	}
+
+	_, err := uc.SetRule(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyContacts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := rowBody(t, log.rows[1][0])["rules"].([]any)
+	if len(rules) != 1 || rules[0].(map[string]any)["_"] != "privacyValueDisallowAll" {
+		t.Fatalf("в журнале входное правило вместо актуального: %s", log.rows[1][0].payload)
+	}
+}
+
+// Повторный блок ничего не меняет — ни строки, ни пересчёта.
+func TestBlock_Repeated_WritesOnce(t *testing.T) {
+	uc, log, _, ann, re := newSyncUC()
+	ctx := context.Background()
+	_ = uc.Block(ctx, 1, 2)
+	_ = uc.Block(ctx, 1, 2)
+	if len(log.rows[1]) != 1 || len(ann.calls) != 1 || len(re.calls) != 1 {
+		t.Fatalf("повторный блок оставил следы: %d строк, %d/%d пересчётов", len(log.rows[1]), len(ann.calls), len(re.calls))
+	}
+}
+
+// Оборванный клиентом запрос не лишает второе устройство строки журнала:
+// мутация уже закоммичена.
+func TestMutations_SurviveCancelledRequest(t *testing.T) {
+	uc, log, _, _, _ := newSyncUC()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := uc.Block(ctx, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.SetRule(ctx, 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyNobody}); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.rows[1]) != 2 {
+		t.Fatalf("журнал = %+v; ждали peer_blocked и privacy_update", log.rows[1])
+	}
+}
+
+// Правило не изменилось — журналы устройств и партнёров не раздуваем.
+func TestSetRule_Unchanged_WritesNothing(t *testing.T) {
+	uc, log, _, ann, re := newSyncUC()
+	ctx := context.Background()
+	r := domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts, DenyUserIDs: []int64{5, 6}}
+	_, _ = uc.SetRule(ctx, 1, r)
+	r.DenyUserIDs = []int64{6, 5} // тот же набор, другой порядок
+	_, _ = uc.SetRule(ctx, 1, r)
+
+	if len(log.rows[1]) != 1 || len(re.calls) != 1 || len(ann.calls) != 0 {
+		t.Fatalf("повтор того же правила оставил следы: %d строк, %d пересчётов", len(log.rows[1]), len(re.calls))
+	}
+}
+
+// Пересчёт у партнёров идёт ВНЕ запроса: SetRule возвращается до него.
+func TestSetRule_RecomputeRunsOutsideRequest(t *testing.T) {
+	uc, _, _, _, re := newSyncUC()
+	var queued []func()
+	uc.async = func(f func()) { queued = append(queued, f) }
+
+	_, err := uc.SetRule(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(re.calls) != 0 || len(queued) != 1 {
+		t.Fatalf("пересчёт выполнен в запросе: вызовов %d, в очереди %d", len(re.calls), len(queued))
+	}
+	queued[0]()
+	if len(re.calls) != 1 {
+		t.Fatalf("пересчёт не выполнен: %d", len(re.calls))
+	}
+}
+
+// Пока пересчёт идёт, новая смена того же правила не запускает вторую
+// горутину: идущий проход повторяется после текущего и видит новое правило.
+func TestSetRule_RecomputeSingleFlight(t *testing.T) {
+	uc, _, _, _, re := newSyncUC()
+	var queued []func()
+	uc.async = func(f func()) { queued = append(queued, f) }
+	ctx := context.Background()
+
+	_, _ = uc.SetRule(ctx, 1, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody})
+	_, _ = uc.SetRule(ctx, 1, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyEverybody})
+	if len(queued) != 1 {
+		t.Fatalf("запущено пересчётов: %d; ждали 1", len(queued))
+	}
+	queued[0]()
+	if len(re.calls) != 2 {
+		t.Fatalf("проходов = %d; ждали 2 (текущий + повтор для нового правила)", len(re.calls))
+	}
+	// После завершения цикла новый SetRule снова запускает пересчёт.
+	_, _ = uc.SetRule(ctx, 1, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts})
+	if len(queued) != 2 {
+		t.Fatalf("после завершения новый пересчёт не запущен: %d", len(queued))
 	}
 }

@@ -477,11 +477,17 @@ export function createWorkerCore() {
   // кадр: `peer_block` и `privacy_update` вкладкам рассылает он. `dispatch` ниже —
   // стрелка дёргает его лениво. Счётчик кадров по предмету — защита от затирания
   // свежего кадра местным апдейтом, собранным из опоздавшего ответа.
+  // Считаются только кадры сервера: местный апдейт первого запроса не должен
+  // гасить защиту второго запроса того же предмета.
   const privacyFrames: Record<string, number> = {}
+  let localPrivacyUpdate = false
   const privacy = newPrivacyManager({
     rest,
     peers,
-    processLocalUpdate: (u) => dispatch(u._, u),
+    processLocalUpdate: (u) => {
+      localPrivacyUpdate = true
+      try { dispatch(u._, u) } finally { localPrivacyUpdate = false }
+    },
     frameVersion: (key) => privacyFrames[key] ?? 0,
   })
   // Черновики — порт `appDraftsManager`: черновик чата — поле диалога
@@ -670,14 +676,14 @@ export function createWorkerCore() {
     // (`appPrivacyManager.ts:12-19` — тело само апдейт). Сырой кадр дальше не идёт.
     if (pred === 'updatePeerBlocked') {
       const e = d as PeerBlockedEvt
-      privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      if (!localPrivacyUpdate) privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
       const evt: PeerBlockEvt = { peerId: getPeerId(e.peer_id), blocked: e.pFlags?.blocked ? true : undefined }
       broadcast('peer_block', evt, meta)
       return
     }
     if (pred === 'updatePrivacy') {
       const e = d as PrivacyEvt
-      privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      if (!localPrivacyUpdate) privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
       broadcast('privacy_update', e, meta)
       return
     }

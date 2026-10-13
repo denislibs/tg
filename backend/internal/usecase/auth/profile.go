@@ -53,16 +53,41 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	i.sendUserUpdate(ctx, u, recipients)
 }
 
+// announceBatch — сколько получателей обслуживается по одному чтению записи.
+// Пересчёт идёт минуты (O(партнёров) проверок правила и записей журнала), и
+// карточка, прочитанная один раз в начале, к концу устарела бы: правка профиля,
+// вклинившаяся за это время, затёрлась бы у партнёров, до которых цикл дошёл
+// позже, строкой с БОЛЬШИМ pts.
+const announceBatch = 200
+
 // AnnounceUser пересылает карточку пользователя заново ему самому и всем
 // партнёрам — когда её ВИД поменялся без правки самой записи (правило
 // приватности фото профиля: у каждого получателя карточка собирается по
-// правилу заново). Запись читается свежей, как в методах профиля.
+// правилу заново). Запись читается свежей на каждой пачке получателей.
 func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
-	u, err := i.users.GetByID(ctx, userID)
-	if err != nil {
-		return err
+	if i.pub == nil && i.updates == nil {
+		return nil
 	}
-	i.emitUserUpdate(ctx, u)
+	var partners []int64
+	if i.partners != nil {
+		var err error
+		if partners, err = i.partners(ctx, userID); err != nil {
+			return err
+		}
+	}
+	for first := true; first || len(partners) > 0; first = false {
+		u, err := i.users.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		n := min(announceBatch, len(partners))
+		recipients := append([]int64(nil), partners[:n]...)
+		if first {
+			recipients = append([]int64{u.ID}, recipients...)
+		}
+		partners = partners[n:]
+		i.sendUserUpdate(ctx, u, recipients)
+	}
 	return nil
 }
 
@@ -72,16 +97,16 @@ func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
 // уходит: у него её нет, поправлять нечего, а живой кадр выдал бы момент блока.
 // Сам владелец получает свою строку, как при любой смене профиля.
 func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers []int64) error {
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
 	u, err := i.users.GetByID(ctx, userID)
 	if err != nil {
 		return err
 	}
-	if i.pub == nil && i.updates == nil {
-		return nil
-	}
 	recipients := []int64{u.ID}
-	if len(viewers) > 0 {
-		partners, err := i.partnersAmong(ctx, u.ID, viewers)
+	if len(viewers) > 0 && i.partnersIn != nil {
+		partners, err := i.partnersIn(ctx, u.ID, viewers)
 		if err != nil {
 			return err
 		}
@@ -89,33 +114,6 @@ func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers [
 	}
 	i.sendUserUpdate(ctx, u, recipients)
 	return nil
-}
-
-// partnersAmong — какие из candidates сейчас партнёры userID. Точечный запрос
-// (SetPartnersAmong) не тянет всех партнёров; без него — пересечение с полным
-// списком (деградация без хранилища-подсказки).
-func (i *Interactor) partnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
-	if i.partnersIn != nil {
-		return i.partnersIn(ctx, userID, candidates)
-	}
-	if i.partners == nil {
-		return nil, nil
-	}
-	all, err := i.partners(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	have := make(map[int64]struct{}, len(all))
-	for _, id := range all {
-		have[id] = struct{}{}
-	}
-	var out []int64
-	for _, c := range candidates {
-		if _, ok := have[c]; ok && c != userID {
-			out = append(out, c)
-		}
-	}
-	return out, nil
 }
 
 // sendUserUpdate кладёт в журнал и рассылает карточку u каждому из recipients

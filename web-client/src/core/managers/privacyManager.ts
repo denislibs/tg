@@ -199,7 +199,7 @@ export function newPrivacyManager({ rest, peers, processLocalUpdate, frameVersio
      * шлёт `privacy_update`.
      */
     async setRule(rule: PrivacyRule): Promise<PrivacyRule> {
-      const tag = KEY_TAGS[rule.key]
+      const tag = privacyKeyTag(rule.key)
       const frames = frameVersion?.(tag)
       const res = await rest.put<AccountPrivacyRules>(`/me/privacy/${tag}`, {
         rules: toPrivacyRules(rule),

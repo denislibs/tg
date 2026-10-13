@@ -58,11 +58,11 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	}
 
 	// Блокировки.
-	if err := r.Block(ctx, owner, stranger); err != nil {
-		t.Fatalf("Block: %v", err)
+	if changed, err := r.Block(ctx, owner, stranger); err != nil || !changed {
+		t.Fatalf("Block = %v, %v; want changed", changed, err)
 	}
-	if err := r.Block(ctx, owner, stranger); err != nil { // идемпотентно
-		t.Fatalf("Block twice: %v", err)
+	if changed, err := r.Block(ctx, owner, stranger); err != nil || changed { // идемпотентно
+		t.Fatalf("Block twice = %v, %v; want unchanged", changed, err)
 	}
 	if ok, _ := r.IsBlocked(ctx, owner, stranger); !ok {
 		t.Fatal("IsBlocked = false after Block")
@@ -78,7 +78,7 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	if ok, _ := r.IsBlocked(ctx, owner, stranger); ok {
 		t.Fatal("IsBlocked = true after Unblock")
 	}
-	if err := r.Block(ctx, owner, 999999); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := r.Block(ctx, owner, 999999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("Block missing user = %v, want ErrNotFound", err)
 	}
 }
@@ -105,7 +105,8 @@ func TestPrivacyRepo_VisibleMap(t *testing.T) {
 	must(r.Upsert(ctx, excepted, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody, AllowUserIDs: []int64{viewer}}))
 	_, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'V')`, friend, viewer)
 	must(err)
-	must(r.Block(ctx, blocker, viewer))
+	_, err = r.Block(ctx, blocker, viewer)
+	must(err)
 
 	vis, err := r.VisibleMap(ctx, viewer, []int64{viewer, open, closed, friend, blocker, excepted}, domain.PrivacyLastSeen)
 	must(err)

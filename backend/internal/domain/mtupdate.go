@@ -1392,9 +1392,6 @@ type UpdatePeerBlocked struct {
 func (UpdatePeerBlocked) isUpdate()     {}
 func (u UpdatePeerBlocked) Tag() string { return u.Underscore }
 
-// Blocked — заблокировали (иначе разблокировали).
-func (u UpdatePeerBlocked) Blocked() bool { return u.PFlags["blocked"] }
-
 func NewUpdatePeerBlocked(peer Peer, blocked bool) UpdatePeerBlocked {
 	u := UpdatePeerBlocked{Underscore: UpdatePeerBlockedTag, PeerID: peer}
 	if blocked {
