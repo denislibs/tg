@@ -73,7 +73,7 @@ func (h *ChatHandler) BotMenuButton(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBotMenuButton(text, url))
 }
 
-// BotCallback — POST /bots/{botID}/callback {chat_id, data}: нажатие
+// BotCallback — POST /bots/{botID}/callback {peer_id, msg_id, data}: нажатие
 // callback-кнопки; возвращает всплывающий ответ (toast/alert).
 //
 // data — полезная нагрузка нажатой кнопки, то есть keyboardButtonCallback.data.
@@ -89,9 +89,11 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		PeerID domain.PeerID `json:"peer_id"`
-		// id — НОМЕР сообщения у этого пира (адрес нажатой кнопки).
-		MessageSeq int64  `json:"id"`
-		Data       []byte `json:"data"` // bytes схемы → base64 на JSON-проводе
+		// msg_id — НОМЕР сообщения у этого пира (адрес нажатой кнопки): так
+		// называется параметр getBotCallbackAnswer.msg_id (tweb
+		// appInlineBotsManager.ts:245-250), и номер шлётся всегда.
+		MsgID int64  `json:"msg_id"`
+		Data  []byte `json:"data"` // bytes схемы → base64 на JSON-проводе
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.PeerID == domain.NullPeerID {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -101,7 +103,7 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := resolveMsgSeq(w, r, h.svc, chatID, b.MessageSeq)
+	msgID, ok := resolveMsgSeq(w, r, h.svc, chatID, b.MsgID)
 	if !ok {
 		return
 	}

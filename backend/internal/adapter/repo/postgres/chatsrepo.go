@@ -752,18 +752,49 @@ func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64
 	return remaining, err
 }
 
-// ReadMention marks one mention read (Telegram readMessageContents on a
-// mention): reports whether it was unread, and then re-syncs the counter.
-func (r *ChatsRepo) ReadMention(ctx context.Context, chatID, msgID, userID int64) (bool, error) {
-	q := querier(ctx, r.pool)
-	tag, err := q.Exec(ctx,
-		`UPDATE message_mentions SET unread=false WHERE message_id=$1 AND user_id=$2 AND unread`,
-		msgID, userID)
-	if err != nil || tag.RowsAffected() == 0 {
-		return false, err
+// ReadMentions marks the viewer's unread mentions in the given messages read
+// (Telegram readMessageContents on a mention) and lowers the counter once by the
+// number actually read. Не пересчёт count(*) по истории (строки упоминаний не
+// удаляются, а запись абсолютного значения теряет конкурентный AddMention или
+// ClearMentions): декремент под блокировкой строки участника безопасен —
+// вызывающие ClearMentions берут её заранее через SetRead; остальные записи
+// абсолютного значения (RemoveMention, удаление сообщений) такой гонки не
+// закрывают и были ей подвержены и раньше.
+// Returns the ids of the messages whose mention WAS unread.
+func (r *ChatsRepo) ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
+	if len(msgIDs) == 0 {
+		return nil, nil
 	}
-	_, err = r.syncUnreadMentions(ctx, chatID, userID)
-	return true, err
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`UPDATE message_mentions SET unread=false
+		 WHERE message_id = ANY($1) AND user_id=$2 AND unread
+		 RETURNING message_id`, msgIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var read []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		read = append(read, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if len(read) == 0 {
+		return nil, nil
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = GREATEST(unread_mentions_count - $3, 0)
+		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, len(read)); err != nil {
+		return nil, err
+	}
+	return read, nil
 }
 
 // RemoveMention drops a mention the message no longer carries (an edit removed

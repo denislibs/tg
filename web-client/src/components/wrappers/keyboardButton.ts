@@ -137,8 +137,9 @@ export function getKeyboardButtonHandler({
 
     case 'keyboardButtonCallback': {
       onClick = () => {
-        // расхождение 3 шапки
-        if(!botId) return
+        // расхождение 3 шапки; без номера сообщения нажимать нечего — оригинал
+        // шлёт `msg_id` всегда, а ручка без него отвечала бы 404
+        if(!botId || !messageMid) return
         void chat.managers.bots.callback(toUserId(botId), peerId, button.data, messageMid)
         .then((callbackAnswer) => {
           if(typeof callbackAnswer.text === 'string' && callbackAnswer.text.length) {

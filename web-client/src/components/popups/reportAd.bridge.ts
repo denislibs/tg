@@ -8,9 +8,7 @@
 // `git grep -n "ВРЕМЕННО до 2C-27"` → пусто.
 //
 // Чего мост не умеет (закроет 2C-27):
-//  1. жалоба на ПАЧКУ сообщений: `ReportPopup` адресует одно сообщение
-//     (`ReportTarget.msgId`), поэтому уходит первое из выбранных;
-//  2. `onFinish` оригинала зовётся по ОТПРАВКЕ жалобы, у моста — сразу: React-попап
+//  `onFinish` оригинала зовётся по ОТПРАВКЕ жалобы, у моста — сразу: React-попап
 //     исхода наружу не отдаёт. Единственный вызывающий с `onFinish` — снятие
 //     выделения после жалобы на выбранное (tweb contextMenu.ts:1343-1347).
 import { useReportStore } from '@stores/reportStore'
@@ -18,11 +16,11 @@ import { useReportStore } from '@stores/reportStore'
 /** tweb `reportAd.tsx:360-366` */
 export function showMessageReport(peerId: PeerId, mids: number[], onFinish?: () => void) {
   if(!mids.length) return
-  useReportStore.getState().open({ peerId, msgId: mids[0] })
+  useReportStore.getState().open({ peerId, mids })
   onFinish?.()
 }
 
 /** tweb `reportAd.tsx:368-392` — жалоба на чат целиком (пункт ⋮ шапки, сосед П-5 «шапка»). */
 export function showPeerReport(peerId: PeerId) {
-  useReportStore.getState().open({ peerId })
+  useReportStore.getState().open({ peerId, mids: [] })
 }
