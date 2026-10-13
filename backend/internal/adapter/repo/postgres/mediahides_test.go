@@ -26,7 +26,7 @@ func TestMessagesRepo_HiddenForViewerExcludedFromMediaAndSearch(t *testing.T) {
 	hidden := insertMsg(t, msgs, chatID, b, "photo", "кот скрытый")
 	hiddenLink := insertMsg(t, msgs, chatID, b, "text", "кот https://example.com")
 	for _, id := range []int64{hidden.ID, hiddenLink.ID} {
-		if err := msgs.HideForUser(ctx, a, id); err != nil {
+		if _, err := msgs.HideForUser(ctx, a, id); err != nil {
 			t.Fatalf("hide: %v", err)
 		}
 	}
@@ -110,7 +110,7 @@ func TestMessagesRepo_CalendarMonthExcludesHiddenForViewer(t *testing.T) {
 	}
 	visible := photo("cal-visible")
 	hidden := photo("cal-hidden")
-	if err := msgs.HideForUser(ctx, a, hidden.ID); err != nil {
+	if _, err := msgs.HideForUser(ctx, a, hidden.ID); err != nil {
 		t.Fatalf("hide: %v", err)
 	}
 

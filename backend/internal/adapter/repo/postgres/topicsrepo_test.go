@@ -656,7 +656,7 @@ func TestForumUnread_PointEditsRespectTopicHorizon(t *testing.T) {
 		t.Fatalf("ForgetUnread сообщения непрочитанной темы: %d; want 1", n)
 	}
 	// Скрыть у себя сообщение прочитанной темы — не списывает.
-	if err := msgs.HideForUser(ctx, me, hideA); err != nil {
+	if _, err := msgs.HideForUser(ctx, me, hideA); err != nil {
 		t.Fatal(err)
 	}
 	if n := unread(); n != 1 {
