@@ -46,7 +46,7 @@ export default function ReportPopup() {
     try {
       await managers.report.report({
         peerId: target.peerId,
-        msgId: target.msgId,
+        mids: target.mids ?? [],
         reason,
         comment: comment.trim() || undefined,
       })
