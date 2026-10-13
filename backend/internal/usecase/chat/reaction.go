@@ -81,6 +81,14 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 
 	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		// Строка автора — первой: прочтение реакций (ReadReactionsIn, MarkRead)
+		// берёт её раньше строк реакций, и обратный порядок дал бы взаимную
+		// блокировку.
+		if userID != msg.SenderID {
+			if e := i.chats.LockMember(ctx, chatID, msg.SenderID); e != nil {
+				return e
+			}
+		}
 		if add {
 			// Лимит своих реакций: лишние СНИМАЮТСЯ, начиная со старейшей, и
 			// снимаются молча — тоста об упёршемся лимите нет и в оригинале

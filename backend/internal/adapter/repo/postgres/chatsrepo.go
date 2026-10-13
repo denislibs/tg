@@ -580,12 +580,18 @@ func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq i
 	return out, nil
 }
 
+// LockMember — см. ChatRepo.LockMember.
+//
 // lockMemberRow берёт строку участника до записи строк упоминаний и реакций.
 // Порядок тот же, что у MarkRead (SetRead -> ClearMentions/ReadReactions):
 // обратный порядок дал бы взаимную блокировку, когда лента шлёт прочтение
 // истории и прочтение содержимого одновременно. Заодно пересчёт счётчика
 // ниже идёт по снимку, взятому после замка, и не затирает конкурентный
 // AddMention (см. комментарий ReadMentions).
+func (r *ChatsRepo) LockMember(ctx context.Context, chatID, userID int64) error {
+	return r.lockMemberRow(ctx, chatID, userID)
+}
+
 func (r *ChatsRepo) lockMemberRow(ctx context.Context, chatID, userID int64) error {
 	var one int
 	err := querier(ctx, r.pool).QueryRow(ctx,
@@ -897,13 +903,16 @@ func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64
 // number actually read. Не пересчёт count(*) по истории (строки упоминаний не
 // удаляются, а запись абсолютного значения теряет конкурентный AddMention или
 // ClearMentions): декремент под блокировкой строки участника безопасен —
-// вызывающие ClearMentions берут её заранее через SetRead; остальные записи
+// ReadMentions и ClearMentionsIn берут её сами (lockMemberRow), ClearMentions — заранее через SetRead; остальные записи
 // абсолютного значения (RemoveMention, удаление сообщений) такой гонки не
 // закрывают и были ей подвержены и раньше.
 // Returns the ids of the messages whose mention WAS unread.
 func (r *ChatsRepo) ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
 	if len(msgIDs) == 0 {
 		return nil, nil
+	}
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, err
 	}
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,

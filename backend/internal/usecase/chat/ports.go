@@ -121,6 +121,10 @@ type ChatRepo interface {
 	// (по ним уходят кадры реакций его устройствам).
 	RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
 	ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error)
+	// LockMember берёт строку участника до конца транзакции. Единый порядок
+	// замков для путей, что пишут строки упоминаний и реакций и затем счётчик
+	// участника: сначала chat_members, потом строки (как MarkRead).
+	LockMember(ctx context.Context, chatID, userID int64) error
 	// ReadReactionsIn — messages.readReactions{top_msg_id}: гасит ❤ на
 	// сообщениях участника в чате (topic == nil) или теме форума, не больше
 	// limit СООБЩЕНИЙ за вызов (по возрастанию номера); more — остались ещё.

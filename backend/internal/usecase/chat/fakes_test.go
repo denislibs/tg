@@ -474,6 +474,8 @@ func (r fakeChats) ReadReactionsIn(_ context.Context, chatID, userID int64, topi
 	return out, more, nil
 }
 
+func (r fakeChats) LockMember(context.Context, int64, int64) error { return nil }
+
 func (r fakeChats) UnarchiveUnmuted(_ context.Context, chatID int64, userIDs []int64) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
