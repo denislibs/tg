@@ -704,13 +704,20 @@ export function createWorkerCore() {
     else if (pred === 'updateReadPeerMessagesContents' && mediaRead) {
       // Цикл по номерам tweb `onUpdateReadMessagesContents` (:11009-11079): «@»
       // минус по каждому непрочитанному упоминанию из памяти — у его темы (если
-      // она есть) и у строки форума; номер вне памяти — перечитать строку.
+      // она есть) и у строки форума; сообщение с непрочитанной реакцией
+      // отдаёт местный кадр реакции (:11053-11070); номер вне памяти — перечитать
+      // строку (и темы форума: тему кадр без `top_msg_id` назвать не может).
       const peerId = getPeerId((d as MediaReadEvt).peer)
       for (const threadId of mediaRead.mentionThreads) {
         if (threadId !== undefined) forumTopics.modifyUnreadMentions(peerId, threadId, false)
-        dialogs.applyMentionsRead(peerId, 1)
       }
-      if (mediaRead.missing) dialogs.fixUnreadIfNoMessage(peerId)
+      if (mediaRead.mentionThreads.length) dialogs.applyMentionsRead(peerId, mediaRead.mentionThreads.length)
+      for (const frame of mediaRead.readReactions) dispatch('updateMessageReactions', frame)
+      if (mediaRead.missing) {
+        dialogs.fixUnreadIfNoMessage(peerId)
+        const badge = dialogs.getUnreadBadge(peerId)
+        if (badge && (badge.mentions || badge.reactions)) forumTopics.reload(peerId)
+      }
     }
     else if (pred === 'updateChatFullSnapshot' || pred === 'updateChannelFullSnapshot') {
       // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,

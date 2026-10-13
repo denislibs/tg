@@ -163,6 +163,14 @@ describe('createWorkerCore(): «@» по кадру media_read с векторо
     await vi.waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/peer_dialogs'))).toBe(true))
   })
 
+  it('кадр с top_msg_id (readMentions в теме): тема из кадра; номер вне памяти — список тем перечитывается', async () => {
+    const { badge, fetchMock } = await boot()
+    const before = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/chats/-50/topics')).length
+    capturedConnDeps!.onFrame('media_read', { ...mediaRead([5, 50]), top_msg_id: 10 })
+    expect(badge(cid(10))).toMatchObject({ mentions: 1 })
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('/chats/-50/topics')).length).toBe(before + 1))
+  })
+
   it('повтор кадра ничего не меняет (сообщение уже прочитано)', async () => {
     const { badge } = await boot()
     capturedConnDeps!.onFrame('media_read', mediaRead([5]))
@@ -181,6 +189,17 @@ describe('createWorkerCore(): readMessages / readMentions в теме', () => {
     // локальное прочтение 5: тема 2→1 и форум 3→2; ответ readMentions: тема → 0
     expect(badge(cid(10))).toMatchObject({ mentions: 0 })
     expect(badge()).toMatchObject({ mentions: 2 })
+  })
+
+  // Порт :11053-11070: увиденное сообщение с непрочитанной реакцией отдаёт
+  // местный кадр реакции — тема −1 и родитель −1 сразу, не по приходу кадров
+  // сервера (ответ HTTP двигает курсор и выбрасывает их как дубли).
+  it('увиденная непрочитанная реакция в теме: родитель −1 локально, тема — в ноль ответом', async () => {
+    const { core, badge } = await boot()
+    await core.registry.messages.readMessages(FORUM, [cid(20)])
+    expect(badge()).toMatchObject({ reactions: 1 })
+    expect(badge(cid(10))).toMatchObject({ reactions: 0 })
+    expect(badge(cid(11))).toMatchObject({ reactions: 1 })
   })
 
   it('readMentions(…, isReaction) в теме: ❤ темы в ноль, ❤ форума не трогается', async () => {

@@ -465,6 +465,11 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       onOps(unreadOps(topic))
     },
 
+    /** Счётчики тем форума устарели (кадр коснулся сообщения, которого нет в памяти) — список перечитывается, если он уже загружен. */
+    reload(peerId: PeerId): void {
+      if (caches.get(peerId)?.loaded) void load(peerId).catch(() => {})
+    },
+
     /** Счётчики «@» и ❤ темы — часть `getAnyDialog(peerId, threadId)`, которую читает `readMessages` (:9564-9566). */
     getUnreadBadge(peerId: PeerId, topicId: number): { mentions: number; reactions: number } | undefined {
       const topic = caches.get(peerId)?.topics.get(topicId)

@@ -1035,6 +1035,11 @@ func (i *Interactor) ReadMentions(ctx context.Context, chatID, userID, topMsgID 
 			return e
 		}
 		body := mediaReadPayload(addr.forViewer(userID), cleared...)
+		// Тема форума, в которой сняты упоминания: tweb читает её из кадра
+		// (onUpdateReadMessagesContents :10998-10999).
+		if scope != nil {
+			body["top_msg_id"] = topMsgID
+		}
 		deliver, lastPts, rows, e = i.journalOwn(ctx, userID, []ownFrame{{typ: "media_read", body: body}})
 		return e
 	})

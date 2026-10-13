@@ -31,7 +31,8 @@ import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
 import { isForum } from '../peers/predicates'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
+import getUnreadReactions from '../messages/getUnreadReactions'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
 import { editWebPageWireFields, type WebPageSendOptions } from './messages/webPage'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
@@ -1871,28 +1872,49 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     /**
      * Что кадр прочтения содержимого (`updateReadPeerMessagesContents`) снимает
-     * со счётчиков «@» — цикл по номерам tweb `onUpdateReadMessagesContents`
+     * со счётчиков — цикл по номерам tweb `onUpdateReadMessagesContents`
      * (appMessagesManager.ts:11009-11079). Спрашивается ДО `cacheMediaRead`:
      * после снятия `media_unread` ответить было бы не из чего.
      *
      *  • `mentionThreads` — по одной записи на каждое ВХОДЯЩЕЕ непрочитанное
-     *    упоминание из окна: тема форума, в которой оно лежит (из самого
-     *    сообщения — наш кадр охватывает несколько тем сразу, у tweb тема одна,
-     *    из `top_msg_id` кадра :10998-10999; отступление), `undefined` вне
-     *    форума;
+     *    упоминание из окна: тема форума — из кадра (`top_msg_id`, :10998-10999),
+     *    иначе из самого сообщения (кадр без темы: прослушанное голосовое,
+     *    упоминание вне темы), `undefined` вне форума;
+     *  • `readReactions` — готовые местные кадры `updateMessageReactions` без
+     *    `unread` для сообщений с непрочитанной реакцией (:11053-11070): они
+     *    ведут бейдж ❤ темы и родителя детерминированно, а не по приходу
+     *    живых кадров сервера;
      *  • `missing` — сколько номеров в памяти нет: по каждому tweb зовёт
      *    `fixDialogUnreadMentionsIfNoMessage` (:11075-11079).
      */
-    mediaReadEffects(evt: MediaReadEvt): { mentionThreads: (number | undefined)[]; missing: number } {
+    mediaReadEffects(evt: MediaReadEvt): { mentionThreads: (number | undefined)[]; readReactions: ReactionEvt[]; missing: number } {
       const peerId = getPeerId(evt.peer)
+      const frameThread = evt.top_msg_id ? generateMessageId(evt.top_msg_id) : undefined
       const mentionThreads: (number | undefined)[] = []
+      const readReactions: ReactionEvt[] = []
       let missing = 0
       for (const serverId of evt.messages) {
         const m = readMsg(peerId, generateMessageId(serverId))
         if (!m) { ++missing; continue }
-        if (!m.pFlags.out && isMentionUnread(m)) mentionThreads.push(forumThreadIdOf(m))
+        if (!m.pFlags.out && isMentionUnread(m)) mentionThreads.push(forumThreadIdOf(m) === undefined ? undefined : frameThread ?? forumThreadIdOf(m))
+        if (m._ === 'message' && m.reactions && getUnreadReactions(m)) {
+          const threadId = forumThreadIdOf(m)
+          readReactions.push({
+            _: 'updateMessageReactions',
+            peer: evt.peer,
+            msg_id: serverId,
+            ...(threadId ? { top_msg_id: getServerMessageId(threadId) } : {}),
+            reactions: {
+              ...m.reactions,
+              recent_reactions: m.reactions.recent_reactions?.map((r) => {
+                const { unread: _unread, ...pFlags } = r.pFlags ?? {}
+                return { ...r, pFlags }
+              }),
+            },
+          })
+        }
       }
-      return { mentionThreads, missing }
+      return { mentionThreads, readReactions, missing }
     },
 
     /**

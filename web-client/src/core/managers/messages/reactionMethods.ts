@@ -355,6 +355,7 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
      */
     async readMessages(peerId: number, msgIds: number[]): Promise<void> {
       const mentionIds: number[] = []
+      const contentIds: number[] = []
       let hasUnreadReaction = false
       let threadId: number | undefined
       for (const id of msgIds) {
@@ -362,17 +363,19 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
         if (!message) continue
         if (isMentionUnread(message)) mentionIds.push(id)
         if (getUnreadReactions(message)) hasUnreadReaction = true
+        if (isMentionUnread(message) || getUnreadReactions(message)) contentIds.push(id)
         if (threadId === undefined) threadId = forumThreadIdOf?.(message)
       }
       if (!mentionIds.length && !hasUnreadReaction) return
       const badge = getUnreadBadge?.(peerId, threadId)
       const hadMentions = !!badge?.mentions
       const hadReactions = !!badge?.reactions
-      if (mentionIds.length) {
-        const serverIds = mentionIds.map(getServerMessageId)
-        applyLocalMediaRead?.({ _: 'updateReadPeerMessagesContents', peer: getOutputPeer(peerId), messages: serverIds })
-        markMediaRead?.(peerId, serverIds)
-      }
+      // Местный `updateReadMessagesContents` по ВСЕМ увиденным (:9593-9600):
+      // он гасит точку упоминаний и локально снимает `unread` с реакций; на
+      // сервер (`readMessageContents`) уходят только упоминания — реакции там
+      // не гасятся.
+      applyLocalMediaRead?.({ _: 'updateReadPeerMessagesContents', peer: getOutputPeer(peerId), messages: contentIds.map(getServerMessageId) })
+      if (mentionIds.length) markMediaRead?.(peerId, mentionIds.map(getServerMessageId))
       const followUps: Promise<unknown>[] = []
       if (mentionIds.length && hadMentions) followUps.push(readMentions(peerId, threadId).catch(noop))
       if (hasUnreadReaction && hadReactions) followUps.push(readMentions(peerId, threadId, true).catch(noop))

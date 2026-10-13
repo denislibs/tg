@@ -1062,7 +1062,7 @@ describe('MessagesManager: кадр прочтения содержимого с
   it('mediaReadEffects: тема каждого снимаемого упоминания и число номеров вне памяти', async () => {
     const mgr = await setup([inTopic(5, 4), general(7), inTopic(8, 4, {}), { ...inTopic(9, 4), pFlags: { ...unreadMention, out: true } } as RawMessage])
     // 8 уже прочитано, 9 моё, 50 в памяти нет
-    expect(mgr.mediaReadEffects(frame([5, 7, 8, 9, 50]))).toEqual({ mentionThreads: [cid(4), GENERAL_TOPIC_ID], missing: 1 })
+    expect(mgr.mediaReadEffects(frame([5, 7, 8, 9, 50]))).toEqual({ mentionThreads: [cid(4), GENERAL_TOPIC_ID], readReactions: [], missing: 1 })
   })
 
   it('не форум: тема не выводится — упоминание считается за диалог', async () => {
@@ -1070,7 +1070,7 @@ describe('MessagesManager: кадр прочтения содержимого с
     const mgr = newMessagesManager({ rest })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     expect(mgr.mediaReadEffects({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [3] }))
-      .toEqual({ mentionThreads: [undefined], missing: 0 })
+      .toEqual({ mentionThreads: [undefined], readReactions: [], missing: 0 })
   })
 })
 

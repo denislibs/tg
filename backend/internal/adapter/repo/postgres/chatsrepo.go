@@ -580,12 +580,31 @@ func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq i
 	return out, nil
 }
 
-// ReadReactionsIn — см. ChatRepo.ReadReactionsIn. Тема сужается тем же
-// threadFilter, что строки списка тем (topicsrepo.go): General — страж
-// generalMember, обычная тема — thread_root_id корня. В выборку входят только
+// lockMemberRow берёт строку участника до записи строк упоминаний и реакций.
+// Порядок тот же, что у MarkRead (SetRead -> ClearMentions/ReadReactions):
+// обратный порядок дал бы взаимную блокировку, когда лента шлёт прочтение
+// истории и прочтение содержимого одновременно. Заодно пересчёт счётчика
+// ниже идёт по снимку, взятому после замка, и не затирает конкурентный
+// AddMention (см. комментарий ReadMentions).
+func (r *ChatsRepo) lockMemberRow(ctx context.Context, chatID, userID int64) error {
+	var one int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`, chatID, userID).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // не участник: читать нечего, пересчёт пуст
+	}
+	return err
+}
+
+// ReadReactionsIn — см. ChatRepo.ReadReactionsIn. Тема сужается threadFilter
+// (topicsrepo.go): General — страж generalMember, обычная тема — thread_root_id
+// корня. В выборку входят только
 // ВИДИМЫЕ зрителю сообщения (как счётчик пересчёта recountUnreadReactionsSQL),
 // иначе скрытое с непрочитанной реакцией крутило бы offset вечно.
 func (r *ChatsRepo) ReadReactionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]domain.Message, bool, error) {
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
 	q := querier(ctx, r.pool)
 	root := topic.ThreadRoot()
 	rows, err := q.Query(ctx,
@@ -806,9 +825,14 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 }
 
 // ClearMentionsIn — см. ChatRepo.ClearMentionsIn. Выборка идёт по
-// message_mentions_lookup (chat_id, user_id, seq); тема и видимость — те же
-// предикаты, что у подсчёта «@» темы (topicRowsSQL).
+// message_mentions_lookup (chat_id, user_id, seq); тема — threadFilter. Видимость
+// НЕ фильтруется: счётчик чата (syncUnreadMentions) считает все непрочитанные
+// строки, и снимать надо то же множество, иначе скрытое упоминание держало бы
+// бейдж, который нечем погасить.
 func (r *ChatsRepo) ClearMentionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]int64, bool, error) {
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
 	q := querier(ctx, r.pool)
 	root := topic.ThreadRoot()
 	rows, err := q.Query(ctx,
@@ -816,7 +840,6 @@ func (r *ChatsRepo) ClearMentionsIn(ctx context.Context, chatID, userID int64, t
 		   JOIN messages m ON m.id = mm.message_id
 		  WHERE mm.chat_id = $1 AND mm.user_id = $2 AND mm.unread
 		    AND `+threadFilter("m", "$3", root, false)+`
-		    AND `+messageVisibleTo("m", "$2")+`
 		  ORDER BY mm.seq LIMIT $4`, chatID, userID, root, limit+1)
 	if err != nil {
 		return nil, false, err

@@ -450,6 +450,9 @@ func (i *Interactor) reactionsSeenByMany(ctx context.Context, chatID int64, mess
 	return out, nil
 }
 
+// chatKind — вид чата ОДНИМ вопросом для правил реакций. Неизвестен — пустая
+// строка, и правила ниже отвечают на неё «нельзя»: и флаг, и право УТВЕРЖДАЮТ
+// доступ, а утверждать его, не зная чата, нельзя.
 func (i *Interactor) chatKind(ctx context.Context, chatID int64) string {
 	if i.chats == nil {
 		return ""

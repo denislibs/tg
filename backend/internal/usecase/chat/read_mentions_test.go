@@ -354,6 +354,13 @@ func TestReadMentions_TopicScopeAndBatch(t *testing.T) {
 	if len(body.Messages) != 2 {
 		t.Fatalf("в кадре темы A %v, want 2 номера", body.Messages)
 	}
+	var withTop struct {
+		TopMsgID int64 `json:"top_msg_id"`
+	}
+	_ = json.Unmarshal(rows[len(rows)-1].Payload, &withTop)
+	if withTop.TopMsgID != f.rootA.Seq {
+		t.Fatalf("кадр темы A без top_msg_id: %d, want %d", withTop.TopMsgID, f.rootA.Seq)
+	}
 	if _, err := f.in.ReadMentions(ctx, mfChat, mBob, inB[0].Seq); !errors.Is(err, domain.ErrTopicIDInvalid) {
 		t.Fatalf("не тема: %v", err)
 	}

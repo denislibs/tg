@@ -54,8 +54,8 @@ func TestChatsRepo_ReadInTopicScope(t *testing.T) {
 		}
 		return m
 	}
-	mA, mB, mG := post(&rootA), post(&rootB), post(nil)
-	for _, m := range []domain.Message{mA, mB, mG} {
+	mA, mB, mG, mB2 := post(&rootA), post(&rootB), post(nil), post(&rootB)
+	for _, m := range []domain.Message{mA, mB, mG, mB2} {
 		if err := reacts.Add(ctx, m.ID, b, "❤", true); err != nil {
 			t.Fatal(err)
 		}
@@ -79,8 +79,8 @@ func TestChatsRepo_ReadInTopicScope(t *testing.T) {
 	if err != nil || more || !slices.Equal(ids(got), []int64{mA.ID}) {
 		t.Fatalf("тема A: %v more=%v err=%v; want [%d]", ids(got), more, err, mA.ID)
 	}
-	if _, _, r := memberCounters(t, pool, chatID, a); r != 2 {
-		t.Fatalf("после темы A unread_reactions = %d, want 2", r)
+	if _, _, r := memberCounters(t, pool, chatID, a); r != 3 {
+		t.Fatalf("после темы A unread_reactions = %d, want 3", r)
 	}
 	// General — сообщения вне тем.
 	got, _, err = chats.ReadReactionsIn(ctx, chatID, a, &domain.TopicScope{General: true}, 100)
@@ -92,6 +92,10 @@ func TestChatsRepo_ReadInTopicScope(t *testing.T) {
 	if err != nil || !more || !slices.Equal(ids(got), []int64{mB.ID}) {
 		t.Fatalf("предел: %v more=%v err=%v; want [%d] и остаток", ids(got), more, err, mB.ID)
 	}
+	got, more, err = chats.ReadReactionsIn(ctx, chatID, a, nil, 100)
+	if err != nil || more || !slices.Equal(ids(got), []int64{mB2.ID}) {
+		t.Fatalf("остаток: %v more=%v err=%v; want [%d]", ids(got), more, err, mB2.ID)
+	}
 	if got, more, _ = chats.ReadReactionsIn(ctx, chatID, a, nil, 100); len(got) != 0 || more {
 		t.Fatalf("повтор снял ещё %v", ids(got))
 	}
@@ -101,16 +105,20 @@ func TestChatsRepo_ReadInTopicScope(t *testing.T) {
 	if err != nil || more || !slices.Equal(cleared, []int64{mA.Seq}) {
 		t.Fatalf("@ тема A: %v more=%v err=%v; want [%d]", cleared, more, err, mA.Seq)
 	}
-	if _, m, _ := memberCounters(t, pool, chatID, a); m != 2 {
-		t.Fatalf("после темы A unread_mentions_count = %d, want 2", m)
+	if _, m, _ := memberCounters(t, pool, chatID, a); m != 3 {
+		t.Fatalf("после темы A unread_mentions_count = %d, want 3", m)
 	}
 	cleared, _, err = chats.ClearMentionsIn(ctx, chatID, a, &domain.TopicScope{General: true}, 100)
 	if err != nil || !slices.Equal(cleared, []int64{mG.Seq}) {
 		t.Fatalf("@ General: %v err=%v; want [%d]", cleared, err, mG.Seq)
 	}
 	cleared, more, err = chats.ClearMentionsIn(ctx, chatID, a, nil, 1)
-	if err != nil || more || !slices.Equal(cleared, []int64{mB.Seq}) {
-		t.Fatalf("@ остаток: %v more=%v err=%v; want [%d]", cleared, more, err, mB.Seq)
+	if err != nil || !more || !slices.Equal(cleared, []int64{mB.Seq}) {
+		t.Fatalf("@ предел: %v more=%v err=%v; want [%d] и остаток", cleared, more, err, mB.Seq)
+	}
+	cleared, more, err = chats.ClearMentionsIn(ctx, chatID, a, nil, 100)
+	if err != nil || more || !slices.Equal(cleared, []int64{mB2.Seq}) {
+		t.Fatalf("@ остаток: %v more=%v err=%v; want [%d]", cleared, more, err, mB2.Seq)
 	}
 	if _, m, _ := memberCounters(t, pool, chatID, a); m != 0 {
 		t.Fatalf("в конце unread_mentions_count = %d, want 0", m)
