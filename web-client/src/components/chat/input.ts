@@ -135,7 +135,7 @@ import { isUser, toUserId } from '@core/peers/peerId'
 import { cachedChat, cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer, peerTitle } from '@core/peerCache'
 import joinChat from '@components/chat/joinChat'
 import { isBot as isBotPeer } from '@core/peers/predicates'
-import { isPeerMuted } from '@core/dialogs/notifySettings'
+import { EMPTY_NOTIFY_SETTINGS, isPeerMuted } from '@core/dialogs/notifySettings'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { draftsAreEqual, realDraft } from '@core/dialogs/draft'
 import { mirrorWindow } from '@core/history/messagesMirror'
@@ -1375,7 +1375,11 @@ export default class ChatInput {
     // бейдж «вниз» делает и заглушённый тип чатов, если свой мьют не задан (в
     // отличие от кнопки мьюта канала, `respectType: false`, :2078).
     const peerId = this.chat.peerId
-    const muted = isDialogMuted(this.getDialog(peerId), cachedChat(peerId), useNotifyStore.getState().settings)
+    const muted = isDialogMuted(
+      peerId === undefined ? undefined : { peerId, notify_settings: this.getDialog(peerId)?.notify_settings ?? EMPTY_NOTIFY_SETTINGS },
+      cachedChat(peerId),
+      useNotifyStore.getState().settings,
+    )
     this.goDownUnreadBadge.classList.toggle('badge-gray', muted)
   }
 

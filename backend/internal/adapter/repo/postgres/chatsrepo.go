@@ -338,9 +338,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        c.photo_media_id, pm.blur_preview,
 		        m.last_read_seq, `+dialogUnreadCount("m", "c")+`, m.unread_mentions_count, m.unread_reactions,
-		        -- Мьют едет СРОКОМ, а не булевым: предикат «замьючен ли сейчас»
-		        -- в домене один (PeerNotifySettings.Muted), и пяти копий условия
-		        -- в SQL больше нет.
+		        -- Мьют едет СРОКОМ, а не булевым (NULL — не задан, наследует тип
+		        -- чатов): «замьючен ли сейчас» решает domain.ChatMuted, пачкой в
+		        -- SQL — его копия chatMutedSQL.
 		        m.muted_until,
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
 		        m.notify_preview, m.notify_sound,

@@ -13,8 +13,8 @@ import (
 // SQL-копия правила (chatMutedSQL) и Go-правило (domain.ChatMuted) обязаны
 // совпадать на ВСЕЙ матрице: тип чата × состояние мьюта чата × тип чатов
 // включён/выключен. Опечатка в ветке CASE (например, groups_muted вместо
-// private_muted) иначе прошла бы молча. Гейты, считающие в Go (ShouldNotify),
-// и гейты, считающие в SQL (архив), сверяются с тем же правилом.
+// private_muted) иначе прошла бы молча. Гейты, считающие в Go (ShouldNotify,
+// NotifyTargets), и гейты, считающие в SQL (архив), сверяются с тем же правилом.
 func TestChatMutedSQL_MatchesDomain(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewPushRepo(pool)
@@ -24,7 +24,7 @@ func TestChatMutedSQL_MatchesDomain(t *testing.T) {
 
 	// тип чата → колонка notify_settings, которая им управляет (ForChatType)
 	typeCol := map[string]string{
-		"private": "private_muted", "saved": "private_muted", "group": "groups_muted", "channel": "channels_muted",
+		"private": "private_muted", "saved": "private_muted", "secret": "private_muted", "group": "groups_muted", "channel": "channels_muted",
 	}
 	allCols := []string{"private_muted", "groups_muted", "channels_muted"}
 	states := map[string]string{ // состояние muted_until → SQL-значение
@@ -69,6 +69,10 @@ func TestChatMutedSQL_MatchesDomain(t *testing.T) {
 				if ok, _, err := repo.ShouldNotify(ctx, chatID, user, 0, false); err != nil || ok == want {
 					t.Errorf("%s: ShouldNotify = %v,%v; ChatMuted = %v", label, ok, err, want)
 				}
+				// Пачка по участникам (пост канала): тот же закон.
+				if got, err := repo.NotifyTargets(ctx, chatID, []int64{user}); err != nil || (len(got) == 1) == want {
+					t.Errorf("%s: NotifyTargets = %v,%v; ChatMuted = %v", label, got, err, want)
+				}
 				back, err := chats.UnarchiveUnmuted(ctx, chatID, []int64{user})
 				if err != nil || (len(back) == 1) == want {
 					t.Errorf("%s: UnarchiveUnmuted = %v,%v; ChatMuted = %v", label, back, err, want)
@@ -77,8 +81,8 @@ func TestChatMutedSQL_MatchesDomain(t *testing.T) {
 		}
 	}
 
-	if n != 32 {
-		t.Fatalf("матрица прошла %d ячеек, want 32", n)
+	if n != 40 {
+		t.Fatalf("матрица прошла %d ячеек, want 40", n)
 	}
 
 	// Форум: чат с явным «уведомлять» при выключенном типе — нетронутая тема

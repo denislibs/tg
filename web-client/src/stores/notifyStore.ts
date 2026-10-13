@@ -69,8 +69,9 @@ export function notifyTypeForChat(peerId: PeerId | undefined, chat: Chat | undef
 /**
  * Заглушён ли чат — ЕДИНСТВЕННОЕ место, где записано это правило (порт tweb
  * `isPeerLocalMuted({peerId, respectType: true})`,
- * `lib/appManagers/appNotificationsManager.ts`): свой mute диалога ИЛИ
- * глобально выключенный ТИП чатов.
+ * `lib/appManagers/appNotificationsManager.ts`): мьют чата ТРЁХЗНАЧНЫЙ — свой
+ * `mute_until`, если задан (в том числе `0` — явное «уведомлять»), решает сам;
+ * не задан — решает ТИП чатов.
  *
  * Правило читают три несвязанных потребителя: витрина списка
  * (`core/hooks/useChatList.ts` — серая иконка и бейдж), фильтр папок
