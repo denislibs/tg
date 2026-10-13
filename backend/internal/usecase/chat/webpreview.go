@@ -236,9 +236,14 @@ func (i *Interactor) buildWebPreview(url, key string) *builtPreview {
 	// бюджетом: не дождались (или плашка ничего не дала) — грузим сами с
 	// полным previewTimeout, а не с остатком.
 	var wp *domain.WebPagePreview
+	var known bool
 	withBudget(previewTimeout, func(ctx context.Context) {
-		wp = i.webPages.page(ctx, url)
+		wp, known = i.webPages.page(ctx, url)
 	})
+	if wp == nil && known {
+		log.Printf("webpreview: %s: страница %s без карточки (отказ, уже полученный плашкой)", key, previewHost(url))
+		return nil
+	}
 	if wp == nil {
 		withBudget(previewTimeout, func(ctx context.Context) {
 			wp = i.fetchPage(ctx, url, key)
@@ -301,7 +306,12 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 	if typ == domain.ChatTypeSecret {
 		return
 	}
+	if !i.previewFlights.acquireBuild() {
+		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", fl.key, previewTimeout)
+		return
+	}
 	b := i.buildWebPreview(fl.url, fl.key)
+	i.previewFlights.releaseBuild()
 	if b == nil {
 		return
 	}
@@ -487,7 +497,12 @@ func (i *Interactor) startScheduledWebPreview(row domain.ScheduledMessage) {
 func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *previewFlight) {
 	defer saferun.Recover("chat.attachScheduledWebPreview")
 	defer i.previewFlights.drop(fl)
+	if !i.previewFlights.acquireBuild() {
+		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", fl.key, previewTimeout)
+		return
+	}
 	b := i.buildWebPreview(fl.url, fl.key)
+	i.previewFlights.releaseBuild()
 	if b == nil {
 		return
 	}
@@ -637,6 +652,30 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	if wp, ok := i.webPages.get(url); ok {
 		return plaqueCard(wp)
 	}
+	// Плашка того же адреса уже грузится (другое устройство, другой
+	// пользователь) — дожидаемся её карточки, а не грузим сайт параллельно.
+	if i.webPages.waitLoading(ctx, url) {
+		if wp, ok := i.webPages.get(url); ok {
+			return plaqueCard(wp)
+		}
+		// Страница уже есть, карточка не достроена (первая плашка ещё читает
+		// заголовок картинки) — достраиваем сами, без второй загрузки страницы.
+		if wp, ok := i.webPages.pageEntry(url); ok {
+			if wp == nil {
+				return nil
+			}
+			ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
+			wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
+			cancel()
+			return plaqueCard(wp)
+		}
+	}
+	// Метка загрузки — до очереди за слотом: сборка карточки сообщения видит
+	// загрузку и ждёт её, даже пока плашка стоит в очереди.
+	finish := i.webPages.startLoading(url)
+	var once sync.Once
+	done := func() { once.Do(finish) }
+	defer done()
 	if !i.webPages.acquire(ctx) {
 		return nil
 	}
@@ -644,9 +683,8 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	// Без повтора: сбой плашки ничего не теряет — tweb перезапросит карточку
 	// при следующей найденной ссылке (input.ts:3581-3594), а повтор держал бы
 	// слот сборки и удваивал запросы к сайту на страницах без карточки.
-	var once sync.Once
-	done := func() { once.Do(i.webPages.startLoading(url)) }
-	defer done() // и на панике разбора чужого HTML: ждущая сборка не повиснет
+	// Метка снимается один раз — сразу после записи страницы в кэш или, при
+	// панике разбора чужого HTML, на выходе (ждущая сборка не повиснет).
 	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
 	wp, err := i.preview.Preview(pctx, url)
 	cancel()
@@ -894,8 +932,29 @@ type webPageCache struct {
 	// loading — идущие загрузки плашки по ключу (закрывается, как только
 	// страница легла в кэш).
 	loading map[string]chan struct{}
-	// onWait — тестовый шов: сборка встала ждать загрузку плашки.
+	// onWait — тестовый шов: сборка или вторая плашка встала ждать загрузку.
 	onWait func()
+}
+
+// waitLoading — ждёт идущую загрузку плашки этого адреса (не дольше ctx);
+// false — загрузки не было или ctx кончился.
+func (c *webPageCache) waitLoading(ctx context.Context, url string) bool {
+	c.mu.Lock()
+	wait := c.loading[cacheKey(url)]
+	onWait := c.onWait
+	c.mu.Unlock()
+	if wait == nil {
+		return false
+	}
+	if onWait != nil {
+		onWait()
+	}
+	select {
+	case <-wait:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // startLoading отмечает загрузку плашки key; возвращает функцию завершения.
@@ -964,8 +1023,10 @@ func (c *webPageCache) pageEntry(url string) (*domain.WebPagePreview, bool) {
 // Загрузка плашки того же адреса ещё идёт — ждём её (не больше ctx), а не
 // грузим медленный сайт вторым запросом параллельно. Копия с адресом
 // картинки и без has_large_media: флаг ставит сборка по картинке, которую
-// сама сохранит. nil — страницы нет.
-func (c *webPageCache) page(ctx context.Context, url string) *domain.WebPagePreview {
+// сама сохранит. known=true и nil — плашка уже получила отказ по существу
+// (не HTML, нет заголовка, 4xx/429; временные сбои не кэшируются): второй
+// раз на сайт не идём. known=false — страницы в кэше нет.
+func (c *webPageCache) page(ctx context.Context, url string) (wp *domain.WebPagePreview, known bool) {
 	c.mu.Lock()
 	wait := c.loading[cacheKey(url)]
 	onWait := c.onWait
@@ -977,15 +1038,14 @@ func (c *webPageCache) page(ctx context.Context, url string) *domain.WebPagePrev
 		select {
 		case <-wait:
 		case <-ctx.Done():
-			return nil
+			return nil, false
 		}
 	}
-	wp, ok := c.pageEntry(url)
-	if !ok || wp == nil {
-		return nil
+	wp, known = c.pageEntry(url)
+	if wp != nil {
+		wp.HasLargeMedia = false
 	}
-	wp.HasLargeMedia = false
-	return wp
+	return wp, known
 }
 
 func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool) {
@@ -995,7 +1055,10 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool)
 	if c.m == nil {
 		c.m = map[string]webPageCacheEntry{}
 	}
-	if len(c.m) >= webPageCacheMax {
+	key := cacheKey(url)
+	// Обновление записи того же адреса (страница → достроенная карточка)
+	// места не прибавляет — вытеснять незачем.
+	if _, exists := c.m[key]; !exists && len(c.m) >= webPageCacheMax {
 		for k, e := range c.m {
 			if now.After(e.expires) {
 				delete(c.m, k)
@@ -1013,7 +1076,7 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview, complete bool)
 			delete(c.m, oldest)
 		}
 	}
-	c.m[cacheKey(url)] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL), complete: complete}
+	c.m[key] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL), complete: complete}
 }
 
 // acquire занимает слот сборки; false — контекст кончился раньше.

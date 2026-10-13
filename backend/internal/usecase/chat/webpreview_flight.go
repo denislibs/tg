@@ -34,11 +34,35 @@ type previewFlight struct {
 	t        previewTarget
 }
 
+// buildSlots — сколько фоновых сборок карточек ходит в сеть одновременно:
+// всплеск ссылок не плодит сотни горутин, держащих соединения с сайтами.
+const buildSlots = 32
+
 // previewFlights — нулевое значение готово к работе.
 type previewFlights struct {
-	mu sync.Mutex
-	m  map[string]*previewFlight
+	mu    sync.Mutex
+	m     map[string]*previewFlight
+	slots chan struct{}
 }
+
+// acquireBuild занимает слот сетевой части сборки; ждёт не дольше
+// previewTimeout (иначе сборка не начинается — карточки не будет).
+func (f *previewFlights) acquireBuild() bool {
+	f.mu.Lock()
+	if f.slots == nil {
+		f.slots = make(chan struct{}, buildSlots)
+	}
+	slots := f.slots
+	f.mu.Unlock()
+	select {
+	case slots <- struct{}{}:
+		return true
+	case <-time.After(previewTimeout):
+		return false
+	}
+}
+
+func (f *previewFlights) releaseBuild() { <-f.slots }
 
 // join — сборка ссылки url для key: идёт сборка той же ссылки — она
 // перенацеливается (set) и started=false; иначе заводится новая (прежняя,

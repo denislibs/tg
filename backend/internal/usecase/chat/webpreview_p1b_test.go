@@ -131,7 +131,7 @@ func TestWebPageCache_KeyAndLeaks(t *testing.T) {
 	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
 		t.Fatalf("плашка из кэша = %+v", wp)
 	}
-	page := e.in.webPages.page(ctx, "https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
+	page, _ := e.in.webPages.page(ctx, "https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
 	if page == nil || page.ImageURL == "" || page.HasLargeMedia {
 		t.Fatalf("страница для сборки = %+v; ждали адрес картинки и без has_large_media", page)
 	}
@@ -175,7 +175,9 @@ func TestBuildWebPreview_WaitsForPlaqueLoad(t *testing.T) {
 	ctx := context.Background()
 	const u = "https://slow.example/x"
 	waiting := make(chan struct{}, 1)
+	e.in.webPages.mu.Lock()
 	e.in.webPages.onWait = func() { waiting <- struct{}{} }
+	e.in.webPages.mu.Unlock()
 	release := e.prev.hold(u)
 	plaque := make(chan *domain.WebPagePreview)
 	go func() { plaque <- e.in.GetWebPage(ctx, u) }()
@@ -224,7 +226,8 @@ func TestBuildWebPreview_DoesNotWaitPlaqueImageHead(t *testing.T) {
 	const u = "https://a.example/x"
 	plaque := make(chan *domain.WebPagePreview)
 	go func() { plaque <- e.in.GetWebPage(ctx, u) }()
-	waitFor(t, func() bool { _, ok := e.in.webPages.get(u); return ok })
+	// Страница легла в кэш (ещё недостроенной для плашки) — сборке её хватает.
+	waitFor(t, func() bool { _, ok := e.in.webPages.pageEntry(u); return ok })
 	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
 	// Сборка завершается, пока заголовок картинки плашки ещё висит.
 	waitFor(t, func() bool { return storedMsg(t, e.s, msg.ID).WebPage != nil })
@@ -262,7 +265,7 @@ func TestFirstURL_Parens(t *testing.T) {
 		"см. https://ru.wikipedia.org/wiki/X_(y)": "https://ru.wikipedia.org/wiki/X_(y)",
 		"(см. https://a.example/c)":               "https://a.example/c",
 		"смотри https://a.example/c.":             "https://a.example/c",
-		"«https://a.example/c»":                   "https://a.example/c",
+		"«https://a.example/c»":                   "https://a.example/c»", // tweb оставляет «»» в адресе
 		"https://ru.wikipedia.org/wiki/X_(y)).":   "https://ru.wikipedia.org/wiki/X_(y)",
 	} {
 		if got := firstURL(in, nil); got != want {
@@ -341,6 +344,74 @@ func TestSend_EncodedMediaURLHitsPlaqueCache(t *testing.T) {
 	e.in.bg.Wait()
 	if storedMsg(t, e.s, msg.ID).WebPage == nil {
 		t.Fatal("сообщение без карточки")
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1", n)
+	}
+}
+
+// Метка загрузки плашки снимается ровно один раз и не остаётся после
+// ответа: иначе каждая сборка этого адреса ждала бы чужую «загрузку» до конца
+// своего бюджета (так висел TestWebPageCache_KeyAndLeaks).
+func TestGetWebPage_LoadingMarkCleared(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	for _, u := range []string{"https://a.example/x", "https://a.example/x", "https://b.example/y"} {
+		e.in.GetWebPage(ctx, u)
+	}
+	e.prev.fail = 1
+	e.in.GetWebPage(ctx, "https://c.example/z")
+	e.in.webPages.mu.Lock()
+	n := len(e.in.webPages.loading)
+	e.in.webPages.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("меток загрузки осталось %d", n)
+	}
+	done := make(chan struct{})
+	go func() { e.in.webPages.page(ctx, "https://a.example/x"); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("page() ждёт снятую загрузку")
+	}
+}
+
+// Ревью 3, п.9: отказ по существу, уже полученный плашкой (404, не HTML),
+// сборка не повторяет — второго запроса к сайту нет.
+func TestBuildWebPreview_UsesPlaqueRefusal(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.prev.permanent = true
+	ctx := context.Background()
+	if e.in.GetWebPage(ctx, "https://a.example/file.pdf") != nil {
+		t.Fatal("карточка у отказа")
+	}
+	e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/file.pdf"})
+	e.in.bg.Wait()
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1 (только плашка)", n)
+	}
+}
+
+// Ревью 3, п.10: две плашки одного адреса — одна загрузка страницы.
+func TestGetWebPage_ConcurrentPlaquesShareLoad(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://slow.example/x"
+	release := e.prev.hold(u)
+	res := make(chan *domain.WebPagePreview, 2)
+	go func() { res <- e.in.GetWebPage(ctx, u) }()
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	waiting := make(chan struct{}, 1)
+	e.in.webPages.mu.Lock()
+	e.in.webPages.onWait = func() { waiting <- struct{}{} }
+	e.in.webPages.mu.Unlock()
+	go func() { res <- e.in.GetWebPage(ctx, u) }()
+	<-waiting // вторая плашка встала ждать первую
+	close(release)
+	for k := 0; k < 2; k++ {
+		if wp := <-res; wp == nil {
+			t.Fatal("плашка без карточки")
+		}
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок %d; ждали 1", n)
