@@ -18,13 +18,16 @@
  *  • запись идёт в zustand через мост `useAppSettings`;
  *  • типы чатов пишутся на закрытии вкладки и только если изменились.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import { useSettingsStore, DEFAULTS } from '@/settings'
 import { useNotifyStore } from '@/stores/notifyStore'
-import type { NotifySettings } from '@core/managers/notifyManager'
+import type { InputNotifySettings, NotifySettings, NotifyTypeKey } from '@core/managers/notifyManager'
+import { MUTE_UNTIL_FOREVER } from '@core/dialogs/notifySettings'
+import rootScope from '@lib/rootScope'
+import { registerStoreProjection } from '@/client/realtime/storeProjection'
 import { AppNotificationsTab } from '@components/solidJsTabs/tabs'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
@@ -50,9 +53,9 @@ vi.mock('@core/audio/sounds', async(importOriginal) => ({
 }))
 
 const SERVER: NotifySettings = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -67,6 +70,8 @@ function stubPermission(permission: NotificationPermission, answer: Notification
   vi.stubGlobal('Notification', Object.assign(function Notification() {}, { permission, requestPermission }))
 }
 
+beforeAll(() => registerStoreProjection({} as unknown as Managers))
+
 beforeEach(() => {
   uninstallLabelActivation = installSpecLabelActivation()
   support.value = true
@@ -76,8 +81,8 @@ beforeEach(() => {
   useSettingsStore.getState().update({ notifyDesktop: true, notifyPush: true, notifySound: true, notifyVolume: 0.5, sentMessageSound: true })
   useNotifyStore.getState().set(structuredClone(SERVER))
 
-  update = vi.fn(async(patch: Partial<NotifySettings>) => ({ ...SERVER, ...patch }))
-  const managers = { notify: { update, settings: async() => SERVER } } as unknown as Managers
+  update = vi.fn(async(_key: NotifyTypeKey, _settings: InputNotifySettings) => {})
+  const managers = { notify: { updateNotifySettings: update, getNotifySettings: async(key: NotifyTypeKey) => SERVER[key] } } as unknown as Managers
 
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
@@ -306,7 +311,9 @@ describe('вкладка «Уведомления» — типы чатов', ()
     ])
   })
 
-  it('переключили «личные чаты» и закрыли вкладку — ровно один notify.update с полным типом', async() => {
+  // tweb notifications.tsx:63-64 — при уходе `mute_until = mute ? MUTE_UNTIL : 0` и
+  // `show_previews`, адрес — `inputNotifyUsers` (у нас ключ `notifyUsers`).
+  it('переключили «личные чаты» и закрыли вкладку — ровно один updateNotifySettings с mute_until и show_previews', async() => {
     const tab = await open()
     titleOf(row(tab, lang.NotificationsForPrivateChats)).click()
     expect(update).not.toHaveBeenCalled()
@@ -315,8 +322,77 @@ describe('вкладка «Уведомления» — типы чатов', ()
     await pause(400)
 
     expect(update).toHaveBeenCalledTimes(1)
-    expect(update).toHaveBeenCalledWith({ private: { muted: true, preview: true } })
-    expect(useNotifyStore.getState().settings.private.muted).toBe(true)
+    expect(update).toHaveBeenCalledWith('notifyUsers', { mute_until: MUTE_UNTIL_FOREVER, show_previews: true })
+  })
+
+  it('«группы» и «каналы» адресуются своими ключами; включение снимает мьют (mute_until: 0)', async() => {
+    useNotifyStore.getState().apply('notifyChats', { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER, show_previews: true })
+    const tab = await open()
+    expect(input(row(tab, lang.NotificationsForGroups)).checked).toBe(false)
+    titleOf(row(tab, lang.NotificationsForGroups)).click()
+    titleOf(row(tab, lang.NotificationsForChannels)).click()
+
+    tab.close()
+    await pause(400)
+
+    expect(update).toHaveBeenCalledWith('notifyChats', { mute_until: 0, show_previews: true })
+    expect(update).toHaveBeenCalledWith('notifyBroadcasts', { mute_until: MUTE_UNTIL_FOREVER, show_previews: true })
+    expect(update).toHaveBeenCalledTimes(2)
+  })
+
+  it('превью: show_previews из настроек типа и его запись на закрытии', async() => {
+    useNotifyStore.getState().apply('notifyBroadcasts', { _: 'peerNotifySettings', mute_until: 0, show_previews: false })
+    const tab = await open()
+    const channels = section(tab, lang.NotificationsChannels)
+    const preview = input(channels.querySelectorAll<HTMLElement>('.row')[1])
+    expect(preview.checked).toBe(false)
+
+    titleOf(channels.querySelectorAll<HTMLElement>('.row')[1]).click()
+    tab.close()
+    await pause(400)
+
+    expect(update).toHaveBeenCalledWith('notifyBroadcasts', { mute_until: 0, show_previews: true })
+  })
+
+  it('апдейт другого типа не сбрасывает ещё не записанную правку этой секции', async() => {
+    const tab = await open()
+    titleOf(row(tab, lang.NotificationsForPrivateChats)).click() // личные: выключили, не записано
+    expect(input(row(tab, lang.NotificationsForPrivateChats)).checked).toBe(false)
+
+    rootScope.dispatchEventSingle('notify_settings', {
+      _: 'updateNotifySettings',
+      peer: { _: 'notifyChats' },
+      notify_settings: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER, show_previews: true },
+    })
+    await pause(0)
+
+    expect(input(row(tab, lang.NotificationsForPrivateChats)).checked).toBe(false)
+    expect(input(row(tab, lang.NotificationsForGroups)).checked).toBe(false)
+    tab.close()
+    await pause(400)
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledWith('notifyUsers', { mute_until: MUTE_UNTIL_FOREVER, show_previews: true })
+  })
+
+  // Событие `notify_settings` с другого устройства (журнал notify_settings) идёт
+  // воркер → rootScope → проектор → notifyStore → тумблер открытой вкладки
+  // (tweb notifications.tsx:71-83, :167 — подписка на 'notify_settings').
+  it('notify_settings с другого устройства переключает тумблер открытой вкладки', async() => {
+    const tab = await open()
+    expect(input(row(tab, lang.NotificationsForPrivateChats)).checked).toBe(true)
+
+    rootScope.dispatchEventSingle('notify_settings', {
+      _: 'updateNotifySettings',
+      peer: { _: 'notifyUsers' },
+      notify_settings: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER, show_previews: true },
+    })
+    await pause(0)
+
+    expect(input(row(tab, lang.NotificationsForPrivateChats)).checked).toBe(false)
+    // Пришедшее извне состояние не считается правкой: на закрытии записи нет.
+    tab.close()
+    await pause(400)
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('ничего не меняли — ноль вызовов на закрытии', async() => {

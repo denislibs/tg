@@ -212,7 +212,7 @@ beforeEach(() => {
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
   useAppStateStore.setState({ folders: [FOLDER] })
-  useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
+  useNotifyStore.setState({ settings: { notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true }, notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true }, notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true } } })
 
   // высоту скроллеров списков ядро читает `getBoundingClientRect` (`useElementSize`)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
