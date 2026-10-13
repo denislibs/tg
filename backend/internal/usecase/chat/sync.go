@@ -230,9 +230,15 @@ func (i *Interactor) hydrateReplies(ctx context.Context, viewerID int64, msgs []
 // the bytes load (no layout shift). Missing/unprocessed media are left at zero.
 //
 // Картинка превью ссылки (web_page.photo_id) идёт тем же батчем и по той же
-// причине: размеры и stripped-подложка живут в строке media, а обработка после
-// скачивания асинхронная — на момент записи снимка превью их ещё нет, поэтому
-// это read-model, а не часть jsonb.
+// причине: stripped-подложка и уточнённый размер живут в строке media, а
+// обработка после скачивания асинхронная. Размер из заголовка картинки
+// сборка превью кладёт в снимок сразу — он остаётся, пока строка media
+// размера не дала. Остаточный риск: где разбор заголовка и обработка медиа
+// расходятся (AVIF/HEIC заголовок не разбирает — размера нет до обработки;
+// анимированный WebP), живой кадр и записи журнала несут размер из
+// заголовка, история после обработки — размер из строки media. Размер из
+// заголовка — пиксели файла без учёта EXIF-ориентации (так же отдаёт его и
+// обработка медиа, ffprobe).
 func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) error {
 	ids := make([]int64, 0)
 	seen := map[int64]bool{}
@@ -260,7 +266,11 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 	for idx := range msgs {
 		if wp := msgs[idx].WebPage; wp != nil && wp.PhotoID > 0 {
 			if d, ok := dims[wp.PhotoID]; ok {
-				wp.PhotoW, wp.PhotoH = d.Width, d.Height
+				// Пока обработка медиа не дала размер, остаётся размер из
+				// заголовка, записанный сборкой превью (storePreviewPhoto).
+				if d.Width > 0 && d.Height > 0 {
+					wp.PhotoW, wp.PhotoH = d.Width, d.Height
+				}
 				wp.PhotoBlur, wp.PhotoHasThumb = d.Blur, d.HasThumb
 			}
 		}

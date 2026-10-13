@@ -281,7 +281,7 @@ func (w WebPageInput) MediaURL() string {
 		return ""
 	}
 	u := strings.TrimSpace(w.Media.URL)
-	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+	if l := strings.ToLower(u); !strings.HasPrefix(l, "http://") && !strings.HasPrefix(l, "https://") {
 		return ""
 	}
 	return u
