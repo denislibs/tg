@@ -11,7 +11,7 @@ import type { Dialog } from '../core/models'
 import type { Chat } from '../core/peers/peer'
 import { isBroadcast } from '../core/peers/predicates'
 import { isUser } from '../core/peers/peerId'
-import { isPeerMuted, type PeerNotifySettings } from '../core/dialogs/notifySettings'
+import { isPeerMuted, isPeerMutedRespectingType, type PeerNotifySettings } from '../core/dialogs/notifySettings'
 
 const DEFAULT_TYPE: PeerNotifySettings = { _: 'peerNotifySettings', mute_until: 0, show_previews: true }
 const DEFAULTS: NotifySettings = {
@@ -93,10 +93,14 @@ export function isDialogMuted(
   settings: NotifySettings,
   now = Math.floor(Date.now() / 1000),
 ): boolean {
-  // Свой мьют диалога — теперь СРОК, а не признак: `isPeerMuted` порт
-  // `appNotificationsManager.isMuted` (`:255`). Ниже — то же, что и было:
-  // глобально выключенный ТИП чатов.
-  return isPeerMuted(dialog?.notify_settings, now) || isTypeMuted(settings, notifyTypeForChat(dialog?.peerId, chat), now)
+  // Мьют чата трёхзначный (порт `getPeerLocalSettings`, `:342-384`): свой срок
+  // (в том числе явный `0` — «уведомлять») решает сам, тип чатов смотрится
+  // только когда мьют не задан.
+  return isPeerMutedRespectingType(
+    dialog?.notify_settings,
+    () => isTypeMuted(settings, notifyTypeForChat(dialog?.peerId, chat), now),
+    now,
+  )
 }
 
 export async function loadNotifySettings(managers: { notify: { getNotifyPeerTypeSettings(): Promise<NotifySettings> } }): Promise<void> {

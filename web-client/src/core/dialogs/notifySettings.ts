@@ -13,7 +13,8 @@
 //
 // В схеме механизм один: `mute_until` — unix-секунды, ДО которых молчим.
 // «Навсегда» это не отдельный флаг, а далёкий срок (`MUTE_UNTIL_FOREVER`),
-// «снять» — отсутствие переопределения. Предикат «замьючен ли СЕЙЧАС» здесь
+// «снять» — явное `mute_until: 0` («уведомлять»); отсутствие ключа — иное:
+// «мьют не задан, наследовать тип чата» (три состояния, как у тем форума). Предикат «замьючен ли СЕЙЧАС» здесь
 // один — `isPeerMuted`, порт `appNotificationsManager.isMuted` (`:255`).
 
 /**
@@ -81,6 +82,25 @@ export function isPeerMuted(settings: PeerNotifySettings | undefined, now: numbe
   if (!settings) return false
   if (settings.silent) return true
   return settings.mute_until !== undefined && settings.mute_until > now
+}
+
+/**
+ * Заглушён ли ЧАТ с учётом типа — порт `getPeerLocalSettings`
+ * (`appNotificationsManager.ts:342-384`, `respectType: true`) + `isMuted`:
+ * настройки типа подставляются только в НЕопределённые поля пира. `silent` чата
+ * глушит независимо от срока; определённый `mute_until` (в том числе `0` —
+ * явное «уведомлять», как пишут `togglePeerMute` и истечение срока в
+ * `checkMuteUntil`, `:187-190`) решает сам и тип не смотрится; не задан —
+ * решает тип (`typeMuted`). Мьют чата, как и темы форума, ТРЁХЗНАЧНЫЙ.
+ */
+export function isPeerMutedRespectingType(
+  own: PeerNotifySettings | undefined,
+  typeMuted: () => boolean,
+  now: number,
+): boolean {
+  if (own?.silent) return true
+  if (own?.mute_until !== undefined) return own.mute_until > now
+  return typeMuted()
 }
 
 /** Пустой конструктор: «переопределений у этого пира нет». Обязателен по схеме

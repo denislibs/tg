@@ -81,3 +81,35 @@ describe('notifyStore', () => {
     expect(useNotifyStore.getState().loaded).toBe(false)
   })
 })
+
+// Мьют чата трёхзначный (tweb appNotificationsManager.ts:342-384): настройки типа
+// подставляются только в НЕопределённые поля пира. Явное «уведомлять» —
+// mute_until: 0 (togglePeerMute, appMessagesManager.ts:11985-11991, и истечение
+// срока в checkMuteUntil :187-190) — перекрывает заглушённый тип.
+describe('isDialogMuted: мьют чата против типа', () => {
+  const typeMuted = (): NotifySettings => ({
+    ...DEFAULT(),
+    notifyUsers: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER, show_previews: true },
+  })
+  const dlg = (notify_settings: Dialog['notify_settings']) => ({ peerId: 7, notify_settings }) as Pick<Dialog, 'peerId' | 'notify_settings'>
+
+  it('мьют не задан — наследует заглушённый тип', () => {
+    expect(isDialogMuted(dlg({ _: 'peerNotifySettings' }), undefined, typeMuted(), NOW)).toBe(true)
+  })
+  it('явное «уведомлять» (mute_until: 0) перекрывает заглушённый тип', () => {
+    expect(isDialogMuted(dlg({ _: 'peerNotifySettings', mute_until: 0 }), undefined, typeMuted(), NOW)).toBe(false)
+  })
+  it('истёкший срок — тоже явное «уведомлять», тип не возвращается', () => {
+    expect(isDialogMuted(dlg({ _: 'peerNotifySettings', mute_until: NOW - 5 }), undefined, typeMuted(), NOW)).toBe(false)
+  })
+  it('срок в будущем глушит сам, даже когда тип включён', () => {
+    expect(isDialogMuted(dlg({ _: 'peerNotifySettings', mute_until: NOW + 60 }), undefined, DEFAULT(), NOW)).toBe(true)
+  })
+  it('silent у чата глушит независимо от срока', () => {
+    expect(isDialogMuted(dlg({ _: 'peerNotifySettings', silent: true, mute_until: 0 }), undefined, DEFAULT(), NOW)).toBe(true)
+  })
+  it('диалога в зеркале нет — решает тип («личные» по умолчанию)', () => {
+    expect(isDialogMuted(undefined, undefined, typeMuted(), NOW)).toBe(true)
+    expect(isDialogMuted(undefined, undefined, DEFAULT(), NOW)).toBe(false)
+  })
+})
