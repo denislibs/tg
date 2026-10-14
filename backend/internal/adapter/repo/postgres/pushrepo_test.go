@@ -255,3 +255,67 @@ func TestPushRepo_Enricher(t *testing.T) {
 		t.Fatalf("UnreadBadge(none) = %d, %v; want 0", badge, err)
 	}
 }
+
+// Р-1: мьют чата трёхзначный. Выключенный тип чатов заглушает только чаты, у
+// которых мьют не задан (NULL); явное «уведомлять» (0 или истёкший срок) —
+// исключение из типа, как в tweb (appNotificationsManager.ts:342-384).
+func TestPushRepo_ChatMuteOverridesType(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewPushRepo(pool)
+	chats := NewChatsRepo(pool)
+	ctx := context.Background()
+	user := seedUser(t, pool, "+7960")
+	other := seedUser(t, pool, "+7961")
+	mustExec(t, pool, `INSERT INTO notify_settings (user_id, groups_muted, channels_muted) VALUES ($1, true, true)`, user)
+
+	inherit := createGroupLike(t, pool, "group", user)   // NULL
+	explicit := createGroupLike(t, pool, "group", user)  // 0 — «включил»
+	expired := createGroupLike(t, pool, "group", user)   // истёкший срок
+	mutedSelf := createGroupLike(t, pool, "group", user) // срок в будущем
+	mustExec(t, pool, `UPDATE chat_members SET muted_until = to_timestamp(0) WHERE chat_id=$1 AND user_id=$2`, explicit, user)
+	mustExec(t, pool, `UPDATE chat_members SET muted_until = now() - interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, expired, user)
+	mustExec(t, pool, `UPDATE chat_members SET muted_until = now() + interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, mutedSelf, user)
+
+	for name, c := range map[string]struct {
+		chat int64
+		want bool
+	}{"наследует выключенный тип": {inherit, false}, "явно включён": {explicit, true},
+		"истёкший срок": {expired, true}, "заглушён сам": {mutedSelf, false}} {
+		if ok, _, err := repo.ShouldNotify(ctx, c.chat, user, 0, false); err != nil || ok != c.want {
+			t.Errorf("ShouldNotify %s = %v,%v; want %v", name, ok, err, c.want)
+		}
+	}
+
+	// Канал (NotifyTargets): тот же закон.
+	chInherit := createGroupLike(t, pool, "channel", other)
+	chExplicit := createGroupLike(t, pool, "channel", other)
+	for _, ch := range []int64{chInherit, chExplicit} {
+		if err := NewGroupRepo(pool).AddMember(ctx, ch, user, domain.RoleSubscriber, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustExec(t, pool, `UPDATE chat_members SET muted_until = to_timestamp(0) WHERE chat_id=$1 AND user_id=$2`, chExplicit, user)
+	if got, err := repo.NotifyTargets(ctx, chInherit, []int64{user}); err != nil || len(got) != 0 {
+		t.Errorf("NotifyTargets(наследует выключенный тип) = %v, %v; want пусто", got, err)
+	}
+	if got, err := repo.NotifyTargets(ctx, chExplicit, []int64{user}); err != nil || len(got) != 1 {
+		t.Errorf("NotifyTargets(явно включён) = %v, %v; want пользователь", got, err)
+	}
+
+	// Архив: новое сообщение возвращает из архива только эффективно незаглушённых.
+	for _, c := range []int64{inherit, explicit, expired, mutedSelf} {
+		mustExec(t, pool, `UPDATE chat_members SET archived = true WHERE chat_id=$1 AND user_id=$2`, c, user)
+	}
+	for c, want := range map[int64]bool{inherit: false, explicit: true, expired: true, mutedSelf: false} {
+		back, err := chats.UnarchiveUnmuted(ctx, c, []int64{user})
+		if err != nil || (len(back) == 1) != want {
+			t.Errorf("UnarchiveUnmuted(chat %d) = %v, %v; want вернуть=%v", c, back, err, want)
+		}
+	}
+
+	// Бейдж: считаются только эффективно незаглушённые, неархивные.
+	mustExec(t, pool, `UPDATE chat_members SET archived = false, unread_count = 2 WHERE user_id=$1`, user)
+	if badge, err := repo.UnreadBadge(ctx, user); err != nil || badge != 4 { // explicit + expired
+		t.Errorf("UnreadBadge = %d, %v; want 4", badge, err)
+	}
+}
