@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -44,5 +45,15 @@ func (i *Interactor) SetSavedTagName(ctx context.Context, userID int64, reaction
 	if i.savedTags == nil {
 		return domain.ErrForbidden
 	}
-	return i.savedTags.SetTitle(ctx, userID, reaction, title)
+	if err := i.savedTags.SetTitle(ctx, userID, reaction, title); err != nil {
+		return err
+	}
+	// Свои устройства перечитывают теги: updateSavedReactionTags без параметров
+	// (tweb appReactionsManager.ts:121-132). Мутация закоммичена — сбой журнала
+	// ответ не ломает, второе устройство догонит при следующем getDifference.
+	if err := i.logAndPublish(ctx, 0, []int64{userID}, "saved_tags",
+		map[string]any{"_": domain.UpdateSavedReactionTagsTag}); err != nil {
+		log.Printf("[saved_tags] journal for %d: %v", userID, err)
+	}
+	return nil
 }
