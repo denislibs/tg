@@ -987,7 +987,7 @@ func TestRepost_OK(t *testing.T) {
 	repo := &fakeRepo{
 		createID: 77,
 		visible:  true,
-		origin:   domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500},
+		origin:   domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500, Privacy: "everyone"},
 	}
 	tx := &fakeTx{}
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, tx)
@@ -1024,7 +1024,7 @@ func TestRepost_ForbiddenWhenSourceNotVisible(t *testing.T) {
 }
 
 func TestShare_OK(t *testing.T) {
-	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500}}
+	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500, Privacy: "everyone"}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{}
 	svc.SetMessageSender(sender)
@@ -1068,7 +1068,7 @@ func TestShare_UnavailableWithoutSender(t *testing.T) {
 }
 
 func TestShare_SkipsNonMemberChats(t *testing.T) {
-	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{MediaID: 500}}
+	repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{MediaID: 500, Privacy: "everyone"}}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{failFor: map[int64]error{20: domain.ErrNotFound}}
 	svc.SetMessageSender(sender)
@@ -1173,5 +1173,32 @@ func TestPost_ContactsStoryFramesOnlyToViewers(t *testing.T) {
 	}
 	if len(pub.frames[3]) != 0 {
 		t.Fatal("кадр истории «для контактов» ушёл тому, кто её не видит")
+	}
+}
+
+// F7-A2 (MC-01, тот же класс): «Поделиться» и «Репост» копируют файл истории в
+// сообщение чата или в новую историю, и дальше его читает аудитория копии. По
+// tweb пункт «Поделиться» есть только у публичной истории без noforwards
+// (components/stories/viewer.tsx:2222-2224), а у нас публичная = privacy
+// everyone. Чужая история с любым более узким правилом (contacts, close,
+// selected) — ErrForbidden, даже если зрителю она видна.
+func TestRepostAndShare_OnlyPublicStories(t *testing.T) {
+	for _, privacy := range []string{"contacts", "close", "selected", ""} {
+		repo := &fakeRepo{visible: true, origin: domain.StoryOrigin{AuthorID: 9, AuthorName: "Bob", MediaID: 500, Privacy: privacy}}
+		svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+		sender := &fakeSender{}
+		svc.SetMessageSender(sender)
+		if _, err := svc.Repost(context.Background(), 1, 9, 42, "", "everyone", nil, 0); !errors.Is(err, domain.ErrForbidden) {
+			t.Errorf("Repost privacy=%q: err=%v; want ErrForbidden", privacy, err)
+		}
+		if repo.createStory.MediaID != 0 {
+			t.Errorf("Repost privacy=%q: история создана", privacy)
+		}
+		if _, err := svc.Share(context.Background(), 9, 42, 1, []int64{10}); !errors.Is(err, domain.ErrForbidden) {
+			t.Errorf("Share privacy=%q: err=%v; want ErrForbidden", privacy, err)
+		}
+		if len(sender.calls) != 0 {
+			t.Errorf("Share privacy=%q: сообщение отправлено в %v", privacy, sender.calls)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
@@ -329,4 +330,32 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 		t.Errorf("Боб видит Алису контактом: %v", u)
 	}
 	want("участники у самого Боба", usersOf(tokenB, "/chats/"+itoa(group)+"/participants"), "Боб", "Петров", false)
+}
+
+// F7-A2: серверной ручки принятия предложенного фото нет — в tweb «Установить
+// фото» скачивает файл и ставит его СВОЕЙ загрузкой (bubbles.ts:8236-8246 →
+// avatarEdit.ts uploadProfilePhoto), а наш клиент ручку не звал. Предложение
+// остаётся сообщением. Проверяется по таблице маршрутов роутера: ни одного пути
+// с photo_suggestions (запрос к несуществующему маршруту проверял бы лишь 404 от
+// «нет чата»).
+func TestPhotoSuggestion_AcceptRouteRemoved_HTTP(t *testing.T) {
+	h, _ := newContactCardRouterDB(t)
+	routes, ok := h.(chi.Routes)
+	if !ok {
+		t.Fatalf("роутер %T не отдаёт таблицу маршрутов", h)
+	}
+	var seen, suggest int
+	_ = chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		seen++
+		if strings.Contains(route, "photo_suggestions") {
+			t.Errorf("остался маршрут %s %s", method, route)
+		}
+		if strings.Contains(route, "suggest_photo") {
+			suggest++
+		}
+		return nil
+	})
+	if seen == 0 || suggest == 0 {
+		t.Fatalf("обход маршрутов не сработал: всего %d, suggest_photo %d", seen, suggest)
+	}
 }

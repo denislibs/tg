@@ -186,6 +186,17 @@ export function storyPrivacy(s: StoryItem | undefined): StoryPrivacy {
   return 'contacts'
 }
 
+/**
+ * Можно ли репостить историю и пересылать её в чаты — только публичную.
+ * «Поделиться»: tweb `viewer.tsx:2222-2224` (`pFlags.public && !noforwards`;
+ * `noforwards` сервер не производит). «Репост» — наш пункт, условие повторяет
+ * серверное `originIsPublic` (usecase/story/service.go): копия файла иначе
+ * пережила бы правило аудитории автора.
+ */
+export function storyCanShare(s: StoryItem | undefined): boolean {
+  return realStory(s)?.pFlags?.public === true
+}
+
 /** Явный allow-лист selected-истории. Приезжает ТОЛЬКО автору — у чужой истории
  *  вектора `privacy` нет вовсе, и ответ пуст. */
 export function storyAllowIds(s: StoryItem | undefined): number[] {

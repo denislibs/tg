@@ -747,15 +747,6 @@
     "type": "MessageAction"
   },
   {
-    "predicate": "messageActionSuggestProfilePhoto",
-    "params": [
-      {
-        "name": "accepted",
-        "type": "boolean"
-      }
-    ]
-  },
-  {
     "predicate": "messageActionSuggestedPostApproval",
     "params": [
       {

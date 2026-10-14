@@ -23,14 +23,6 @@ type ContactPhotoLookup interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
-// ProfilePhotoAdder appends a suggested photo to a user's profile gallery and
-// promotes it to the current avatar (implemented by the auth usecase). Used
-// when a user accepts a suggested profile photo; the file belongs to the
-// suggester (suggesterID), whom the implementation checks as its owner. Optional.
-type ProfilePhotoAdder interface {
-	AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error)
-}
-
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
@@ -390,8 +382,6 @@ type MessageRepo interface {
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
-	// UpdateAction заменяет служебное действие сообщения (messages.action).
-	UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
@@ -829,7 +819,7 @@ type SendInput struct {
 	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
 	ScheduleRepeatPeriod int
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
-	// media принадлежит автору истории, а видимость уже проверена story-usecase).
+	// media принадлежит автору истории, а видимость и публичность уже проверены story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
 	skipMediaOwner bool
 	// userAction — служебное действие ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ (предложить дату
