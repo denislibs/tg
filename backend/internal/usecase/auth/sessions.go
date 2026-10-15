@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -39,11 +40,12 @@ func (i *Interactor) evict(ctx context.Context, d domain.Device) {
 // revokeOtherSessions terminates every session of the user except the current
 // one ("Terminate All Other Sessions"): rows are deleted, cached sessions
 // evicted and each device's sockets closed. Returns how many were revoked.
-// Строк «убрать» запросы об удалённых сессиях НЕ порождают (как и DeleteAll): живой
-// после этого остаётся одна вызывающая сессия, её клиент очищает список сам
-// (tweb resetAuthorizations, appAccountManager.ts:441-451), а у аккаунта с сотнями
-// неподтверждённых сессий (агентские входы) это были бы сотни последовательных
-// записей журнала внутри запроса.
+// Запросы «это вы?» об удалённых неподтверждённых сессиях снимаются строками журнала —
+// иначе поздняя догонка (getDifference) вернула бы плашку об уже удалённой сессии, а
+// клиент без общего воркера (вкладка без SharedWorker) о завершении не узнал бы. Строк не
+// больше maxRemovedPrompts (самые свежие): у аккаунта с сотнями неподтверждённых сессий
+// (агентские входы) полный набор — сотни последовательных записей внутри запроса. Остальные
+// клиент отбрасывает по сроку (7 суток) или по ответу списка сессий.
 func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
 	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
 	if err != nil {
@@ -52,7 +54,26 @@ func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDev
 	for _, d := range removed {
 		i.evict(ctx, d)
 	}
+	i.emitPromptsRemoved(ctx, userID, newestUnconfirmed(removed, i.now(), maxRemovedPrompts))
 	return len(removed), nil
+}
+
+// maxRemovedPrompts — потолок строк «убрать» за один «завершить все прочие».
+const maxRemovedPrompts = 50
+
+// newestUnconfirmed — до limit самых свежих неподтверждённых (по сроку) сессий.
+func newestUnconfirmed(removed []domain.Device, now time.Time, limit int) []domain.Device {
+	var out []domain.Device
+	for _, d := range removed {
+		if d.IsUnconfirmed(now) {
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].CreatedAt.After(out[b].CreatedAt) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 // ownSyncTimeout — срок записи строки «новый вход» в журнал после коммита
@@ -88,7 +109,7 @@ func (i *Interactor) emitOwnSessions(ctx context.Context, userID int64, u domain
 
 // emitPromptsRemoved снимает запросы «это вы?» об удалённых сессиях: по строке
 // updateNewAuthorization без unconfirmed на каждую удалённую неподтверждённую
-// (так приходят и update* Telegram; таких удалений единицы). Строки, у которых
+// (так приходят и update* Telegram). Строки, у которых
 // флаг уже погас по сроку, не трогаются — клиент их отбросил сам.
 func (i *Interactor) emitPromptsRemoved(ctx context.Context, userID int64, removed []domain.Device) {
 	now := i.now()

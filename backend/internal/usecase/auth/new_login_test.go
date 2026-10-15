@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -160,7 +161,7 @@ func TestMintSession_SecondSession_UnconfirmedAndEvent(t *testing.T) {
 }
 
 // Вход, одобренный уже вошедшей сессией, не спрашивается: QR (оба места
-// выпуска) и веб-токен. CountByUser на этом пути не зовётся.
+// выпуска) и веб-токен. HasSessions на этом пути не зовётся.
 func TestMintSession_ApprovedPaths_NotUnconfirmed(t *testing.T) {
 	f := newLoginFixture(t, "+79990050003")
 	ctx := context.Background()
@@ -190,7 +191,7 @@ func TestMintSession_ApprovedPaths_NotUnconfirmed(t *testing.T) {
 	}
 	f.noRows(t)
 	if f.devices.counts != before {
-		t.Fatalf("CountByUser вызван %d раз на одобренных путях", f.devices.counts-before)
+		t.Fatalf("HasSessions вызван %d раз на одобренных путях", f.devices.counts-before)
 	}
 }
 
@@ -512,25 +513,51 @@ func TestTerminateSession_ExpiredUnconfirmedEmitsNothing(t *testing.T) {
 	f.noRows(t)
 }
 
-// «Завершить все прочие»: строк «убрать» нет — остаётся одна вызывающая сессия, её клиент
-// очищает список сам (tweb :441-451); сотни неподтверждённых не порождают сотни записей.
-func TestTerminateOtherSessions_UnconfirmedEmitsNothing(t *testing.T) {
-	f, cur, _ := confirmFixture(t)
+// «Завершить все прочие»: по строке «убрать» на каждую неподтверждённую (поздняя догонка не
+// вернёт плашку об удалённой сессии); подтверждённые строк не дают.
+func TestTerminateOtherSessions_UnconfirmedEmitsRemoval(t *testing.T) {
+	f, cur, target := confirmFixture(t)
 	ctx := context.Background()
-	for i, h := range []string{"h-2", "h-3"} {
-		d, err := f.devices.Create(ctx, domain.Device{UserID: f.user.ID, Name: "B", Platform: "web", TokenHash: h, Unconfirmed: i == 0})
-		if err != nil {
-			t.Fatal(err)
-		}
-		dd := f.devices.byID[d.ID]
-		dd.CreatedAt = sessionsNow.Add(-time.Hour)
-		f.devices.byID[d.ID] = dd
-	}
+	second := addDevice(t, f, "h-2", true, sessionsNow.Add(-time.Hour))
+	addDevice(t, f, "h-3", false, sessionsNow.Add(-time.Hour))
 	n, err := f.i.TerminateOtherSessions(ctx, f.user.ID, cur)
 	if err != nil || n != 3 {
 		t.Fatalf("n=%d err=%v, want 3", n, err)
 	}
-	f.noRows(t)
+	rows := f.log.of(f.user.ID)
+	got := map[float64]bool{}
+	for _, r := range rows {
+		got[r.body["hash"].(float64)] = true
+	}
+	if len(rows) != 2 || !got[float64(target)] || !got[float64(second)] {
+		t.Fatalf("строки = %+v, want по одной на %d и %d", rows, target, second)
+	}
+}
+
+// Потолок строк: самые свежие, остальные клиент отбросит по сроку.
+func TestTerminateOtherSessions_RemovalRowsCapped(t *testing.T) {
+	f, cur, _ := confirmFixture(t)
+	for k := 0; k < maxRemovedPrompts+10; k++ {
+		addDevice(t, f, "hc-"+strconv.Itoa(k), true, sessionsNow.Add(-time.Duration(k+1)*time.Minute))
+	}
+	if _, err := f.i.TerminateOtherSessions(context.Background(), f.user.ID, cur); err != nil {
+		t.Fatal(err)
+	}
+	if rows := f.log.of(f.user.ID); len(rows) != maxRemovedPrompts {
+		t.Fatalf("строк = %d, want %d", len(rows), maxRemovedPrompts)
+	}
+}
+
+func addDevice(t *testing.T, f *loginFixture, tokenHash string, unconfirmed bool, created time.Time) int64 {
+	t.Helper()
+	d, err := f.devices.Create(context.Background(), domain.Device{UserID: f.user.ID, Name: "B", Platform: "web", TokenHash: tokenHash, Unconfirmed: unconfirmed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dd := f.devices.byID[d.ID]
+	dd.CreatedAt = created
+	f.devices.byID[d.ID] = dd
+	return d.ID
 }
 
 // Выход самой неподтверждённой сессии (POST /auth/logout) — тоже снимает запрос.

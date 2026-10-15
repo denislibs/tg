@@ -177,6 +177,7 @@ Revoke a session (deletes the device, evicts its cache, **closes its live WS soc
 `encrypted_requests_disabled`) не читаются.
 - Request: `{ "confirmed": true }` (без `confirmed` или с `false` менять нечего — `boolTrue`)
 - 200: `{ "_": "boolTrue" }`; остальные устройства получают `updateNewAuthorization{hash}` без `pFlags`
+- Какие входы порождают `unconfirmed` (если у аккаунта уже есть сессии): код, пароль, ключ доступа, `POST /auth/password/recover/confirm` (восстановление по почте — всегда). QR и вход по веб-токену одобрены вошедшей сессией: флага нет, признак переживает шаг облачного пароля.
 - 400: `current session is not confirmable by hash` (цель — текущая сессия или `0`)
 - 404: `session not found`
 - 406: `{ "_": "error", "code": 406, "text": "FRESH_CHANGE_AUTHORIZATION_FORBIDDEN" }` — текущая сессия моложе 24 часов

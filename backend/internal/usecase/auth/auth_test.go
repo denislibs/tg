@@ -216,7 +216,7 @@ type fakeDeviceRepo struct {
 	users  *fakeUserRepo
 	nextID int64
 	calls  int // SessionByTokenHash invocations
-	counts int // CountByUser invocations
+	counts int // HasSessions invocations
 }
 
 func newFakeDeviceRepo(users *fakeUserRepo) *fakeDeviceRepo {
@@ -280,7 +280,7 @@ func (r *fakeDeviceRepo) Delete(_ context.Context, userID, deviceID int64) (doma
 	return d, true, nil
 }
 
-func (r *fakeDeviceRepo) CountByUser(_ context.Context, userID int64) (int, error) {
+func (r *fakeDeviceRepo) HasSessions(_ context.Context, userID int64) (bool, error) {
 	r.counts++
 	n := 0
 	for _, d := range r.byID {
@@ -288,7 +288,7 @@ func (r *fakeDeviceRepo) CountByUser(_ context.Context, userID int64) (int, erro
 			n++
 		}
 	}
-	return n, nil
+	return n > 0, nil
 }
 
 func (r *fakeDeviceRepo) Confirm(_ context.Context, userID, deviceID int64) (bool, error) {

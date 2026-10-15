@@ -475,7 +475,7 @@ func TestAuthRepo_EmojiStatusAndPremiumReportChange(t *testing.T) {
 }
 
 // «Новый вход» (М1-3): флаг unconfirmed пишется при Create, читается всеми
-// выборками и возвращается Delete/DeleteOthers; CountByUser считает сессии
+// выборками и возвращается Delete/DeleteOthers; HasSessions отвечает «есть ли сессии»
 // пользователя; Confirm различает «нет строки» и «уже подтверждена».
 func TestAuthRepo_Unconfirmed(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
@@ -485,8 +485,8 @@ func TestAuthRepo_Unconfirmed(t *testing.T) {
 	u, _ := repo.CreateWithName(ctx, "+794", "Новый вход", "")
 	v, _ := repo.CreateWithName(ctx, "+795", "Чужой", "")
 
-	if n, err := repo.CountByUser(ctx, u.ID); err != nil || n != 0 {
-		t.Fatalf("CountByUser пустого = %d, %v; want 0", n, err)
+	if has, err := repo.HasSessions(ctx, u.ID); err != nil || has {
+		t.Fatalf("HasSessions пустого = %v, %v; want false", has, err)
 	}
 	first, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "web", TokenHash: "uc-1"})
 	if err != nil || first.Unconfirmed {
@@ -497,8 +497,8 @@ func TestAuthRepo_Unconfirmed(t *testing.T) {
 		t.Fatalf("Create второй = %+v, %v; want unconfirmed", second, err)
 	}
 	foreign, _ := repo.Create(ctx, domain.Device{UserID: v.ID, Name: "X", Platform: "web", TokenHash: "uc-f", Unconfirmed: true})
-	if n, _ := repo.CountByUser(ctx, u.ID); n != 2 {
-		t.Fatalf("CountByUser = %d, want 2 (чужие не считаются)", n)
+	if has, _ := repo.HasSessions(ctx, u.ID); !has {
+		t.Fatalf("HasSessions = %v, want true", has)
 	}
 
 	got, err := repo.Get(ctx, u.ID, second.ID)

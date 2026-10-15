@@ -97,9 +97,9 @@ type DeviceRepo interface {
 	// Get — устройство пользователя по id; нет такого — domain.ErrNotFound.
 	Get(ctx context.Context, userID, deviceID int64) (domain.Device, error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Device, error)
-	// CountByUser — есть ли у пользователя сессии (0 или 1, не точное число): признак
+	// HasSessions — есть ли у пользователя сессии: признак
 	// «новый вход» — спрашивать есть кого, только если уже есть другие сессии. До Create.
-	CountByUser(ctx context.Context, userID int64) (int, error)
+	HasSessions(ctx context.Context, userID int64) (bool, error)
 	// Confirm снимает флаг unconfirmed. changed — флаг был поднят и снят сейчас;
 	// domain.ErrNotFound — такой сессии у пользователя нет (одним запросом
 	// отличается от «уже подтверждена»: changed=false, nil).

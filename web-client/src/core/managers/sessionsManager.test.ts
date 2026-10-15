@@ -459,7 +459,7 @@ describe('reset на смене аккаунта', () => {
     expect(broadcast).not.toHaveBeenCalledWith('unconfirmed_authorizations_update', [expect.objectContaining({ hash: 20 })])
   })
 
-  it('кадр, пришедший после смены аккаунта до чтения State, не применяется', async() => {
+  it('кадр, полученный до смены аккаунта, после неё не применяется (кадр после reset() поколением не отсекается — его гасит сокет)', async() => {
     const { manager, resolveState } = makeManager({ deferState: true })
     const pending = manager.getUnconfirmedAuthorizations()
     manager.processNewAuthorizationUpdate(makeUpdate(2, true)) // кадр сокета «Алисы»

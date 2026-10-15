@@ -519,13 +519,13 @@ func (r *AuthRepo) Delete(ctx context.Context, userID, deviceID int64) (d domain
 	return d, true, nil
 }
 
-// CountByUser — есть ли у пользователя сессии: 0 или 1 (LIMIT 1 по idx_devices_user, без
-// обхода всех строк аккаунта: у агентских аккаунтов их сотни). Нужен входу только как
-// «есть ли кому задавать вопрос».
-func (r *AuthRepo) CountByUser(ctx context.Context, userID int64) (int, error) {
-	var n int
-	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM (SELECT 1 FROM devices WHERE user_id=$1 LIMIT 1) s`, userID).Scan(&n)
-	return n, err
+// HasSessions — есть ли у пользователя сессии (EXISTS по idx_devices_user: без обхода всех
+// строк аккаунта, у агентских аккаунтов их сотни). Нужен входу только как «есть ли кому
+// задавать вопрос».
+func (r *AuthRepo) HasSessions(ctx context.Context, userID int64) (bool, error) {
+	var has bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM devices WHERE user_id=$1)`, userID).Scan(&has)
+	return has, err
 }
 
 // Confirm снимает unconfirmed одним запросом, различая «нет строки»

@@ -364,11 +364,11 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, de
 		// Считаем ДО Create, иначе сама новая строка попала бы в счёт. Сбой чтения
 		// — отказ входа, а не «сессий нет»: иначе сбой БД молча глушил бы
 		// уведомление о чужом входе.
-		n, err := i.devices.CountByUser(ctx, user.ID)
+		has, err := i.devices.HasSessions(ctx, user.ID)
 		if err != nil {
 			return SignInResult{}, err
 		}
-		device.Unconfirmed = n > 0
+		device.Unconfirmed = has
 	}
 	created, err := i.devices.Create(ctx, device)
 	if err != nil {
