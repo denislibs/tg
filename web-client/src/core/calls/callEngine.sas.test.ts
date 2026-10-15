@@ -211,11 +211,11 @@ describe('порядок и гонки очереди', () => {
   })
 
   it('свой localDescription с чужим отпечатком: call_end disconnect, SDP наружу не уходит', async () => {
-    const orig = FakePC.prototype.setLocalDescription
-    FakePC.prototype.setLocalDescription = async function (this: FakePC) {
-      await orig.call(this)
-      this.localDescription = { type: this.localDescription!.type, sdp: sdpWithFp(FAKE_FP), toJSON() { return { type: this.type, sdp: this.sdp } } }
-    }
+    const spy = vi.spyOn(FakePC.prototype, 'setLocalDescription')
+    spy.mockImplementation(async function (this: FakePC) {
+      this.localDescription = { type: 'offer', sdp: sdpWithFp(FAKE_FP), toJSON() { return { type: this.type, sdp: this.sdp } } }
+      this.signalingState = 'have-local-offer'
+    })
     try {
       const { A, B } = await startPair(net)
       // подмена действует на pc обеих сторон; хотя бы одна рвёт звонок, SDP с чужим отпечатком наружу не уходит
@@ -223,7 +223,7 @@ describe('порядок и гонки очереди', () => {
       expect([...A.frames('call_signal'), ...B.frames('call_signal')].filter((f) => f.data.sdp)).toHaveLength(0)
       expect([...reasonsOf(A.frames('call_end')), ...reasonsOf(B.frames('call_end'))]).toContain('disconnect')
     } finally {
-      FakePC.prototype.setLocalDescription = orig
+      spy.mockRestore()
     }
   })
 })
