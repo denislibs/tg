@@ -71,6 +71,12 @@ type Config struct {
 	// пароль» без почты восстановления). Неделя, как в Telegram; сокращается
 	// только на стенде, иначе сценарий непроверяем.
 	AccountResetWait time.Duration
+
+	// DevPurchases — dev-начисление звёзд и мок оплаты Premium без платёжной
+	// формы (POST /stars/topup, /me/premium, /me/premium/checkout), Б-10. По
+	// умолчанию выключено: в проде этих маршрутов нет, а help.getAppConfig
+	// отдаёт stars_purchase_blocked. Включается на стенде и в разработке.
+	DevPurchases bool
 }
 
 func Load() (*Config, error) {
@@ -80,6 +86,7 @@ func Load() (*Config, error) {
 		RedisURL:       getenv("REDIS_URL", "redis://localhost:6379"),
 		DevOTPCode:     getenv("DEV_OTP_CODE", defOTPCode),
 		SeedDemo:       getenv("SEED_DEMO", "") == "true" || getenv("SEED_DEMO", "") == "1",
+		DevPurchases:   getenv("DEV_PURCHASES", "") == "true" || getenv("DEV_PURCHASES", "") == "1",
 		MediaURLSecret: getenv("MEDIA_URL_SECRET", defMediaURLSecret),
 	}
 	if c.DatabaseURL == "" {
@@ -128,6 +135,10 @@ func Load() (*Config, error) {
 		}
 		if c.DevOTPCode == defOTPCode {
 			bad = append(bad, "DEV_OTP_CODE")
+		}
+		// Бесплатные звёзды и Premium без оплаты — прямая дыра в экономике.
+		if c.DevPurchases {
+			return nil, fmt.Errorf("APP_ENV=production, но включён DEV_PURCHASES — dev-начисление звёзд и мок Premium в проде запрещены")
 		}
 		if len(bad) > 0 {
 			return nil, fmt.Errorf("APP_ENV=production, но используются дефолтные секреты: %s — задайте их через окружение", strings.Join(bad, ", "))

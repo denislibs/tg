@@ -76,7 +76,7 @@ describe('PaidMessagesInterceptor.prepareStarsForPayment (экземпляр)', 
     expect(root.querySelector('.popup-description')!.textContent)
       .toBe('Платная charges 10 Stars per incoming message. Would you like to pay 30 Stars to send 3 messages?')
     expect(root.querySelector('.popup-button')!.textContent).toBe('Pay for 3 messages')
-    expect(root.querySelector('.checkbox-field .checkbox-caption')!.textContent).toBe('Don\'t ask again')
+    expect(root.querySelector('.popup-peer-checkbox-row .row-title')!.textContent).toBe('Don\'t ask again')
 
     click(confirmButton)
     expect(await promise).toEqual({ starsAmount: 10, canUndo: false })

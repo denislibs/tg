@@ -1,24 +1,22 @@
 /**
  * Порт tweb `src/components/checkboxField.ts` (корень и тумблер — по HEAD
  * 812502980: `span`, `toggleCircle`, замок, `toggleDisability`) — В ОБЪЁМЕ
- * ТРЁХ ВЫЗЫВАЮЩИХ (третий — Solid-обёртка `checkboxFieldTsx.solid.tsx`):
+ * ВЫЗЫВАЮЩИХ (среди них Solid-обёртка `checkboxFieldTsx.solid.tsx`, через неё же —
+ * `PopupPeer`, и селектор пиров `appSelectPeers.solid.tsx`):
  *  • `AppSelection.toggleElementCheckbox` строит `new CheckboxField({name,
  *    round: true})` (tweb selection.ts:359-362) и дальше трогает у него ровно
  *    два поля — `label` (кладёт в бабл) и `input` (`input.checked = …`);
- *  • `PopupPeer` чекбоксы (`popupPeer.ts`, раунд правок 3 — см. докблок файла)
- *    строит `new CheckboxField({text, checked})` (tweb peer.ts:98-101, внутри
- *    `if(options.checkboxes)`) и читает `input.checked` в колбэке кнопки;
+ *  • `PopupPeer` чекбоксы — через `CheckboxFieldTsx` в строке
+ *    `.popup-peer-checkbox-row` (`popups/popupPeerCheckboxRow.solid.tsx`, tweb
+ *    `peer.tsx:144-156`); `input.checked` читает колбэк кнопки;
  *  • радиогруппы меню `ButtonMenuSync({radioGroups})` (`buttonMenu.ts`, tweb
  *    buttonMenu.ts:262-270, :303-316) — `new CheckboxField()` без опций, затем
  *    вызывающий сам ставит `input.type = 'radio'` (`asRadio` не нужен).
  *
  * ── Что урезано и почему ────────────────────────────────────────────────────
  * Ветки оригинала, у которых здесь нет вызывающего и нет зависимости в репо:
- *  (`text`/`textArgs` портированы дословно с задачи 7: подпись — КЛЮЧ, узел
- *  строит `_i18n(span, key, args)`, как в оригинале (:114). Раньше здесь стояла
- *  «уже переведённая строка» в `textContent`, и по сигнатуре `text?: string`
- *  это было неотличимо от ключа — та же половина раскола контракта, что у
- *  `ButtonMenuItem`/`PopupButton`.)
+ *  • `text`/`textArgs` и `span.checkbox-caption` НЕТ — как у HEAD (`checkboxField.ts:10-13`,
+ *    ef41b29db): чекбокс — только контрол, подпись принадлежит строке (`Row.Title`).
  *  • (`toggle` СНЯТ с этого списка — портирован вместе с первой Solid-вкладкой
  *    настроек, у которой он появился вызывающим: `checkboxFieldTsx.solid.ts`
  *    → `sidebarLeft/tabs/language.solid.tsx`. Разметка дословная, tweb
@@ -67,28 +65,21 @@
  * `button.ts`/`buttonIcon.ts`: двойники уйдут вместе с последним
  * React-экраном, который их рисует.
  *
- * Разметка ветки `{round: true}` — дословная (tweb :107-152); разметка `text`
- * (`span.checkbox-caption`, tweb :106-113) — тоже дословная; стили под обе уже
+ * Разметка ветки `{round: true}` — дословная (tweb :107-152); стили под неё уже
  * портированы: `src/styles/tweb/_checkbox.scss` (`.checkbox-field`,
- * `.checkbox-field-round`, `.checkbox-box{-border,-background,-check}`,
- * `.checkbox-caption`), символ `#check` — `components/SvgDefs.tsx`.
+ * `.checkbox-field-round`, `.checkbox-box{-border,-background,-check}`), символ
+ * `#check` — `components/SvgDefs.tsx`.
  */
 
 import Icon from '@components/icon'
 import simulateEvent from '@helpers/dom/dispatchEvent'
 import type { IconName } from '@core/tgico-icons'
-import { _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 export type CheckboxFieldOptions = {
   /** идёт в `id` инпута как `input-<name>` (tweb :59-61) */
   name?: string
   /** круглый чекбокс — форма, в которой чекбокс живёт в бабле */
   round?: boolean
-  /** подпись строки — КЛЮЧ (tweb :12, :106-113, `span.checkbox-caption`); без неё —
-   *  `checkbox-without-caption` (tweb :114), как и раньше */
-  text?: LangPackKey
-  /** аргументы подписи (tweb :114 — второй параметр `_i18n`) */
-  textArgs?: FormatterArguments
   /** взведён при создании (tweb :64-66) */
   checked?: boolean
   /** переключатель вместо коробки с галочкой (tweb :17, :117-129) */
@@ -110,11 +101,8 @@ export default class CheckboxField {
 
   constructor(options: CheckboxFieldOptions = {}) {
     // tweb HEAD `:37` (ef41b29db) — `span`: поле «только контрол», его подпись —
-    // строка, которая сама `label` (label-в-label ломал бы `row.control`,
-    // 472e3e76b). `label` остаётся лишь у поля С ПОДПИСЬЮ — ветки старой базы
-    // для единственного потребителя `PopupPeer` (чекбоксы попапа без строки;
-    // щелчок по подписи обязан переключать поле). Уйдёт с попапами 2C.
-    const label = this.label = document.createElement(options.text ? 'label' : 'span')
+    // строка, которая сама `label` (label-в-label ломал бы `row.control`, 472e3e76b).
+    const label = this.label = document.createElement('span')
     label.classList.add('checkbox-field')
 
     if (options.restriction && !options.toggle) { // tweb :40-42
@@ -133,17 +121,6 @@ export default class CheckboxField {
     }
     if (options.checked) { // tweb :64-66
       input.checked = true
-    }
-
-    // tweb :106-114 — подпись есть → span.checkbox-caption, иначе класс
-    // "без подписи" (каретке под неё не место).
-    let span: HTMLSpanElement | undefined
-    if (options.text) {
-      span = document.createElement('span')
-      span.classList.add('checkbox-caption')
-      _i18n(span, options.text, options.textArgs) // tweb :114
-    } else {
-      label.classList.add('checkbox-without-caption')
     }
 
     label.append(input)
@@ -187,10 +164,6 @@ export default class CheckboxField {
       box.append(border, bg, checkSvg)
 
       label.append(box)
-    }
-
-    if (span) { // tweb :151-153 — подпись ПОСЛЕ коробки
-      label.append(span)
     }
   }
 
