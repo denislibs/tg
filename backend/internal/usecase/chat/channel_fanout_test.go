@@ -368,7 +368,7 @@ func TestChannelReaction_TopicOnly(t *testing.T) {
 // A2-23: «печатает» в broadcast-канале не рассылается.
 func TestChannelTyping_NotFannedOut(t *testing.T) {
 	e := newChannelEnv(t)
-	if err := e.i.Typing(context.Background(), e.ch, 7, domain.SendMessageActionByTag(domain.SendMessageTypingActionTag)); err != nil {
+	if err := e.i.Typing(context.Background(), e.ch, 7, nil, domain.SendMessageActionByTag(domain.SendMessageTypingActionTag)); err != nil {
 		t.Fatalf("Typing: %v", err)
 	}
 	for _, uid := range []int64{8, 9} {

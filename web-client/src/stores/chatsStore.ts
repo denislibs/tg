@@ -9,11 +9,21 @@ import type { UserStatus } from '../core/peers/peer'
 import { isUser } from '../core/peers/peerId'
 import rootScope from '@lib/rootScope'
 
-// Per-chat typing state: peerId -> userId -> {action, at}. `at` is the event
+// Per-chat typing state: key -> userId -> {action, at}. `at` is the event
 // timestamp (ms) so stale entries can be ignored; entries are also actively
 // cleared on a timer / when the user sends a message.
+//
+// Key — `getTypingsKey(peerId, threadId)`: печать в теме/треде лежит под своим
+// ключом, чат — под `String(peerId)` (tweb `appProfileManager.getTypingsKey`,
+// :1212-1214).
 export interface TypingEntry { action: SendMessageAction; at: number }
 export type ChatTyping = Record<number, TypingEntry>
+export type TypingsKey = string | number
+
+/** tweb `getTypingsKey` (`appProfileManager.ts:1212-1214`): `peerId[_threadId]`. */
+export function getTypingsKey(peerId: PeerId, threadId?: number | null): string {
+  return peerId + (threadId ? `_${threadId}` : '')
+}
 
 interface ChatsState {
   dialogs: Dialog[]
@@ -31,7 +41,7 @@ interface ChatsState {
    *  у `userStatusOnline` есть `expires`, и статус гаснет сам — потерянный
    *  кадр больше не оставляет человека онлайн навсегда. */
   presence: Record<number, UserStatus>
-  typing: Record<number, ChatTyping>
+  typing: Record<string, ChatTyping>
   /**
    * Task 2 (перенос владения диалогами): ЕДИНСТВЕННЫЙ вход и ЕДИНСТВЕННЫЙ
    * писатель списка диалогов (Task 6 снесла легаси-путь `setDialogs`/
@@ -61,8 +71,8 @@ interface ChatsState {
   // успешного REST-ответа; вызывавшая их витрина (ChatListItem/Chat/
   // useMuteToggle/useAppHotkeys/ChatThemesPicker) больше их не трогает.
   setPresence: (p: PresenceEvt) => void
-  setTyping: (peerId: number, userId: number, action: SendMessageAction, at: number) => void
-  clearTyping: (peerId: number, userId: number) => void
+  setTyping: (key: TypingsKey, userId: number, action: SendMessageAction, at: number) => void
+  clearTyping: (key: TypingsKey, userId: number) => void
 }
 
 /**
@@ -162,17 +172,22 @@ export const useChatsStore = create<ChatsState>((set) => ({
   // же кадрам (chat_removed/chat_update) и публикуют rt:dialog_op вместо
   // прямой записи в этот стор.
   setPresence: (p) => set((s) => ({ presence: { ...s.presence, [p.user_id]: p.status } })),
-  setTyping: (peerId, userId, action, at) =>
+  setTyping: (key, userId, action, at) =>
     set((s) => ({
-      typing: { ...s.typing, [peerId]: { ...s.typing[peerId], [userId]: { action, at } } },
+      typing: { ...s.typing, [key]: { ...s.typing[key], [userId]: { action, at } } },
     })),
-  clearTyping: (peerId, userId) =>
+  clearTyping: (key, userId) =>
     set((s) => {
-      const chat = s.typing[peerId]
+      const chat = s.typing[key]
       if (!chat || !(userId in chat)) return {}
       const next = { ...chat }
       delete next[userId]
-      return { typing: { ...s.typing, [peerId]: next } }
+      // пустой набор — ключ уходит (tweb `delete this.typingsInPeer[key]`,
+      // appProfileManager.ts:1457): ключей тем иначе копилось бы без предела
+      const typing = { ...s.typing }
+      if (Object.keys(next).length) typing[key] = next
+      else delete typing[key]
+      return { typing }
     }),
   // Task 3: applyNewMessage/applyRead/bumpUnreadReactions отсюда убраны — их
   // тела переехали в dialogsManager (см. докблок setPresence выше). Typing

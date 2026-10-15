@@ -277,7 +277,8 @@ export function createWorkerCore() {
     send: (a) => conn.sendMessage(a),
     upload: (a) => media.upload(a),
     cancelUpload: (id) => { void media.cancelUpload(id) },
-    sendTyping: (peerId, action) => conn.sendTyping(peerId, action),
+    // тред печати остаётся только у форума — tweb `setTyping` (:13873-13875)
+    sendTyping: (peerId, action, threadId) => conn.sendTyping(peerId, action, threadId && isForumPeer(peerId) ? threadId : undefined),
     uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
     // Пиры, приехавшие ПОПУТНО со списком сообщений (`users` контейнера
     // messages.Messages), — тем же приёмником, что у диалогов и звонков.
@@ -468,6 +469,8 @@ export function createWorkerCore() {
     // `contacts` объявлен ниже — стрелка дёргает его лениво.
     onContactToggle: (userId, isContact, wasContact) => contacts.onContactUpdated(userId, isContact, wasContact),
   })
+  // Пир-форум ли — тред печати (tweb `setTyping`) и прочтение тем.
+  const isForumPeer = (peerId: PeerId) => isForum(peers.cachedPeer(peerId) as Chat | undefined)
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
@@ -1275,7 +1278,10 @@ export function createWorkerCore() {
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
   // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
   // питает pull-снимок для позднего подписчика.
-  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads })
+  const realtime = newRealtime({
+    conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads,
+    isForumPeer,
+  })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

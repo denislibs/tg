@@ -234,7 +234,7 @@ export interface PendingCtx {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping: (peerId: number, action: SendMessageAction) => void
+  sendTyping: (peerId: number, action: SendMessageAction, threadId?: number | null) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). `done` — аплоад
    *  закончился (успехом, ошибкой или отменой): кольцо на бабле снимается. */
   uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => void
@@ -821,8 +821,8 @@ export function newPendingMethods(ctx: PendingCtx) {
     const action = o.uploadAction
     let ping: ReturnType<typeof setInterval> | null = null
     if (action) {
-      ctx.sendTyping(o.peerId, action)
-      ping = setInterval(() => ctx.sendTyping(o.peerId, action), UPLOAD_TYPING_MS)
+      ctx.sendTyping(o.peerId, action, o.threadId)
+      ping = setInterval(() => ctx.sendTyping(o.peerId, action, o.threadId), UPLOAD_TYPING_MS)
     }
     try {
       const mediaId = await ctx.upload({
