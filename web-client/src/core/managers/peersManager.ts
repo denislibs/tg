@@ -1,7 +1,7 @@
 // src/core/managers/peersManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
-import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
+import { peerKey, type Channel, type Chat, type User, type UserReal, type UserStatus } from '../peers/peer'
 import { getPeerId, isUser, toUserId, type Peer } from '../peers/peerId'
 import type { PresenceEvt } from '../realtime/events'
 
@@ -171,6 +171,19 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   }
 
   /**
+   * Карточка без `status` не стирает известный статус. У оригинала каждый
+   * `user` в ответе несёт статус (поля нет, только когда его вправду нет), и
+   * замена карточки целиком безопасна. Наши витрины его нет-нет да пропускают
+   * (карточка без `status` — «ничего не известно», а не «давно»), и замена
+   * целиком стирала бы живое присутствие, пришедшее кадром `updateUserStatus`
+   * (`setUserStatus`).
+   */
+  function keepKnownStatus(prev: User | Chat, next: User | Chat): User | Chat {
+    if (next._ !== 'user' || prev._ !== 'user' || next.status || !prev.status) return next
+    return { ...next, status: prev.status }
+  }
+
+  /**
    * Положить карточки в кэш. Возвращает подмножество `changed` — те, что
    * ЗАМЕНИЛИ уже лежавшие. Только на них зеркало и может разъехаться с
    * владельцем, поэтому объявлять надо ровно их.
@@ -202,7 +215,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
       }
       const key = peerKey(incoming)
       const prev = cache.get(key)
-      const peer = prev ? mergeApiChat(prev, incoming) : incoming
+      const peer = prev ? mergeApiChat(prev, keepKnownStatus(prev, incoming)) : incoming
       if (prev && same(prev, peer)) continue
       cache.set(key, peer)
       indexUsername(peer, prev)
@@ -373,6 +386,28 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   }
 
   /**
+   * Кадр `updateUserStatus` — порт обработчика `appUsersManager.ts:90-102`:
+   * статус известной карточки переписывается на пришедший (карточки нет —
+   * выход, `:92-95`). Статус — ПОЛЕ карточки, поэтому всё, что рисует подпись из
+   * кэша воркера (`appSelectPeers.wrapSubtitle`, `sortedUserList`,
+   * `appSearchSuper`), видит живое присутствие; стор присутствия
+   * (`chatsStore.presence`, шапка чата и истечение онлайна) получает тот же
+   * кадр отдельным путём.
+   *
+   * Объявляется операцией — зеркало главного потока (`peerCache`) держит ту же
+   * карточку. На диск не пишется: присутствие меняется чаще, чем стоит писать
+   * (персист карточки случается на ответах, которые её приносят).
+   */
+  function setUserStatus(userId: number, status: UserStatus): void {
+    const prev = cache.get(userId)
+    if (!prev || prev._ !== 'user' || !status) return
+    if (JSON.stringify(prev.status) === JSON.stringify(status)) return
+    const next: User = { ...prev, status }
+    cache.set(userId, next)
+    publish([next])
+  }
+
+  /**
    * Синхронное чтение кэша ВНУТРИ воркера — порт `appPeersManager.getPeer`
    * (`:87-91`). Нужно владельцу диалогов: вид чата больше не приезжает строкой
    * (решение Р8), и правило папок «группы/каналы» задаёт вопрос конструктору
@@ -438,6 +473,6 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     return found
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername }
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, setUserStatus, cachedPeer, hydrateFromDisk, resolveUsername }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>

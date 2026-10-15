@@ -459,6 +459,59 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
   })
 })
 
+// Статус — поле карточки, как у tweb (`appUsersManager.ts:90-102`): кадр
+// `updateUserStatus` правит `user.status` известной карточки, и всё, что читает
+// подпись из кэша воркера (селектор «Добавить участников», sortedUserList,
+// appSearchSuper), видит живое присутствие. Карточка без `status` (ответ
+// витрины, которая его не посчитала) живой статус не стирает.
+describe('PeersManager — статус как поле карточки', () => {
+  const online = { _: 'userStatusOnline', expires: 1790503807 } as const
+  const offline = { _: 'userStatusOffline', was_online: 1790500000 } as const
+
+  it('setUserStatus: карточка в кэше получает новый статус и объявляется операцией', async () => {
+    const { rest } = fakeRest([user(2, { status: offline })])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    await mgr.getUsers([2])
+
+    mgr.setUserStatus(2, online)
+
+    const [card] = await mgr.getUsers([2])
+    expect(card.status).toEqual(online)
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ ...user(2), status: online }] }])
+  })
+
+  it('setUserStatus: неизвестный пользователь и тот же статус — без операции', async () => {
+    const { rest } = fakeRest([user(2, { status: online })])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    mgr.setUserStatus(9, online) // tweb :92-95: карточки нет — выход
+    await mgr.getUsers([2])
+    mgr.setUserStatus(2, online)
+    expect(ops).toEqual([])
+  })
+
+  it('карточка без status не стирает известный статус; со status — заменяет', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    mgr.saveApiPeers({ users: [user(2, { status: online })] })
+
+    mgr.saveApiPeers({ users: [user(2, { first_name: 'Новое' })] })
+    expect(mgr.cachedPeer(2 as PeerId)).toMatchObject({ first_name: 'Новое', status: online })
+
+    mgr.saveApiPeers({ users: [user(2, { status: offline })] })
+    expect(mgr.cachedPeer(2 as PeerId)).toMatchObject({ status: offline })
+  })
+
+  it('карточка без status не запускает присутствие', () => {
+    const statuses: unknown[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onUserStatus: (e) => statuses.push(e) })
+    mgr.saveApiPeers({ users: [user(2, { status: online })] })
+    statuses.length = 0
+    mgr.saveApiPeers({ users: [user(2)] })
+    expect(statuses).toEqual([])
+  })
+})
+
 // Своя карточка (VA2-02): второе устройство получает `user_update` о самом себе —
 // смену эмодзи-статуса, Premium, — а в кэше пиров своей карточки может не быть
 // (в списках чатов «я» бывает только в «Избранном»). `me` воркера обновляется

@@ -94,6 +94,29 @@ describe('createWorkerCore(): контакты и теги «Избранног�
     expect(ops).toEqual([{ ops: [{ op: 'upsert', peers: [user] }] }])
   })
 
+  // P0 №2: статус — поле карточки (tweb appUsersManager.ts:90-102). Кадр
+  // updateUserStatus правит известную карточку в кэше воркера и объявляет её
+  // вкладкам; стор присутствия получает тот же кадр.
+  it('updateUserStatus → статус известной карточки в кэше воркера, операция и rt:presence', async () => {
+    const { tab } = boot()
+    const ops: unknown[] = []
+    const presence: unknown[] = []
+    tab.on('rt:peer_op', (p) => ops.push(p))
+    tab.on('rt:presence', (p) => presence.push(p))
+    const user = { _: 'user', id: 7, first_name: 'Егор', status: { _: 'userStatusOffline', was_online: 1790500000 } }
+    capturedConnDeps!.onFrame('user_update', { _: 'updateUserSnapshot', user })
+    await settle()
+    ops.length = 0
+    presence.length = 0 // статус из самой карточки тоже уходит в присутствие — не предмет теста
+
+    const status = { _: 'userStatusOnline', expires: 1790503807 }
+    capturedConnDeps!.onFrame('presence', { _: 'updateUserStatus', user_id: 7, status })
+    await settle()
+
+    expect(ops).toEqual([{ ops: [{ op: 'upsert', peers: [{ ...user, status }] }] }])
+    expect(presence).toEqual([{ _: 'updateUserStatus', user_id: 7, status }])
+  })
+
   it('updateSavedReactionTags → rt:saved_reaction_tags, воркер не падает', async () => {
     const { tab } = boot()
     const got: unknown[] = []

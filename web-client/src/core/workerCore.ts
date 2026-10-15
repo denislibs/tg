@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type PresenceEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -710,6 +710,10 @@ export function createWorkerCore() {
     // не заводить исключение в общей проводке (потребителей у него на витрине
     // сейчас нет).
     updateUserSnapshot:             (p) => peers.applyUserUpdate((p as UserUpdateEvt).user),
+    // Присутствие — поле карточки (tweb `appUsersManager.ts:90-102`): владелец
+    // карточек правит `status`, а стор присутствия получает тот же кадр
+    // широковещательно ниже. Карточки нет — выход.
+    updateUserStatus:               (p) => peers.setUserStatus((p as PresenceEvt).user_id, (p as PresenceEvt).status),
   }
 
   // Отражение апдейта в SSOT + broadcast (без арифметики pts — её делает
