@@ -89,11 +89,12 @@ func (i *Interactor) ChannelStats(ctx context.Context, chatID, userID int64) (do
 // участники — по `joined_at` на конец окна.
 func (i *Interactor) overview(ctx context.Context, chatID int64, at time.Time) (current, previous domain.ChannelStatsSummary, notificationsOn int64, err error) {
 	mid := at.Add(-domain.StatsWindow)
-	seqMid, err := i.repo.SeqBefore(ctx, chatID, mid)
+	seqMid, err := i.repo.SeqBefore(ctx, chatID, math.MaxInt64, mid)
 	if err != nil {
 		return
 	}
-	seqStart, err := i.repo.SeqBefore(ctx, chatID, mid.Add(-domain.StatsWindow))
+	// Скан второй границы начинается с seqMid: читается только предыдущее окно.
+	seqStart, err := i.repo.SeqBefore(ctx, chatID, seqMid, mid.Add(-domain.StatsWindow))
 	if err != nil {
 		return
 	}
@@ -103,7 +104,7 @@ func (i *Interactor) overview(ctx context.Context, chatID int64, at time.Time) (
 	if previous, err = i.repo.Summary(ctx, chatID, seqStart, seqMid, mid); err != nil {
 		return
 	}
-	notificationsOn, err = i.repo.NotificationsOn(ctx, chatID)
+	notificationsOn, err = i.repo.NotificationsOn(ctx, chatID, at)
 	return
 }
 

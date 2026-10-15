@@ -17,7 +17,7 @@ type summaryCall struct {
 type fakeRepo struct {
 	typ          string
 	role         string
-	seqBefore    func(time.Time) int64
+	seqBefore    func(maxSeq int64, t time.Time) int64
 	summaries    []summaryCall
 	summary      func(summaryCall) domain.ChannelStatsSummary
 	notifyOn     int64
@@ -34,11 +34,11 @@ func (f *fakeRepo) MemberRole(context.Context, int64, int64) (string, domain.Rig
 	}
 	return f.role, 0, nil
 }
-func (f *fakeRepo) SeqBefore(_ context.Context, _ int64, t time.Time) (int64, error) {
+func (f *fakeRepo) SeqBefore(_ context.Context, _, maxSeq int64, t time.Time) (int64, error) {
 	if f.seqBefore == nil {
 		return 0, nil
 	}
-	return f.seqBefore(t), nil
+	return f.seqBefore(maxSeq, t), nil
 }
 func (f *fakeRepo) Summary(_ context.Context, _, fromSeq, toSeq int64, at time.Time) (domain.ChannelStatsSummary, error) {
 	c := summaryCall{fromSeq, toSeq, at}
@@ -48,7 +48,9 @@ func (f *fakeRepo) Summary(_ context.Context, _, fromSeq, toSeq int64, at time.T
 	}
 	return f.summary(c), nil
 }
-func (f *fakeRepo) NotificationsOn(context.Context, int64) (int64, error) { return f.notifyOn, nil }
+func (f *fakeRepo) NotificationsOn(context.Context, int64, time.Time) (int64, error) {
+	return f.notifyOn, nil
+}
 func (f *fakeRepo) MembersByDay(context.Context, int64) ([]domain.StatPoint, error) {
 	return f.members, nil
 }
@@ -165,11 +167,12 @@ func TestChannelStatsOverviewTwoWindows(t *testing.T) {
 	repo := &fakeRepo{
 		typ:  "channel",
 		role: domain.RoleCreator,
-		seqBefore: func(tm time.Time) int64 {
+		seqBefore: func(maxSeq int64, tm time.Time) int64 {
 			switch {
-			case tm.Equal(now.Add(-week)):
+			case tm.Equal(now.Add(-week)) && maxSeq == math.MaxInt64:
 				return 30
-			case tm.Equal(now.Add(-2 * week)):
+			// Вторая граница ищется ниже первой — скан не заходит в текущее окно.
+			case tm.Equal(now.Add(-2*week)) && maxSeq == 30:
 				return 10
 			}
 			t.Fatalf("неожиданная граница %v", tm)

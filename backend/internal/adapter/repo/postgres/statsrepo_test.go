@@ -48,13 +48,13 @@ func seedStatsWindows(t *testing.T) (*StatsRepo, statsWindowFixture) {
 			mustExec(t, pool, `INSERT INTO reactions (message_id, user_id, emoji) VALUES ($1,$2,'👍')`, id, voter)
 		}
 	}
-	post(1, author, "20 days", 100, 9, 3, "text", false) // до обоих окон
-	post(2, author, "12 days", 10, 2, 1, "text", false)  // предыдущее окно
-	post(3, other, "9 days", 20, 0, 0, "text", false)    // предыдущее окно
-	post(4, author, "8 days", 500, 50, 0, "text", true)  // удалён — не считается
-	post(5, author, "6 days", 0, 0, 0, "service", false) // служебное — не пост
-	post(6, author, "3 days", 8, 4, 2, "text", false)    // последнее окно
-	post(7, late, "1 day", 12, 2, 1, "text", false)      // последнее окно
+	post(1, author, "20 days", 100, 9, 3, "text", false)  // до обоих окон
+	post(2, author, "12 days", 10, 2, 1, "text", false)   // предыдущее окно
+	post(3, other, "9 days", 20, 0, 0, "text", false)     // предыдущее окно
+	post(4, author, "8 days", 500, 50, 1, "text", true)   // удалён (с реакцией) — не считается
+	post(5, author, "6 days", 70, 7, 1, "service", false) // служебное (с просмотрами) — не пост
+	post(6, late, "3 days", 8, 4, 2, "text", false)       // последнее окно
+	post(7, late, "1 day", 12, 2, 1, "text", false)       // последнее окно
 
 	return NewStatsRepo(pool), statsWindowFixture{chat: ch, now: time.Now().Add(time.Minute)}
 }
@@ -73,7 +73,7 @@ func TestStatsRepo_SeqBeforeSkipsDeletedAndFindsWindowBounds(t *testing.T) {
 		{"до now−7d — пост 3, удалённый 4 пропущен", 7 * 24 * time.Hour, 3},
 	}
 	for _, tc := range cases {
-		got, err := r.SeqBefore(ctx, f.chat, f.now.Add(-tc.age))
+		got, err := r.SeqBefore(ctx, f.chat, math.MaxInt64, f.now.Add(-tc.age))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,11 +89,11 @@ func TestStatsRepo_SummaryWindowsCurrentAndPrevious(t *testing.T) {
 	r, f := seedStatsWindows(t)
 	ctx := context.Background()
 	week := 7 * 24 * time.Hour
-	seq0, err := r.SeqBefore(ctx, f.chat, f.now.Add(-2*week))
+	seq1, err := r.SeqBefore(ctx, f.chat, math.MaxInt64, f.now.Add(-week))
 	if err != nil {
 		t.Fatal(err)
 	}
-	seq1, err := r.SeqBefore(ctx, f.chat, f.now.Add(-week))
+	seq0, err := r.SeqBefore(ctx, f.chat, seq1, f.now.Add(-2*week))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestStatsRepo_SummaryWindowsCurrentAndPrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantCur := domain.ChannelStatsSummary{Members: 3, TotalViews: 20, TotalForwards: 6, TotalReactions: 3, PostsCount: 2, PostersCount: 2}
+	wantCur := domain.ChannelStatsSummary{Members: 3, TotalViews: 20, TotalForwards: 6, TotalReactions: 3, PostsCount: 2, PostersCount: 1}
 	wantPrev := domain.ChannelStatsSummary{Members: 2, TotalViews: 30, TotalForwards: 2, TotalReactions: 1, PostsCount: 2, PostersCount: 2}
 	if cur != wantCur {
 		t.Errorf("current = %+v, want %+v", cur, wantCur)

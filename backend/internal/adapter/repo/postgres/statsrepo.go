@@ -42,17 +42,20 @@ func (r *StatsRepo) MemberRole(ctx context.Context, chatID, userID int64) (strin
 	return role, rights, err
 }
 
-// SeqBefore — последний номер не удалённого сообщения чата, созданного строго
-// до t, 0 — если такого нет. Индекса messages(chat_id, created_at) нет, поэтому
-// граница окна по времени переводится в границу по seq (он монотонен в чате):
-// обратный скан частичного индекса (chat_id, seq) WHERE deleted_at IS NULL
-// (idx_messages_unread_count) проходит только сообщения новее t, то есть окно.
-func (r *StatsRepo) SeqBefore(ctx context.Context, chatID int64, t time.Time) (int64, error) {
+// SeqBefore — последний номер не удалённого сообщения чата с seq не выше
+// maxSeq, созданного строго до t; 0 — если такого нет. Индекса
+// messages(chat_id, created_at) нет, поэтому граница окна по времени
+// переводится в границу по seq: он почти монотонен по времени (расхождение —
+// длительность транзакции отправки, для окон в сутки пренебрежимо).
+// Обратный скан частичного индекса (chat_id, seq) WHERE deleted_at IS NULL
+// (idx_messages_unread_count) идёт от maxSeq вниз и проходит только
+// сообщения новее t, то есть окно.
+func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.Time) (int64, error) {
 	var seq int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `
 		SELECT seq FROM messages
-		WHERE chat_id=$1 AND deleted_at IS NULL AND created_at < $2
-		ORDER BY seq DESC LIMIT 1`, chatID, t).Scan(&seq)
+		WHERE chat_id=$1 AND deleted_at IS NULL AND seq <= $2 AND created_at < $3
+		ORDER BY seq DESC LIMIT 1`, chatID, maxSeq, t).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
@@ -85,17 +88,19 @@ func (r *StatsRepo) Summary(ctx context.Context, chatID, fromSeq, toSeq int64, a
 	return s, err
 }
 
-// NotificationsOn — участники с включёнными уведомлениями сейчас. Не мьютят те,
+// NotificationsOn — вступившие до at участники с включёнными уведомлениями. Не мьютят те,
 // кто не в мьюте с учётом типа чата (chatMutedSQL — та же копия
 // domain.ChatMuted, что у пуша): мьют чата — колонка muted_until (миграция
 // 0104; «навсегда» — to_timestamp(2147483647); NULL — наследует тип). По схеме
 // `statsPercentValue` предыдущего значения нет — окна у показателя тоже нет.
-func (r *StatsRepo) NotificationsOn(ctx context.Context, chatID int64) (int64, error) {
+// Фильтр `joined_at < at` — тот же, что у Members текущего окна: доля не
+// превышает 100% при расхождении часов приложения и БД.
+func (r *StatsRepo) NotificationsOn(ctx context.Context, chatID int64, at time.Time) (int64, error) {
 	var n int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `
 		SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
 		LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
-		WHERE m.chat_id=$1 AND NOT `+chatMutedSQL(joinedNotify), chatID).Scan(&n)
+		WHERE m.chat_id=$1 AND m.joined_at < $2 AND NOT `+chatMutedSQL(joinedNotify), chatID, at).Scan(&n)
 	return n, err
 }
 
