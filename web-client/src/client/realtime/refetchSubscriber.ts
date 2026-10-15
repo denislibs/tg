@@ -14,7 +14,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
 import { onPinnedMessagesUpdate, hasPinnedMessageCached, flushPinnedMessagesCache } from '../../core/pinnedMessages'
 import { generateMessageId } from '../../core/history/messageId'
-import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
+import { applyFolderUpdate, applyOrder, loadFolders, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
 import type { Managers } from '../bootstrap'
 
@@ -125,11 +125,21 @@ export function registerRefetchSubscriber(managers: Managers): void {
   rootScope.addEventListener(RT.folderUpdate, (raw) => {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
+  // Порядок папок сменился (tweb `filter_order`, filters.ts:179-199): тело — сам
+  // `updateDialogFilterOrder`, в сеть не идём. Сервер шлёт кадр и сессии-автору —
+  // он применяется как есть, как у tweb: позднее эхо прежней перестановки может на
+  // миг вернуть прежний порядок, эхо последней сводит итог.
+  rootScope.addEventListener(RT.dialogFilterOrder, (u) => {
+    applyOrder(u.order)
+  })
   // Полный resync (too_long) → перезагрузить диалоги.
   rootScope.addEventListener('rt:resync', () => {
     void managers.dialogs.refresh().catch(() => {}) // .catch — см. Minor #3 выше
     // Строки журнала `notify_settings` могли быть вычищены: глобальные тумблеры
     // «Уведомления» перечитываем, иначе до перезагрузки они остались бы старыми.
     void loadNotifySettings(managers)
+    // Порядок папок и их состав живут журналом (`updateDialogFilterOrder`,
+    // `folder_update`): строки, пропущенные за разрыв, уже не доиграть.
+    void loadFolders(managers, { overwrite: true })
   })
 }

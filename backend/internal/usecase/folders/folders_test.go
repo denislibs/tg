@@ -2,6 +2,7 @@ package folders
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -15,10 +16,11 @@ type fakeRepo struct {
 	nextID  int64
 	invites map[string]domain.FolderInvite // by slug
 	created []domain.DialogFilter          // папки, созданные JoinInvite
+	allPos  map[int64]int                  // owner id → место «Все чаты»
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{folders: map[int64]domain.DialogFilter{}, owner: map[int64]int64{}, invites: map[string]domain.FolderInvite{}, nextID: 1}
+	return &fakeRepo{folders: map[int64]domain.DialogFilter{}, owner: map[int64]int64{}, invites: map[string]domain.FolderInvite{}, allPos: map[int64]int{}, nextID: 1}
 }
 
 func (r *fakeRepo) List(_ context.Context, ownerID int64) ([]domain.DialogFilter, error) {
@@ -42,6 +44,50 @@ func (r *fakeRepo) Update(_ context.Context, _ int64, f domain.DialogFilter) (do
 	return f, nil
 }
 func (r *fakeRepo) Delete(_ context.Context, _, _ int64) error { return nil }
+func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) (bool, error) {
+	owned := []domain.DialogFilter{}
+	for id, f := range r.folders {
+		if r.owner[id] == ownerID {
+			owned = append(owned, f)
+		}
+	}
+	sort.Slice(owned, func(a, b int) bool {
+		return owned[a].Pos < owned[b].Pos || owned[a].Pos == owned[b].Pos && owned[a].ID < owned[b].ID
+	})
+	seen := map[int64]bool{}
+	seq := []int64{}
+	for _, id := range order {
+		if r.owner[id] != ownerID || r.folders[id].ID == 0 || seen[id] {
+			return false, domain.ErrInvalid
+		}
+		seen[id] = true
+		seq = append(seq, id)
+	}
+	for _, f := range owned {
+		if !seen[f.ID] {
+			seq = append(seq, f.ID)
+		}
+	}
+	changed := false
+	for pos, id := range seq {
+		f := r.folders[id]
+		if f.Pos != pos {
+			changed = true
+		}
+		f.Pos = pos
+		r.folders[id] = f
+	}
+	return changed, nil
+}
+func (r *fakeRepo) LockOrder(context.Context, int64) error { return nil }
+func (r *fakeRepo) SetAllChatsPos(_ context.Context, ownerID int64, pos int) (bool, error) {
+	changed := r.allPos[ownerID] != pos
+	r.allPos[ownerID] = pos
+	return changed, nil
+}
+func (r *fakeRepo) AllChatsPos(_ context.Context, ownerID int64) (int, error) {
+	return r.allPos[ownerID], nil
+}
 func (r *fakeRepo) Count(_ context.Context, _ int64) (int, error) {
 	return len(r.folders), nil
 }

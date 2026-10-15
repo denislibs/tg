@@ -1,25 +1,21 @@
 // Порт tweb `src/components/chat/processPeerFullForCommands.ts` (812502980) —
 // команды ботов из карточки пира (`bot_info`), с поиском по `/запросу`.
-// Пачка П-6, Б-34.
+// Пачка П-6, Б-34; Ф-6 f6-bots: на входе настоящая полная карточка
+// (`userFull.bot_info` — одна запись, `channelFull.bot_info` — вектор).
 //
-// Расхождение: на вход — `bot_info` в нашей форме (`BotInfoForCommands`): у
-// бэкенда нет `userFull.bot_info`/`chatFull.bot_info`, команды бота отдаёт ручка
-// `GET /bots/{id}/commands` (`bots.commands`), из неё карточку и собирает
-// `CommandsHelper`. Флага `pFlags.ephemeral` у команд нет (эфемерных команд у
+// Расхождение: флага `pFlags.ephemeral` у команд нет (эфемерных команд у
 // бэкенда нет) — поле `ephemeral` не заводится.
 import SearchIndex from '@lib/searchIndex'
-import type { BotCommand } from '@core/managers/botsManager'
+import type { BotInfo, ChatFull, UserFull } from '@core/peers/peer'
 import { toPeerId } from '@core/peers/peerId'
-
-export type BotInfoForCommands = { user_id?: UserId, commands?: BotCommand[] }
 
 export default function processPeerFullForCommands(
   peerId: PeerId,
-  full: { bot_info?: BotInfoForCommands | BotInfoForCommands[] },
+  full: ChatFull | UserFull,
   query?: string,
 ) {
   const botInfo = 'bot_info' in full ? full.bot_info : undefined
-  const botInfos: BotInfoForCommands[] = botInfo ?
+  const botInfos: BotInfo[] = botInfo ?
     (Array.isArray(botInfo) ? botInfo : [botInfo]) :
     []
   let index: SearchIndex<number> | undefined
