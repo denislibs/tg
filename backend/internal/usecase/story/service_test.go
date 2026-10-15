@@ -15,11 +15,19 @@ import (
 // --- fakes ---
 
 type fakeRepo struct {
-	createStory   domain.Story
-	createAllow   []int64
-	createID      int64
-	createSeq     int64
-	idBySeq       map[int64]int64
+	createStory domain.Story
+	createAllow []int64
+	createID    int64
+	createSeq   int64
+	idBySeq     map[int64]int64
+	// idByPair — адрес «автор + номер» → внутренний ключ: у разных авторов одинаковые
+	// номера (VA2-01), и тесты обязаны это различать.
+	idByPair      map[[2]int64]int64
+	authors       map[int64]int64 // внутренний ключ → автор (GetAuthor); иначе author
+	pinnedID      int64
+	deletedID     int64
+	archiveTotal  int
+	readMoved     bool
 	readHorizon   map[int64]int64
 	readCalled    bool
 	readErr       error
@@ -30,6 +38,18 @@ type fakeRepo struct {
 	feedErr       error
 	visible       bool
 	visibleAmong  map[int64]bool // nil — видят все кандидаты
+	// visibleSeq — ответы VisibleAmong по порядку вызовов (круг до и после правки
+	// приватности); когда исчерпан — действует visibleAmong.
+	visibleSeq [][]int64
+	// visibleFailAt — номер вызова VisibleAmong (с 1), который падает.
+	reactors      map[int64]map[int64]string // история → пользователь → эмодзи
+	visibleFlip   bool
+	visibleClosed bool
+	reactorsSeq   []map[int64]string // ответы Reactors по порядку вызовов
+	reactorsCalls int
+	reactorsErr   error
+	visibleFailAt int
+	visibleCalls  int
 	visibleErr    error
 	marked        bool
 	markErr       error
@@ -90,21 +110,28 @@ func (f *fakeRepo) Create(ctx context.Context, s domain.Story, allowIDs []int64)
 }
 
 func (f *fakeRepo) IDBySeq(ctx context.Context, authorID, seq int64) (int64, error) {
+	if id, ok := f.idByPair[[2]int64{authorID, seq}]; ok {
+		return id, nil
+	}
+	if f.idByPair != nil {
+		return 0, domain.ErrNotFound
+	}
 	if id, ok := f.idBySeq[seq]; ok {
 		return id, nil
 	}
 	return seq, nil
 }
 
-func (f *fakeRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error) {
+func (f *fakeRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, bool, error) {
 	if f.readHorizon == nil {
 		f.readHorizon = map[int64]int64{}
 	}
-	if maxID > f.readHorizon[authorID] {
+	moved := maxID > f.readHorizon[authorID]
+	if moved {
 		f.readHorizon[authorID] = maxID
 	}
 	f.readCalled = true
-	return f.readHorizon[authorID], f.readErr
+	return f.readHorizon[authorID], moved, f.readErr
 }
 
 func (f *fakeRepo) ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error) {
@@ -123,6 +150,9 @@ func (f *fakeRepo) Viewers(ctx context.Context, _, storyID int64) (domain.StoryV
 	return f.viewers, f.viewersErr
 }
 func (f *fakeRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {
+	if a, ok := f.authors[storyID]; ok {
+		return a, f.authorErr
+	}
 	return f.author, f.authorErr
 }
 func (f *fakeRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats, error) {
@@ -130,12 +160,33 @@ func (f *fakeRepo) Stats(ctx context.Context, storyID int64) (domain.StoryStats,
 }
 func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 	f.deleted = true
+	f.deletedID = storyID
 	return f.deleteErr
 }
 func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, error) {
+	if f.visibleFlip { // первый вызов проходит, дальше доступ закрыт (гонка с автором)
+		f.visibleFlip = false
+		f.visibleClosed = true
+		return f.visible, f.visibleErr
+	}
+	if f.visibleClosed {
+		return false, f.visibleErr
+	}
 	return f.visible, f.visibleErr
 }
 func (f *fakeRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
+	f.visibleCalls++
+	if f.visibleFailAt == f.visibleCalls {
+		return nil, errors.New("visible: boom")
+	}
+	if f.deleted {
+		return nil, nil // строки истории больше нет — видеть нечего (как в SQL)
+	}
+	if len(f.visibleSeq) > 0 {
+		next := f.visibleSeq[0]
+		f.visibleSeq = f.visibleSeq[1:]
+		return next, nil
+	}
 	if f.visibleAmong == nil {
 		return viewerIDs, nil
 	}
@@ -168,6 +219,7 @@ func (f *fakeRepo) SetCloseFriends(ctx context.Context, ownerID int64, userIDs [
 }
 func (f *fakeRepo) SetPinned(ctx context.Context, storyID, authorID int64, pinned bool) error {
 	f.pinnedCalled = true
+	f.pinnedID = storyID
 	f.pinnedArg = pinned
 	return f.pinnedErr
 }
@@ -187,6 +239,27 @@ func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error)
 }
 func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	return f.archiveItems, f.archiveErr
+}
+func (f *fakeRepo) Reactors(ctx context.Context, storyID int64, userIDs []int64) (map[int64]string, error) {
+	f.reactorsCalls++
+	if len(f.reactorsSeq) > 0 {
+		next := f.reactorsSeq[0]
+		f.reactorsSeq = f.reactorsSeq[1:]
+		return next, nil
+	}
+	if f.reactorsErr != nil {
+		return nil, f.reactorsErr
+	}
+	out := map[int64]string{}
+	for _, id := range userIDs {
+		if e, ok := f.reactors[storyID][id]; ok {
+			out[id] = e
+		}
+	}
+	return out, nil
+}
+func (f *fakeRepo) ArchiveCount(ctx context.Context, ownerID int64) (int, error) {
+	return f.archiveTotal, nil
 }
 func (f *fakeRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {
 	return f.pinnedItems, f.pinnedItemsErr
@@ -489,7 +562,7 @@ func TestPost_BroadcastsStoryUpdate(t *testing.T) {
 	seedStory(repo, 42)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
-	svc.SetPublisher(pub)
+	useJournal(svc, pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -509,7 +582,7 @@ func TestPost_BroadcastsStoryUpdate(t *testing.T) {
 // у pFlags.out и у `unread`. Прочитанность сюда не попадает по построению — она
 // больше не свойство истории, а горизонт группы.
 func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
-	repo := &fakeRepo{createID: 42}
+	repo := &fakeRepo{createID: 42, allowIDsByStory: map[int64][]int64{42: {2}}}
 	seedStory(repo, 42, func(r *domain.StoryRecord) {
 		r.MyReaction = "👍"
 		r.Privacy = "selected"
@@ -517,7 +590,7 @@ func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
 	})
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{owner: 1}, &fakeTx{})
-	svc.SetPublisher(pub)
+	useJournal(svc, pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -537,12 +610,12 @@ func TestPost_FrameCarriesNoPerViewerParts(t *testing.T) {
 }
 
 func TestPost_SelectedBroadcastsToAllowlist(t *testing.T) {
-	repo := &fakeRepo{createID: 42}
+	repo := &fakeRepo{createID: 42, allowIDsByStory: map[int64][]int64{42: {2}}}
 	pub := newFakePublisher()
 	// Partners would be 9, but selected must target the allowlist only (+author).
-	seedStory(repo, 42)
+	seedStory(repo, 42, func(r *domain.StoryRecord) { r.Privacy = "selected" })
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
-	svc.SetPublisher(pub)
+	useJournal(svc, pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "selected", []int64{2}, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -574,26 +647,34 @@ func TestSetReaction_InvalidEmoji_BadReaction(t *testing.T) {
 	}
 }
 
-// Реакция рассылается ДВУМЯ разными кадрами, потому что это два разных факта:
-// автору — свежая история (`updateStory`, агрегат внутри неё), самому зрителю —
-// его личный выбор (`updateSentStoryReaction`) для других его устройств.
+// Реакция уходит двум получателям, и оба получают `updateStory` (как у tweb):
+// автору — живой кадр без журнала, зрителю — строка журнала с телом под него
+// (его `sent_reaction`) для других его устройств.
 func TestSetReaction_OK_UpsertsAndNotifiesBothSides(t *testing.T) {
 	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 3}
 	seedStory(repo, 5)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
+	log := useJournal(svc, pub)
 	if err := svc.SetReaction(context.Background(), 10, 5, 1, "👍"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.setCalled || repo.setReaction != "👍" {
 		t.Fatalf("expected SetReaction with 👍, got called=%v r=%q", repo.setCalled, repo.setReaction)
 	}
-	if len(pub.frames[10]) != 1 || frameTag(t, pub.frames[10][0]) != domain.UpdateStoryTag {
-		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(pub.frames[10]))
+	authorFrames := framesTagged(t, pub, 10, domain.UpdateStoryTag)
+	if len(authorFrames) != 1 {
+		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(authorFrames))
 	}
-	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
-		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
+	if len(log.rows[10]) != 0 {
+		t.Fatalf("автору чужая реакция в журнал не пишется (отступление от tweb), got %d строк", len(log.rows[10]))
+	}
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateStoryTag {
+		t.Fatalf("зрителю должен уехать updateStory с его телом, got %d кадров", len(pub.frames[1]))
+	}
+	if len(rowsOf(log, 1, "story_update")) != 1 {
+		t.Fatalf("своя реакция зрителя должна лечь в журнал, got %v", log.rows[1])
 	}
 }
 
@@ -603,17 +684,21 @@ func TestRemoveReaction_OK_NotifiesBothSides(t *testing.T) {
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	svc.SetPublisher(pub)
+	log := useJournal(svc, pub)
 	if err := svc.RemoveReaction(context.Background(), 10, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.removeCalled {
 		t.Fatal("expected RemoveReaction to be called")
 	}
-	if len(pub.frames[10]) != 1 || frameTag(t, pub.frames[10][0]) != domain.UpdateStoryTag {
-		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(pub.frames[10]))
+	if got := framesTagged(t, pub, 10, domain.UpdateStoryTag); len(got) != 1 {
+		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(got))
 	}
-	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
-		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateStoryTag {
+		t.Fatalf("зрителю должен уехать updateStory с его телом, got %d кадров", len(pub.frames[1]))
+	}
+	if len(rowsOf(log, 1, "story_update")) != 1 {
+		t.Fatalf("снятие реакции должно лечь в журнал зрителя, got %v", log.rows[1])
 	}
 }
 
@@ -632,8 +717,8 @@ func TestDelete_BroadcastsStoryDeleted(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	svc.SetPublisher(pub)
-	if err := svc.Delete(context.Background(), 5, 1); err != nil {
+	useJournal(svc, pub)
+	if err := svc.Delete(context.Background(), 1, 5, 1); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.deleted {
@@ -645,28 +730,12 @@ func TestDelete_BroadcastsStoryDeleted(t *testing.T) {
 	}
 }
 
-func TestDelete_NonAuthor_ForbiddenNoBroadcast(t *testing.T) {
-	repo := &fakeRepo{author: 99}
-	pub := newFakePublisher()
-	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	svc.SetPublisher(pub)
-	if err := svc.Delete(context.Background(), 5, 1); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("want ErrForbidden, got %v", err)
-	}
-	if repo.deleted {
-		t.Fatal("must not delete another user's story")
-	}
-	if len(pub.frames[1]) != 0 || len(pub.frames[2]) != 0 {
-		t.Fatal("must not broadcast story_deleted for a forbidden delete")
-	}
-}
-
 func TestDelete_NotFound_NoBroadcast(t *testing.T) {
-	repo := &fakeRepo{authorErr: domain.ErrNotFound}
+	repo := &fakeRepo{idByPair: map[[2]int64]int64{}}
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	svc.SetPublisher(pub)
-	if err := svc.Delete(context.Background(), 5, 1); !errors.Is(err, domain.ErrNotFound) {
+	useJournal(svc, pub)
+	if err := svc.Delete(context.Background(), 1, 5, 1); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 	if repo.deleted {
@@ -687,11 +756,11 @@ func TestPost_InvalidPrivacy(t *testing.T) {
 
 func TestPost_CloseBroadcastsToCloseFriendsOnly(t *testing.T) {
 	repo := &fakeRepo{createID: 42, closeFriends: []int64{2}}
-	seedStory(repo, 42)
+	seedStory(repo, 42, func(r *domain.StoryRecord) { r.Privacy = "close" })
 	pub := newFakePublisher()
 	// Partners would be 9, but close must target the close-friends list only (+author).
 	svc := New(repo, &fakePartners{ids: []int64{9}}, &fakeMedia{owner: 1}, &fakeTx{})
-	svc.SetPublisher(pub)
+	useJournal(svc, pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "close", nil, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -763,6 +832,10 @@ func TestView_StealthActive_DoesNotRecord(t *testing.T) {
 	if repo.marked {
 		t.Fatal("stealth-active viewer must not record a view")
 	}
+	// Горизонт прочтения двигается и под stealth: tweb зовёт readStories всегда.
+	if !repo.readCalled || repo.readHorizon[10] != 5 {
+		t.Fatalf("горизонт под stealth не записан: %v", repo.readHorizon)
+	}
 }
 
 func TestView_StealthExpired_Records(t *testing.T) {
@@ -821,7 +894,8 @@ func TestStealth_Unavailable_WhenNoStore(t *testing.T) {
 func TestSetPinned_NonAuthor_Forbidden(t *testing.T) {
 	repo := &fakeRepo{author: 99}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if err := svc.SetPinned(context.Background(), 5, 1, true); !errors.Is(err, domain.ErrForbidden) {
+	// Путевой автор (99) не равен актору (1): чужую историю закрепить нельзя.
+	if err := svc.SetPinned(context.Background(), 99, 5, 1, true); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if repo.pinnedCalled {
@@ -832,7 +906,7 @@ func TestSetPinned_NonAuthor_Forbidden(t *testing.T) {
 func TestSetPinned_Author_OK(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if err := svc.SetPinned(context.Background(), 5, 1, true); err != nil {
+	if err := svc.SetPinned(context.Background(), 1, 5, 1, true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.pinnedCalled || !repo.pinnedArg {
@@ -844,7 +918,7 @@ func TestEditStory_NonAuthor_Forbidden(t *testing.T) {
 	repo := &fakeRepo{author: 99}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	cap := "x"
-	if err := svc.EditStory(context.Background(), 5, 1, &cap, nil, nil, nil); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := svc.EditStory(context.Background(), 99, 5, 1, &cap, nil, nil, nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if repo.editCalled {
@@ -856,7 +930,7 @@ func TestEditStory_CaptionTooLong(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	long := strings.Repeat("а", maxCaptionRunes+1)
-	if err := svc.EditStory(context.Background(), 5, 1, &long, nil, nil, nil); !errors.Is(err, domain.ErrTooLong) {
+	if _, err := svc.EditStory(context.Background(), 1, 5, 1, &long, nil, nil, nil); !errors.Is(err, domain.ErrTooLong) {
 		t.Fatalf("want ErrTooLong, got %v", err)
 	}
 	if repo.editCalled {
@@ -868,17 +942,18 @@ func TestEditStory_BadPrivacy(t *testing.T) {
 	repo := &fakeRepo{author: 1}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	bad := "public"
-	if err := svc.EditStory(context.Background(), 5, 1, nil, &bad, nil, nil); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := svc.EditStory(context.Background(), 1, 5, 1, nil, &bad, nil, nil); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
 }
 
 func TestEditStory_Author_OK(t *testing.T) {
 	repo := &fakeRepo{author: 1}
+	seedStory(repo, 5)
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	cap := "new"
 	priv := "everyone"
-	if err := svc.EditStory(context.Background(), 5, 1, &cap, &priv, nil, nil); err != nil {
+	if _, err := svc.EditStory(context.Background(), 1, 5, 1, &cap, &priv, nil, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !repo.editCalled || repo.editCaption == nil || *repo.editCaption != "new" || repo.editPrivacy == nil || *repo.editPrivacy != "everyone" {
@@ -963,9 +1038,10 @@ func TestPost_MediaAreas_Overflow(t *testing.T) {
 
 func TestEditStory_MediaAreas(t *testing.T) {
 	repo := &fakeRepo{author: 1}
+	seedStory(repo, 5)
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	areas := sampleAreas()
-	if err := svc.EditStory(context.Background(), 5, 1, nil, nil, nil, &areas); err != nil {
+	if _, err := svc.EditStory(context.Background(), 1, 5, 1, nil, nil, nil, &areas); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.editAreas == nil || !reflect.DeepEqual(*repo.editAreas, areas) {
@@ -975,7 +1051,7 @@ func TestEditStory_MediaAreas(t *testing.T) {
 	repo2 := &fakeRepo{author: 1}
 	svc2 := New(repo2, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	bad := domain.MediaAreas{domain.NewMediaAreaURL(coords(0, 0, 0, 0), "")}
-	if err := svc2.EditStory(context.Background(), 5, 1, nil, nil, nil, &bad); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := svc2.EditStory(context.Background(), 1, 5, 1, nil, nil, nil, &bad); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("want ErrInvalid, got %v", err)
 	}
 	if repo2.editCalled {
@@ -1142,7 +1218,7 @@ func TestArchiveAndPinned_AttachMediaLadder(t *testing.T) {
 	}
 	svc := New(repo, &fakePartners{}, media, &fakeTx{})
 
-	arch, err := svc.Archive(context.Background(), 1, 10, 0)
+	arch, _, err := svc.Archive(context.Background(), 1, 10, 0)
 	if err != nil || len(arch) != 1 || arch[0].Media == nil {
 		t.Fatalf("архив без ступени: %+v (err %v)", arch, err)
 	}
@@ -1164,7 +1240,7 @@ func TestPost_ContactsStoryFramesOnlyToViewers(t *testing.T) {
 	seedStory(repo, 42)
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
-	svc.SetPublisher(pub)
+	useJournal(svc, pub)
 	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

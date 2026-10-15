@@ -45,7 +45,7 @@ export default function EditStorySheet({
   const t = useT()
   const managers = useManagers()
   const dialogs = useChatsStore((st) => st.dialogs)
-  const applyStoryEdit = useStoriesStore((st) => st.applyStoryEdit)
+  const addStory = useStoriesStore((st) => st.addStory)
   // Собеседники живут в зеркале пиров (вектор `users` контейнера `/chats`), а не
   // внутри строки диалога; «приватный» — это ключ пользователя.
   const contacts = dialogs
@@ -84,16 +84,15 @@ export default function EditStorySheet({
     const sendAllow = privacy === 'selected' && sendPrivacy
     try {
       // Своя история, поэтому автор — сам зритель; адрес всё равно пара.
-      await managers.stories.editStory(meId ?? 0, story.id, {
+      const edited = await managers.stories.editStory(meId ?? 0, story.id, {
         caption: caption.trim(),
         privacy: sendPrivacy ? privacy : undefined,
         allowIds: sendAllow ? [...allow] : undefined,
       })
-      applyStoryEdit(story.id, {
-        caption: caption.trim(),
-        privacy: sendPrivacy ? privacy : undefined,
-        allowIds: sendAllow ? [...allow] : undefined,
-      })
+      // Ответ `stories.editStory` — `updates` с `updateStory`: применяем его как
+      // обычное обновление истории (tweb `processUpdateMessage`). Тот же апдейт
+      // придёт и кадром — замена идемпотентна.
+      if (edited) addStory(meId ?? 0, edited)
       rootScope.dispatchEvent('ui:toast', t('Story.Edited'))
       onClose()
     } catch {

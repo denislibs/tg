@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -371,6 +372,12 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetIVProber(ivUC)
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
+	// Апдейты историй (появилась / правка / закреп / прочитана / удалена, своя
+	// реакция) — в журнал получателей, чтобы их находил getDifference после
+	// офлайна. Журнал без условия Redis, издатель — при наличии. Живой кадр без
+	// журнала (SetPublisher выше, в блоке Redis) остался одному случаю: автор
+	// после чужой реакции.
+	p.StoryUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Блок и правила приватности — в журнал своих устройств (без условия Redis).
@@ -378,6 +385,17 @@ func registerServer(p serverParams) {
 	// Мутации адресной книги — карточка контакта строкой user_update на свои
 	// устройства владельца (журнал без условия Redis, издатель — при наличии).
 	p.ContactsUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
+	// Установка набора, недавние/избранные стикеры и сохранённые GIF — в журнал
+	// своих устройств (журнал без условия Redis, издатель — при наличии).
+	stickersUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
+	// getDifference не воскрешает набор, снятый после строки stickers_new_set.
+	p.ChatUC.SetStickerSetInstalled(func(ctx context.Context, userID, setID int64) (bool, error) {
+		set, err := stickersRepo.SetByID(ctx, userID, setID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		return !set.InstalledAt.IsZero(), err
+	})
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
 	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету

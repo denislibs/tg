@@ -2658,13 +2658,15 @@ type fakeNotifier struct {
 	mu         sync.Mutex
 	recipients []int64
 	titles     []string // заголовки пушей поста канала (NotifyChannelPost)
+	msgTitles  []string // заголовки пушей сообщений (NotifyNewMessage/NotifyGuest): "" — имя автора добавит воркер
 	mentioned  map[int64]bool
 	guests     map[int64]bool // кому ушёл NotifyGuest
 }
 
-func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID, mentioned bool, _ int64) {
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID, mentioned bool, _ int64, title string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	n.msgTitles = append(n.msgTitles, title)
 	n.recipients = append(n.recipients, recipientID)
 	if mentioned {
 		if n.mentioned == nil {
@@ -2676,8 +2678,8 @@ func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ 
 
 // NotifyGuest — пуш гостю обсуждения; в фейке — как упоминание, плюс
 // отметка guests (путь без гейта присутствия).
-func (n *fakeNotifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64) {
-	n.NotifyNewMessage(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID)
+func (n *fakeNotifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64, title string) {
+	n.NotifyNewMessage(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID, title)
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.guests == nil {

@@ -19,11 +19,12 @@
 //     Telegram у нас нет.
 import { create } from 'zustand'
 import type { StoryGroup } from '../core/managers/storiesManager'
-import type { StoryItem, StoryItemReal, StoryPrivacy } from '../core/stories/story'
+import type { StoryItem, StoryItemReal } from '../core/stories/story'
 import { realStory, storyDate, storyMyReaction } from '../core/stories/story'
 import type { ReactionCount } from '../core/models'
 import { reactionKey } from '../core/reactions/messageReactions'
 import rootScope from '@lib/rootScope'
+import tsNow from '../helpers/tsNow'
 
 /** tweb `StoriesSegment['type']` (`appStoriesManager.ts:76-79`). */
 export type StoriesSegmentType = 'unread' | 'close' | 'read'
@@ -98,30 +99,36 @@ interface StoriesState {
   // Подвинуть ГОРИЗОНТ прочтения у автора (только вперёд): признака на самой
   // истории больше нет.
   markRead: (authorId: number, maxReadId: number) => void
-  // realtime (story_new): добавить историю в группу автора. No-op, если группы
-  // автора нет (её подтянет полный рефетч ленты) или история уже есть.
+  // realtime `updateStory` (tweb `onUpdateStory`, appStoriesManager.ts:1710-1721):
+  // история приезжает целиком и ЗАМЕНЯЕТ прежнюю с тем же номером у автора;
+  // нового номера нет — дописывается. No-op, если группы автора нет (её подтянет
+  // полный рефетч ленты).
   addStory: (authorId: number, story: StoryItem) => void
   // realtime (story_deleted): убрать историю; пустая группа удаляется.
   removeStory: (authorId: number, storyId: number) => void
-  // realtime (story_reaction): выставить суммарный счётчик; своя реакция
-  // меняется только когда событие про текущего юзера (передан аргумент).
-  applyStoryReaction: (storyId: number, reactionsCount: number, myReaction?: string | null) => void
   // оптимистично: поставить/сменить/снять свою реакцию (до подтверждения по WS).
-  setMyReaction: (storyId: number, reaction: string | null) => void
+  // История — пара (автор, номер): номера у разных авторов совпадают.
+  setMyReaction: (authorId: number, storyId: number, reaction: string | null) => void
   // закреп истории в профиле (pin/unpin) — отражаем в модели ленты.
-  setStoryPinned: (storyId: number, pinned: boolean) => void
-  // применить результат редактирования (подпись/приватность/allow-лист) + флаг edited.
-  applyStoryEdit: (storyId: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[] }) => void
+  setStoryPinned: (authorId: number, storyId: number, pinned: boolean) => void
 }
 
-// Заменить историю по id внутри groups (иммутабельно). Удалённая история
-// (`storyItemDeleted`) правкам не подлежит — у неё нет ни одного из параметров.
-function patchStory(groups: StoryGroup[], storyId: number, fn: (s: StoryItemReal) => StoryItem): StoryGroup[] {
+// Заменить историю (автор, номер) внутри groups (иммутабельно). Номер истории —
+// порядковый внутри автора, поэтому без автора правка задела бы одноимённую
+// историю другого автора. Удалённая история (`storyItemDeleted`) правкам не
+// подлежит — у неё нет ни одного из параметров.
+function patchStory(groups: StoryGroup[], authorId: number, storyId: number, fn: (s: StoryItemReal) => StoryItem): StoryGroup[] {
   return groups.map((g) =>
-    g.stories.some((s) => s.id === storyId)
+    g.author.id === authorId && g.stories.some((s) => s.id === storyId)
       ? { ...g, stories: g.stories.map((s) => (s.id === storyId && realStory(s) ? fn(s as StoryItemReal) : s)) }
       : g,
   )
+}
+
+/** tweb `isStoryExpired`: срок вышел (`expire_date` в секундах эпохи); у удалённой срока нет. */
+export function storyExpired(story: StoryItem): boolean {
+  const real = realStory(story)
+  return !!real && real.expire_date <= tsNow(true)
 }
 
 /** Флаги истории с одним переключённым; выключенный флаг СНИМАЕТСЯ, а не
@@ -131,30 +138,6 @@ function withFlag(s: StoryItemReal, name: 'pinned' | 'edited', on: boolean): Sto
   if (on) next[name] = true
   else delete next[name]
   return Object.keys(next).length ? next : undefined
-}
-
-/** Аудитория вектором правил — та же форма, что приезжает с провода. */
-function privacyRules(privacy: StoryPrivacy, allowIds: number[]): StoryItemReal['privacy'] {
-  switch (privacy) {
-    case 'everyone': return [{ _: 'privacyValueAllowAll' }]
-    case 'contacts': return [{ _: 'privacyValueAllowContacts' }]
-    case 'close': return [{ _: 'privacyValueAllowCloseFriends' }]
-    case 'selected': return [{ _: 'privacyValueAllowUsers', users: allowIds }]
-  }
-}
-
-/** Флаг аудитории истории (`public`/`contacts`/`close_friends`/`selected_contacts`). */
-function privacyFlags(s: StoryItemReal, privacy: StoryPrivacy): StoryItemReal['pFlags'] {
-  const next = { ...s.pFlags }
-  delete next.public
-  delete next.contacts
-  delete next.close_friends
-  delete next.selected_contacts
-  if (privacy === 'everyone') next.public = true
-  if (privacy === 'contacts') next.contacts = true
-  if (privacy === 'close') next.close_friends = true
-  if (privacy === 'selected') next.selected_contacts = true
-  return next
 }
 
 export const useStoriesStore = create<StoriesState>((set) => ({
@@ -177,11 +160,20 @@ export const useStoriesStore = create<StoriesState>((set) => ({
     })),
   addStory: (authorId, story) =>
     set((state) => ({
-      groups: arrange(state.groups, state.groups.map((g) =>
-        g.author.id === authorId && !g.stories.some((s) => s.id === story.id)
-          ? { ...g, stories: [...g.stories, story] }
-          : g,
-      )),
+      groups: arrange(state.groups, state.groups.map((g) => {
+        if (g.author.id !== authorId) return g
+        const prev = g.stories.find((s) => s.id === story.id)
+        // Замена целиком, как у tweb: личное (`sent_reaction`, `chosen_order`)
+        // сервер кладёт в тело под каждого получателя.
+        if (prev) return { ...g, stories: g.stories.map((s) => (s.id === story.id ? story : s)) }
+        // Истёкшая история в активную ленту не входит (tweb `isStoryExpired`,
+        // appStoriesManager.ts:1740): её присылают закреплённой.
+        if (storyExpired(story)) return g
+        // Новая — на своё место по номеру: кадры двух быстрых историй могут прийти
+        // вразнобой, а последняя в группе задаёт кольцо и позицию группы.
+        const at = g.stories.findIndex((s) => s.id > story.id)
+        return { ...g, stories: at < 0 ? [...g.stories, story] : [...g.stories.slice(0, at), story, ...g.stories.slice(at)] }
+      })),
     })),
   removeStory: (authorId, storyId) =>
     set((state) => ({
@@ -189,19 +181,9 @@ export const useStoriesStore = create<StoriesState>((set) => ({
         .map((g) => (g.author.id === authorId ? { ...g, stories: g.stories.filter((s) => s.id !== storyId) } : g))
         .filter((g) => g.stories.length > 0),
     })),
-  applyStoryReaction: (storyId, reactionsCount, myReaction) =>
+  setMyReaction: (authorId, storyId, reaction) =>
     set((state) => ({
-      groups: patchStory(state.groups, storyId, (s) => ({
-        ...s,
-        views: { _: 'storyViews', views_count: s.views?.views_count ?? 0, reactions: s.views?.reactions, reactions_count: reactionsCount },
-        sent_reaction: myReaction === undefined
-          ? s.sent_reaction
-          : (myReaction ? { _: 'reactionEmoji', emoticon: myReaction } : undefined),
-      })),
-    })),
-  setMyReaction: (storyId, reaction) =>
-    set((state) => ({
-      groups: patchStory(state.groups, storyId, (s) => {
+      groups: patchStory(state.groups, authorId, storyId, (s) => {
         const prev = storyMyReaction(s)
         if (prev === reaction) return s
         // Разбивка реакций: снять свой голос с prev, добавить к new. «Моя» это
@@ -231,23 +213,8 @@ export const useStoriesStore = create<StoriesState>((set) => ({
         }
       }),
     })),
-  setStoryPinned: (storyId, pinned) =>
-    set((state) => ({ groups: patchStory(state.groups, storyId, (s) => ({ ...s, pFlags: withFlag(s, 'pinned', pinned) })) })),
-  applyStoryEdit: (storyId, patch) =>
-    set((state) => ({
-      groups: patchStory(state.groups, storyId, (s) => {
-        const next: StoryItemReal = { ...s, caption: patch.caption ?? s.caption }
-        next.pFlags = withFlag(next, 'edited', true)
-        if (patch.privacy) {
-          next.pFlags = privacyFlags(next, patch.privacy)
-          next.pFlags = withFlag(next, 'edited', true)
-          next.privacy = privacyRules(patch.privacy, patch.allowIds ?? [])
-        } else if (patch.allowIds) {
-          next.privacy = [{ _: 'privacyValueAllowUsers', users: patch.allowIds }]
-        }
-        return next
-      }),
-    })),
+  setStoryPinned: (authorId, storyId, pinned) =>
+    set((state) => ({ groups: patchStory(state.groups, authorId, storyId, (s) => ({ ...s, pFlags: withFlag(s, 'pinned', pinned) })) })),
 }))
 
 interface LoadDeps {
@@ -255,7 +222,16 @@ interface LoadDeps {
 }
 
 // Fetch the stories feed and populate the store.
+// Номера чтений: ответ старше УЖЕ ПРИМЕНЁННОГО отбрасывается, иначе медленный
+// ранний GET /stories затёр бы снимок поновее. Упавший новый запрос ничего не
+// отбрасывает: успешный старый всё равно применяется.
+let loadSeq = 0
+let appliedSeq = 0
+
 export async function loadStories(managers: LoadDeps): Promise<void> {
+  const mine = ++loadSeq
   const groups = await managers.stories.feed()
+  if (mine < appliedSeq) return
+  appliedSeq = mine
   useStoriesStore.getState().setGroups(groups)
 }

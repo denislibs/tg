@@ -186,73 +186,19 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	check("groups no preview", true, false)
 }
 
-func TestPushRepo_Enricher(t *testing.T) {
+func TestPushRepo_SenderName(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	repo := NewPushRepo(pool)
 	ctx := context.Background()
 
-	var senderID, userID, chatID int64
+	var senderID int64
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO users (phone, display_name) VALUES ('+702','Carol') RETURNING id`).Scan(&senderID); err != nil {
 		t.Fatalf("seed sender: %v", err)
 	}
-	if err := pool.QueryRow(ctx,
-		`INSERT INTO users (phone, display_name) VALUES ('+703','Dave') RETURNING id`).Scan(&userID); err != nil {
-		t.Fatalf("seed user: %v", err)
-	}
-	if err := pool.QueryRow(ctx,
-		`INSERT INTO chats (type) VALUES ('group') RETURNING id`).Scan(&chatID); err != nil {
-		t.Fatalf("seed chat: %v", err)
-	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO chat_members (chat_id, user_id, unread_count) VALUES ($1,$2,3)`, chatID, userID); err != nil {
-		t.Fatalf("seed member: %v", err)
-	}
-
 	name, err := repo.SenderName(ctx, senderID)
 	if err != nil || name != "Carol" {
 		t.Fatalf("SenderName = %q, %v; want Carol", name, err)
-	}
-
-	badge, err := repo.UnreadBadge(ctx, userID)
-	if err != nil || badge != 3 {
-		t.Fatalf("UnreadBadge = %d, %v; want 3", badge, err)
-	}
-
-	// A3-38: заглушённые и архивные в бейдж не входят. Группа обсуждения, в
-	// которой пользователь состоит, — обычный чат списка (Ф-5) и входит.
-	seedChatUnread := func(typ string, unread int, extra string) int64 {
-		t.Helper()
-		var id int64
-		if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ($1) RETURNING id`, typ).Scan(&id); err != nil {
-			t.Fatalf("seed chat: %v", err)
-		}
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO chat_members (chat_id, user_id, unread_count) VALUES ($1,$2,$3)`, id, userID, unread); err != nil {
-			t.Fatalf("seed member: %v", err)
-		}
-		if extra != "" {
-			if _, err := pool.Exec(ctx, `UPDATE chat_members SET `+extra+` WHERE chat_id=$1 AND user_id=$2`, id, userID); err != nil {
-				t.Fatalf("update member: %v", err)
-			}
-		}
-		return id
-	}
-	seedChatUnread("group", 5, "muted_until = now() + interval '1 hour'")
-	seedChatUnread("group", 7, "archived = true")
-	disc := seedChatUnread("group", 11, "")
-	var channelID int64
-	if err := pool.QueryRow(ctx,
-		`INSERT INTO chats (type, discussion_chat_id) VALUES ('channel', $1) RETURNING id`, disc).Scan(&channelID); err != nil {
-		t.Fatalf("seed channel: %v", err)
-	}
-	if badge, err := repo.UnreadBadge(ctx, userID); err != nil || badge != 3+11 {
-		t.Fatalf("UnreadBadge с заглушённым/архивным/обсуждением = %d, %v; want 14", badge, err)
-	}
-
-	// User with no memberships → 0.
-	if badge, err := repo.UnreadBadge(ctx, senderID); err != nil || badge != 0 {
-		t.Fatalf("UnreadBadge(none) = %d, %v; want 0", badge, err)
 	}
 }
 
@@ -311,11 +257,5 @@ func TestPushRepo_ChatMuteOverridesType(t *testing.T) {
 		if err != nil || (len(back) == 1) != want {
 			t.Errorf("UnarchiveUnmuted(chat %d) = %v, %v; want вернуть=%v", c, back, err, want)
 		}
-	}
-
-	// Бейдж: считаются только эффективно незаглушённые, неархивные.
-	mustExec(t, pool, `UPDATE chat_members SET archived = false, unread_count = 2 WHERE user_id=$1`, user)
-	if badge, err := repo.UnreadBadge(ctx, user); err != nil || badge != 4 { // explicit + expired
-		t.Errorf("UnreadBadge = %d, %v; want 4", badge, err)
 	}
 }

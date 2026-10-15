@@ -10,6 +10,8 @@ import { newStickersManager } from './stickersManager'
 import { makeSticker, makeStickerSet } from '../stickers/testSticker'
 import type { RestClient } from '../net/restClient'
 
+const noDispatch = () => {}
+
 function fakeRest(getResult: unknown = {}, postResult: unknown = {}) {
   const calls: { method: string; path: string; query?: unknown; body?: unknown }[] = []
   const rest = {
@@ -32,7 +34,7 @@ function fakeRest(getResult: unknown = {}, postResult: unknown = {}) {
 describe('StickersManager', () => {
   it('recent — маршрут и документы как есть', async () => {
     const { rest, calls } = fakeRest({ stickers: [makeSticker({ id: 33, setId: 2, emoji: '🔥' })] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const list = await mgr.recent()
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/recent', query: undefined })
     expect(list.map((d) => d.id)).toEqual([33])
@@ -45,7 +47,7 @@ describe('StickersManager', () => {
     const { rest } = fakeRest({
       stickers: [makeSticker({ id: 33, setId: 2, emoji: '🔥', width: 512, height: 384, thumb: '/9j/' })],
     })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const [doc] = await mgr.recent()
     expect(doc.type).toBe('sticker')
     expect([doc.w, doc.h]).toEqual([512, 384])
@@ -58,7 +60,7 @@ describe('StickersManager', () => {
   it('без метаданных документ едет без ступеней, а не с пустыми', async () => {
     const bare = { _: 'document' as const, id: 33, mime_type: 'image/webp', size: 0, attributes: [] }
     const { rest } = fakeRest({ stickers: [bare] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const [doc] = await mgr.recent()
     expect(doc.thumbs).toBeUndefined()
     expect(doc.w).toBeUndefined()
@@ -66,21 +68,21 @@ describe('StickersManager', () => {
 
   it('recent/faved tolerate a missing stickers array', async () => {
     const { rest } = fakeRest({})
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     expect(await mgr.recent()).toEqual([])
     expect(await mgr.faved()).toEqual([])
   })
 
   it('use POSTs /stickers/:id/use', async () => {
     const { rest, calls } = fakeRest()
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     await mgr.use(7)
     expect(calls[0]).toEqual({ method: 'POST', path: '/stickers/7/use', body: {} })
   })
 
   it('fave/unfave hit POST/DELETE /stickers/:id/fave', async () => {
     const { rest, calls } = fakeRest()
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     await mgr.fave(5)
     await mgr.unfave(5)
     expect(calls).toEqual([
@@ -91,7 +93,7 @@ describe('StickersManager', () => {
 
   it('searchByEmoji передаёт эмодзи параметром запроса', async () => {
     const { rest, calls } = fakeRest({ stickers: [makeSticker({ id: 12, setId: 1, emoji: '👍' })] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const list = await mgr.searchByEmoji('👍')
     expect(calls[0]).toEqual({ method: 'GET', path: '/stickers/search', query: { emoji: '👍' } })
     expect(list.map((d) => d.stickerEmojiRaw)).toEqual(['👍'])
@@ -100,7 +102,7 @@ describe('StickersManager', () => {
   it('getStickerSet по короткому имени: набор и его документы', async () => {
     const set = makeStickerSet({ id: 1, shortName: 'duck', title: 'Duck', count: 2 })
     const { rest, calls } = fakeRest({ set, documents: [makeSticker({ id: 10, setId: 1, emoji: '🦆' })] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const r = await mgr.getStickerSet({ shortName: 'duck' })
     expect(calls[0].path).toBe('/sticker-sets/duck')
     expect(r.set).toEqual(set)
@@ -112,7 +114,7 @@ describe('StickersManager', () => {
   it('getStickerSet по числу набора бьёт в маршрут id', async () => {
     const set = makeStickerSet({ id: 7, shortName: 'duck', title: 'Duck', count: 1 })
     const { rest, calls } = fakeRest({ set, documents: [] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const r = await mgr.getStickerSet({ id: 7 })
     expect(calls[0].path).toBe('/sticker-sets/id/7')
     expect(r.set.id).toBe(7)
@@ -131,7 +133,7 @@ describe('StickersManager', () => {
         documents: [makeSticker({ id: 100, setId: 1, emoji: '🦆', thumb: '/9j/', pathThumb: 'AAA' })],
       }],
     })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const r = await mgr.featuredSets()
     expect(calls[0]).toEqual({ method: 'GET', path: '/sticker-sets/featured', query: undefined })
     expect(r.sets).toEqual([set])
@@ -144,7 +146,7 @@ describe('StickersManager', () => {
 
   it('searchSets — тот же разбор; пустая выдача даёт пустую Map, а не падает', async () => {
     const { rest, calls } = fakeRest({ sets: [] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const r = await mgr.searchSets('duck')
     expect(calls[0]).toEqual({ method: 'GET', path: '/sticker-sets/search', query: { q: 'duck' } })
     expect(r.sets).toEqual([])
@@ -153,7 +155,7 @@ describe('StickersManager', () => {
 
   it('install/uninstall hit POST/DELETE /sticker-sets/:id/install', async () => {
     const { rest, calls } = fakeRest()
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     await mgr.install(3)
     await mgr.uninstall(3)
     expect(calls).toEqual([
@@ -170,19 +172,19 @@ describe('StickersManager', () => {
       attributes: [{ _: 'documentAttributeAnimated' as const }],
     })
     const { rest, calls } = fakeRest({ gifs: [gif(42), gif(7)] })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const gifs = await mgr.savedGifs()
     expect(gifs.map((d) => d.id)).toEqual([42, 7])
     // Вид файла выводится из атрибута, а не приезжает полем.
     expect(gifs[0].type).toBe('gif')
     expect(calls[0]).toEqual({ method: 'GET', path: '/gifs/saved', query: undefined })
     const { rest: emptyRest } = fakeRest({})
-    expect(await newStickersManager({ rest: emptyRest }).savedGifs()).toEqual([])
+    expect(await newStickersManager({ rest: emptyRest, dispatch: noDispatch }).savedGifs()).toEqual([])
   })
 
   it('saveGif/deleteGif hit POST /gifs/saved and DELETE /gifs/saved/:id', async () => {
     const { rest, calls } = fakeRest()
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     await mgr.saveGif(42)
     await mgr.deleteGif(42)
     expect(calls).toEqual([
@@ -196,7 +198,7 @@ describe('StickersManager', () => {
       gifs: [{ id: 'abc', mp4_url: 'https://t/a.mp4', gif_url: 'https://t/a.gif', preview_url: 'https://t/a.png', width: 200, height: 100 }],
       next: 'cursor1',
     })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     const page = await mgr.searchGifs('cats', 'pos0')
     expect(calls[0]).toEqual({ method: 'GET', path: '/gifs/search', query: { q: 'cats', pos: 'pos0' } })
     expect(page).toEqual({
@@ -207,7 +209,7 @@ describe('StickersManager', () => {
 
   it('searchGifs without a Tenor key returns an empty page (gifs missing/next empty)', async () => {
     const { rest } = fakeRest({ gifs: [], next: '' })
-    const mgr = newStickersManager({ rest })
+    const mgr = newStickersManager({ rest, dispatch: noDispatch })
     expect(await mgr.searchGifs('')).toEqual({ gifs: [], next: '' })
   })
 })

@@ -938,12 +938,24 @@ Register the current device's browser push subscription.
 - 200: `{ "_": "boolTrue" }` · 400 missing fields
 
 ### Push payload (delivered to the Service Worker)
+Форма — `PushNotificationObject` tweb (`lib/serviceWorker/push.ts`):
 ```json
-{ "chat_id": 1, "msg_id": 10, "seq": 5,
-  "sender": { "name": "Alice" }, "text": "hello", "badge": 3 }
+{ "loc_key": "MESSAGE_TEXT", "loc_args": ["Alice", "hello"],
+  "title": "Alice", "description": "hello",
+  "custom": { "msg_id": "5", "from_id": "7" } }
 ```
-The Service Worker checks for an active window, muted state, and passcode lock
-before showing the notification; clicking it focuses/opens the chat.
+- `custom.msg_id` — номер сообщения в чате (`seq`); пир: `from_id` (личка) или
+  `channel_id` (группа/канал — положительный id, знак добавляет SW). Строки, как у tweb.
+- `loc_key` — `MESSAGE_TEXT` или `MESSAGE_NOTEXT` (нет текста). Message Preview выключен:
+  нет `loc_key`, `loc_args`, `description` — SW показывает «Telegram» и общий текст.
+- `title` — автор, как его видит лента: пользователь; при send-as, анонимном админе и посте канала — название чата-автора (живой отправитель не раскрывается).
+- Нет ключа пира (старое задание очереди) — клик открывает приложение без перехода.
+- Не шлются: `badge`, `peer_id`, `id`, `sender`, `text`, `user_id`, `silent`.
+
+Клик по уведомлению: `sw.js` фокусирует окно и шлёт ему `{type: 'push-click', payload}`;
+окна нет — `openWindow('/')` и `pendingNotification` до сообщения `{type: 'push-ready'}`
+от вкладки (раз в 10 с, `PING_PUSH_INTERVAL`). Приложение, запертое код-паролем,
+адрес не получает до разблокировки.
 
 ---
 
@@ -1004,8 +1016,14 @@ The viewer's active story feed (own group first). Ответ — КОНТЕЙН�
   автора: «непрочитанная» это `story.id > max_read_id`, ровно как непрочитанность
   сообщения по `read_inbox_max_id`. Признака на самой истории нет.
 
+- **`views.views_count` — счёт просмотров, и его видит ТОЛЬКО автор** (в ленте,
+  архиве, закреплённых и в теле `updateStory` ему самому). Остальным `views`
+  приезжает без счёта: общий агрегат реакций, как и прежде.
+
 Архив и закреплённые (`GET /stories/archive`, `GET /stories/pinned`) отвечают
-контейнером `stories.stories` теми же конструкторами.
+контейнером `stories.stories` теми же конструкторами. `count` — ВСЕГО историй в
+выборке, а не на странице: по нему клиент решает, что выгрузка закончена
+(tweb `appStoriesManager.ts:985-1000`).
 
 ### POST /stories/{peerID}/{storySeq}/view  · auth
 Отметить историю просмотренной. Идемпотентно. Делает ДВА разных дела, потому что
@@ -1031,8 +1049,24 @@ Who has seen the story (author-gated). Ответ — контейнер
 ```
 - 403 caller is not the author
 
+### POST /stories/{peerID}/{storySeq}/pin  · auth · author only
+Закрепить или открепить свою историю в профиле. Тело `{ "pinned": bool }`.
+Путевой `peerID` обязан быть самим автором, иначе 403 — история адресуется
+парой «автор + номер», внутренний ключ строки наружу не выходит.
+- 200: `Vector<int>` номеров затронутых историй (`stories.togglePinned`): `[<storySeq>]`
+- 403 · 404 нет такого номера у автора
+
+### PATCH /stories/{peerID}/{storySeq}  · auth · author only
+Правка подписи, приватности (+ `allow_user_ids` для `selected`) и областей.
+Опущенное поле не меняется. Путевой `peerID` обязан быть автором (иначе 403).
+- 200: `updates` с одним `updateStory` — история глазами автора
+  (`stories.editStory` → `Updates`). Тот же апдейт уходит тем, кто историю видит.
+- 400 · 403 · 404
+
 ### DELETE /stories/{peerID}/{storySeq}  · auth · author only
-Delete the caller's own story.
+Удалить свою историю. Путевой `peerID` обязан быть автором (иначе 403).
+Маркер `storyItemDeleted` уходит только тем, кто историю видел по её
+приватности, и автору.
 - 200: `{ "_": "boolTrue" }`
 
 ---
@@ -1177,9 +1211,9 @@ Delete the caller's own story.
 | `boost_update` | `updateChannelBoostStatus` | `premium.boostsStatus` без пер-зрительской части |
 | `balance_update` | `updateStarsBalance` | `starsAmount{amount, nanos}` — звёзды дробные |
 | `bot_callback_answer` | `updateBotCallbackAnswer` | наш конструктор; «модалкой» — бит `pFlags.alert` |
-| `story_update` | `updateStory` | история ЦЕЛИКОМ — тем же конструктором, что на витрине; «её удалили» это `storyItemDeleted` внутри, а не отдельный кадр |
-| `story_reaction` | `updateSentStoryReaction` | МОЙ выбор, эхо на другие устройства зрителя; общий агрегат едет внутри истории |
-| `story_read` | `updateReadStories` | ГОРИЗОНТ прочтения историй автора сдвинулся — на другие устройства зрителя |
+| `story_update` | `updateStory` | история ЦЕЛИКОМ — тем же конструктором, что на витрине; «её удалили» это `storyItemDeleted` внутри, а не отдельный кадр. Пишется в журнал получателя (`getDifference` отдаёт её после офлайна). Автору тело своё (счёт просмотров, аудитория); зрителям — общее тело, а реагировавшему — тело с его `sent_reaction` (замена истории целиком, как у tweb). Исключение — автору после ЧУЖОЙ реакции кадр идёт БЕЗ журнала (раздул бы журнал популярной истории); после разрыва переигровка журнала может на время вернуть старый агрегат реакций |
+| `story_reaction` | — | тип убран: своя реакция зрителя приезжает его же `updateStory` (`storyItem.sent_reaction` + `chosen_order` в чипах), строкой журнала под типом `story_update`. `updateSentStoryReaction` объявлен в домене, но не производится (tweb его не слушает) |
+| `story_read` | `updateReadStories` | ГОРИЗОНТ прочтения историй автора сдвинулся — на другие устройства зрителя; журнал, только когда горизонт действительно сдвинулся; под stealth горизонт тоже пишется (скрывается лишь запись в `story_views`) |
 
 ### Server → client: кадры БЕЗ конструктора
 Эти уезжают JSON-текстом всегда, и причин ровно две.

@@ -138,7 +138,7 @@ func TestMigration0109_DownUpRoundTrip(t *testing.T) {
 	if err := r.Fave(ctx, user, seeded[0].MediaID, 10); err != nil {
 		t.Fatalf("Fave: %v", err)
 	}
-	if err := r.TouchRecent(ctx, user, seeded[1].MediaID, 20); err != nil {
+	if _, err := r.TouchRecent(ctx, user, seeded[1].MediaID, 20); err != nil {
 		t.Fatalf("TouchRecent: %v", err)
 	}
 	_ = set

@@ -8,17 +8,17 @@
 //    типа, и удалённая история отличалась от новой только конвертом;
 //  • история приезжает ЦЕЛИКОМ и применяется точечно; полный рефетч ленты
 //    остаётся ровно для НОВОГО автора, чьей карточки в зеркале ещё нет;
-//  • `updateSentStoryReaction` несёт МОЙ выбор и только его — общий агрегат
-//    приезжает внутри самой истории, и брать счётчик отсюда нельзя.
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+//  • `updateSentStoryReaction` стор не меняет: tweb его не слушает (В-4), моя
+//    реакция со второго устройства едет внутри `updateStory` (`sent_reaction`).
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { useStoriesStore } from '../../stores/storiesStore'
-import type { StoryItem } from '../../core/stories/story'
-import { storyMyReaction } from '../../core/stories/story'
+import type { StoryItem, StoryItemReal } from '../../core/stories/story'
+import { storyCaption, storyMyReaction } from '../../core/stories/story'
 import type { Managers } from '../bootstrap'
 
-import { registerStoreProjection } from './storeProjection'
+import { registerStoreProjection, __resetStoriesReloadTimerForTests } from './storeProjection'
 
 const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
 const story = (id: number): StoryItem =>
@@ -30,7 +30,14 @@ const feed = vi.fn(async () => [])
 describe('storeProjection — кадры историй', () => {
   beforeAll(() => registerStoreProjection({ stories: { feed } } as unknown as Managers))
 
+  afterEach(() => {
+    __resetStoriesReloadTimerForTests()
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date(1787334200 * 1000))
     feed.mockClear()
     useStoriesStore.setState({ groups: [{ author: bob, stories: [story(1)], maxReadId: 0 }], loaded: true })
   })
@@ -57,15 +64,31 @@ describe('storeProjection — кадры историй', () => {
     expect(useStoriesStore.getState().groups).toHaveLength(0)
   })
 
-  it('новый автор — рефетч ленты: группы без карточки автора не бывает', () => {
-    rootScope.dispatchEventSingle(RT.story, {
-      _: 'updateStory',
-      peer: { _: 'peerUser', user_id: 404 },
-      story: story(9),
-    })
+  it('новые авторы — ОДИН рефетч ленты на пачку кадров: группы без карточки автора не бывает', () => {
+    // после офлайна getDifference переигрывает десятки строк подряд
+    for (const id of [404, 405, 406]) {
+      rootScope.dispatchEventSingle(RT.story, {
+        _: 'updateStory',
+        peer: { _: 'peerUser', user_id: id },
+        story: story(9),
+      })
+    }
+    expect(feed).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(400)
 
     expect(feed).toHaveBeenCalledTimes(1)
     expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
+  })
+
+  it('истёкшая история неизвестного автора рефетч не запускает', () => {
+    rootScope.dispatchEventSingle(RT.story, {
+      _: 'updateStory',
+      peer: { _: 'peerUser', user_id: 404 },
+      story: { ...(story(9) as StoryItemReal), expire_date: 1787334100 },
+    })
+    vi.advanceTimersByTime(400)
+
+    expect(feed).not.toHaveBeenCalled()
   })
 
   it('updateReadStories двигает ГОРИЗОНТ группы', () => {
@@ -79,7 +102,12 @@ describe('storeProjection — кадры историй', () => {
     expect(useStoriesStore.getState().groups[0].maxReadId).toBe(5)
   })
 
-  it('updateSentStoryReaction ставит МОЮ реакцию', () => {
+  // В-4: `updateSentStoryReaction` tweb не слушает. Моя реакция со второго
+  // устройства приезжает телом `updateStory` с `sent_reaction`, которое замещает
+  // историю целиком.
+  it('updateSentStoryReaction стор не меняет', () => {
+    const before = useStoriesStore.getState().groups
+
     rootScope.dispatchEventSingle(RT.storyReaction, {
       _: 'updateSentStoryReaction',
       peer: { _: 'peerUser', user_id: 2 },
@@ -87,19 +115,31 @@ describe('storeProjection — кадры историй', () => {
       reaction: { _: 'reactionEmoji', emoticon: '👍' },
     })
 
-    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBe('👍')
+    expect(useStoriesStore.getState().groups).toBe(before)
   })
 
-  it('пустой эмодзи в кадре — «реакцию сняли», а не реакция с пустым значением', () => {
-    useStoriesStore.getState().setMyReaction(1, '👍')
+  it('моя реакция с другого устройства: updateStory с sent_reaction ставит, без неё — снимает', () => {
+    const peer = { _: 'peerUser' as const, user_id: 2 }
+    rootScope.dispatchEventSingle(RT.story, {
+      _: 'updateStory', peer,
+      story: { ...(story(1) as StoryItemReal), sent_reaction: { _: 'reactionEmoji', emoticon: '👍' } },
+    })
+    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBe('👍')
 
-    rootScope.dispatchEventSingle(RT.storyReaction, {
-      _: 'updateSentStoryReaction',
+    // снял реакцию на втором устройстве — тело без личного заменяет историю
+    rootScope.dispatchEventSingle(RT.story, { _: 'updateStory', peer, story: story(1) })
+    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBeNull()
+  })
+
+  it('updateStory с тем же номером ЗАМЕНЯЕТ историю: правка подписи доходит', () => {
+    rootScope.dispatchEventSingle(RT.story, {
+      _: 'updateStory',
       peer: { _: 'peerUser', user_id: 2 },
-      story_id: 1,
-      reaction: { _: 'reactionEmoji', emoticon: '' },
+      story: { ...(story(1) as StoryItemReal), caption: 'edited' },
     })
 
-    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBeNull()
+    const stories = useStoriesStore.getState().groups[0].stories
+    expect(stories).toHaveLength(1)
+    expect(storyCaption(stories[0])).toBe('edited')
   })
 })

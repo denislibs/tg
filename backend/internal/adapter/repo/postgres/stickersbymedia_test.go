@@ -120,10 +120,10 @@ func TestStickersRepo_RecentIsPerDocument_NoDuplicates(t *testing.T) {
 		}
 	}
 
-	if err := r.TouchRecent(ctx, owner, mediaID, 20); err != nil {
+	if _, err := r.TouchRecent(ctx, owner, mediaID, 20); err != nil {
 		t.Fatalf("TouchRecent: %v", err)
 	}
-	if err := r.TouchRecent(ctx, owner, mediaID, 20); err != nil {
+	if _, err := r.TouchRecent(ctx, owner, mediaID, 20); err != nil {
 		t.Fatalf("TouchRecent повторно: %v", err)
 	}
 
