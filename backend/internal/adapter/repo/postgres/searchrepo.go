@@ -45,20 +45,23 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]in
 // бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb отдаёт чужих
 // отдельным вектором `results`, appUsersManager.ts:1182-1214). Два запроса с
 // ORDER BY вместо одного OR: выдача детерминирована, а чужие по @username не
-// вытесняют своих из limit. Слияние — «свои по имени» первыми, затем по
+// вытесняют своих из limit. Множество «своих» (то же правило, что ветки
+// пользователей в OwnPeers — менять вместе) материализуется в массив и берётся
+// по users_pkey: форма `IN (подзапрос)` планировщик разворачивал в полный
+// Seq Scan по users и chats. Слияние — «свои по имени» первыми, затем по
 // @username, без повторов, всего не больше limit.
 func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
 	own, err := r.queryUsers(ctx,
 		`SELECT `+userSeenCols("u.", "$3")+`
 		   FROM users u
-		  WHERE u.display_name ILIKE $1 AND u.id IN (
+		  WHERE u.display_name ILIKE $1 AND u.id = ANY(ARRAY(
 		        SELECT ct.user_id FROM contacts ct WHERE ct.owner_id = $3
 		        UNION
 		        SELECT other.user_id FROM chat_members me
-		          JOIN chats c ON c.id = me.chat_id AND c.type = 'private'
 		          JOIN chat_members other ON other.chat_id = me.chat_id AND other.user_id <> $3
-		         WHERE me.user_id = $3)
+		         WHERE me.user_id = $3
+		           AND EXISTS (SELECT 1 FROM chats c WHERE c.id = me.chat_id AND c.type = 'private')))
 		  ORDER BY u.display_name, u.id LIMIT $2`, like, limit, viewerID)
 	if err != nil {
 		return nil, err

@@ -673,6 +673,10 @@ func TestResolveUsername(t *testing.T) {
 		t.Fatalf("карточка чата: %#v", res.Chats[0])
 	}
 
+	if up, err := i.ResolveUsername(ctx, 9, "LENTA"); err != nil || up.Peer.PeerID() != domain.NewPeerChannel(id).PeerID() {
+		t.Fatalf("регистр у публичного чата: %+v %v; want тот же канал", up, err)
+	}
+
 	res, err = i.ResolveUsername(ctx, 9, "Ivan_K")
 	if err != nil {
 		t.Fatalf("пользователь (регистр): %v", err)
