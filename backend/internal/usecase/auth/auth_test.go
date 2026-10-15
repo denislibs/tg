@@ -211,11 +211,11 @@ func (r *fakeUserRepo) DeleteProfilePhoto(_ context.Context, userID, mediaID int
 
 // fakeDeviceRepo stores devices keyed by token hash and id.
 type fakeDeviceRepo struct {
-	byHash map[string]domain.Device
-	byID   map[int64]domain.Device
-	users  *fakeUserRepo
-	nextID int64
-	calls  int // SessionByTokenHash invocations
+	byHash           map[string]domain.Device
+	byID             map[int64]domain.Device
+	users            *fakeUserRepo
+	nextID           int64
+	calls            int // SessionByTokenHash invocations
 	hasSessionsCalls int // HasSessions invocations
 }
 
