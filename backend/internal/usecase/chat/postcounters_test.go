@@ -183,7 +183,7 @@ func TestComment_PostRepliesRideWithThePost(t *testing.T) {
 	}
 
 	mark := frameMark(fpub)
-	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1")
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestReadCommentThread_MovesPostFooter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostToChannel: %v", err)
 	}
-	comment, err := i.PostComment(ctx, ch, post.ID, 9, "коммент Евы", "c1")
+	comment, err := i.PostComment(ctx, ch, post.ID, 9, "коммент Евы", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}

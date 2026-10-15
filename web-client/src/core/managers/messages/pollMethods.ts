@@ -9,6 +9,7 @@
 // `{media}` в той же форме, в какой вложение лежит в сообщении. Сообщение
 // адресуется не номером, а идентификатором внутри вложения — так его и находят
 // (`byPollId`/`byTodoId`/`byGiveawayId`).
+import { registerHttpRepay } from './repayRequestHandler'
 import { mapMyMessage, type MyMessage, type MessageReal, type RawMyMessage, type GiveawayState } from '../../models'
 import { saveMessageMedia, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
@@ -38,7 +39,7 @@ function giveawayIdOf(media: MessageMedia): number | undefined {
   return media._ === 'messageMediaGiveaway' || media._ === 'messageMediaGiveawayResults' ? media.id : undefined
 }
 
-export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, applyScheduledUpdates }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, applyScheduledUpdates, repay }: MessagesCtx) {
   // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
   // сервер, здесь остаются перевод номеров и уточнение служебного действия.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
@@ -54,7 +55,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
   const ops = (peerId: number, msgId: number | undefined, media: MessageMedia): MessageOp[] =>
     msgId === undefined ? [] : opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { media } }))
 
-  return {
+  const api = {
     // ── Опросы (Telegram Poll) ──
     // Пакет параметров отправки — как у всех остальных путей (порт tweb: опрос
     // уходит `sendOther({...sendingParams, inputMedia: inputMediaPoll})`,
@@ -64,16 +65,26 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
     // эффекты на опросах не показывает.
     async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage | undefined> {
       const wire = sendingParamsToWire(p)
-      const r = await rest.post<RawMyMessage | ScheduledUpdates>(`/chats/${peerId}/polls`, {
-        question: p.question, options: p.options, anonymous: p.anonymous,
-        multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
-        client_msg_id: p.clientMsgId ?? '',
-        reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
-        reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
-        silent: wire.silent, send_as_peer_id: wire.sendAsPeerId,
-        // tweb `sendOther` → `messages.sendMedia{schedule_date}` (:4141-4166)
-        schedule_date: wire.scheduleDate ?? 0, schedule_repeat_period: wire.scheduleRepeatPeriod ?? 0,
-      })
+      let r: RawMyMessage | ScheduledUpdates
+      try {
+        r = await rest.post<RawMyMessage | ScheduledUpdates>(`/chats/${peerId}/polls`, {
+          question: p.question, options: p.options, anonymous: p.anonymous,
+          multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
+          client_msg_id: p.clientMsgId ?? '',
+          reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
+          reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
+          silent: wire.silent, send_as_peer_id: wire.sendAsPeerId,
+          // tweb `sendOther` → `messages.sendMedia{schedule_date}` (:4141-4166)
+          schedule_date: wire.scheduleDate ?? 0, schedule_repeat_period: wire.scheduleRepeatPeriod ?? 0,
+          // tweb `allow_paid_stars: confirmedPaymentResult.starsAmount` (appPollsManager.ts:1133)
+          allow_paid_stars: wire.allowPaidStars ?? undefined,
+        })
+      } catch (err) {
+        // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
+        // (tweb `tryRegisterRequest`): подсказка и «Resend» шлют опрос заново.
+        if (registerHttpRepay(repay, err, { peerId, messageCount: 1, repay: (confirmedPaymentResult) => { void api.sendPoll(peerId, { ...p, confirmedPaymentResult }).catch(() => {}) } })) return undefined
+        throw err
+      }
       // Отложенный опрос отвечает `Updates` (tweb `sendOther` → `processUpdateMessage`,
       // :4183) — кадры ленты отложенных применяет её владелец.
       if (wire.scheduleDate) {
@@ -103,12 +114,20 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
     },
 
     // ── Чек-листы (Telegram todo list) ──
-    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string }): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/checklists`, {
-        title: c.title, items: c.items,
-        others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
-        client_msg_id: c.clientMsgId ?? '',
-      })
+    async sendChecklist(peerId: number, c: { title: string; items: string[]; othersCanAdd: boolean; othersCanMark: boolean; clientMsgId?: string; confirmedPaymentResult?: { starsAmount: number } | null }): Promise<MyMessage | undefined> {
+      let r: RawMyMessage
+      try {
+        r = await rest.post<RawMyMessage>(`/chats/${peerId}/checklists`, {
+          title: c.title, items: c.items,
+          others_can_add: c.othersCanAdd, others_can_mark: c.othersCanMark,
+          client_msg_id: c.clientMsgId ?? '',
+          // tweb шлёт чек-лист как sendMedia{inputMediaTodo, allow_paid_stars}
+          allow_paid_stars: c.confirmedPaymentResult?.starsAmount || undefined,
+        })
+      } catch (err) {
+        if (registerHttpRepay(repay, err, { peerId, messageCount: 1, repay: (confirmedPaymentResult) => { void api.sendChecklist(peerId, { ...c, confirmedPaymentResult }).catch(() => {}) } })) return undefined
+        throw err
+      }
       return mapOne(r)
     },
     // Отметить/снять отметку «выполнено» на пункте. Ответ авторитетен (несёт мою
@@ -171,4 +190,5 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
       return ops(peerId, setMedia(peerId, byGiveawayId(id), media), media)
     },
   }
+  return api
 }

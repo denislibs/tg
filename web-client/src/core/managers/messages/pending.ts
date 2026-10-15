@@ -77,6 +77,7 @@ import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { GENERAL_TOPIC_ID, generateMessageId, generateTempMessageId } from '../../history/messageId'
 import { getOutputPeer } from '../../peers/peerId'
 import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
+import type { ConfirmedPaymentResult, RepayRequest, RepayRequestHandler } from './repayRequestHandler'
 import { generateOutgoingWebPageMedia, sendWebPageWireFields, type WebPageSendOptions } from './webPage'
 
 /** Данные временного бабла, которых нет в проводных полях send_message: автор,
@@ -172,6 +173,15 @@ interface PendingDetails {
    *  (в tweb — полем события `history_update` из `checkPendingMessage`,
    *  appMessagesManager.ts:8730-8737). */
   sequential?: boolean
+  /** Повтор отправки с новой суммой согласия (tweb `repayCallback`,
+   *  appMessagesManager.ts:2824-2828): снять этот бабл и отправить то же
+   *  содержимое ЗАНОВО с новым clientMsgId. Ставит путь отправки; пути без
+   *  повтора (секретный чат, пост канала) его не заводят. */
+  resend?: (confirmedPaymentResult: ConfirmedPaymentResult | undefined) => void
+  /** Настоящий id уже загруженного файла: повтору байты грузить незачем. */
+  mediaId?: number
+  /** Живой запрос на повторную оплату этого бабла (`RepayRequest.id`). */
+  repayId?: number
 }
 
 /** Внутренности хранилища истории, которые нужны pending-механике. Отдельно от
@@ -230,6 +240,10 @@ export interface PendingCtx {
   /** Прогресс аплоада вкладкам (media:upload_progress). `done` — аплоад
    *  закончился (успехом, ошибкой или отменой): кольцо на бабле снимается. */
   uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => void
+  /** Запросы на повторную оплату (tweb `RepayRequestHandler`). Опционален: пути
+   *  и тесты без платных групп его не подключают — отказ оплаты тогда просто
+   *  красная пометка. */
+  repay?: RepayRequestHandler
 }
 
 /** Период пинга «отправляет фото/файл…» (TTL приёмника — 6 с). */
@@ -442,6 +456,9 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
+    // Бабл подтвердился (ретрай, снизившаяся цена) — запрос на оплату не нужен: «Отправить
+    // снова» породило бы дубль.
+    if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
     dropTemp(d)
     d.storage.set(final.id, final)
     // Окна истории растят счёт; у ленты отложенных срезов нет (`slices` её
@@ -651,12 +668,24 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  остаётся с красной пометкой — решение (переслать/удалить) за пользователем,
    *  поэтому регистрация в pending СОХРАНЯЕТСЯ: ack после ретрая должен найти
    *  тот же бабл (tweb держит `message.error` ровно так же). */
-  const failPendingMessage = (clientMsgId: string): MessageOp[] => {
+  const failPendingMessage = (clientMsgId: string, reason?: string): MessageOp[] => {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
-    const next = patchTemp(d, (m) => ({ ...m, failed: true }))
+    // Отказ из-за недостаточного согласия на плату (`ALLOW_PAYMENT_REQUIRED_<N>`)
+    // — не тупик: запрос на повторную оплату остаётся НА СООБЩЕНИИ (tweb
+    // `onMessagesSendError` :5822), и повтор доступен после закрытия подсказки.
+    let repayRequest: RepayRequest | undefined
+    const resend = d.resend
+    if (reason && resend && ctx.repay) {
+      // Повторный NACK того же бабла (переотправка outbox) заменяет прежний запрос.
+      if (d.repayId !== undefined) ctx.repay.cancelRepayRequest(d.repayId)
+      repayRequest = ctx.repay.tryRegisterRequest({ reason, peerId: d.peerId, messageCount: 1, repay: resend })
+      d.repayId = repayRequest?.id
+    }
+    const fields: Partial<MessageReal> = repayRequest ? { failed: true, repayRequest } : { failed: true }
+    const next = patchTemp(d, (m) => (m._ === 'message' ? { ...m, ...fields } : { ...m, failed: true }))
     if (!next) return []
-    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields: { failed: true } }))
+    return opsFor(d, (key) => ({ op: 'patch', key, msgId: next.id, fields }))
   }
 
   /** Пользователь нажал «повторить»: снимаем пометку ошибки, бабл снова «в пути». */
@@ -673,6 +702,9 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
+    // Живой запрос на оплату уходит вместе с баблом: иначе «Отправить снова» воскресило бы
+    // удалённое сообщение (и держало бы файл замыканием повтора).
+    if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
     const cur = d.storage.get(d.tempId)
     if (!dropTemp(d) || !cur) return []
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
@@ -745,7 +777,41 @@ export function newPendingMethods(ctx: PendingCtx) {
   /** Байты ушли — бабл получает media_id, на сервер уходит кадр отправки. */
   const sendUploaded = (o: SendFileArgs, wire: WireSendArgs, mediaId: number) => {
     emit(attachPendingMedia(o.clientMsgId, mediaId))
+    // Повтору с новой суммой (`armFileRepay`) байты грузить второй раз незачем.
+    const d = pendingByClientId.get(o.clientMsgId)
+    if (d) d.mediaId = mediaId
     ctx.send({ ...wire, mediaId })
+  }
+
+  /** Повтор отправки файла с новой суммой согласия (tweb `repayCallback` у
+   *  `sendFile`/`sendGrouped`: `cancelPendingMessage` + новая отправка): старый
+   *  бабл снимается, уходит НОВЫЙ clientMsgId с тем же файлом, а уже
+   *  загруженный `media_id` переиспользуется. Ячейка альбома повторяется
+   *  отдельной отправкой с тем же `groupedId`: у нас кадр на файл. */
+  const armFileRepay = (o: SendFileArgs) => {
+    const d = pendingByClientId.get(o.clientMsgId)
+    if (!d) return
+    d.resend = (confirmedPaymentResult) => {
+      emit(cancelPendingMessage(o.clientMsgId))
+      void sendFileCore({ ...o, clientMsgId: crypto.randomUUID(), confirmedPaymentResult }, d.mediaId)
+    }
+  }
+
+  /** Бабл → (аплоад | готовый media_id) → кадр. `reuseMediaId` — повтор после
+   *  отказа оплаты: файл уже на сервере. */
+  const sendFileCore = async (o: SendFileArgs, reuseMediaId?: number): Promise<number | null> => {
+    const { event, wire, mime } = fileSendPlan(o)
+    let sent: Promise<number | null> = Promise.resolve(null)
+    beforeMessageSending(event, () => {
+      if (reuseMediaId != null) {
+        sendUploaded(o, wire, reuseMediaId)
+        sent = Promise.resolve(reuseMediaId)
+      } else {
+        sent = uploadAndSend(o, mime, wire)
+      }
+    })
+    armFileRepay(o)
+    return sent
   }
 
   /** Отгрузка байтов одного файла; `null` — сорвалась или отменена (бабл
@@ -776,6 +842,62 @@ export function newPendingMethods(ctx: PendingCtx) {
     }
   }
 
+  /** Порт tweb `sendText` (:1290) — и `sendOther` (стикер/гиф/гео/контакт):
+   *  байтов нет, поэтому весь метод — бабл + один кадр. Единственная точка
+   *  отправки сообщения без файла; транспорт зовётся ВНУТРИ
+   *  `beforeMessageSending`, как `message.send()` в оригинале. */
+  const sendText = async (input: SendTextArgs): Promise<{ ok: true }> => {
+    const { optimistic, noWebPage, webPage, webPageOptions, invertMedia, ...o } = input
+    const { params, rest } = splitSendingParams(o)
+    // tweb `sendText` :2695 (`generateOutgoingWebPage`) и :2746 (`invert_media`)
+    const webPageSend: WebPageSendOptions = { noWebPage, webPage, webPageOptions, invertMedia }
+    const webPageFields = sendWebPageWireFields(webPageSend)
+    const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params), ...(Object.keys(webPageFields).length ? { webPageFields } : {}) }
+    const send = () => ctx.send(args)
+    if (!optimistic) { send(); return { ok: true } }
+    beforeMessageSending({
+      peer_id: args.peerId,
+      thread_root_id: params.threadId ?? null,
+      client_msg_id: args.clientMsgId,
+      sender_id: optimistic.senderId,
+      text: args.text,
+      type: args.type,
+      entities: args.entities ?? undefined,
+      media_id: args.mediaId ?? null,
+      grouped_id: args.groupedId,
+      media: optimistic.media,
+      document: optimistic.document,
+      geo: args.geo,
+      // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
+      // только локальный снимок имени.
+      contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+      secret: optimistic.secret,
+      send_as: optimistic.sendAs,
+      reply_to_id: params.replyToMsgId ?? null,
+      reply_quote_text: params.replyToQuote?.text,
+      reply_to_peer_id: params.replyToPeerId ?? undefined,
+      schedule_date: params.scheduleDate ?? undefined,
+      schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
+      web_page: generateOutgoingWebPageMedia(webPageSend),
+      invert_media: invertMedia || undefined,
+      // Порт tweb `sendText → beforeMessageSending({sequential: true})`
+      // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
+      // ходом, что и бабл, — позиция внизу окна за ним и останется.
+      sequential: true,
+    }, send)
+    // Повтор с новой суммой (tweb `repayCallback`: `cancelPendingMessage(random_id)` +
+    // `sendText({...options, ...override})`): новая отправка того же содержимого
+    // под новым clientMsgId, бабл — новый.
+    const d = pendingByClientId.get(input.clientMsgId)
+    if (d) {
+      d.resend = (confirmedPaymentResult) => {
+        emit(cancelPendingMessage(input.clientMsgId))
+        void sendText({ ...input, clientMsgId: crypto.randomUUID(), confirmedPaymentResult })
+      }
+    }
+    return { ok: true }
+  }
+
   return {
     finalizePendingMessage,
     beforeMessageSending,
@@ -784,50 +906,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     retryPendingMessage,
     cancelPendingMessage,
 
-    /** Порт tweb `sendText` (:1290) — и `sendOther` (стикер/гиф/гео/контакт):
-     *  байтов нет, поэтому весь метод — бабл + один кадр. Единственная точка
-     *  отправки сообщения без файла; транспорт зовётся ВНУТРИ
-     *  `beforeMessageSending`, как `message.send()` в оригинале. */
-    async sendText({ optimistic, noWebPage, webPage, webPageOptions, invertMedia, ...o }: SendTextArgs): Promise<{ ok: true }> {
-      const { params, rest } = splitSendingParams(o)
-      // tweb `sendText` :2695 (`generateOutgoingWebPage`) и :2746 (`invert_media`)
-      const webPageSend: WebPageSendOptions = { noWebPage, webPage, webPageOptions, invertMedia }
-      const webPageFields = sendWebPageWireFields(webPageSend)
-      const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params), ...(Object.keys(webPageFields).length ? { webPageFields } : {}) }
-      const send = () => ctx.send(args)
-      if (!optimistic) { send(); return { ok: true } }
-      beforeMessageSending({
-        peer_id: args.peerId,
-        thread_root_id: params.threadId ?? null,
-        client_msg_id: args.clientMsgId,
-        sender_id: optimistic.senderId,
-        text: args.text,
-        type: args.type,
-        entities: args.entities ?? undefined,
-        media_id: args.mediaId ?? null,
-        grouped_id: args.groupedId,
-        media: optimistic.media,
-        document: optimistic.document,
-        geo: args.geo,
-        // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
-        // только локальный снимок имени.
-        contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
-        secret: optimistic.secret,
-        send_as: optimistic.sendAs,
-        reply_to_id: params.replyToMsgId ?? null,
-        reply_quote_text: params.replyToQuote?.text,
-        reply_to_peer_id: params.replyToPeerId ?? undefined,
-        schedule_date: params.scheduleDate ?? undefined,
-        schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
-        web_page: generateOutgoingWebPageMedia(webPageSend),
-        invert_media: invertMedia || undefined,
-        // Порт tweb `sendText → beforeMessageSending({sequential: true})`
-        // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
-        // ходом, что и бабл, — позиция внизу окна за ним и останется.
-        sequential: true,
-      }, send)
-      return { ok: true }
-    },
+    sendText,
 
     /** Порт tweb `sendFile` (:1526): бабл → аплоад → отправка, всё внутри одного
      *  метода менеджера. Двух фаз («вкладка догрузила и попросила отправить»)
@@ -844,10 +923,7 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  загруженным файлом (автосохранение отправленного Tenor-гифа в /gifs/saved);
      *  `null` = аплоад сорвался или был отменён. */
     async sendFile(o: SendFileArgs): Promise<{ mediaId: number | null }> {
-      const { event, wire, mime } = fileSendPlan(o)
-      let sent: Promise<number | null> = Promise.resolve(null)
-      beforeMessageSending(event, () => { sent = uploadAndSend(o, mime, wire) })
-      return { mediaId: await sent }
+      return { mediaId: await sendFileCore(o) }
     },
 
     /**
@@ -862,6 +938,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     async sendGrouped(items: SendFileArgs[]): Promise<void> {
       const plans = items.map(fileSendPlan)
       emit(plans.flatMap(({ event }) => insertPending(event)))
+      items.forEach(armFileRepay)
       const mediaIds = await Promise.all(items.map((o, i) => uploadFile(o, plans[i].mime)))
       // Отменённая ячейка (её бабла в реестре уже нет) из отправки выпадает
       // (tweb `UPLOAD_CANCELED` → `undefined`, :3831-3834; `inputs.filter(Boolean)`).
@@ -869,6 +946,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       // `toggleError` этой ячейки и `throw` — `Promise.all` отклоняется и
       // `sendMultiMedia` не уходит (:3836-3840); неполного альбома собеседник не
       // получит. Помечена упавшей у нас она уже в `uploadFile`.
+      // ОТСТУПЛЕНИЕ (платная группа): кадры идут по одному на ячейку, а не одним
+      // `sendMultiMedia`, поэтому согласие и списание проверяет каждый кадр отдельно
+      // (цена одной ячейки) — рост цены между кадрами оставит часть альбома
+      // неотправленной, и каждая ячейка повторяется своим запросом с тем же groupedId.
+      // Атомарно на весь альбом — после `send_multi_media` (docs/audit/2026-10-12-album-multimedia-spec.md).
       const alive = items.map((o, i) => ({ o, wire: plans[i].wire, mediaId: mediaIds[i] }))
         .filter(({ o }) => pendingByClientId.has(o.clientMsgId))
       if (alive.some(({ mediaId }) => mediaId === null)) return
@@ -955,6 +1037,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       const d = pendingByClientId.get(clientMsgId)
       if (!d) return undefined
       pendingByClientId.delete(clientMsgId)
+      if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
       dropTemp(d)
       return d.sequential
     },

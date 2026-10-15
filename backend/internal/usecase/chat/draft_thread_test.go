@@ -215,7 +215,7 @@ func TestDraft_CommentThread(t *testing.T) {
 		t.Fatalf("гость, черновик группы = %v", err)
 	}
 
-	if _, err := in.PostComment(ctx, ch, post.ID, 8, "отправил", "c1"); err != nil {
+	if _, err := in.PostComment(ctx, ch, post.ID, 8, "отправил", "c1", 0); err != nil {
 		t.Fatal(err)
 	}
 	if len(drafts.m) != 0 {
