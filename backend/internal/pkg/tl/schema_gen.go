@@ -8517,6 +8517,7 @@ var clientParams = map[string][]string{
 	"starGift":                           {"emoji"},
 	"users.userFull":                     {"can_message"},
 	"auth.authorization":                 {"token"},
+	"auth.passkeyLoginOptions":           {"session"},
 	"auth.authorizationSignUpRequired":   {"signup_token"},
 	"botInlineResult":                    {"emoji"},
 }

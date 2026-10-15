@@ -16576,7 +16576,8 @@ export type AuthPasskeyLoginOptions = AuthPasskeyLoginOptions.authPasskeyLoginOp
 export namespace AuthPasskeyLoginOptions {
   export type authPasskeyLoginOptions = {
     _: 'auth.passkeyLoginOptions',
-    options: DataJSON
+    options: DataJSON,
+    session?: string
   };
 }
 

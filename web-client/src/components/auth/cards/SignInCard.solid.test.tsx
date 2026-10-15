@@ -31,6 +31,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import { toastNew } from '@components/toast'
+import { getPasskeyAssertion } from '@core/webauthnBrowser'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignInCard from './SignInCard.solid'
@@ -183,10 +184,16 @@ describe('SignInCard.solid: ввод номера → отправка кода 
   })
 })
 
+// Ответ `auth.initPasskeyLogin`: `auth.passkeyLoginOptions`, options — dataJSON.
+const BEGIN = {
+  session: 's1',
+  options: { _: 'dataJSON', data: JSON.stringify({ publicKey: { challenge: 'AA' } }) },
+}
+
 describe('SignInCard.solid: вход по ключу доступа', () => {
   it('begin → getPasskeyAssertion → finish → toIm()', async () => {
-    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's1', options: { publicKey: {} } })
-    const passkeyLoginFinish = vi.fn().mockResolvedValue(undefined)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
     const { toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
 
     const buttons = [...host!.querySelectorAll('button')]
@@ -197,8 +204,28 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     await vi.waitFor(() => expect(passkeyLoginFinish).toHaveBeenCalled())
 
     expect(passkeyLoginBegin).toHaveBeenCalled()
+    // options — dataJSON со строкой JSON (tweb passkeyLoginButton.tsx:38-41,
+    // :49-51): в WebAuthn уходит РАЗОБРАННАЯ строка, а не сам dataJSON.
+    expect(getPasskeyAssertion).toHaveBeenCalledWith({ publicKey: { challenge: 'AA' } })
     expect(passkeyLoginFinish).toHaveBeenCalledWith('s1', { assertion: true }, 'web', 'browser')
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+  })
+
+  // Б-2: при включённом облачном пароле вход по ключу кончается шагом пароля
+  // (tweb passkeyLoginButton.tsx:69-71 — SESSION_PASSWORD_NEEDED → карточка
+  // пароля), а не входом в мессенджер.
+  it('облачный пароль: finish → карточка пароля, в мессенджер не пускает', async () => {
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ passwordNeeded: true, passwordToken: 't', hint: 'h' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'password', payload: { token: 't', hint: 'h' } }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
   })
 
   // Дыра, ради которой пин заведён: `catch {}` здесь был ПУСТОЙ — с
@@ -222,10 +249,28 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     consoleError.mockRestore()
   })
 
+  // Сервер на входе по ключу регистрацию не предлагает; если пришло — это сбой
+  // протокола: тост, в мессенджер не пускаем.
+  it('неожиданный исход (signUpRequired): тост Login.Passkey.Error, toIm не зван', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ signUpRequired: true, signUpToken: 'x' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
   it('успешный вход всплывашку НЕ показывает', async () => {
     // Контрпин: «показывать отказ всегда» тоже было бы зелёным без него.
-    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's1', options: { publicKey: {} } })
-    const passkeyLoginFinish = vi.fn().mockResolvedValue(undefined)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
     const { toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
 
     const passkeyBtn = [...host!.querySelectorAll('button')]

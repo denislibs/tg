@@ -1697,6 +1697,15 @@
     ]
   },
   {
+    "predicate": "auth.passkeyLoginOptions",
+    "params": [
+      {
+        "name": "session",
+        "type": "string"
+      }
+    ]
+  },
+  {
     "predicate": "auth.authorizationSignUpRequired",
     "params": [
       {

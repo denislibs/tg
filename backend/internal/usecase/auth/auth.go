@@ -290,7 +290,7 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 
 // startPasswordStep выдаёт одноразовый password_token, если у пользователя
 // включён облачный пароль. needed=false — пароля нет, вход продолжается сессией.
-// Общий шаг для SignIn и SignImport.
+// Общий шаг для SignIn, SignImport и PasskeySignIn.
 func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignInResult, bool, error) {
 	if i.pw == nil {
 		return SignInResult{}, false, nil
