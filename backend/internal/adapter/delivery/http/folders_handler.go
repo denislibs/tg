@@ -77,11 +77,41 @@ func (h *FoldersHandler) List(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
+	allPos, err := h.uc.AllChatsPos(r.Context(), user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
 	out := make([]map[string]any, 0, len(list))
 	for _, f := range list {
 		out = append(out, folderJSON(r.Context(), h.uc, user.ID, f))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"folders": out})
+	// all_chats_pos — место «Все чаты» среди папок (число папок перед ней).
+	writeJSON(w, http.StatusOK, map[string]any{"folders": out, "all_chats_pos": allPos})
+}
+
+// Reorder: POST /me/folders/order {order: [id…]} → Bool — порт
+// messages.updateDialogFiltersOrder. 0 в order — «Все чаты». Чужая или
+// несуществующая папка и повтор id — 400 `invalid order`.
+func (h *FoldersHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	var b struct {
+		Order []int64 `json:"order"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	if err := h.uc.Reorder(r.Context(), user.ID, b.Order); err != nil {
+		if errors.Is(err, domain.ErrInvalid) {
+			writeError(w, http.StatusBadRequest, "invalid order")
+			return
+		}
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 func (h *FoldersHandler) Create(w http.ResponseWriter, r *http.Request) {

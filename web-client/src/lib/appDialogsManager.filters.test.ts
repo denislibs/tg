@@ -15,6 +15,9 @@ import {
 } from './appDialogsManager.testkit'
 import { resetPeerMirror } from '@core/peerCache'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
+import { useChatsStore } from '@stores/chatsStore'
+import { useAppStateStore } from '@stores/appState'
+import { briefProfile } from '@core/managers/authManager'
 import useFolders from '@stores/folders.solid'
 import type { SwipeEvent, SwipeHandlerHorizontalOptions } from '@helpers/dom/handleHorizontalSwipe'
 import type { ForumTab } from '@components/forumTab/forumTab'
@@ -135,6 +138,28 @@ describe('appDialogsManager: папки добавляются, удаляютс
     // слайдера (шапка владельца, расхождение 6).
     expect(mounted.folders.classList.contains('animating')).toBe(false)
     expect(mounted.host.querySelector('#folders-tabs > .menu-horizontal-div-item.active')!.getAttribute('data-filter-id')).toBe('0')
+  })
+
+  // Ф7-З: у премиума «Все чаты» стоит не первой — после удаления активной папки
+  // выбор уходит на неё, а не на вкладку с индексом 0.
+  it('удалённая АКТИВНАЯ папка при «Все чаты» не первой — активной становится «Все чаты»', async () => {
+    useChatsStore.getState().setMe(briefProfile({ _: 'user', id: 1, first_name: 'Me', pFlags: { premium: true } }))
+    useAppStateStore.setState({ allChatsPos: 1 })
+    putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
+    mounted = mountOwner()
+    await settle()
+    // ряд: [Работа(3), Все чаты(0), Шум(4)]
+    useFolders().onClick()!(2)
+    await settle()
+    finishTransition(mounted.folders)
+    expect(useFoldersStore.getState().selectedId).toBe(4)
+
+    applyFolderUpdate({ folder_id: 4, deleted: true })
+    await settle()
+
+    expectActiveOnly(mounted.folders, 0)
+    expect(useFoldersStore.getState().selectedId).toBe(0)
+    useChatsStore.setState({ me: null })
   })
 
   // Второй путь удаления — своё действие (`foldersStore.remove`, оптимистичное
