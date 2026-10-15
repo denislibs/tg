@@ -101,6 +101,7 @@ export const UPDATE_RT = {
   updatePrivacy: RT.privacy,
   updateDialogFilterOrder: RT.dialogFilterOrder,
   updatePeerHistoryTTL: RT.peerHistoryTTL,
+  updateNewAuthorization: RT.newAuthorization,
 } as const satisfies Record<UpdatePredicate, string>
 
 /**

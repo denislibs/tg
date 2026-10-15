@@ -7108,6 +7108,49 @@
           "value": "Unblock user"
         },
         {
+          "key": "UnconfirmedAuthConfirm",
+          "value": "Yes, it’s me"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmed",
+          "value": "New Login Allowed"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmedMessage",
+          "value": "You can check the list of your active logins in %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedButton",
+          "value": "Got it"
+        },
+        {
+          "key": "UnconfirmedAuthDeniedMessageSingle",
+          "value": "We have terminated the login attempt from %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedTitle",
+          "forms": {
+            "one_value": "New Login Prevented",
+            "other_value": "New Logins Prevented"
+          }
+        },
+        {
+          "key": "UnconfirmedAuthDeniedWarning",
+          "value": "Never send your login code to anyone or you can lose your Telegram account!"
+        },
+        {
+          "key": "UnconfirmedAuthDeny",
+          "value": "No, it’s not me!"
+        },
+        {
+          "key": "UnconfirmedAuthSingle",
+          "value": "We detected a new login to your account from %s. Is it you?"
+        },
+        {
+          "key": "UnconfirmedAuthTitle",
+          "value": "Someone just got access to your messages!"
+        },
+        {
           "key": "Unit.Bytes",
           "value": "B"
         },
@@ -11758,6 +11801,51 @@
         {
           "key": "UnblockUser",
           "value": "Разблокировать"
+        },
+        {
+          "key": "UnconfirmedAuthTitle",
+          "value": "Кто-то только что получил доступ к вашим сообщениям!"
+        },
+        {
+          "key": "UnconfirmedAuthConfirm",
+          "value": "Да, это я"
+        },
+        {
+          "key": "UnconfirmedAuthDeny",
+          "value": "Нет, это не я!"
+        },
+        {
+          "key": "UnconfirmedAuthSingle",
+          "value": "Мы обнаружили новый вход в ваш аккаунт с устройства: %s. Это вы?"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmed",
+          "value": "Новый вход разрешён"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmedMessage",
+          "value": "Список активных сеансов можно посмотреть в разделе %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedTitle",
+          "forms": {
+            "one_value": "Новый вход предотвращён",
+            "few_value": "Новые входы предотвращены",
+            "many_value": "Новые входы предотвращены",
+            "other_value": "Новые входы предотвращены"
+          }
+        },
+        {
+          "key": "UnconfirmedAuthDeniedMessageSingle",
+          "value": "Мы завершили попытку входа с устройства: %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedWarning",
+          "value": "Никому не сообщайте код для входа, иначе вы можете потерять свой аккаунт Telegram!"
+        },
+        {
+          "key": "UnconfirmedAuthDeniedButton",
+          "value": "Понятно"
         },
         {
           "key": "Call.PrivacyError",

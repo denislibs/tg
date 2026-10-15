@@ -1256,6 +1256,22 @@ const ru = {
   'BlockModal.Search.Placeholder': 'Заблокировать пользователя...',
   BlockedUsersInfo: 'Заблокированные пользователи не могут писать Вам и приглашать Вас в группы. Они также не видят Вашу фотографию и время последнего захода.',
   UnblockUser: 'Разблокировать',
+  // ── «Новый вход»: плашка над списком чатов (tweb newAuthorization.tsx) ──
+  UnconfirmedAuthTitle: 'Кто-то только что получил доступ к вашим сообщениям!',
+  UnconfirmedAuthConfirm: 'Да, это я',
+  UnconfirmedAuthDeny: 'Нет, это не я!',
+  UnconfirmedAuthSingle: 'Мы обнаружили новый вход в ваш аккаунт с устройства: %s. Это вы?',
+  UnconfirmedAuthConfirmed: 'Новый вход разрешён',
+  UnconfirmedAuthConfirmedMessage: 'Список активных сеансов можно посмотреть в разделе %s.',
+  UnconfirmedAuthDeniedTitle: {
+    one_value: 'Новый вход предотвращён',
+    few_value: 'Новые входы предотвращены',
+    many_value: 'Новые входы предотвращены',
+    other_value: 'Новые входы предотвращены',
+  },
+  UnconfirmedAuthDeniedMessageSingle: 'Мы завершили попытку входа с устройства: %s.',
+  UnconfirmedAuthDeniedWarning: 'Никому не сообщайте код для входа, иначе вы можете потерять свой аккаунт Telegram!',
+  UnconfirmedAuthDeniedButton: 'Понятно',
   'Call.PrivacyError': 'Пользователь не принимает звонки',
   // Two-Step Verification
   'Login.Password.Title': 'Введите пароль',

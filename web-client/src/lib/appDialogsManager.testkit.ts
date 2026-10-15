@@ -255,6 +255,10 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       clearHistory: vi.fn(async (_peerId: number) => {}),
       deleteHistory: vi.fn(async (_peerId: number, _revoke: boolean) => {}),
     },
+    // плашка «новый вход» (М1-3): стартовое чтение запросов владельца сессий
+    sessions: {
+      getUnconfirmedAuthorizations: vi.fn(async (): Promise<unknown[]> => []),
+    },
     realtime: {
       markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })),
       // автомат соединения (`start()`, `:990`) — его стартовый pull

@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Кадры реального времени в форме оригинала — конструкторы объединения
 // `Update`, а не конверт `{t, d}` с типом СТРОКОЙ.
@@ -119,6 +122,8 @@ const (
 	UpdateSavedGifsTag      = "updateSavedGifs"
 	// Команды бота (Ф-6, f6-bots) — tweb appProfileManager.ts:1560-1569.
 	UpdateBotCommandsTag = "updateBotCommands"
+	// «Новый вход» (М1-3) — tweb appAccountManager.ts:41-59.
+	UpdateNewAuthorizationTag = "updateNewAuthorization"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1589,4 +1594,50 @@ func NewUpdateBotCommands(peer Peer, botID int64, commands []BotCommand) UpdateB
 		cs = append(cs, NewBotCommand(c))
 	}
 	return UpdateBotCommands{Underscore: UpdateBotCommandsTag, Peer: peer, BotID: botID, Commands: cs}
+}
+
+// updateNewAuthorization#8951abef flags:# unconfirmed:flags.0?true hash:long
+// date:flags.0?int device:flags.0?string location:flags.0?string = Update; —
+// «новый вход» (layer.d.ts:2869-2879). С флагом unconfirmed — на аккаунте
+// появилась неподтверждённая сессия: клиент другого устройства спрашивает
+// «это вы?» (tweb applyUnconfirmedAuthorizationUpdate, appAccountManager.ts:41-59).
+// Без флага — запрос по hash снимается (подтвердили или сессию закрыли): клиент
+// убирает его из списка. Параметра pts нет — курсор едет в конверте кадра.
+type UpdateNewAuthorization struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Hash       int64           `json:"hash"`
+	Date       int64           `json:"date,omitempty"`
+	Device     string          `json:"device,omitempty"`
+	Location   string          `json:"location,omitempty"`
+}
+
+func (UpdateNewAuthorization) isUpdate()     {}
+func (u UpdateNewAuthorization) Tag() string { return u.Underscore }
+
+// NewUpdateNewAuthorization — запрос «это вы?» о сессии d. device склеивается как
+// у tweb (appAccountManager.ts:289: [device_model, platform].filter(Boolean).join(', ')).
+func NewUpdateNewAuthorization(d Device) UpdateNewAuthorization {
+	parts := make([]string, 0, 2)
+	for _, p := range []string{d.Name, d.Platform} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	u := UpdateNewAuthorization{
+		Underscore: UpdateNewAuthorizationTag,
+		Hash:       d.ID,
+		Date:       unixSecondsInt64(d.CreatedAt),
+		Device:     strings.Join(parts, ", "),
+		Location:   d.Location,
+	}
+	setPFlag(&u.PFlags, "unconfirmed", true)
+	return u
+}
+
+// NewUpdateNewAuthorizationRemoved — запрос о сессии hash снят: ответили или
+// сессию закрыли. Без флага unconfirmed (и без date/device/location, их в схеме
+// нет без флага).
+func NewUpdateNewAuthorizationRemoved(deviceID int64) UpdateNewAuthorization {
+	return UpdateNewAuthorization{Underscore: UpdateNewAuthorizationTag, Hash: deviceID}
 }

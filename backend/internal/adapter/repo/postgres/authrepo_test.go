@@ -193,9 +193,9 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	}
 
 	// Delete returns the token hash and removes it.
-	th, found, err := repo.Delete(ctx, u.ID, d1.ID)
-	if err != nil || !found || th != "hash-1" {
-		t.Fatalf("Delete = %q, %v, %v", th, found, err)
+	gone, found, err := repo.Delete(ctx, u.ID, d1.ID)
+	if err != nil || !found || gone.TokenHash != "hash-1" || gone.ID != d1.ID {
+		t.Fatalf("Delete = %+v, %v, %v", gone, found, err)
 	}
 	if _, _, err := repo.SessionByTokenHash(ctx, "hash-1", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("expected device gone, got %v", err)
@@ -241,7 +241,7 @@ func TestAuthRepo_DeviceGet(t *testing.T) {
 
 // Версия сборки в строке сессии: непустая перезаписывает прежнюю, пустая её НЕ
 // затирает. Вторая половина — предохранитель «клиент не назвался»
-// (`authrepo.go`, `CASE WHEN $2 <> ''`), и до этого теста её не проверял никто:
+// (`authrepo.go`, `CASE WHEN $2 <> ”`), и до этого теста её не проверял никто:
 // все вызовы `SessionByTokenHash` в тестах передавали пустую версию, поэтому
 // мутация `app_version=$2` проходила полный `go test ./...` зелёной. Отказ, от
 // которого предохранитель защищает, боевой: любой запрос без `X-App-Version`
@@ -471,5 +471,127 @@ func TestAuthRepo_EmojiStatusAndPremiumReportChange(t *testing.T) {
 	}
 	if _, _, err := repo.SetPremium(ctx, 987654321, true); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("SetPremium чужого id = %v, want ErrNotFound", err)
+	}
+}
+
+// «Новый вход» (М1-3): флаг unconfirmed пишется при Create, читается всеми
+// выборками и возвращается Delete/DeleteOthers; HasSessions отвечает «есть ли сессии»
+// пользователя; Confirm различает «нет строки» и «уже подтверждена».
+func TestAuthRepo_Unconfirmed(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.CreateWithName(ctx, "+794", "Новый вход", "")
+	v, _ := repo.CreateWithName(ctx, "+795", "Чужой", "")
+
+	if has, err := repo.HasSessions(ctx, u.ID); err != nil || has {
+		t.Fatalf("HasSessions пустого = %v, %v; want false", has, err)
+	}
+	first, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "web", TokenHash: "uc-1"})
+	if err != nil || first.Unconfirmed {
+		t.Fatalf("Create первой = %+v, %v; want confirmed", first, err)
+	}
+	second, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Firefox", Platform: "web", TokenHash: "uc-2", Unconfirmed: true})
+	if err != nil || !second.Unconfirmed {
+		t.Fatalf("Create второй = %+v, %v; want unconfirmed", second, err)
+	}
+	foreign, _ := repo.Create(ctx, domain.Device{UserID: v.ID, Name: "X", Platform: "web", TokenHash: "uc-f", Unconfirmed: true})
+	if has, _ := repo.HasSessions(ctx, u.ID); !has {
+		t.Fatalf("HasSessions = %v, want true", has)
+	}
+
+	got, err := repo.Get(ctx, u.ID, second.ID)
+	if err != nil || !got.Unconfirmed {
+		t.Fatalf("Get = %+v, %v; want unconfirmed", got, err)
+	}
+	list, _ := repo.ListByUser(ctx, u.ID)
+	flags := map[int64]bool{}
+	for _, d := range list {
+		flags[d.ID] = d.Unconfirmed
+	}
+	if flags[first.ID] || !flags[second.ID] {
+		t.Fatalf("ListByUser флаги = %v", flags)
+	}
+
+	// Confirm: чужая и несуществующая — ErrNotFound; своя — changed, потом уже нет.
+	if _, err := repo.Confirm(ctx, u.ID, foreign.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Confirm(чужая) = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.Confirm(ctx, u.ID, 987654); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Confirm(нет) = %v, want ErrNotFound", err)
+	}
+	if changed, err := repo.Confirm(ctx, u.ID, second.ID); err != nil || !changed {
+		t.Fatalf("Confirm = %v, %v; want changed", changed, err)
+	}
+	if changed, err := repo.Confirm(ctx, u.ID, second.ID); err != nil || changed {
+		t.Fatalf("Confirm повторно = %v, %v; want changed=false, nil", changed, err)
+	}
+	if changed, err := repo.Confirm(ctx, u.ID, first.ID); err != nil || changed {
+		t.Fatalf("Confirm подтверждённой = %v, %v; want changed=false, nil", changed, err)
+	}
+	if still, _ := repo.Get(ctx, v.ID, foreign.ID); !still.Unconfirmed {
+		t.Fatal("флаг чужой сессии снят")
+	}
+
+	// Delete и DeleteOthers возвращают флаг и дату входа.
+	third, _ := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Safari", Platform: "web", TokenHash: "uc-3", Unconfirmed: true})
+	gone, found, err := repo.Delete(ctx, u.ID, third.ID)
+	if err != nil || !found || !gone.Unconfirmed || gone.CreatedAt.IsZero() || gone.TokenHash != "uc-3" {
+		t.Fatalf("Delete = %+v, %v, %v", gone, found, err)
+	}
+	fourth, _ := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Edge", Platform: "web", TokenHash: "uc-4", Unconfirmed: true})
+	removed, err := repo.DeleteOthers(ctx, u.ID, first.ID)
+	if err != nil || len(removed) != 2 {
+		t.Fatalf("DeleteOthers = %+v, %v; want 2 строки", removed, err)
+	}
+	byID := map[int64]domain.Device{}
+	for _, d := range removed {
+		byID[d.ID] = d
+	}
+	if d := byID[fourth.ID]; !d.Unconfirmed || d.CreatedAt.IsZero() {
+		t.Fatalf("DeleteOthers потерял флаг/дату: %+v", d)
+	}
+	if d := byID[second.ID]; d.Unconfirmed {
+		t.Fatalf("подтверждённая вернулась как unconfirmed: %+v", d)
+	}
+}
+
+// Признак approved токена шага пароля: пишется при создании, читается, а при
+// продлении (ON CONFLICT) не перезаписывается.
+func TestAuthRepo_PasswordTokenApproved(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.CreateWithName(ctx, "+796", "Токен", "")
+	exp := time.Now().Add(time.Minute)
+	if err := repo.SavePasswordToken(ctx, "pt-yes", u.ID, exp, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SavePasswordToken(ctx, "pt-no", u.ID, exp, false); err != nil {
+		t.Fatal(err)
+	}
+	if uid, approved, err := repo.PasswordTokenUser(ctx, "pt-yes"); err != nil || uid != u.ID || !approved {
+		t.Fatalf("pt-yes = %d, %v, %v", uid, approved, err)
+	}
+	if _, approved, err := repo.PasswordTokenUser(ctx, "pt-no"); err != nil || approved {
+		t.Fatalf("pt-no approved = %v, %v", approved, err)
+	}
+	// Продление: approved не меняется ни в какую сторону.
+	if err := repo.SavePasswordToken(ctx, "pt-yes", u.ID, exp.Add(time.Minute), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SavePasswordToken(ctx, "pt-no", u.ID, exp.Add(time.Minute), true); err != nil {
+		t.Fatal(err)
+	}
+	if _, approved, _ := repo.PasswordTokenUser(ctx, "pt-yes"); !approved {
+		t.Fatal("продление затёрло approved=true")
+	}
+	if _, approved, _ := repo.PasswordTokenUser(ctx, "pt-no"); approved {
+		t.Fatal("продление подняло approved")
+	}
+	if _, _, err := repo.PasswordTokenUser(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("нет токена: %v, want ErrNotFound", err)
 	}
 }
