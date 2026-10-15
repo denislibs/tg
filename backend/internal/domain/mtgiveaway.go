@@ -68,7 +68,8 @@ type MessageMediaGiveaway struct {
 	Quantity int `json:"quantity"`
 	// Months — flags.4?int: срок premium-подписки. Едет только у premium-приза.
 	Months int `json:"months,omitempty"`
-	// Stars — flags.5?long: звёзд каждому победителю. Едет только у ⭐-приза.
+	// Stars — flags.5?long: ОБЩАЯ сумма розыгрыша (tweb chat/giveaway.tsx:199).
+	// Едет только у ⭐-приза.
 	Stars int64 `json:"stars,omitempty"`
 	// UntilDate — обязательный: когда розыгрыш состоится, секунды эпохи.
 	UntilDate int `json:"until_date"`
@@ -225,7 +226,7 @@ type GiveawayStateResults struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	StartDate  int             `json:"start_date"`
-	// StarsPrize — flags.4?long: звёзд победителю. Едет только у ⭐-приза.
+	// StarsPrize — flags.4?long: общая сумма розыгрыша. Едет только у ⭐-приза.
 	StarsPrize int64 `json:"stars_prize,omitempty"`
 	// FinishDate — обязательный: когда розыгрыш состоялся.
 	FinishDate   int `json:"finish_date"`
