@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -13,6 +14,14 @@ import (
 
 // JoinGroupCall добавляет участника и оповещает членов чата.
 // Возвращает участников ДО входа (им новичок шлёт офферы).
+//
+// Видеочат с нуля начинает только создатель/админ (tweb: кнопка «начать» —
+// `hasRights(chat, 'manage_call')`, topbar.ts:350-361; без права и без идущего
+// звонка appImManager.joinGroupCall выходит, :2343-2358). Бита manage_call у нас
+// нет — право то же, что у эфира (requireCallAdmin). Звонок «идёт», если в нём
+// есть участники или активен эфир чата. Отказ — ErrForbidden и кадр
+// group_call_update {action: "rejected"} только входящему: клиент к этому
+// моменту уже взял микрофон и открыл экран звонка.
 func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([]int64, error) {
 	if i.groupCalls == nil {
 		return nil, domain.ErrNotFound
@@ -28,9 +37,13 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	first, err := i.groupCalls.Join(ctx, chatID, userID)
+	first, joined, err := i.admitToGroupCall(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
+	}
+	if !joined {
+		i.publishGroupCallRejected(ctx, chatID, userID, before)
+		return nil, domain.ErrForbidden
 	}
 	i.publishGroupCallUpdate(ctx, chatID, userID, "joined")
 	if first {
@@ -45,6 +58,47 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 		}
 	}
 	return out, nil
+}
+
+// admitToGroupCall вносит пользователя в звонок по правилам Б-9. first —
+// переход 0→1, joined=false — вход запрещён. Не-админ при выключенном эфире
+// входит через JoinIfActive: проверка «звонок идёт» и вход — один скрипт Redis,
+// иначе последний вышедший оставил бы пустой звонок, а не-админ вошёл бы в него.
+func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64) (first, joined bool, err error) {
+	if i.requireCallAdmin(ctx, chatID, userID) == nil {
+		first, err = i.groupCalls.Join(ctx, chatID, userID)
+		return first, err == nil, err
+	}
+	live, err := i.livestreamActive(ctx, chatID)
+	if err != nil {
+		return false, false, err
+	}
+	if live {
+		first, err = i.groupCalls.Join(ctx, chatID, userID)
+		return first, err == nil, err
+	}
+	joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
+	return false, joined, err
+}
+
+// livestreamActive — идёт ли эфир чата. Эфир не заводили — нет.
+func (i *Interactor) livestreamActive(ctx context.Context, chatID int64) (bool, error) {
+	if i.livestreams == nil {
+		return false, nil
+	}
+	ls, err := i.livestreams.Get(ctx, chatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	return ls.Active, err
+}
+
+// publishGroupCallRejected сообщает отказ входа ТОЛЬКО входящему (ключ пира —
+// его глазами); остальным членам чата ничего не уходит.
+func (i *Interactor) publishGroupCallRejected(ctx context.Context, chatID, userID int64, participants []int64) {
+	i.publishPeerFrame(ctx, chatID, []int64{userID}, 0, "group_call_update", map[string]any{
+		"user_id": userID, "action": "rejected", "participants": participants,
+	})
 }
 
 // LeaveGroupCall убирает участника и оповещает членов чата.

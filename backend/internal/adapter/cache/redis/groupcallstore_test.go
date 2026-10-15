@@ -219,3 +219,104 @@ func TestGroupCallStore_LeaseRespectsLimit(t *testing.T) {
 		t.Fatalf("остаток = %d, want 2", len(rest))
 	}
 }
+
+// JoinIfActive не открывает пустой звонок: ключ не создаётся, участник не пишется.
+func TestJoinIfActive_EmptySet_NoAdd(t *testing.T) {
+	s, mr := newTestGroupCallStore(t)
+	ctx := context.Background()
+
+	joined, err := s.JoinIfActive(ctx, 5, 1)
+	if err != nil || joined {
+		t.Fatalf("вход в пустой звонок: joined=%v err=%v, want false", joined, err)
+	}
+	if mr.Exists(groupCallKey(5)) {
+		t.Fatal("отказанный вход создал ключ звонка")
+	}
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 0 {
+		t.Fatalf("участники после отказа = %v", ids)
+	}
+}
+
+// В идущий звонок JoinIfActive входит, продлевает TTL и перехода 0→1 не даёт.
+func TestJoinIfActive_ActiveSet_JoinsAndExtendsTTL(t *testing.T) {
+	s, mr := newTestGroupCallStore(t)
+	ctx := context.Background()
+	if first, _ := s.Join(ctx, 5, 1); !first {
+		t.Fatal("первый вход не помечен переходом")
+	}
+	mr.FastForward(time.Hour)
+
+	joined, err := s.JoinIfActive(ctx, 5, 2)
+	if err != nil || !joined {
+		t.Fatalf("вход в идущий звонок: joined=%v err=%v", joined, err)
+	}
+	if ttl := mr.TTL(groupCallKey(5)); ttl != groupCallTTL {
+		t.Fatalf("TTL после входа = %v, want %v (продление)", ttl, groupCallTTL)
+	}
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 2 {
+		t.Fatalf("участники = %v, want двое", ids)
+	}
+	// Повторный вход того же участника — не дубль.
+	if joined, _ := s.JoinIfActive(ctx, 5, 2); !joined {
+		t.Fatal("повторный вход отклонён")
+	}
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 2 {
+		t.Fatalf("участники после повтора = %v, want двое", ids)
+	}
+}
+
+// Параллельно: последний выходит, не-админы входят через JoinIfActive. Сам
+// скрипт атомарен, так что итог один из двух: вошли в непустой звонок (хозяин
+// ещё внутри) либо отказ; множества «только не-админ» после выхода хозяина нет.
+func TestJoinIfActive_RaceWithLastLeave(t *testing.T) {
+	for round := 0; round < 200; round++ {
+		s, _ := newTestGroupCallStore(t)
+		ctx := context.Background()
+		const owner = int64(1)
+		_, _ = s.Join(ctx, 9, owner)
+
+		var wg sync.WaitGroup
+		results := make([]bool, 4)
+		wg.Add(1 + len(results))
+		start := make(chan struct{})
+		var lastLeft bool
+		go func() {
+			defer wg.Done()
+			<-start
+			lastLeft, _ = s.Leave(ctx, 9, owner)
+		}()
+		for k := range results {
+			go func(k int) {
+				defer wg.Done()
+				<-start
+				results[k], _ = s.JoinIfActive(ctx, 9, int64(100+k))
+			}(k)
+		}
+		close(start)
+		wg.Wait()
+
+		ids, _ := s.Participants(ctx, 9)
+		anyJoined := false
+		for _, j := range results {
+			anyJoined = anyJoined || j
+		}
+		// Если хозяин вышел последним, никто из вошедших не мог войти позже него:
+		// вошедшие после выхода получили бы отказ, а до него — остались в множестве
+		// и сделали бы выход хозяина не «последним».
+		if lastLeft && len(ids) != 0 {
+			t.Fatalf("round %d: хозяин вышел последним, но в звонке %v", round, ids)
+		}
+		if !lastLeft && !anyJoined && len(ids) != 0 {
+			t.Fatalf("round %d: никто не вошёл, а множество %v", round, ids)
+		}
+		for k, j := range results {
+			in := false
+			for _, id := range ids {
+				in = in || id == int64(100+k)
+			}
+			if j != in {
+				t.Fatalf("round %d: joined[%d]=%v, но в множестве %v", round, k, j, ids)
+			}
+		}
+	}
+}
