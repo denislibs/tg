@@ -548,8 +548,10 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		refunds = map[int64]int64{}
 		// Оплаченные отложенные чата уходят вместе с ним — звёзды авторам
 		// возвращаются (решение 2026-10-11), как при отказе публикации.
-		// Первым шагом: публикация держит строку очереди раньше журнала
-		// участников (user_state), тот же порядок исключает взаимную блокировку.
+		// Порядок блокировок (как в отправке): строки розыгрышей и очередь
+		// отложенных -> балансы -> строка чата -> журнал участников (user_state).
+		// Публикация держит строку очереди раньше журнала, тот же порядок
+		// исключает взаимную блокировку.
 		//
 		// Вклад незавершённых розыгрышей канала возвращается создателям: строки
 		// розыгрышей уходят каскадом вместе с чатом. Розыгрыши закрываются здесь же
@@ -569,6 +571,11 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		if e := i.creditGiveawayDeposits(ctx, deposits, refunds); e != nil {
 			return e
 		}
+		// Строка чата - после балансов и ДО журнала участников (user_state): так
+		// же, как в отправке (балансы -> NextSeq по чату -> журнал участников).
+		if e := i.lockChatForDelete(ctx, chatID); e != nil {
+			return e
+		}
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
 			if e != nil {
@@ -582,10 +589,6 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 				}
 				ptsByUser[uid] = pts
 			}
-		}
-		// Строка чата - последней, после балансов (порядок блокировок отправки).
-		if e := i.lockChatForDelete(ctx, chatID); e != nil {
-			return e
 		}
 		return i.groups.DeleteChat(ctx, chatID)
 	})

@@ -86,7 +86,8 @@ services:
       TURN_HOST: "${TURN_HOST:-localhost}"
       TURN_SECRET: "${TURN_SECRET:-dev-turn-secret-change-me}"
       DEV_OTP_CODE: "12345"
-      # dev-начисление звёзд и мок Premium (в проде не включать)
+      APP_ENV: "${APP_ENV:-development}"
+      # dev-начисление звёзд и мок Premium (в проде не включать; требует явного APP_ENV)
       DEV_PURCHASES: "true"
       MINIO_ENDPOINT: "minio:9000"
       MINIO_ACCESS_KEY: "minioadmin"

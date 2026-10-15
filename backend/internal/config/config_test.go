@@ -162,6 +162,7 @@ func TestLoad_PublicLinkOrigins(t *testing.T) {
 func TestLoad_DevPurchases(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
 
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("DEV_PURCHASES", "")
 	if c, err := Load(); err != nil || c.DevPurchases {
 		t.Fatalf("по умолчанию DevPurchases = %v, %v; want false", c != nil && c.DevPurchases, err)
@@ -214,23 +215,25 @@ func TestLoad_AppEnvNormalized(t *testing.T) {
 	}
 }
 
-// Незнакомое окружение + DEV_PURCHASES=true - отказ старта (опечатка «prod»
-// не должна открывать дармовые звёзды).
-func TestLoad_UnknownAppEnvRejectsDevPurchases(t *testing.T) {
+// DEV_PURCHASES=true требует явного APP_ENV из development/dev/local/test:
+// пустой, пробельный и незнакомый («prod») - отказ старта.
+func TestLoad_DevPurchasesRequiresExplicitAppEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
 	t.Setenv("DEV_PURCHASES", "true")
 
-	t.Setenv("APP_ENV", "prod")
-	if _, err := Load(); err == nil {
-		t.Fatal(`APP_ENV=prod + DEV_PURCHASES принят`)
+	for _, env := range []string{"", "  ", "prod", "staging"} {
+		t.Setenv("APP_ENV", env)
+		if _, err := Load(); err == nil {
+			t.Fatalf("APP_ENV=%q + DEV_PURCHASES принят", env)
+		}
 	}
-	for _, env := range []string{"", "  ", "development", "Dev", "test"} {
+	for _, env := range []string{"development", "Dev", "local", " test "} {
 		t.Setenv("APP_ENV", env)
 		if _, err := Load(); err != nil {
 			t.Fatalf("APP_ENV=%q + DEV_PURCHASES отвергнут: %v", env, err)
 		}
 	}
-	// Без флага незнакомое окружение стартует, как и раньше.
+	// Без флага пустое/незнакомое окружение стартует, как и раньше.
 	t.Setenv("DEV_PURCHASES", "")
 	t.Setenv("APP_ENV", "prod")
 	if _, err := Load(); err != nil {

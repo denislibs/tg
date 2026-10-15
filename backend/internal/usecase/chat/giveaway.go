@@ -20,9 +20,8 @@ const (
 	// giveawayMaxPeriod — appConfig giveaway_period_max = 604800 с (tweb
 	// popups/boostsViaGifts.tsx:173, дефолт 7 суток).
 	giveawayMaxPeriod = 7 * 24 * time.Hour
-	// maxGiveawayStars — потолок приза одному победителю; тот же, что у
-	// dev-пополнения (TopUpStars). Сумма вклада maxGiveawayStars × maxGiveawayWinners
-	// укладывается в int64 с огромным запасом.
+	// maxGiveawayStars — потолок ОБЩЕГО приза розыгрыша звёзд; тот же, что у
+	// dev-пополнения (TopUpStars).
 	maxGiveawayStars = 1_000_000
 )
 
@@ -44,7 +43,7 @@ func (i *Interactor) SetPremiumGiveaways(enabled bool) { i.premiumGiveaways = en
 
 // CreateGiveaway валидирует и публикует розыгрыш сообщением типа 'giveaway'
 // (создать может только админ канала с правом постинга). Розыгрыш звёзд —
-// условное депонирование: вклад stars × winners_count списывается с создателя в
+// условное депонирование: вклад (общая сумма stars) списывается с создателя в
 // той же транзакции, что и сам розыгрыш с сообщением (нехватка —
 // ErrBalanceTooLow, откат без следа). Победителям уходит приз, остаток при
 // нехватке участников возвращается создателю (maybeFinishGiveaway).
@@ -71,7 +70,10 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 		}
 		in.Stars = 0
 	case "stars":
-		if in.Stars <= 0 || in.Stars > maxGiveawayStars {
+		// Stars - ОБЩАЯ сумма розыгрыша (tweb chat/giveaway.tsx:199, :232-240:
+		// messageMediaGiveaway.stars - всего, quantity - число победителей);
+		// каждому победителю - stars / winners_count, не меньше одной звезды.
+		if in.Stars < int64(in.WinnersCount) || in.Stars > maxGiveawayStars {
 			return domain.Message{}, domain.ErrInvalid
 		}
 		if i.stars == nil {
@@ -97,7 +99,7 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 		prepare: func(ctx context.Context, send *SendInput) error {
 			var deposit int64
 			if in.PrizeKind == "stars" {
-				deposit = in.Stars * int64(in.WinnersCount)
+				deposit = in.Stars
 				b, _, e := i.moveStars(ctx, in.CreatorID, 0, deposit)
 				if e != nil {
 					return e
@@ -261,7 +263,11 @@ func (i *Interactor) payOutGiveawayStars(ctx context.Context, g domain.Giveaway,
 	if i.stars == nil || g.Deposit <= 0 {
 		return nil
 	}
-	paid := int64(len(winners)) * g.Stars
+	if g.WinnersCount <= 0 {
+		return domain.ErrInvalid
+	}
+	prize := g.Deposit / int64(g.WinnersCount) // от вклада, не от поля показа; остаток от деления вернётся
+	paid := int64(len(winners)) * prize
 	if paid > g.Deposit {
 		return domain.ErrInvalid // вклад меньше призов: строка не из этого кода
 	}
@@ -269,16 +275,17 @@ func (i *Interactor) payOutGiveawayStars(ctx context.Context, g domain.Giveaway,
 		return e
 	}
 	for _, w := range winners {
-		b, e := i.stars.AddBalance(ctx, w, g.Stars)
+		b, e := i.stars.AddBalance(ctx, w, prize)
 		if e != nil {
 			return e
 		}
-		if e := i.stars.RecordTx(ctx, w, g.Stars, "giveaway_prize", "Приз розыгрыша", nil); e != nil {
+		if e := i.stars.RecordTx(ctx, w, prize, "giveaway_prize", "Приз розыгрыша", nil); e != nil {
 			return e
 		}
 		balances[w] = b
 	}
-	// Победителей меньше, чем мест: неразданный вклад возвращается создателю.
+	// Победителей меньше, чем мест (и остаток от деления): неразданный вклад
+	// возвращается создателю.
 	if unspent := g.Deposit - paid; unspent > 0 {
 		b, e := i.stars.AddBalance(ctx, g.CreatorID, unspent)
 		if e != nil {
