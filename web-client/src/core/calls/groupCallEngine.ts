@@ -86,7 +86,7 @@ function broadcastMediaState() {
 
 /** Войти в видеочат группы (создаёт его, если ещё не идёт). */
 export async function joinGroupCall(peerId: number, withVideo = false) {
-  if (store().peerId != null) return // уже в звонке
+  if (store().peerId != null || store().connecting) return // уже в звонке или входим
   store().setConnecting(true)
   // relay без TURN не соберёт ни одного кандидата: входим только при его наличии, а не молча
   // идём в обход на прямое соединение. До микрофона — окно разрешения зря не открываем.

@@ -476,9 +476,8 @@ func TestRelayCall_RepeatedRequestKeepsP2PAllowed(t *testing.T) {
 	}
 }
 
-// Без хранилища звонков значение считается заново на каждом кадре; без движка
-// приватности — true.
-func TestRelayCall_P2PAllowed_WithoutStoreAndPrivacy(t *testing.T) {
+// Без движка приватности ограничений нет: p2p_allowed=true.
+func TestRelayCall_P2PAllowed_WithoutPrivacy(t *testing.T) {
 	in, _ := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
@@ -487,28 +486,19 @@ func TestRelayCall_P2PAllowed_WithoutStoreAndPrivacy(t *testing.T) {
 	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != true {
 		t.Fatalf("без privacy: p2p_allowed = %v; want true", got)
 	}
-
-	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{callerID: true}})
-	relay(t, in, "call_accept", calleeID, callerID, `{"call_id":"n1"}`)
-	if got := lastFrameData(t, pub, callerID, "call_accept")["p2p_allowed"]; got != false {
-		t.Fatalf("call_accept без стора: p2p_allowed = %v; want false (пересчёт)", got)
-	}
 }
 
-// Сбой чтения правила не пропускает звонок с p2p_allowed=true: ошибка наружу,
-// звонок не заводится.
-func TestRelayCall_P2PCheckError(t *testing.T) {
+// Сбой чтения правила не теряет звонок и не открывает IP: звонок заведён, p2p_allowed=false.
+func TestRelayCall_P2PCheckError_FallsBackToRelay(t *testing.T) {
 	in, _, calls, pub := newCallInteractor()
 	in.SetPrivacy(p2pPrivacy{err: errors.New("boom")})
 
-	err := in.RelayCall(context.Background(), "call_request", callerID, calleeID, map[string]any{"call_id": "e1"})
-	if err == nil {
-		t.Fatal("ошибка правила проглочена")
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"e1"}`)
+
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != false {
+		t.Fatalf("p2p_allowed = %v; want false", got)
 	}
-	if _, gerr := calls.Get(context.Background(), "e1"); gerr == nil {
-		t.Fatal("звонок заведён при сбое правила")
-	}
-	if framesOfType(pub, calleeID, "call_request") != 0 {
-		t.Fatal("адресату ушёл call_request при сбое правила")
+	if c, err := calls.Get(context.Background(), "e1"); err != nil || c.P2PAllowed {
+		t.Fatalf("запись звонка: %+v err=%v; want заведён с P2PAllowed=false", c, err)
 	}
 }

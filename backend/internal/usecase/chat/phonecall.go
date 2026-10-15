@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -86,9 +87,12 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 				return i.publisher.PublishToUser(ctx, fromUserID, decline)
 			}
 		}
+		// Сбой чтения правила P2P звонок не теряет: закрываемся — звонок идёт
+		// только через TURN (IP не раскрывается), как при запрете.
 		p2p, err := i.p2pAllowed(ctx, fromUserID, toUserID)
 		if err != nil {
-			return err
+			log.Printf("phonecall: p2p_allowed caller=%d callee=%d: %v", fromUserID, toUserID, err)
+			p2p = false
 		}
 		video, _ := data["video"].(bool)
 		c, ok, err := i.openPhoneCall(ctx, domain.PhoneCall{ID: callID, CallerID: fromUserID, CalleeID: toUserID, Video: video, P2PAllowed: p2p})
@@ -113,13 +117,6 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 		if frameType == "call_accept" {
 			data["p2p_allowed"] = c.P2PAllowed
 		}
-	} else if frameType == "call_accept" {
-		// Без хранилища звонков записи нет — значение считается заново.
-		p2p, err := i.p2pAllowed(ctx, toUserID, fromUserID)
-		if err != nil {
-			return err
-		}
-		data["p2p_allowed"] = p2p
 	}
 	if frameType == "call_accept" {
 		// Ответ релеится только победителю гонки двух устройств: второй
