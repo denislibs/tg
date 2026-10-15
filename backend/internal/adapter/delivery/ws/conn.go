@@ -483,25 +483,11 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
 			WebPage:        d.WebPageInput,
 			ScheduleDate:   d.ScheduleDate, ScheduleRepeatPeriod: d.ScheduleRepeatPeriod,
+			AllowPaidStars: d.AllowPaidStars,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
-			reason := "failed"
-			if errors.Is(err, domain.ErrTooLong) {
-				reason = "too_long"
-			} else if errors.Is(err, domain.ErrSlowmode) {
-				reason = "slowmode"
-			} else if errors.Is(err, domain.ErrForbidden) {
-				reason = "forbidden"
-			} else if errors.Is(err, domain.ErrPrivacy) {
-				reason = "privacy"
-			} else if errors.Is(err, domain.ErrPaidRequired) {
-				reason = "paid_required"
-			} else if errors.Is(err, domain.ErrInvalid) {
-				reason = "invalid"
-			} else if errors.Is(err, domain.ErrScheduleTooMuch) {
-				reason = "schedule_too_much"
-			}
+			reason := sendNackReason(err)
 			nack(reason)
 			return
 		}
@@ -719,4 +705,31 @@ func (c *Conn) ackBody(ctx context.Context, clientMsgID string, msg domain.Messa
 		}
 	}
 	return body
+}
+
+// sendNackReason — причина отказа send_message для NACK. Платная отправка
+// называется кодами TG: ALLOW_PAYMENT_REQUIRED_<N> (нет согласия на плату, N —
+// сумма всего запроса; клиент переспрашивает, tweb repayRequestHandler.ts:12) и
+// BALANCE_TOO_LOW (не хватает звёзд).
+func sendNackReason(err error) string {
+	var need domain.ErrAllowPaymentRequired
+	switch {
+	case errors.As(err, &need):
+		return need.Error()
+	case errors.Is(err, domain.ErrTooLong):
+		return "too_long"
+	case errors.Is(err, domain.ErrSlowmode):
+		return "slowmode"
+	case errors.Is(err, domain.ErrForbidden):
+		return "forbidden"
+	case errors.Is(err, domain.ErrPrivacy):
+		return "privacy"
+	case errors.Is(err, domain.ErrBalanceTooLow):
+		return "BALANCE_TOO_LOW"
+	case errors.Is(err, domain.ErrInvalid):
+		return "invalid"
+	case errors.Is(err, domain.ErrScheduleTooMuch):
+		return "schedule_too_much"
+	}
+	return "failed"
 }

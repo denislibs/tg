@@ -1051,11 +1051,13 @@ export function createWorkerCore() {
       // раньше это делала каждая вкладка у себя из сырого кадра.
       // return НЕТ сознательно: сырой кадр летит дальше (PASS_THROUGH внизу) — у
       // него остались другие потребители, звук «пак» на ack
-      // (client/realtime/soundSubscriber.ts) и тост paid_required на ошибке.
+      // (client/realtime/soundSubscriber.ts). Причина отказа (`reason`) едет владельцу:
+      // по `ALLOW_PAYMENT_REQUIRED_<N>` он заводит запрос на повторную оплату
+      // (messages/repayRequestHandler.ts).
       if (type === 'message_ack' || type === 'message_error') {
         const ops = type === 'message_ack'
           ? messages.ackPendingMessage(payload as AckEvt)
-          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
+          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id, (payload as MessageErrorEvt).reason)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
       // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без

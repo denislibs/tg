@@ -72,6 +72,7 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.CreatorID, Type: "giveaway",
 		ClientMsgID: in.ClientMsgID, GiveawayID: &g.ID,
+		paidConsentNotRequired: true, // у messages.* розыгрыша нет allow_paid_stars
 	})
 	if err != nil {
 		return domain.Message{}, err

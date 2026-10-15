@@ -30,6 +30,11 @@ type ForwardInput struct {
 	// очередь отложенных (scheduled.go).
 	ScheduleDate         int64
 	ScheduleRepeatPeriod int
+	// AllowPaidStars — сумма согласия на плату ЗА ВСЮ ПАЧКУ (tweb
+	// forwardMessages: allow_paid_stars = цена × число сообщений, :3787), как
+	// SendInput.AllowPaidStars. paidConsentNotRequired — как у SendInput.
+	AllowPaidStars         int64
+	paidConsentNotRequired bool
 	// fromSchedule — публикация отложенной копии: без медленного режима и без
 	// повторного списания платы (В-2), как SendInput.fromSchedule.
 	fromSchedule bool
@@ -230,17 +235,21 @@ func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, 
 		if e := i.lockScheduledForPublish(ctx, in.scheduledID); e != nil {
 			return e
 		}
+		// Согласие и цена — на всю пачку сразу, до первого списания: пачка
+		// либо платится целиком, либо отвергается (allow_paid_stars = цена × число).
+		price, e := i.forwardPrice(ctx, in, len(copies))
+		if e != nil {
+			return e
+		}
+		// Плата за всю пачку — одним списанием (цена × число копий).
+		ch, e := i.chargePaidMessage(ctx, in.ToChatID, in.SenderID, price*int64(len(copies)))
+		if e != nil {
+			return e
+		}
+		if ch.applied {
+			charge = ch
+		}
 		for idx, c := range copies {
-			// Плата — за каждое сообщение (allow_paid_stars = цена × число).
-			probe := sendProbe(in.ToChatID, in.SenderID, c)
-			probe.fromSchedule, probe.repeatOccurrence = in.fromSchedule, in.repeatOccurrence
-			ch, e := i.chargePaidMessage(ctx, probe)
-			if e != nil {
-				return e
-			}
-			if ch.applied {
-				charge = ch
-			}
 			seq, e := i.msgs.NextSeq(ctx, in.ToChatID)
 			if e != nil {
 				return e
@@ -363,4 +372,16 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 		return err
 	}
 	return i.checkPrivateSendPrivacy(ctx, probe)
+}
+
+// forwardPrice — цена одного сообщения пачки пересылки после гейта согласия;
+// правила — те же, что у paidPriceFor.
+func (i *Interactor) forwardPrice(ctx context.Context, in ForwardInput, units int) (int64, error) {
+	if in.fromSchedule && !in.repeatOccurrence {
+		return 0, nil
+	}
+	if in.paidConsentNotRequired {
+		return i.paidPrice(ctx, in.ToChatID, in.SenderID)
+	}
+	return i.requirePaidAllowance(ctx, in.ToChatID, in.SenderID, units, in.AllowPaidStars)
 }

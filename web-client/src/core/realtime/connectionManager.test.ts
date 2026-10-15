@@ -50,6 +50,18 @@ describe('ConnectionManager', () => {
     expect(cm.outboxSize()).toBe(0)
   })
 
+  // Ф7-Г (MC-06): согласие на плату — поле кадра `allow_paid_stars` (сумма
+  // ЭТОГО кадра), tweb appMessagesManager.ts:2702.
+  it('кладёт allowPaidStars в кадр как allow_paid_stars (0 — согласия нет)', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+    cm.sendMessage({ peerId: 1, text: 'a', clientMsgId: 'c1', allowPaidStars: 5 })
+    cm.sendMessage({ peerId: 1, text: 'b', clientMsgId: 'c2' })
+    const sent = ws.frames.filter(f => f.t === 'send_message').map(f => (f.d as { allow_paid_stars: number }).allow_paid_stars)
+    expect(sent).toEqual([5, 0])
+  })
+
   it('resends the outbox after a reconnect', () => {
     const ws = fakeWs()
     const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })

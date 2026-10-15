@@ -65,7 +65,7 @@ func TestMessagesContainer_ChannelPostCarriesViewsAndThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostToChannel: %v", err)
 	}
-	if _, err := in.PostComment(ctx, ch, post.ID, 8, "комментарий", "k1"); err != nil {
+	if _, err := in.PostComment(ctx, ch, post.ID, 8, "комментарий", "k1", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
 	// просмотр поста читателем 8 — та же колонка messages.views, из которой
@@ -161,10 +161,10 @@ func TestMessagesContainer_GroupThreadCarriesReplyCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostToChannel: %v", err)
 	}
-	if _, err := in.PostComment(ctx, ch, post.ID, 8, "раз", "k1"); err != nil {
+	if _, err := in.PostComment(ctx, ch, post.ID, 8, "раз", "k1", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
-	if _, err := in.PostComment(ctx, ch, post.ID, 8, "два", "k2"); err != nil {
+	if _, err := in.PostComment(ctx, ch, post.ID, 8, "два", "k2", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
 	// зеркало поста в группе обсуждения — корень треда, и в истории ГРУППЫ оно
@@ -224,7 +224,7 @@ func TestMessagesContainer_MergesRecentRepliersIntoUsers(t *testing.T) {
 		user int64
 		key  string
 	}{{8, "k1"}, {9, "k2"}} {
-		if _, err := in.PostComment(ctx, ch, post.ID, c.user, "комментарий", c.key); err != nil {
+		if _, err := in.PostComment(ctx, ch, post.ID, c.user, "комментарий", c.key, 0); err != nil {
 			t.Fatalf("PostComment %d: %v", c.user, err)
 		}
 	}

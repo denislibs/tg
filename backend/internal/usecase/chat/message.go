@@ -488,8 +488,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 		}
 		// Платные сообщения (Telegram paid messages): списываем звёзды ПЕРЕД
-		// вставкой, в той же транзакции (нехватка → ErrPaidRequired откатывает всё).
-		c, e := i.chargePaidMessage(ctx, in)
+		// вставкой, в той же транзакции: согласие отправителя на плату
+		// (ErrAllowPaymentRequired) и баланс (ErrBalanceTooLow) откатывают всё.
+		price, e := i.paidPriceFor(ctx, in, 1)
+		if e != nil {
+			return e
+		}
+		c, e := i.chargePaidMessage(ctx, in.ChatID, in.SenderID, price)
 		if e != nil {
 			return e
 		}
@@ -730,7 +735,7 @@ func (i *Interactor) documentKind(ctx context.Context, mediaID int64) (string, e
 // is skipped (the caller owns that guarantee — mediaID is NOT verified here); chat
 // membership, slowmode and send-privacy still apply through Send (a non-member
 // yields domain.ErrNotFound). The message type follows the media mime.
-func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error {
+func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string, allowPaidStars int64) error {
 	msgType := "photo"
 	if dims, err := i.mediaAccess.DimsByIDs(ctx, []int64{mediaID}); err == nil {
 		if d, ok := dims[mediaID]; ok && strings.HasPrefix(d.Mime, "video/") {
@@ -739,7 +744,7 @@ func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, media
 	}
 	_, err := i.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: senderID, Type: msgType,
-		Text: caption, MediaID: &mediaID, skipMediaOwner: true,
+		Text: caption, MediaID: &mediaID, skipMediaOwner: true, AllowPaidStars: allowPaidStars,
 	})
 	return err
 }

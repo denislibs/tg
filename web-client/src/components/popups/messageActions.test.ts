@@ -231,7 +231,7 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
     picker.onPick!([42, 43])
     await vi.waitFor(() => expect(toasts.toastNew).toHaveBeenCalledTimes(1))
 
-    expect(managers.messages.forwardMessages.mock.calls).toEqual([[42, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined }], [43, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined }]])
+    expect(managers.messages.forwardMessages.mock.calls).toEqual([[42, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined, noRepay: true }], [43, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined, noRepay: true }]])
     expect(onSelect.mock.calls).toEqual([[42], [43]])
     expect(im.setInnerPeer).not.toHaveBeenCalled()
     expect(toasts.toastNew.mock.calls[0][0].langPackKey).toBe('FwdMessageTo')
@@ -242,7 +242,7 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
     picker.onPick!([rootScope.myId])
     await vi.waitFor(() => expect(toasts.toastNew).toHaveBeenCalledTimes(1))
 
-    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(rootScope.myId, USER, [3, 4], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined })
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(rootScope.myId, USER, [3, 4], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined, noRepay: true })
     expect(toasts.toastNew).toHaveBeenCalledWith({ langPackKey: 'FwdMessagesToSavedMessages' })
   })
 
@@ -259,7 +259,7 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
     schedulePopup.onPick!(1_900_000_000, 86400)
     await vi.waitFor(() => expect(managers.messages.forwardMessages).toHaveBeenCalledTimes(1))
 
-    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(42, USER, [3], { silent: undefined, scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(42, USER, [3], { silent: undefined, scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400, noRepay: true })
     expect(im.setInnerPeer).not.toHaveBeenCalled()
   })
 

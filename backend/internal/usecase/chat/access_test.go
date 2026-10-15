@@ -107,7 +107,7 @@ func TestDiscussion_PrivateChannelClosedToStranger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.PostComment(ctx, ch, post.ID, 7, "внутренний комментарий", "c1"); err != nil {
+	if _, err := in.PostComment(ctx, ch, post.ID, 7, "внутренний комментарий", "c1", 0); err != nil {
 		t.Fatal(err)
 	}
 	mirror, _ := in.msgs.MirrorByPost(ctx, ch, post.ID)

@@ -89,6 +89,7 @@ import ChatBubbles, { PEER_CHANGED_ERROR } from './bubbles'
 import ChatContextMenu from './contextMenu'
 import ChatInput from './input'
 import ChatSelection from './selection'
+import PriceChangedInterceptor from './priceChangedInterceptor'
 import ChatTopbar from './topbar'
 import { ChatType } from './chatType'
 import TopbarSearch from './topbarSearch.solid'
@@ -119,6 +120,7 @@ export default class Chat extends EventListenerBase<{
   public bubbles!: ChatBubbles
   public input!: ChatInput
   public selection!: ChatSelection
+  private priceChangedInterceptor?: PriceChangedInterceptor
   public contextMenu!: ChatContextMenu
 
   public wasAlreadyUsed?: boolean
@@ -385,6 +387,13 @@ export default class Chat extends EventListenerBase<{
     // менеджер прав (`cantForwardDeleteMids`) — нет предмета, задача #73 (`selection.ts`)
     this.selection = new ChatSelection(this, this.bubbles, this.input, { messages: {} })
 
+    // tweb `:622-626`: плашка «Цена изменилась» при отказе платной отправки
+    this.priceChangedInterceptor = new PriceChangedInterceptor({
+      chat: this,
+      listenerSetter: this.bubbles.listenerSetter,
+      managers: this.managers,
+    })
+
     this.topbar.constructUtils()
     this.topbar.constructPeerHelpers()
 
@@ -392,6 +401,8 @@ export default class Chat extends EventListenerBase<{
     this.input.construct()
 
     this.input.constructPeerHelpers()
+
+    this.priceChangedInterceptor.init()
 
     if(!IS_TOUCH_SUPPORTED) {
       this.bubbles.setReactionsHoverListeners()
@@ -552,6 +563,7 @@ export default class Chat extends EventListenerBase<{
     this.input?.cleanup(helperToo)
     this.topbar?.cleanup()
     this.selection?.cleanup()
+    this.priceChangedInterceptor?.cleanup()
     // `ignoreSearchCleaning` (:877-878) ставит только смена типа поиска по хэштегу
     // (`onSearchTypeChange`) — её нет (расхождение 2 `chat/topbarSearch.solid.tsx`)
     this.searchSignal?.(undefined)
