@@ -17,16 +17,21 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-type fakeRPC struct{ gotUser int64 }
+type fakeRPC struct {
+	gotUser int64
+	gotIP   string
+}
 
-func (f *fakeRPC) Dispatch(_ context.Context, user domain.UserRecord, _ int64, method, path string, body []byte) (int, []byte) {
+func (f *fakeRPC) Dispatch(_ context.Context, user domain.UserRecord, _ int64, clientIP, method, path string, body []byte) (int, []byte) {
 	f.gotUser = user.ID
+	f.gotIP = clientIP
 	return 200, []byte(`{"ok":true,"m":"` + method + `","p":"` + path + `"}`)
 }
 
 func TestConnDispatchesRPCReq(t *testing.T) {
 	rpc := &fakeRPC{}
 	c := newConn(nil, nil, nil, nil, domain.UserRecord{ID: 77}, 5, plainCodec{}, rpc, nil)
+	c.clientIP = "203.0.113.77"
 	// Читаем c.send напрямую (без реального сокета).
 	f := Frame{T: "rpc_req", D: json.RawMessage(`{"req_id":"r1","method":"GET","path":"/dialogs","body":null}`)}
 	c.dispatch(context.Background(), f)
@@ -46,6 +51,9 @@ func TestConnDispatchesRPCReq(t *testing.T) {
 		}
 		if rpc.gotUser != 77 {
 			t.Fatalf("user not passed: %d", rpc.gotUser)
+		}
+		if rpc.gotIP != "203.0.113.77" {
+			t.Fatalf("IP клиента не передан в Dispatch: %q", rpc.gotIP)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no rpc_resp (async dispatch stuck?)")
@@ -146,7 +154,8 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 			_ = wsConn.Close()
 			return
 		}
-		c := newConn(wsConn, nil, nil, nil, user, deviceID, codec, rpc, nil)
+		// Тот же сборщик, что у Handler.ServeHTTP: IP снимается при апгрейде.
+		c := (&Handler{rpc: rpc}).dnpConn(r, wsConn, codec, user, deviceID)
 		go c.writePump(context.Background())
 		c.readPump(context.Background())
 	}))
@@ -156,7 +165,7 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	// dnp_accept_test.go — не дублируем, а прогоняем ещё один шаг: rpc_req/rpc_resp).
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
 	d := websocket.Dialer{Subprotocols: []string{"dnp.2"}}
-	conn, _, err := d.Dial(url, nil)
+	conn, _, err := d.Dial(url, http.Header{"X-Real-IP": {"203.0.113.44"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +222,9 @@ func TestDNPChannelRPCEndToEnd(t *testing.T) {
 	}
 	if out.T != "rpc_resp" || out.D.ReqID != "e1" || out.D.Status != 200 {
 		t.Fatalf("bad rpc_resp: %s", plain)
+	}
+	if rpc.gotIP != "203.0.113.44" {
+		t.Fatalf("IP клиента при апгрейде не дошёл до Dispatch: %q", rpc.gotIP)
 	}
 	if rpc.gotUser != 42 {
 		t.Fatalf("fakeRPC did not see the dnpAccept-authenticated user: got %d, want 42", rpc.gotUser)

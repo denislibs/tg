@@ -14,6 +14,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
@@ -219,7 +220,7 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // `options.data` — строка JSON `{"publicKey":{…}}` (tweb passkeyLoginButton.tsx
 // :38-41), `session` — одноразовый ключ церемонии для finish.
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
-	if ok, wait := h.limiter.allowWait("passkey-begin-ip:"+clientIP(r), 0.2, 10); !ok {
+	if ok, wait := h.limiter.allowWait("passkey-begin-ip:"+netx.ClientIP(r), 0.2, 10); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -241,7 +242,7 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 // (`auth.Authorization`): при включённом облачном пароле — `auth.passwordNeeded`
 // (шаг пароля, сессии нет), иначе `auth.authorization`.
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
-	if ok, wait := h.limiter.allowWait("passkey-finish-ip:"+clientIP(r), 0.2, 10); !ok {
+	if ok, wait := h.limiter.allowWait("passkey-finish-ip:"+netx.ClientIP(r), 0.2, 10); !ok {
 		writeFloodWait(w, wait)
 		return
 	}

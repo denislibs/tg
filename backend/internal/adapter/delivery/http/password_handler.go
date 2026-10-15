@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
@@ -39,7 +40,7 @@ const (
 // allowCheck — пускает ли проверку пароля; при отказе уже написан 420
 // FLOOD_WAIT_<N> (tweb ждёт N секунд и повторяет, apiManager.ts:759-791).
 func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord) bool {
-	if ok, wait := h.limiter.allowWait("mepw-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("mepw-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return false
 	}

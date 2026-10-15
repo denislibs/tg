@@ -101,7 +101,7 @@ type Presence interface {
 // RPCDispatcher реплеит rpc-запрос канала (реализуется в пакете http через
 // RouterRPC). Несёт user+deviceID, чтобы ws не зависел от http.
 type RPCDispatcher interface {
-	Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, method, path string, body []byte) (int, []byte)
+	Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, clientIP, method, path string, body []byte) (int, []byte)
 }
 
 const rpcMaxConcurrent = 16
@@ -152,14 +152,18 @@ type Conn struct {
 	ws *websocket.Conn
 	// wsMu/closed — сокет может появиться ПОСЛЕ регистрации (registerSubs до
 	// апгрейда), а отзыв сессии (Close) — прийти в этот промежуток.
-	wsMu      sync.Mutex
-	closed    bool
-	hub       *Hub
-	svc       *usecasechat.Interactor
-	presence  Presence
-	user      domain.UserRecord
-	userID    int64
-	deviceID  int64
+	wsMu     sync.Mutex
+	closed   bool
+	hub      *Hub
+	svc      *usecasechat.Interactor
+	presence Presence
+	user     domain.UserRecord
+	userID   int64
+	deviceID int64
+	// clientIP — IP клиента, снятый при апгрейде (netx.ClientIP): уходит в
+	// синтетические запросы RPC, чтобы лимитеры и ClientInfo ручек видели
+	// настоящий адрес, а не общий адрес httptest.
+	clientIP  string
 	send      chan outFrame
 	codec     frameCodec
 	rpc       RPCDispatcher    // nil у plain-conn
@@ -607,12 +611,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			c.reply(rpcRespFrame(d.ReqID, 503, busy))
 			return
 		}
-		rpc, user, deviceID := c.rpc, c.user, c.deviceID
+		rpc, user, deviceID, ip := c.rpc, c.user, c.deviceID, c.clientIP
 		reqID, method, path, body := d.ReqID, d.Method, d.Path, d.Body
 		go func() {
 			defer func() { <-c.rpcSem }()
 			defer saferun.Recover("ws.conn.rpc")
-			status, respBody := rpc.Dispatch(context.Background(), user, deviceID, method, path, body)
+			status, respBody := rpc.Dispatch(context.Background(), user, deviceID, ip, method, path, body)
 			c.reply(rpcRespFrame(reqID, status, respBody))
 		}()
 	case "file_req":

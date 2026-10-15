@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
@@ -32,7 +32,7 @@ func clientInfoFromRequest(r *http.Request) usecaseauth.ClientInfo {
 	return usecaseauth.ClientInfo{
 		Browser:    browser,
 		OS:         os,
-		IP:         clientIP(r),
+		IP:         netx.ClientIP(r),
 		AppVersion: clientAppVersion(r),
 	}
 }
@@ -63,30 +63,6 @@ func clientAppVersion(r *http.Request) string {
 		v = string([]rune(v)[:maxAppVersionLen])
 	}
 	return v
-}
-
-// clientIP — реальный IP клиента за доверенным обратным прокси (nginx). Клиент
-// НЕ должен уметь его подделать: иначе смена заголовка обходит rate-limit/анти-
-// брутфорс и подделывает IP/гео в login-alert.
-//   - X-Real-IP nginx ставит в $remote_addr (реальный peer) и ПЕРЕЗАПИСЫВАЕТ
-//     присланное клиентом — берём его в первую очередь.
-//   - X-Forwarded-For клиент-контролируем в ЛЕВОЙ части; nginx добавляет реальный
-//     peer в КОНЕЦ ($proxy_add_x_forwarded_for), поэтому fallback — ПРАВАЯ запись.
-//   - Иначе (без прокси, тесты) — RemoteAddr.
-func clientIP(r *http.Request) string {
-	if xr := strings.TrimSpace(r.Header.Get("X-Real-IP")); xr != "" && net.ParseIP(xr) != nil {
-		return xr
-	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
-			return last
-		}
-	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 // parseUserAgent does a light, dependency-free best-effort parse of the browser
@@ -149,7 +125,7 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Троттлинг OTP-запроса: по IP (флуд) и по номеру (SMS-стоимость/спам жертве).
-	if ok, wait := h.limiter.allowWait("otp-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("otp-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -178,7 +154,7 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Анти-брутфорс OTP-кода по реальному IP.
-	if ok, wait := h.limiter.allowWait("signin-ip:"+clientIP(r), 0.5, 10); !ok {
+	if ok, wait := h.limiter.allowWait("signin-ip:"+netx.ClientIP(r), 0.5, 10); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -240,7 +216,7 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-перебор токена регистрации по реальному IP (тот же бюджет, что у sign_in:
 	// шаг регистрации — его прямое продолжение).
-	if ok, wait := h.limiter.allowWait("signup-ip:"+clientIP(r), 0.5, 10); !ok {
+	if ok, wait := h.limiter.allowWait("signup-ip:"+netx.ClientIP(r), 0.5, 10); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -279,7 +255,7 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// Троттлинг по IP — поверх серверного таймера повторной отправки.
-	if ok, wait := h.limiter.allowWait("recover-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("recover-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -326,7 +302,7 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// Анти-перебор кода по реальному IP (в дополнение к лимиту попыток на токен).
-	if ok, wait := h.limiter.allowWait("recover-confirm-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("recover-confirm-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -365,7 +341,7 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-перебор password_token по реальному IP — тот же бюджет, что у остальных
 	// ветвей шага пароля (check_password, password/recover).
-	if ok, wait := h.limiter.allowWait("reset-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("reset-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -400,12 +376,12 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) NearestCountry(w http.ResponseWriter, r *http.Request) {
 	// Щадящий лимит: ручка дёргается на каждом открытии экрана входа, а утечки
 	// в ней нет — только защита от флуда.
-	if ok, wait := h.limiter.allowWait("nearest-ip:"+clientIP(r), 1, 20); !ok {
+	if ok, wait := h.limiter.allowWait("nearest-ip:"+netx.ClientIP(r), 1, 20); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
 	// Тот же путь IP → GeoIP, что наполняет местоположение активных сессий.
-	ctx := usecaseauth.WithClientInfo(r.Context(), usecaseauth.ClientInfo{IP: clientIP(r)})
+	ctx := usecaseauth.WithClientInfo(r.Context(), usecaseauth.ClientInfo{IP: netx.ClientIP(r)})
 	writeJSON(w, http.StatusOK, domain.NewHelpCountryCode(h.svc.NearestCountry(ctx)))
 }
 
@@ -423,7 +399,7 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Анти-перебор веб-токена по реальному IP.
-	if ok, wait := h.limiter.allowWait("import-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("import-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -456,7 +432,7 @@ func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if ok, wait := h.limiter.allowWait("import-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("import-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -511,7 +487,7 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-брутфорс облачного пароля по реальному IP (в дополнение к лимиту попыток
 	// на сам password_token в usecase).
-	if ok, wait := h.limiter.allowWait("pw-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.limiter.allowWait("pw-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -582,7 +558,7 @@ func (h *AuthHandler) ExportLoginToken(w http.ResponseWriter, r *http.Request) {
 	// Лимиты — ДО разбора тела: ручка публичная, и тело не должно стоить памяти
 	// тому, кого всё равно откажут. Сначала IP (несколько карточек за одним NAT),
 	// и только пропущенный по IP запрос заводит ведро ключа.
-	if ok, wait := h.qrLimiter.allowWait("qrexport-ip:"+clientIP(r), 5, 50); !ok {
+	if ok, wait := h.qrLimiter.allowWait("qrexport-ip:"+netx.ClientIP(r), 5, 50); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
@@ -647,7 +623,7 @@ func (h *AuthHandler) AcceptLoginToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if ok, wait := h.qrLimiter.allowWait("qraccept-ip:"+clientIP(r), 0.2, 5); !ok {
+	if ok, wait := h.qrLimiter.allowWait("qraccept-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}

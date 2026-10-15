@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
@@ -153,7 +154,7 @@ const botCommandsBodyLimit = 256 << 10
 func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	method := chi.URLParam(r, "method")
-	ip := clientIP(r)
+	ip := netx.ClientIP(r)
 	bot, err := h.svc.BotAuth(r.Context(), token)
 	if err != nil {
 		// Троттлим перебор токенов по IP, чтобы токен нельзя было брутфорсить.
