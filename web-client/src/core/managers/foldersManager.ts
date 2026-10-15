@@ -110,9 +110,10 @@ export interface FolderInvitePreview {
 
 export function newFoldersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'put' | 'del'> }) {
   return {
-    async list(): Promise<Folder[]> {
-      const r = await rest.get<{ folders: RawFolder[] }>('/me/folders')
-      return (r.folders ?? []).map(mapFolder)
+    /** Папки + место «Все чаты» среди них (`all_chats_pos`, Ф7-З). */
+    async list(): Promise<{ folders: Folder[]; allChatsPos: number }> {
+      const r = await rest.get<{ folders: RawFolder[]; all_chats_pos?: number }>('/me/folders')
+      return { folders: (r.folders ?? []).map(mapFolder), allChatsPos: r.all_chats_pos ?? 0 }
     },
     async create(f: FolderInput): Promise<Folder> {
       return mapFolder(await rest.post<RawFolder>('/me/folders', toRaw(f)))
@@ -122,6 +123,10 @@ export function newFoldersManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     },
     async del(id: number): Promise<void> {
       await rest.del(`/me/folders/${id}`)
+    },
+    /** `messages.updateDialogFiltersOrder` (tweb `filters.ts:424-433`): `0` — «Все чаты». */
+    async updateOrder(order: number[]): Promise<void> {
+      await rest.post('/me/folders/order', { order })
     },
 
     // --- Ссылки-приглашения в папку ---

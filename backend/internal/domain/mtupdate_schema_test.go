@@ -161,6 +161,7 @@ func updateCases() []struct {
 			return u
 		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
+		{"порядок папок", NewUpdateDialogFilterOrder([]int64{0, 3, 1})},
 		{"автоудаление включили", NewUpdatePeerHistoryTTL(NewPeerUser(9), 86400)},
 		{"автоудаление выключили", NewUpdatePeerHistoryTTL(NewPeerChannel(5), 0)},
 		{"набор установлен", NewUpdateNewStickerSet(NewMessagesStickerSet(
@@ -273,6 +274,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateReadChannelDiscussionInboxTag,
 		UpdateReadChannelDiscussionOutboxTag,
 		UpdateSavedReactionTagsTag,
+		UpdateDialogFilterOrderTag,
 		NotifyForumTopicTag,
 		NotifyUsersTag,
 		NotifyChatsTag,

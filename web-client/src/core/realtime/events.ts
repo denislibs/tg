@@ -80,6 +80,11 @@ export const RT = {
   // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
   // logged, pts. Клиент перечитывает список папок.
   folderUpdate: 'rt:folder_update',
+  // Порядок папок сменился на другом устройстве/вкладке — `updateDialogFilterOrder`
+  // (tweb `filters.ts:179-199`, событие `filter_order`). Конструктор схемы с
+  // курсором в конверте: идёт общим путём (UPDATE_RT), а не исключением
+  // `folder_update`. Применяет `foldersStore.applyOrder`.
+  dialogFilterOrder: 'rt:dialog_filter_order',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
   // сессиям). Кадр интерпретирует ВОРКЕР (peersManager.applyUserUpdate) и
   // публикует результат через rt:peer_op ниже — витрина сырой кадр не разбирает.
@@ -745,6 +750,15 @@ export interface BoostUpdateEvt {
   status: import('../models').BoostsStatus
   pts?: number
 }
+/**
+ * updateDialogFilterOrder#a5d72105 order:Vector<int> = Update;
+ *
+ * Порядок папок. `order` — id папок в новом порядке, `0` — «Все чаты» (есть,
+ * только если устройство его переставляло: у не-премиум tweb вырезает его,
+ * `chatFolders.tsx:365-367`). Неперечисленные папки остаются в хвосте в прежнем
+ * порядке. Курсор едет в конверте.
+ */
+export interface DialogFilterOrderEvt { _: 'updateDialogFilterOrder'; order: number[] }
 /** updateSavedReactionTags#39c67432 = Update; — параметров нет. */
 export interface SavedReactionTagsEvt { _: 'updateSavedReactionTags' }
 /** updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; */
@@ -865,6 +879,7 @@ export type Update =
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | SavedReactionTagsEvt
+  | DialogFilterOrderEvt
   | NewStickerSetEvt
   | RecentStickersEvt
   | FavedStickersEvt

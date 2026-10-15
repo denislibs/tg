@@ -16,7 +16,7 @@ import type {
   ChatRemovedEvt, ChannelEvt, ChannelTooLongEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
-  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt,
+  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt, DialogFilterOrderEvt,
   ViewsUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
   PrivacyEvt,
@@ -106,6 +106,7 @@ export type BroadcastEvents = {
   [RT.giveawayUpdate]: [GiveawayUpdateEvt, EventMeta?]
   [RT.balanceUpdate]: [BalanceUpdateEvt, EventMeta?]
   [RT.savedReactionTags]: [SavedReactionTagsEvt, EventMeta?]
+  [RT.dialogFilterOrder]: [DialogFilterOrderEvt, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]
