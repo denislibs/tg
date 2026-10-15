@@ -46,7 +46,7 @@
 //     звонков (`:880-947`): попап входящего — остров `CallOverlay` по `callStore`,
 //     `acceptCallOverride` и `incompatible` — бэклог Б-95,
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
-//     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
+//     `ephemeral_*`/`service_notification`/…
 //     (Б-16), `singleInstance`/t.me (Б-17), autologin/цвета
 //     пиров/шаринг (П-4), `savedReactionTags`.
 //  4. `useHeavyAnimationCheck` (`:436-442`) не нужен здесь: `animationIntersector`
@@ -154,6 +154,7 @@ import { useCallStore } from '@stores/callStore'
 import { useGroupCallStore } from '@stores/groupCallStore'
 import { useLivestreamStore } from '@stores/livestreamStore'
 import { confirmationPopup } from '@components/popups/popupPeer'
+import { wrapSlowModeLeftDuration } from '@components/wrappers/wrapDuration'
 import { getChatStatusString, getParticipantsCount } from '@components/wrappers/getChatMembersString'
 import { getUserStatusString } from '@core/presence'
 import { hasRights as hasChatRights } from '@core/peers/rights'
@@ -478,6 +479,23 @@ export class AppImManager extends EventListenerBase<{
 
     // Глобальный тост приложения (`ui:toast`) — бывший `useGlobalToast` шелла.
     rootScope.addEventListener('ui:toast', (text) => toast(String(text)))
+
+    // Медленный режим: отказ отправки `SLOWMODE_WAIT_<N>` — попап с остатком
+    // (tweb `:551-565`). Сервер называет ожидание кодом, N — секунды до конца окна.
+    rootScope.addEventListener(RT.messageError, ({ peer_id, reason }) => {
+      if(!reason.includes('SLOWMODE_WAIT')) return
+      const options = {
+        titleLangKey: 'Slowmode' as const,
+        descriptionLangKey: 'SlowModeHint' as const,
+        descriptionLangArgs: [wrapSlowModeLeftDuration(+reason.split('_').pop()!)],
+        button: { langKey: 'OK' as const, isCancel: true },
+      }
+      // Закрытие кнопкой с isCancel отклоняет промис — это штатный исход, не сбой.
+      const popup = peer_id ?
+        confirmationPopup({ ...options, peerId: peer_id, managers: this.managers }) :
+        confirmationPopup(options)
+      popup.catch(() => {})
+    })
 
     // расхождение 12 шапки
     if('serviceWorker' in navigator) {

@@ -907,7 +907,8 @@ export interface AckEvt {
 }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
-export interface MessageErrorEvt { client_msg_id: string; reason: string }
+/** `peer_id` — пир отправки (tweb `message_error{peerId, error}`); нужен попапу медленного режима. */
+export interface MessageErrorEvt { client_msg_id: string; reason: string; peer_id?: number }
 
 // Заявка на временный («неотправленный») бабл — вход
 // messages.beforeMessageSending (core/managers/messages/pending.ts). Событием это
