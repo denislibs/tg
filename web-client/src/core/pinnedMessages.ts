@@ -98,6 +98,34 @@ export function getPinnedMessageByMid(peerId: PeerId, mid: number, threadId?: nu
   return pinnedMessages[getPinnedMessagesKey(peerId, threadId)]?.messages?.find((message) => message.id === mid)
 }
 
+/**
+ * Лежит ли в кэше закрепов пира (любой ключ, включая тематические) один из `mids`.
+ * Удаление сообщения без бита `pinned` в воркере (закреп вне его окна) сбрасывает кэш только
+ * при `true`: tweb решает по `message.pFlags.pinned` своего хранилища (`:14078`), а у нас
+ * сообщения закрепов лежат здесь (расхождение 2). Кэш, который ещё грузится или не загрузился,
+ * совпадением не считается: иначе любое удаление в чате снимало бы скрытие плашки; гонка
+ * «ответ `/pins` предшествовал удалению» та же, что у оригинала.
+ */
+export function hasPinnedMessageCached(peerId: PeerId, mids: number[]) {
+  for(const key in pinnedMessages) {
+    if(+key !== peerId && !key.startsWith(peerId + '_')) continue
+    if(pinnedMessages[key].messages?.some((message) => mids.includes(message.id))) return true
+  }
+  return false
+}
+
+/**
+ * tweb `flushPinnedMessagesCache` `:6800-6806` — только кэш закрепов пира (все ключи, включая
+ * тематические): скрытие плашки не трогается и событие не объявляется.
+ */
+export function flushPinnedMessagesCache(peerId: PeerId) {
+  for(const key in pinnedMessages) {
+    if(+key === peerId || key.startsWith(peerId + '_')) {
+      delete pinnedMessages[key]
+    }
+  }
+}
+
 export type PinnedHistoryResult = {
   /** номера по убыванию, как `history` у tweb `getHistory` */
   history: number[],
@@ -166,11 +194,7 @@ export function isPinnedMessagesHidden(peerId: PeerId, threadId?: number) {
  * ключи, включая тематические) и объявление `peer_pinned_messages`.
  */
 export function onPinnedMessagesUpdate(peerId: PeerId, mids: number[], pinned: boolean) {
-  for(const key in pinnedMessages) {
-    if(+key === peerId || key.startsWith(peerId + '_')) {
-      delete pinnedMessages[key]
-    }
-  }
+  flushPinnedMessagesCache(peerId)
 
   const hidden = useAppStateStore.getState().hiddenPinnedMessages
   const keys = Object.keys(hidden).filter((key) => +key === peerId || key.startsWith(peerId + '_'))

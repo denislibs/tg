@@ -8,7 +8,7 @@ import '@/test/lang'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import { onPinnedMessagesUpdate, resetPinnedMessagesCache } from '@core/pinnedMessages'
-import { useAppStateStore } from '@stores/appState'
+import { setAppState, useAppStateStore } from '@stores/appState'
 import rootScope from '@lib/rootScope'
 import type Chat from './chat'
 import createChatPinnedMessage, { type ChatPinnedMessageController, type PinnedMessageManagers } from './pinnedMessage.solid'
@@ -178,6 +178,23 @@ describe('плашка закрепа', () => {
     expect(plate.isUserHidden()).toBe(false)
     expect(plate.isVisible()).toBe(true)
     expect(plate.container.dataset.mid).toBe('30')
+  })
+
+  // Очистка истории сбрасывает только кэш закрепов (tweb `flushPinnedMessagesCache`): скрытая
+  // плашка остаётся скрытой, хотя плашка перечитывает список по `peer_pinned_messages`.
+  it('очистка истории (peer_pinned_messages без номеров) не снимает пользовательское скрытие', async() => {
+    plate.setCorrectIndex(0)
+    await settle()
+    await flush()
+
+    setAppState('hiddenPinnedMessages', { [PEER]: 20 })
+    rootScope.dispatchEventSingle('peer_pinned_hidden', { peerId: PEER, maxId: 20 })
+    expect(plate.isUserHidden()).toBe(true)
+
+    rootScope.dispatchEventSingle('peer_pinned_messages', { peerId: PEER, pinned: false })
+    await flush()
+    expect(plate.isUserHidden()).toBe(true)
+    expect(plate.isVisible()).toBe(false)
   })
 
   it('чужой пир не трогает плашку', async() => {
