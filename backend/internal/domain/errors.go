@@ -21,6 +21,9 @@ var (
 	// перевод сообщений без настроенного TRANSLATE_URL.
 	ErrUnavailable = errors.New("unavailable")
 	ErrInvalid     = errors.New("invalid") // некорректные аргументы запроса (400)
+	// ErrFreshAuthorization: текущая сессия моложе FreshAuthorizationPeriod и
+	// не вправе распоряжаться другими (tweb FRESH_RESET_AUTHORISATION_FORBIDDEN).
+	ErrFreshAuthorization = errors.New("fresh authorization")
 	// ErrBalanceTooLow: у отправителя не хватает звёзд (платное сообщение,
 	// звёздная реакция, платное медиа, подарок) — tweb BALANCE_TOO_LOW.
 	ErrBalanceTooLow = errors.New("balance too low")

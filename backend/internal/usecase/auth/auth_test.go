@@ -251,6 +251,14 @@ func (r *fakeDeviceRepo) SessionByTokenHash(_ context.Context, tokenHash, _ stri
 	return u, d.ID, nil
 }
 
+func (r *fakeDeviceRepo) Get(_ context.Context, userID, deviceID int64) (domain.Device, error) {
+	d, ok := r.byID[deviceID]
+	if !ok || d.UserID != userID {
+		return domain.Device{}, domain.ErrNotFound
+	}
+	return d, nil
+}
+
 func (r *fakeDeviceRepo) ListByUser(_ context.Context, userID int64) ([]domain.Device, error) {
 	var out []domain.Device
 	for _, d := range r.byID {
