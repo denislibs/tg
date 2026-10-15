@@ -30,6 +30,8 @@ export interface GroupCallFrame {
   d: {
     peer_id: number
     user_id?: number
+    /** action = rejected: отказ по праву/политике (иначе сбой хранилища) */
+    forbidden?: boolean
     action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
     from_user_id?: number
@@ -142,14 +144,15 @@ export function leaveGroupCall() {
  * взяли микрофон и открыли экран звонка — откатываем локально, без
  * group_call_leave (мы в звонок не входили).
  */
-function handleJoinRejected(peerId: number) {
+function handleJoinRejected(peerId: number, forbidden: boolean) {
   const inCall = store().peerId === peerId
   const live = useLivestreamStore.getState()
   const watching = live.watchingPeerId === peerId
   if (!inCall && !watching) return // отказ запоздал: мы уже вышли
   if (inCall) teardownCall()
   if (watching) live.setWatching(null)
-  toastNew({ langPackKey: 'VoiceChat.Chat.Ended' }) // tweb appImManager.ts:2372
+  // по праву — «Видеочат завершён» (tweb appImManager.ts:2369-2373, звонка нет и права нет)
+  toastNew({ langPackKey: forbidden ? 'VoiceChat.Chat.Ended' : 'Error.AnError' })
 }
 
 export function toggleGroupMic() {
@@ -196,7 +199,7 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       // Отказ списка участников не несёт (причина могла быть и сбоем хранилища, а
       // звонок — идти): activeByChat не трогаем. Кадр адресован только отказанному,
       // user_id сверяем: чужой не трогает наш звонок.
-      if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id)
+      if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id, !!d.forbidden)
       return
     }
     store().setActive(d.peer_id, d.participants ?? [])

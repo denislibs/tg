@@ -16,14 +16,15 @@ func TestGroupCallRejectedFrame(t *testing.T) {
 			PeerID       int64   `json:"peer_id"`
 			UserID       int64   `json:"user_id"`
 			Action       string  `json:"action"`
+			Forbidden    bool    `json:"forbidden"`
 			Participants []int64 `json:"participants"`
 		} `json:"d"`
 	}
-	raw := groupCallRejectedFrame(domain.PeerID(-1001), 8)
+	raw := groupCallRejectedFrame(domain.PeerID(-1001), 8, true)
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	if f.T != "group_call_update" || f.D.PeerID != -1001 || f.D.UserID != 8 || f.D.Action != "rejected" {
+	if f.T != "group_call_update" || f.D.PeerID != -1001 || f.D.UserID != 8 || f.D.Action != "rejected" || !f.D.Forbidden {
 		t.Fatalf("кадр отказа = %s", raw)
 	}
 	if f.D.Participants != nil {

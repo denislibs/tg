@@ -145,11 +145,12 @@ type peerData struct {
 // сервер не пустил (Б-9): клиент откатывает локальный звонок без group_call_leave.
 // peer_id — тот, что прислал клиент (ключ глазами получателя). Списка участников
 // нет: отказ бывает и при сбое хранилища, когда звонок идёт — клиент activeByChat
-// не трогает.
-func groupCallRejectedFrame(peer domain.PeerID, userID int64) []byte {
+// не трогает. forbidden — отказ по праву/политике (ErrForbidden), иначе сбой
+// хранилища: клиент по-разному объясняет это пользователю.
+func groupCallRejectedFrame(peer domain.PeerID, userID int64, forbidden bool) []byte {
 	f, _ := json.Marshal(map[string]any{
 		"t": "group_call_update",
-		"d": map[string]any{"peer_id": peer, "user_id": userID, "action": "rejected"},
+		"d": map[string]any{"peer_id": peer, "user_id": userID, "action": "rejected", "forbidden": forbidden},
 	})
 	return f
 }

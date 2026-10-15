@@ -697,6 +697,12 @@ export default class ChatTopbar {
     if(type === 'nonadmin' && canManageCall && isBroadcast(chat)) {
       return false // * hide live stream top button
     }
+    // ОТСТУПЛЕНИЕ ОТ TWEB (В-S3, решение 2026-10-15; снимется с SFU, В-М17): подписчик
+    // вещательного канала в видеочат не входит (tweb `:387-392` пускает слушателем) —
+    // сервер откажет, кнопку не показываем; эфир смотрят отдельной кнопкой.
+    if(!canManageCall && isBroadcast(chat)) {
+      return false
+    }
     const needActiveCall = !canManageCall
     if(!isCallActive(chat)) {
       return !needActiveCall

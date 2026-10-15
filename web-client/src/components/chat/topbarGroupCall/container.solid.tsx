@@ -27,7 +27,8 @@ import { NULL_PEER_ID, isUser } from '@core/peers/peerId'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import { i18n } from '@lib/langPack'
 import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '@core/peerCache'
-import { hasCallParticipants } from '@core/peers/predicates'
+import { hasCallParticipants, isBroadcast } from '@core/peers/predicates'
+import { hasRights } from '@core/peers/rights'
 import { useGroupCallStore } from '@stores/groupCallStore'
 import { useLivestreamStore } from '@stores/livestreamStore'
 import { joinGroupCall } from '@core/calls/groupCallEngine'
@@ -59,7 +60,18 @@ function GroupCallPlateBody(props: {
 
   const participants = createMemo(() => props.peerId() ? state().activeByChat[props.peerId()] ?? [] : [])
 
+  // ОТСТУПЛЕНИЕ ОТ TWEB (В-S3, решение 2026-10-15; снимется с SFU, В-М17): в вещательном
+  // канале видеочат открыт только админам (сервер: `usecase/chat/groupcall.go`), а tweb
+  // пускает подписчика слушателем (`topbar.ts:387-392`) — плашку «Присоединиться» ему не
+  // показываем, вход заведомо получил бы отказ.
+  const joinable = () => {
+    mirror()
+    const chat = cachedChat(props.peerId())
+    return !isBroadcast(chat) || hasRights(chat, 'just_admin')
+  }
+
   const shouldShow = createMemo(() => !!(
+    joinable() &&
     isCallActive() &&
     participants().length &&
     !livestream().activeByChat[props.peerId()] && // расхождение 1: эфир — плашка topbarLive
