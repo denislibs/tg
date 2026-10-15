@@ -114,9 +114,10 @@ func NewAuthPasswordNeeded(token, hint string) AuthPasswordNeeded {
 // `JSON.parse(data).publicKey` (tweb passkeyLoginButton.tsx:38-41, :49-51).
 //
 // `session` — НАШ параметр (schema_additional_params.json): состояние церемонии
-// WebAuthn между begin и finish. У оригинала его держит сессия MTProto, у нас
-// состояния между запросами REST нет — вместо него одноразовый ключ, как
-// `password_token` у `auth.passwordNeeded`.
+// WebAuthn между begin и finish (ключ церемонии, не сессия устройства). У
+// оригинала его держит сессия MTProto, у нас состояния между запросами REST
+// нет. Параметр без собственного id, как `token` у `auth.authorization`: на
+// провод TL он не идёт (кодек клиентские поля пропускает), едет только JSON.
 type AuthPasskeyLoginOptions struct {
 	Underscore string   `json:"_"`
 	Options    DataJSON `json:"options"`

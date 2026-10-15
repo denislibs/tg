@@ -27,6 +27,11 @@ type PasskeyHandler struct {
 	wa     *webauthn.WebAuthn
 	uc     *usecasepasskeys.Interactor
 	authUC *usecaseauth.Interactor
+	// Анти-перебор публичного входа по ключу: каждая церемония, дошедшая до
+	// finish при включённом облачном пароле, выпускает НОВЫЙ password_token с
+	// пятью свежими попытками (usecase/auth: PasskeySignIn), поэтому без лимита
+	// цикл begin → finish → 5 паролей обходил бы потолок попыток на токен.
+	limiter *keyRateLimiter
 
 	mu       sync.Mutex
 	sessions map[string]waSession
@@ -48,7 +53,7 @@ func NewPasskeyHandler(rpID string, origins []string, uc *usecasepasskeys.Intera
 	if err != nil {
 		return nil, err
 	}
-	return &PasskeyHandler{wa: wa, uc: uc, authUC: authUC, sessions: map[string]waSession{}}, nil
+	return &PasskeyHandler{wa: wa, uc: uc, authUC: authUC, limiter: newKeyRateLimiter(), sessions: map[string]waSession{}}, nil
 }
 
 func (h *PasskeyHandler) putSession(data *webauthn.SessionData) string {
@@ -214,6 +219,10 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // `options.data` — строка JSON `{"publicKey":{…}}` (tweb passkeyLoginButton.tsx
 // :38-41), `session` — одноразовый ключ церемонии для finish.
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
+	if !h.limiter.allow("passkey-ip:"+clientIP(r), 0.2, 10) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
 	options, session, err := h.wa.BeginDiscoverableLogin()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
@@ -232,6 +241,10 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 // (`auth.Authorization`): при включённом облачном пароле — `auth.passwordNeeded`
 // (шаг пароля, сессии нет), иначе `auth.authorization`.
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
+	if !h.limiter.allow("passkey-ip:"+clientIP(r), 0.2, 10) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
 	session := h.takeSession(r.URL.Query().Get("session"))
 	if session == nil {
 		writeError(w, http.StatusBadRequest, "session expired")
@@ -252,6 +265,10 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	}, *session, r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "passkey login failed")
+		return
+	}
+	if !h.limiter.allow("passkey-user:"+strconv.FormatInt(matched.UserID, 10), 0.2, 5) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 	// Обновить счётчик подписи + last_used_at (best-effort).

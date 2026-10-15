@@ -243,8 +243,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
   // signImport/passkeyLoginFinish/exportLoginToken(success) — все семь путей входа
-  // заводят сессию через неё (вызовов persist() шесть: signIn и signImport
-  // делят общий toOutcome).
+  // заводят сессию через неё (вызовов persist() шесть: signIn, signImport и
+  // passkeyLoginFinish делят общий toOutcome).
   const persist = async (token: string, u: PeerProfile) => {
     await store.set(token)
     await upsertAccount({
@@ -341,8 +341,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   }
   // Шаг закончился ВЫДАННОЙ сессией. Отдельно от toOutcome, потому что у
   // половины путей входа другого исхода не бывает по построению: sign_up,
-  // check_password, подтверждение кода с почты и вход по ключу доступа — все
-  // они идут ПОСЛЕ того, как ветка уже выбрана.
+  // check_password и подтверждение кода с почты — все они идут ПОСЛЕ того, как
+  // ветка уже выбрана.
   const toSession = async (res: AuthAuthorizationWire): Promise<PeerProfile> => {
     if (res._ !== 'auth.authorization') throw new Error(`неожиданный исход входа: ${res._}`)
     const u = briefProfile(res.user)
@@ -350,8 +350,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     return u
   }
   // Разбор общего ответа шагов входа: сессия | облачный пароль | регистрация.
-  // Общий для sign_in и sign_import — ветку называет конструктор, а не набор
-  // признаков рядом.
+  // Общий для sign_in, sign_import и входа по ключу доступа — ветку называет
+  // конструктор, а не набор признаков рядом.
   const toOutcome = async (res: AuthAuthorizationWire): Promise<SignInOutcome> => {
     if (res._ === 'auth.passwordNeeded') {
       return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }

@@ -170,6 +170,9 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
     try {
       const { session, options } = await managers.auth.passkeyLoginBegin()
       const assertion = await getPasskeyAssertion(JSON.parse(options.data))
+      // QR могли подтвердить с телефона, пока открыт системный диалог: второй вход
+      // выпустил бы лишнюю серверную сессию.
+      if (stopped) return
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
       if (!res.passwordNeeded && !res.user) throw new Error('неожиданный исход входа по ключу доступа')
       stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)

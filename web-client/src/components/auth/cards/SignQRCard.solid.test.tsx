@@ -273,6 +273,49 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     expect(exportLoginToken.mock.calls.length).toBe(before)
   })
 
+  // QR подтвердили с телефона, пока открыт системный диалог WebAuthn: finish
+  // не зовём — второй вход выпустил бы лишнюю серверную сессию.
+  it('QR подтверждён, пока открыт диалог ключа: finish не зовётся', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    let release!: (v: unknown) => void
+    vi.mocked(webauthn.getPasskeyAssertion).mockReturnValue(new Promise((r) => { release = r }) as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn()
+    mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(webauthn.getPasskeyAssertion).toHaveBeenCalled())
+    rootScope.dispatchEventSingle(RT.loggedIn, { userId: 3 })
+    release({})
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(passkeyLoginFinish).not.toHaveBeenCalled()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
+  it('неожиданный исход (signUpRequired): тост, toIm не зван, цикл не остановлен', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ signUpRequired: true, signUpToken: 'x' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
   it('вход ключом доступа останавливает цикл (аналог user_auth у tweb)', async () => {
     const webauthn = await import('@core/webauthnBrowser')
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)

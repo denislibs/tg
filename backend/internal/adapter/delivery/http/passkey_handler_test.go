@@ -51,3 +51,30 @@ func TestPasskeyBeginLogin_ReturnsPasskeyLoginOptions(t *testing.T) {
 		t.Fatal("session пуст или не найден в хранилище церемоний")
 	}
 }
+
+// begin публичный: без лимита один клиент раздувал бы карту церемоний (обход
+// всей карты под общей блокировкой на каждый вызов). Лимит — по реальному IP.
+func TestPasskeyBeginLogin_RateLimitedByIP(t *testing.T) {
+	h, err := NewPasskeyHandler("localhost", []string{"http://localhost"}, nil, nil)
+	if err != nil {
+		t.Fatalf("NewPasskeyHandler: %v", err)
+	}
+	var last int
+	for n := 0; n < 12; n++ {
+		req := httptest.NewRequest(http.MethodPost, "/auth/passkey/begin", nil)
+		req.Header.Set("X-Real-IP", "203.0.113.7")
+		rec := httptest.NewRecorder()
+		h.BeginLogin(rec, req)
+		last = rec.Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("12-й begin с одного IP = %d, ожидался 429", last)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/auth/passkey/begin", nil)
+	req.Header.Set("X-Real-IP", "203.0.113.8")
+	rec := httptest.NewRecorder()
+	h.BeginLogin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("другой IP = %d, ожидался 200", rec.Code)
+	}
+}

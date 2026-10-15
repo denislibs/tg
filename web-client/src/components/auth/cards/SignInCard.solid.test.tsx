@@ -249,6 +249,24 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     consoleError.mockRestore()
   })
 
+  // Сервер на входе по ключу регистрацию не предлагает; если пришло — это сбой
+  // протокола: тост, в мессенджер не пускаем.
+  it('неожиданный исход (signUpRequired): тост Login.Passkey.Error, toIm не зван', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ signUpRequired: true, signUpToken: 'x' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
   it('успешный вход всплывашку НЕ показывает', async () => {
     // Контрпин: «показывать отказ всегда» тоже было бы зелёным без него.
     const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
