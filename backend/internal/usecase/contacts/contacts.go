@@ -83,7 +83,7 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
 			// Правила читаются ВНУТРИ замка курсора владельца, а не до него: блок и
 			// смена last_seen пересчитывают статус отдельной строкой журнала
-			// (AnnounceUserTo), и она встаёт в порядок замком. Правило, прочитанное
+			// (блок — AnnounceUserTo), и она встаёт в порядок замком. Правило, прочитанное
 			// до замка, могло бы устареть к моменту записи — снимок с большим pts
 			// затёр бы более свежий «давно» старым «недавно». Сбой SQL здесь
 			// прерывает транзакцию, поэтому он возвращается ошибкой (с первопричиной
@@ -145,7 +145,7 @@ func (i *Interactor) viewRules(ctx context.Context, ownerID int64, ids []int64) 
 	}
 	rules, err := i.privacy.AccessRules(ctx, ownerID, ids)
 	if err != nil {
-		log.Printf("[user_update] privacy rules owner=%d ids=%d: %v", ownerID, len(ids), err)
+		log.Printf("[contacts] privacy rules owner=%d ids=%d: %v", ownerID, len(ids), err)
 	}
 	rules.Status = i.privacy.PresenceOf(ctx, ids)
 	return rules

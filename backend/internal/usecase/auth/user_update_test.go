@@ -667,3 +667,93 @@ func TestUserUpdate_SameAuthorSerialized(t *testing.T) {
 	<-done
 	<-done
 }
+
+// photoPrivacy — правила читаются под замком автора (lockHeld отвечает, держит ли
+// его кто-то в момент чтения); у closedPhoto профильное фото закрыто.
+type photoPrivacy struct {
+	statusPrivacy
+	closedPhoto map[int64]bool
+	i           *Interactor
+	heldAtRead  *[]bool
+}
+
+func (p photoPrivacy) AccessRules(ctx context.Context, viewer int64, ids []int64) (domain.UserViewRules, error) {
+	// Замок автора занят нами: повторный захват с мгновенно отменённым ctx не удаётся.
+	c, cancel := context.WithCancel(ctx)
+	cancel()
+	unlock, err := p.i.authorLocks.lock(c, ids[0])
+	if err == nil {
+		unlock()
+	}
+	*p.heldAtRead = append(*p.heldAtRead, err != nil)
+	r, e := p.statusPrivacy.AccessRules(ctx, viewer, ids)
+	for _, id := range ids {
+		if p.closedPhoto[viewer] {
+			r.Photo[id] = false
+		}
+	}
+	return r, e
+}
+
+// Правила получателя читаются ПОД замком автора, а закрытое profile_photo не
+// пускает аватарку в карточку получателя.
+func TestUserUpdate_RulesReadUnderAuthorLockAndPhotoRule(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000006", "Боб", "")
+	photoID := int64(77)
+	u.PhotoID = &photoID
+	users.byPhone["+70000000006"] = u
+	log := newFakeUpdateLog()
+	i.SetUpdateLog(log)
+	var held []bool
+	const friend, stranger int64 = 999, 998
+	i.SetPrivacy(photoPrivacy{closedPhoto: map[int64]bool{stranger: true}, i: i, heldAtRead: &held})
+	i.sendUserUpdate(ctx, u, []int64{friend, stranger})
+
+	if len(held) != 2 || !held[0] || !held[1] {
+		t.Fatalf("замок автора при чтении правил = %v; want занят оба раза", held)
+	}
+	photoOf := func(uid int64) string {
+		var row struct {
+			User struct {
+				Photo struct {
+					T string `json:"_"`
+				} `json:"photo"`
+			} `json:"user"`
+		}
+		_ = json.Unmarshal(log.payloads[uid][0], &row)
+		return row.User.Photo.T
+	}
+	if photoOf(friend) != "userProfilePhoto" || photoOf(stranger) == "userProfilePhoto" {
+		t.Fatalf("фото: friend=%q stranger=%q; want у друга есть, у закрытого нет", photoOf(friend), photoOf(stranger))
+	}
+}
+
+// Ожидание замка автора отпускает ctx: заблокированный поток не висит вечно.
+func TestKeyedLock_WaitHonoursContext(t *testing.T) {
+	var k keyedLock
+	unlock, err := k.lock(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := k.lock(ctx, 5); err == nil {
+		t.Fatal("занятый ключ взят без ожидания")
+	}
+	if other, err := k.lock(context.Background(), 6); err != nil {
+		t.Fatalf("другой ключ: %v", err)
+	} else {
+		other()
+	}
+	unlock()
+	again, err := k.lock(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again()
+	if len(k.m) != 0 {
+		t.Fatalf("записи ключей не убраны: %d", len(k.m))
+	}
+}

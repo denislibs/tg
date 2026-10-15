@@ -557,35 +557,30 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 	for _, u := range users {
 		ids = append(ids, u.ID)
 	}
-	i.ViewRules(ctx, viewerID, ids).Apply(users)
-}
-
-// ViewRules — ответы правил приватности и присутствие для пачки пользователей
-// ids глазами viewerID: то, из чего ViewUsers доводит карточки. Сбой правила
-// гасит то, что оно охраняет, и пишется в лог; присутствие не получено —
-// `Status` не знает пользователя, и поле карточки не трогается.
-func (i *Interactor) ViewRules(ctx context.Context, viewerID int64, ids []int64) domain.UserViewRules {
+	// Сбой правила гасит то, что оно охраняет, и пишется в лог; присутствие не
+	// получено — `Status` не знает пользователя, и поле карточки не трогается.
 	rules, err := i.AccessRules(ctx, viewerID, ids)
 	if err != nil {
 		log.Printf("[privacy] view rules viewer=%d ids=%d: %v", viewerID, len(ids), err)
 	}
 	rules.Status = i.PresenceOf(ctx, ids)
-	return rules
+	rules.Apply(users)
 }
 
 // AccessRules — только правила из БД (фото, номер, last_seen и блок), БЕЗ
 // присутствия. Для витрин, читающих их под замком журнала в транзакции: Redis
 // под `FOR UPDATE` не ходит (см. PresenceOf). Ошибка возвращается вместе с
-// погашенными правилами (фото, номер и статус скрыты) — вызывающий решает, что
-// важнее, строка с погашенным или явный отказ: в транзакции SQL-сбой её уже
-// прервал.
+// теми правилами, что успели прочитаться (недочитанные скрывают то, что
+// охраняют) — вызывающий решает, что важнее, строка с погашенным или явный
+// отказ: в транзакции SQL-сбой её уже прервал.
 func (i *Interactor) AccessRules(ctx context.Context, viewerID int64, ids []int64) (domain.UserViewRules, error) {
 	rules := domain.UserViewRules{ViewerID: viewerID}
 	// Три правила — одним запросом: витрина доводит пачку, а не каждого по отдельности.
 	maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
 		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen)
 	if err != nil {
-		err = fmt.Errorf("visible maps: %w", err)
+		// Дальше BlockedBy не спрашиваем: в прерванной транзакции он заведомо упал бы.
+		return rules, fmt.Errorf("visible maps: %w", err)
 	} else {
 		rules.Photo = maps[domain.PrivacyProfilePhoto]
 		rules.Phone = maps[domain.PrivacyPhoneNumber]

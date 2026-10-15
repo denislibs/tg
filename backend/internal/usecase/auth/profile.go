@@ -63,17 +63,16 @@ func (i *Interactor) emitUserCard(ctx context.Context, u domain.UserRecord, with
 	i.sendUserUpdate(ctx, u, recipients)
 }
 
-// announceBatch — сколько получателей обслуживается по одному чтению записи.
-// Пересчёт идёт минуты (O(партнёров) проверок правила и записей журнала), и
-// карточка, прочитанная один раз в начале, к концу устарела бы: правка профиля,
-// вклинившаяся за это время, затёрлась бы у партнёров, до которых цикл дошёл
-// позже, строкой с БОЛЬШИМ pts.
-//
-// Окно гонки сужено до одной пачки, а не закрыто: правка, вклинившаяся внутрь
-// пачки, всё ещё может быть перекрыта строкой с большим pts (тот же класс гонки,
-// что у двух подряд идущих правок профиля в emitUserUpdate). Дедлайн ставится на
-// пачку, а не на весь проход: проход по десяткам тысяч партнёров не должен
-// обрываться в середине, оставляя хвост со старым видом.
+// announceBatch — сколько получателей обслуживается под одним замком автора и
+// по одному чтению записи. Пересчёт идёт минуты (O(партнёров) проверок правила и
+// записей журнала), и карточка, прочитанная один раз в начале, к концу устарела
+// бы: правка профиля, вклинившаяся за это время, затёрлась бы у партнёров, до
+// которых цикл дошёл позже, строкой с БОЛЬШИМ pts. Запись и книги получателей
+// читаются свежими под замком каждой пачки (sendUserUpdateBatch); между пачками
+// замок свободен, поэтому блок или правка не ждут пересчёт всех партнёров.
+// Дедлайн ставится на пачку (AnnounceUser), а не на весь проход: проход по
+// десяткам тысяч партнёров не должен обрываться в середине, оставляя хвост со
+// старым видом.
 var announceBatch = 200
 
 const announceBatchTimeout = 30 * time.Second
@@ -140,8 +139,38 @@ func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers [
 }
 
 // sendUserUpdate кладёт в журнал и рассылает карточку u каждому из recipients
-// (первым идёт сам владелец).
+// (первым идёт сам владелец). Получатели идут пачками по announceBatch: на
+// каждую — замок автора, свежее чтение записи и книг получателей.
 func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, recipients []int64) {
+	for len(recipients) > 0 {
+		n := min(announceBatch, len(recipients))
+		if !i.sendUserUpdateBatch(ctx, u, recipients[:n]) {
+			return
+		}
+		recipients = recipients[n:]
+	}
+}
+
+// sendUserUpdateBatch — одна пачка получателей под замком автора. false — замок
+// не получен (ctx закончился), остальные пачки смысла не имеют.
+//
+// Замок упорядочивает строки user_update одного автора: блок пересчитывает
+// карточку тем же путём (AnnounceUserTo), и снимок, собранный по правилам до
+// блока, не должен лечь в журнал ПОСЛЕ пересчёта блока и затереть его. Поэтому
+// запись автора, книги получателей, присутствие и правила читаются ПОД замком, а
+// не до него. Гарантия — в пределах процесса.
+func (i *Interactor) sendUserUpdateBatch(ctx context.Context, u domain.UserRecord, recipients []int64) bool {
+	unlock, err := i.authorLocks.lock(ctx, u.ID)
+	if err != nil {
+		i.logf("[user_update] lock author=%d: %v", u.ID, err)
+		return false
+	}
+	defer unlock()
+	// Свежая запись: правка, коммит которой случился, пока ждали замок, не должна
+	// быть перекрыта устаревшим снимком. Не прочиталась (удалён) — остаётся пришедшая.
+	if fresh, err := i.users.GetByID(ctx, u.ID); err == nil {
+		u = fresh
+	}
 	views := map[int64]domain.ContactView{}
 	if i.contacts != nil {
 		v, err := i.contacts.ContactViews(ctx, u.ID, recipients)
@@ -152,27 +181,23 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 		}
 	}
 	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
-	// Присутствие автора не зависит от получателя: читается один раз на всех.
+	// Присутствие автора не зависит от получателя: читается один раз на пачку.
 	var presence func(int64) domain.UserStatus
 	if i.privacy != nil {
 		presence = i.privacy.PresenceOf(ctx, []int64{u.ID})
 	}
-	// Правила получателя читаются и строка пишется под замком автора: блок и
-	// смена last_seen пересчитывают карточку тем же sendUserUpdate
-	// (AnnounceUserTo), и без замка снимок с устаревшим «не заблокирован» мог бы
-	// лечь в журнал ПОСЛЕ пересчёта блока и затереть его.
-	lock := &i.subjectLocks[uint64(u.ID)%uint64(len(i.subjectLocks))]
-	lock.Lock()
-	defer lock.Unlock()
 	for _, uid := range recipients {
 		// Правила получателя: аватарка, номер и статус автора глазами uid. Одним
-		// сборщиком с остальными витринами (domain.UserViewRules.Apply); сбой правил
-		// гасит фото и статус («недавно»), источника присутствия нет — поле не едет.
+		// сборщиком с остальными витринами (domain.UserViewRules.Apply). Сбой правил
+		// — отказ для этого получателя (строка с погашенными фото и статусом
+		// стёрла бы ему аватарку после getDifference), а не молчаливо урезанная
+		// карточка; источника присутствия нет — поле status не едет.
 		var rules domain.UserViewRules
 		if i.privacy != nil {
 			var err error
 			if rules, err = i.privacy.AccessRules(ctx, uid, []int64{u.ID}); err != nil {
 				i.logf("[user_update] privacy rules viewer=%d user=%d: %v", uid, u.ID, err)
+				continue
 			}
 			rules.Status = presence
 		}
@@ -222,6 +247,7 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 		}
 		_ = i.pub.PublishToUser(ctx, uid, b)
 	}
+	return true
 }
 
 // ProfileInput carries the editable profile fields for UpdateProfile.
