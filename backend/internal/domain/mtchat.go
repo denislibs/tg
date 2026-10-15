@@ -919,6 +919,10 @@ type ChannelFull struct {
 	// ChatRecord.ViewerID); пустым конструктором такое не выражается — он
 	// означал бы «переопределения нет».
 	NotifySettings *PeerNotifySettings `json:"notify_settings,omitempty"`
+	// BotInfo — bot_info:Vector<BotInfo>, ОБЯЗАТЕЛЬНЫЙ по схеме: боты-участники
+	// группы с командами глазами зрителя. Едет всегда, пустым вектором тоже
+	// (снимок chat_update без зрителя и канал-вещание — всегда пустой).
+	BotInfo []BotInfo `json:"bot_info"`
 }
 
 // HiddenPrehistory — история чата скрыта от новых участников; наш
@@ -929,7 +933,7 @@ func (f ChannelFull) HiddenPrehistory() bool { return f.PFlags["hidden_prehistor
 // (about, горизонты чтения, unread_count, chat_photo) едут всегда, даже
 // нулевыми; photo == nil означает «фото нет».
 func NewChannelFull(id int64, about string, photo *Photo, hiddenPrehistory bool) ChannelFull {
-	f := ChannelFull{Underscore: ChannelFullTag, ID: id, About: about, ChatPhoto: photo}
+	f := ChannelFull{Underscore: ChannelFullTag, ID: id, About: about, ChatPhoto: photo, BotInfo: []BotInfo{}}
 	setPFlag(&f.PFlags, "hidden_prehistory", hiddenPrehistory)
 	return f
 }

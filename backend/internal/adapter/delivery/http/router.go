@@ -145,6 +145,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			fh := NewFoldersHandler(foldersUC)
 			pr.Get("/me/folders", fh.List)
 			pr.Post("/me/folders", fh.Create)
+			pr.Post("/me/folders/order", fh.Reorder)
 			pr.Put("/me/folders/{folderID}", fh.Update)
 			pr.Delete("/me/folders/{folderID}", fh.Delete)
 			// Ссылки-приглашения в папку (chatlist invites)
@@ -245,7 +246,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/gifts/{giftID}/convert", ch.ConvertGift)
 		pr.Post("/gifts/{giftID}/hidden", ch.SetGiftHidden)
 		// Боты
-		pr.Get("/bots/{botID}/commands", ch.BotCommands)
 		pr.Get("/bots/{botID}/inline", ch.BotInline)
 		pr.Get("/bots/{botID}/menu_button", ch.BotMenuButton)
 		pr.Post("/bots/{botID}/callback", ch.BotCallback)

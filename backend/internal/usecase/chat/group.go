@@ -618,13 +618,18 @@ func (i *Interactor) ChatFullContainer(ctx context.Context, chatID, viewerID int
 		return domain.MessagesChatFull{}, err
 	}
 	full := c.ToChannelFull()
+	// Боты группы и их команды глазами зрителя (channelFull.bot_info); карточки
+	// самих ботов едут в users, как у любого ссылающегося на пользователей ответа.
+	var botCards []domain.UserReal
+	full.BotInfo, botCards = i.groupBotInfos(ctx, c, viewerID)
 	out := domain.NewMessagesChatFull(full, c.ToChannel())
 	out.Chats = i.withChats(ctx, viewerID, out.Chats, full.LinkedChatID)
+	out.Users = append(out.Users, botCards...)
 	// Карточки заявителей плашки заявок (recent_requesters, Б-86).
 	if c.Counters != nil && len(c.Counters.RecentRequesters) > 0 && i.groups != nil {
 		if cards, err := i.groups.UsersByIDs(ctx, viewerID, c.Counters.RecentRequesters); err == nil {
 			i.viewUsers(ctx, viewerID, cards)
-			out.Users = cards
+			out.Users = append(out.Users, cards...)
 		}
 	}
 	return out, nil

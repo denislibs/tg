@@ -127,6 +127,7 @@ import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import useDynamicCachedValue from '../helpers/solid/useDynamicCachedValue'
 import {
   beginPeerFullFetch,
+  endPeerFullFetch,
   cachedPeerFull,
   saveChatFull,
   subscribeChatFullMirror,
@@ -167,15 +168,23 @@ async function requestFullPeer(managers: Managers, peerId: PeerId, overwrite: bo
   const ticket = beginPeerFullFetch(peerId)
 
   let full: PeerFull | null
-  if (isUser(peerId)) {
-    const profile = await managers.privacy.profile(peerId)
-    full = profile.fullUser
-    saveProfilePhone(peerId, profile.user.phone ?? '', ticket)
-  } else {
-    full = (await managers.groups.card(peerId))?.fullChat ?? null
+  try {
+    if (isUser(peerId)) {
+      const profile = await managers.privacy.profile(peerId)
+      full = profile.fullUser
+      saveProfilePhone(peerId, profile.user.phone ?? '', ticket)
+    } else {
+      full = (await managers.groups.card(peerId))?.fullChat ?? null
+    }
+  } catch (e) {
+    endPeerFullFetch(peerId, ticket)
+    throw e
   }
 
-  if (!full) return
+  if (!full) {
+    endPeerFullFetch(peerId, ticket)
+    return
+  }
   if (overwrite) expirations.set(peerId, Date.now() + PEER_FULL_TTL)
   saveChatFull(peerId, full, ticket)
 }
@@ -212,6 +221,20 @@ export function isFullPeerFresh(peerId: PeerId): boolean {
  *  `isFullPeerFresh` для писателей, идущих мимо `requestFullPeer`. */
 export function markFullPeerFetched(peerId: PeerId): void {
   expirations.set(peerId, Date.now() + PEER_FULL_TTL)
+}
+
+/**
+ * Порт `appProfileManager.getProfileByPeerId` (tweb `:294-297`, `getProfile`
+ * `:269-285`) для не-реактивных читателей (подсказки команд по «/» и кнопке
+ * команд): лежащая и не протухшая карточка отдаётся как есть, иначе — поход в
+ * сеть (тот же `requestFullPeer`, билет и TTL общие с `useFullPeer`). Команды
+ * ботов в лежащей карточке правят кадры (`applyBotCommands`), поэтому читатель
+ * не перечитывает её сам.
+ */
+export async function getProfileByPeerId(managers: Managers, peerId: PeerId): Promise<PeerFull | undefined> {
+  if (isFullPeerFresh(peerId)) return cachedPeerFull(peerId)
+  await requestFullPeer(managers, peerId, true)
+  return cachedPeerFull(peerId)
 }
 
 /** Гарантирует, что карточка peerId загружена и не протухла — не дублирует

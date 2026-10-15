@@ -161,6 +161,7 @@ func updateCases() []struct {
 			return u
 		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
+		{"порядок папок", NewUpdateDialogFilterOrder([]int64{0, 3, 1})},
 		{"автоудаление включили", NewUpdatePeerHistoryTTL(NewPeerUser(9), 86400)},
 		{"автоудаление выключили", NewUpdatePeerHistoryTTL(NewPeerChannel(5), 0)},
 		{"набор установлен", NewUpdateNewStickerSet(NewMessagesStickerSet(
@@ -168,6 +169,8 @@ func updateCases() []struct {
 		{"недавние стикеры", NewUpdateRecentStickers()},
 		{"избранные стикеры", NewUpdateFavedStickers()},
 		{"сохранённые GIF", NewUpdateSavedGifs()},
+		{"команды бота в личке", NewUpdateBotCommands(NewPeerUser(9), 9, []BotCommand{{Command: "start", Description: "Начать"}})},
+		{"команды бота в группе", NewUpdateBotCommands(NewPeerChannel(5), 9, nil)},
 	}
 }
 
@@ -271,6 +274,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateReadChannelDiscussionInboxTag,
 		UpdateReadChannelDiscussionOutboxTag,
 		UpdateSavedReactionTagsTag,
+		UpdateDialogFilterOrderTag,
 		NotifyForumTopicTag,
 		NotifyUsersTag,
 		NotifyChatsTag,
@@ -289,6 +293,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateRecentStickersTag,
 		UpdateFavedStickersTag,
 		UpdateSavedGifsTag,
+		UpdateBotCommandsTag,
 	}
 
 	covered := map[string]bool{}

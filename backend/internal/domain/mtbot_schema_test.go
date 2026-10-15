@@ -17,6 +17,13 @@ func TestBot_MatchesSchema(t *testing.T) {
 	}{
 		{"команда", NewBotCommand(BotCommand{Command: "start", Description: "начать"})},
 		{"кнопка-меню", NewBotMenuButton("Открыть", "https://example/app")},
+		{"карточка бота", func() any {
+			b := NewBotInfo(7, "Что умеет бот", []BotCommand{{Command: "start", Description: "начать"}})
+			m := NewBotMenuButton("Открыть", "https://example/app")
+			b.MenuButton = &m
+			return b
+		}()},
+		{"карточка бота без команд", NewBotInfo(7, "", nil)},
 		{"строка выдачи", inline},
 		{"контейнер выдачи", NewMessagesBotResults(
 			[]BotInlineResult{inline},
@@ -63,5 +70,20 @@ func TestBot_CallbackAlertIsAFlag(t *testing.T) {
 	flags, _ := alert["pFlags"].(map[string]any)
 	if flags["alert"] != true {
 		t.Errorf("плашка без флага: %v", alert)
+	}
+}
+
+// channelFull.bot_info обязателен по схеме: карточка без ботов несёт пустой
+// вектор, а не отсутствие ключа и не null. У обычного пользователя userFull
+// ключа bot_info нет вовсе.
+func TestChannelFull_BotInfoIsAlwaysVector(t *testing.T) {
+	obj, _ := roundTripJSON(t, NewChannelFull(8, "", nil, false)).(map[string]any)
+	v, ok := obj["bot_info"].([]any)
+	if !ok || len(v) != 0 {
+		t.Fatalf("bot_info = %#v; want []", obj["bot_info"])
+	}
+	user, _ := roundTripJSON(t, NewUserFull(43, UserFullFlags{})).(map[string]any)
+	if _, present := user["bot_info"]; present {
+		t.Fatalf("у обычного пользователя появился bot_info: %#v", user["bot_info"])
 	}
 }

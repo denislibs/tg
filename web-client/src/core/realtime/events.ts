@@ -5,6 +5,7 @@ import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
+import type { BotCommand } from '../peers/peer'
 import type { ChannelParticipantWire, ChatInviteExported } from '../managers/groupsManager'
 import type { StickerPack, StickerSet } from '../managers/stickersManager'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND difference
@@ -79,6 +80,11 @@ export const RT = {
   // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
   // logged, pts. Клиент перечитывает список папок.
   folderUpdate: 'rt:folder_update',
+  // Порядок папок сменился на другом устройстве/вкладке — `updateDialogFilterOrder`
+  // (tweb `filters.ts:179-199`, событие `filter_order`). Конструктор схемы с
+  // курсором в конверте: идёт общим путём (UPDATE_RT), а не исключением
+  // `folder_update`. Применяет `foldersStore.applyOrder`.
+  dialogFilterOrder: 'rt:dialog_filter_order',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
   // сессиям). Кадр интерпретирует ВОРКЕР (peersManager.applyUserUpdate) и
   // публикует результат через rt:peer_op ниже — витрина сырой кадр не разбирает.
@@ -157,6 +163,10 @@ export const RT = {
   // рассылаются: имена нужны только полноте реестра `UPDATE_RT`.
   peerBlocked: 'rt:peer_blocked',
   privacy: 'rt:privacy',
+  // Команды бота сменились (Ф-6, f6-bots): воркер переводит кадр в событие tweb
+  // `onUpdateBotCommands` {peerId, botId, commands} (`bot_commands`); имя нужно
+  // только полноте реестра `UPDATE_RT`.
+  botCommands: 'rt:bot_commands',
   // Срок автоудаления чата (Ф-6, f6-ttl): воркер переводит кадр в событие tweb
   // `auto_delete_period_update` (rootScope.ts:271) и сам не рассылается: имя
   // нужно только полноте реестра `UPDATE_RT`.
@@ -740,6 +750,15 @@ export interface BoostUpdateEvt {
   status: import('../models').BoostsStatus
   pts?: number
 }
+/**
+ * updateDialogFilterOrder#a5d72105 order:Vector<int> = Update;
+ *
+ * Порядок папок. `order` — id папок в новом порядке, `0` — «Все чаты» (есть,
+ * только если устройство его переставляло: у не-премиум tweb вырезает его,
+ * `chatFolders.tsx:365-367`). Неперечисленные папки остаются в хвосте в прежнем
+ * порядке. Курсор едет в конверте.
+ */
+export interface DialogFilterOrderEvt { _: 'updateDialogFilterOrder'; order: number[] }
 /** updateSavedReactionTags#39c67432 = Update; — параметров нет. */
 export interface SavedReactionTagsEvt { _: 'updateSavedReactionTags' }
 /** updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; */
@@ -801,6 +820,10 @@ export interface PeerBlockedEvt { _: 'updatePeerBlocked'; pFlags?: { blocked?: t
  * Ключ — конструктор схемы (`privacyKeyStatusTimestamp`), перевод в наш ключ —
  * `privacyKeyOfTag`. Курсор едет в конверте.
  */
+/** updateBotCommands#4d712f2e peer:Peer bot_id:long commands:Vector<BotCommand> = Update;
+ *  Параметра `pts` нет — курсор едет в конверте кадра. `peer` — личка с ботом
+ *  (`peerUser` бота) либо группа (`peerChannel`). */
+export interface BotCommandsEvt { _: 'updateBotCommands'; peer: Peer; bot_id: number; commands: BotCommand[] }
 export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: import('../managers/privacyManager').PrivacyRuleWire[] }
 /**
  * updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
@@ -856,6 +879,7 @@ export type Update =
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | SavedReactionTagsEvt
+  | DialogFilterOrderEvt
   | NewStickerSetEvt
   | RecentStickersEvt
   | FavedStickersEvt
@@ -868,6 +892,7 @@ export type Update =
   | DeleteScheduledMessagesEvt
   | PeerBlockedEvt
   | PrivacyEvt
+  | BotCommandsEvt
   | PeerHistoryTTLEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
