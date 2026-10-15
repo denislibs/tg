@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
 import {
-  applyFolderUpdate, applyOrder, applyOrderFrame, loadFolders, resetOrderQueue, sendOrder, useFoldersStore,
+  applyFolderUpdate, applyOrder, loadFolders, updateOrder, useFoldersStore,
 } from './foldersStore'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
@@ -88,7 +88,6 @@ describe('foldersStore.applyOrder', () => {
   const ids = () => useAppStateStore.getState().folders.map((f) => f.id)
 
   beforeEach(() => {
-    resetOrderQueue()
     useAppStateStore.setState({ folders: [mk(1, 0), mk(2, 1), mk(3, 2)] })
   })
 
@@ -134,128 +133,45 @@ describe('foldersStore.applyOrder', () => {
     expect(ids()).toEqual([3, 1, 2])
   })
 
-  it('кадр без order (null/undefined) ничего не ломает и ничего не меняет', () => {
+  it('applyOrder([]) ничего не меняет и не пишет на диск', () => {
     const before = useAppStateStore.getState().folders
+    stateKey.mockClear()
 
-    applyOrderFrame(undefined)
-    applyOrderFrame(null)
+    applyOrder([])
 
     expect(useAppStateStore.getState().folders).toBe(before)
+    expect(stateKey).not.toHaveBeenCalled()
   })
 
-  const mgr = (updateOrder: (order: number[]) => Promise<void>, list = vi.fn().mockResolvedValue({ folders: [], allChatsPos: 0 })) => ({
-    folders: { list, updateOrder },
-    contacts: { list: () => Promise.resolve([]) },
-    dialogs: { setContactIds: async () => {} },
+  it('updateOrder: порядок применяется только после ответа сервера', async () => {
+    let finish!: () => void
+    const m = { folders: { updateOrder: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } }
+
+    const done = updateOrder(m, [3, 0, 1, 2])
+    expect(ids()).toEqual([1, 2, 3])
+    expect(useAppStateStore.getState().allChatsPos).toBe(0)
+
+    finish()
+    await done
+
+    expect(m.folders.updateOrder).toHaveBeenCalledWith([3, 0, 1, 2])
+    expect(ids()).toEqual([3, 1, 2])
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
   })
 
-  it('своя перестановка применяется сразу, запросы идут по одному; кадры в полёте откладываются, применяется последний', async () => {
-    const finish: Array<() => void> = []
-    const updateOrder = vi.fn(() => new Promise<void>((resolve) => { finish.push(resolve) }))
-    const m = mgr(updateOrder)
+  it('updateOrder: отказ сервера — исключение вызывающему, порядок не меняется', async () => {
+    const m = { folders: { updateOrder: vi.fn().mockRejectedValue(new Error('500')) } }
 
-    const first = sendOrder(m, [3, 1, 2])
-    const second = sendOrder(m, [2, 3, 1])
-    expect(ids()).toEqual([2, 3, 1])
-    await vi.waitFor(() => expect(finish).toHaveLength(1))
-    expect(updateOrder).toHaveBeenCalledTimes(1)
+    await expect(updateOrder(m, [3, 1, 2])).rejects.toThrow('500')
 
-    applyOrderFrame([3, 1, 2]) // эхо первой — строки не дёргаются
-    expect(ids()).toEqual([2, 3, 1])
-
-    finish[0]()
-    await first
-    await vi.waitFor(() => expect(finish).toHaveLength(2))
-    expect(updateOrder).toHaveBeenLastCalledWith([2, 3, 1])
-    applyOrderFrame([2, 3, 1]) // эхо второй — последнее, оно и есть итог
-    finish[1]()
-    await second
-
-    expect(ids()).toEqual([2, 3, 1])
-    applyOrderFrame([1, 2, 3]) // очередь пуста — чужая перестановка применяется сразу
     expect(ids()).toEqual([1, 2, 3])
   })
 
-  it('эхо первой своей перестановки, пришедшее раньше ответа на вторую, строки не дёргает ни на одном шаге', async () => {
-    const finish: Array<() => void> = []
-    const m = mgr(() => new Promise<void>((resolve) => { finish.push(resolve) }))
-    const seen: number[][] = []
-    const off = useAppStateStore.subscribe(() => { seen.push(ids()) })
-
-    const first = sendOrder(m, [3, 1, 2])
-    const second = sendOrder(m, [2, 3, 1])
-    await vi.waitFor(() => expect(finish).toHaveLength(1))
-    finish[0]()
-    await first
-    await vi.waitFor(() => expect(finish).toHaveLength(2))
-    applyOrderFrame([3, 1, 2]) // эхо первой — во время запроса второй
-    finish[1]() // ответ второй раньше её эха
-    await second
-    applyOrderFrame([2, 3, 1]) // эхо второй, очередь пуста
-    off()
-
-    expect(ids()).toEqual([2, 3, 1])
-    expect(seen.every((order) => order.join() !== '3,1,2' || seen.indexOf(order) === 0)).toBe(true)
-    expect(seen.filter((order) => order.join() === '3,1,2')).toHaveLength(1) // только оптимистичный шаг первой
-  })
-
-  it('чужая перестановка, закоммиченная до нашей, применяется, эхо нашей сводит итог', async () => {
-    let finish: (() => void) | undefined
-    const m = mgr(() => new Promise<void>((resolve) => { finish = resolve }))
-
-    const sent = sendOrder(m, [3, 1, 2])
-    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-    applyOrderFrame([1, 3, 2]) // чужая C — закоммичена до нашей A
-    finish!()
-    await sent
-    expect(ids()).toEqual([1, 3, 2])
-    applyOrderFrame([3, 1, 2]) // эхо A, итог сервера
+  it('кадр порядка просто ставит порядок: эхо прежней перестановки и затем последней сводит итог', () => {
+    applyOrder([3, 1, 2]) // эхо первой перестановки
     expect(ids()).toEqual([3, 1, 2])
-  })
-
-  it('чужая перестановка, пришедшая после своего коммита, не теряется', async () => {
-    let finish: (() => void) | undefined
-    const m = mgr(() => new Promise<void>((resolve) => { finish = resolve }))
-
-    const sent = sendOrder(m, [3, 1, 2])
-    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-    applyOrderFrame([2, 1, 3]) // с другого устройства, закоммичена после нашей
-    finish!()
-    await sent
-
-    expect(ids()).toEqual([2, 1, 3])
-  })
-
-  it('отказ сервера и недоступный список: возврат к подтверждённому порядку и месту «Все чаты»', async () => {
-    useAppStateStore.setState({ allChatsPos: 2 })
-    const m = mgr(() => Promise.reject(new Error('offline')), vi.fn().mockRejectedValue(new Error('offline')))
-
-    await sendOrder(m, [3, 0, 1, 2])
-
-    expect(ids()).toEqual([1, 2, 3])
-    expect(useAppStateStore.getState().allChatsPos).toBe(2)
-  })
-
-  it('отказ первой перестановки при второй в очереди: итог — вторая, как на сервере', async () => {
-    const updateOrder = vi.fn()
-      .mockRejectedValueOnce(new Error('503'))
-      .mockResolvedValueOnce(undefined)
-    const m = mgr(updateOrder)
-
-    await Promise.all([sendOrder(m, [3, 1, 2]), sendOrder(m, [2, 3, 1])])
-
-    expect(updateOrder).toHaveBeenCalledTimes(2)
-    expect(m.folders.list).not.toHaveBeenCalled()
+    applyOrder([2, 3, 1]) // эхо последней — итог сервера
     expect(ids()).toEqual([2, 3, 1])
-  })
-
-  it('успех первой и отказ второй: возврат к порядку первой (он на сервере)', async () => {
-    const m = mgr(vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('503')),
-      vi.fn().mockRejectedValue(new Error('offline')))
-
-    await Promise.all([sendOrder(m, [3, 1, 2]), sendOrder(m, [2, 3, 1])])
-
-    expect(ids()).toEqual([3, 1, 2])
   })
 
   it('тот же порядок повторно — ни записи на диск, ни новых ссылок (эхо своего действия)', () => {

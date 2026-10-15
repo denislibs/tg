@@ -17,18 +17,19 @@
  *
  * Расхождения с оригиналом:
  *  1. Порядок папок перетаскивается через `Sortable` (`:353-372`) с
- *     `moveInDom: false` — список рисует `For` из модели, и перестановку
- *     делает модель: `onSort` собирает `order` из строк (`:355-363`),
- *     применяет его `foldersStore.applyOrder` сразу (у tweb строку двигает сам
- *     `Sortable`, а `onUpdateDialogFilterOrder` приходит с ответом,
- *     `filters.ts:424-433`) и шлёт `managers.folders.updateOrder`; при отказе
- *     сервера список перечитывается (у tweb DOM остался бы переставленным).
+ *     `moveInDom: false`: список рисует `For` из модели, и его разностный проход
+ *     по руками сдвинутому DOM ставит строки неверно (так сказано у самого
+ *     `Sortable`). У tweb строку двигает сам `Sortable`, а порядок в хранилище
+ *     появляется по ответу (`filters.ts:424-433`) — здесь строка встаёт на место
+ *     тоже по ответу, до него она возвращается на прежнее (видимая разница на
+ *     время запроса). `onSort` собирает `order` из строк (`:355-363`), у
+ *     не-премиум `0` вырезается (`:365-367`), `foldersStore.updateOrder` шлёт
+ *     запрос и только ПО ОТВЕТУ применяет порядок; отказ порядка не меняет.
  *     Строка «Все чаты» (`:108-110`, `toggleAllChats` `:200-203`) есть только у
  *     премиума, стоит на месте `appState.allChatsPos` (решение В-6) и несёт в
- *     `order` id `0`; у не-премиум `0` из `order` вырезается (`:365-367`).
- *     События `filter_order` (`:325-331`) нет — порядок приходит кадром
- *     `updateDialogFilterOrder` в `foldersStore.applyOrder`, `For` двигает
- *     строки сам. Подписка «Все чаты» — число чатов всех не-архивных диалогов
+ *     `order` id `0`. События `filter_order` (`:325-331`) нет — порядок приходит
+ *     кадром `updateDialogFilterOrder` в `foldersStore.applyOrder`, `For` двигает
+ *     строки сам. Подпись «Все чаты» — число чатов всех не-архивных диалогов
  *     (`getFolderDialogs(0)`, `:91-97`).
  *  2. (О-20) Секции «Рекомендованные папки» (`FilterRecommended`, `:215-255`,
  *     `:398-402`) нет: нет `getSuggestedDialogFilters`. Прежний React-экран
@@ -78,7 +79,7 @@ import { AppEditFolderTab, type AppChatFoldersTab } from '@components/solidJsTab
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { sendOrder, useFoldersStore } from '@stores/foldersStore'
+import { updateOrder, useFoldersStore } from '@stores/foldersStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { cachedChat, cachedPeer } from '@core/peerCache'
 import { isDialogArchived } from '@core/models'
@@ -220,7 +221,7 @@ const ChatFolders = () => {
         // tweb :365-367
         const managers = tab.managers!
         const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
-        sendOrder(managers, sent).catch(() => {})
+        updateOrder(managers, sent).catch(() => {})
       },
       scrollable: tab.scrollable,
     })

@@ -633,16 +633,37 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
   const titles = (tab: SliderSuperTab) => rowTitles(tab.scrollable.container.querySelectorAll('.sidebar-left-section-container')[0])
   const stateIds = () => useAppStateStore.getState().folders.map((f) => f.id)
 
-  it('не-премиум: нет строки «Все чаты»; перетаскивание шлёт updateOrder без 0 и сразу переставляет строки', async() => {
+  /** Отложенный ответ `updateOrder`: порядок применяется только после него (tweb `filters.ts:424-433`). */
+  const deferUpdate = () => {
+    let finish!: () => void
+    let fail!: (e: Error) => void
+    folders.updateOrder.mockImplementationOnce(() => new Promise<void>((resolve, reject) => { finish = resolve; fail = reject }))
+    return { finish: () => finish(), fail: (e: Error) => fail(e) }
+  }
+  const frame = (order: number[]) =>
+    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order })
+
+  it('не-премиум: нет строки «Все чаты»; перетаскивание шлёт updateOrder без 0, порядок в модели — после ответа', async() => {
     setPremium(false)
+    const reply = deferUpdate()
     const tab = await openList()
     expect(titles(tab)).toEqual(['Работа', 'Боты'])
 
     await dragRow(tab, 1, 0)
 
     expect(folders.updateOrder).toHaveBeenCalledWith([BOTS.id, WORK.id])
-    expect(stateIds()).toEqual([BOTS.id, WORK.id])
+    // ответа ещё нет — модель прежняя, строки на прежних местах
+    expect(stateIds()).toEqual([WORK.id, BOTS.id])
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+
+    reply.finish()
+    await vi.waitFor(() => expect(stateIds()).toEqual([BOTS.id, WORK.id]))
     expect(titles(tab)).toEqual(['Боты', 'Работа'])
+
+    // следующая перестановка модели (кадр с другого устройства) ведёт строки корректно
+    frame([WORK.id, BOTS.id])
+    await settle()
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
   })
 
   it('премиум: строка «Все чаты» на сохранённом месте, с подписью-счётом, без перехода в редактор', async() => {
@@ -662,71 +683,59 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     expect(document.querySelector('.sidebar-slider > .tabs-tab.edit-folder-container')).toBeNull()
   })
 
-  it('премиум: перетаскивание «Все чаты» шлёт 0 в order и запоминает её место', async() => {
+  it('премиум: перетаскивание «Все чаты» шлёт 0 в order, место запоминается после ответа', async() => {
     setPremium(true)
     useAppStateStore.setState({ allChatsPos: 1 })
+    const reply = deferUpdate()
     const tab = await openList()
 
     await dragRow(tab, 1, 2)
 
     expect(folders.updateOrder).toHaveBeenCalledWith([WORK.id, BOTS.id, 0])
-    expect(useAppStateStore.getState().allChatsPos).toBe(2)
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+
+    reply.finish()
+    await vi.waitFor(() => expect(useAppStateStore.getState().allChatsPos).toBe(2))
     expect(titles(tab)).toEqual(['Работа', 'Боты', 'All Chats'])
   })
 
-  it('отказ сервера — список перечитывается (откат перестановки)', async() => {
+  it('отказ сервера: порядок не применяется, откатов и перечитывания нет (как у tweb)', async() => {
     setPremium(false)
-    folders.updateOrder.mockRejectedValueOnce(new Error('500'))
+    const reply = deferUpdate()
     const tab = await openList()
 
     await dragRow(tab, 1, 0)
-
-    await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
-    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
-  })
-
-  it('отказ сервера и недоступный список: оптимистичный порядок возвращается из снимка', async() => {
-    setPremium(false)
-    folders.updateOrder.mockRejectedValueOnce(new Error('offline'))
-    folders.list.mockRejectedValueOnce(new Error('offline'))
-    const tab = await openList()
-
-    await dragRow(tab, 1, 0)
-
-    await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
-    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
-    expect(titles(tab)).toEqual(['Работа', 'Боты'])
-  })
-
-  it('две перестановки подряд уходят по одной, в порядке действий; эхо своих не дёргает строки', async() => {
-    setPremium(false)
-    let finishFirst!: () => void
-    folders.updateOrder.mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve }))
-    const tab = await openList()
-
-    await dragRow(tab, 1, 0) // [Боты, Работа]
-    await dragRow(tab, 1, 0) // [Работа, Боты]
-
-    expect(folders.updateOrder).toHaveBeenCalledTimes(1)
-    expect(folders.updateOrder).toHaveBeenLastCalledWith([BOTS.id, WORK.id])
-    expect(titles(tab)).toEqual(['Работа', 'Боты'])
-
-    finishFirst()
-    await vi.waitFor(() => expect(folders.updateOrder).toHaveBeenCalledTimes(2))
-    expect(folders.updateOrder).toHaveBeenLastCalledWith([WORK.id, BOTS.id])
-
-    // эхо первой перестановки приходит после второй — строки на месте, итог — последний кадр
-    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [BOTS.id, WORK.id] })
-    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [WORK.id, BOTS.id] })
+    reply.fail(new Error('500'))
     await settle()
-    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+
+    expect(stateIds()).toEqual([WORK.id, BOTS.id])
+    expect(folders.list).not.toHaveBeenCalled()
+    expect(tab.scrollable.container.querySelector('.row-sortable')).not.toBeNull()
   })
 
-  it('эхо чужого порядка (updateDialogFilterOrder) переставляет строки без перерисовки вкладки', async() => {
+  it('эхо прежней перестановки не ломает итоговый порядок: кадр просто ставит порядок, эхо последней сводит', async() => {
     setPremium(false)
     const tab = await openList()
 
-    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [BOTS.id, WORK.id] })
+    await dragRow(tab, 1, 0) // [Боты, Работа], ответ сразу
+    await vi.waitFor(() => expect(stateIds()).toEqual([BOTS.id, WORK.id]))
+    await dragRow(tab, 1, 0) // [Работа, Боты]
+    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
+
+    frame([BOTS.id, WORK.id]) // эхо первой приходит позже
+    await settle()
+    frame([WORK.id, BOTS.id]) // эхо второй
+    await settle()
+
+    expect(stateIds()).toEqual([WORK.id, BOTS.id])
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+  })
+
+  it('кадр порядка с другого устройства переставляет строки без перерисовки вкладки', async() => {
+    setPremium(false)
+    const tab = await openList()
+
+    frame([BOTS.id, WORK.id])
     await settle()
 
     expect(titles(tab)).toEqual(['Боты', 'Работа'])

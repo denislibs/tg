@@ -174,83 +174,19 @@ function applyAllChatsPos(pos: number): void {
   if (useAppStateStore.getState().allChatsPos !== pos) setAppState('allChatsPos', pos)
 }
 
-/** Текущий порядок в виде `order`: id папок, `0` («Все чаты») на сохранённом месте. */
-function currentOrder(): number[] {
-  const { folders, allChatsPos } = useAppStateStore.getState()
-  const order = folders.map((f) => f.id)
-  order.splice(Math.min(allChatsPos, order.length), 0, ALL_FOLDER_ID)
-  return order
-}
-
-// ── Свои перестановки ───────────────────────────────────────────────────────
-// tweb применяет порядок по успеху запроса (`filters.ts:424-433`) и двигает DOM
-// вкладки сам. Список вкладки у нас рисуется из модели, поэтому порядок
-// применяется сразу, а запросы идут ОДИН ЗА ДРУГИМ в порядке действий (параллельные
-// POST могли бы лечь на сервер наоборот). Сервер шлёт кадр и сессии-автору; пока
-// свои запросы в пути, кадры не применяются, а запоминается последний: кадры идут
-// в порядке коммитов, и последний — итоговое состояние сервера (своё эхо или
-// чужая перестановка). Когда очередь опустела, последний кадр применяется, если
-// он не эхо своей перестановки. Остаточное окно: эхо приходит ПОЗЖЕ ответа (разные
-// соединения) — строки на миг возвращаются к более раннему своему порядку, эхо
-// последней перестановки сводит их обратно. Точное решение — pts ответа (бэклог).
-let queue: Promise<void> = Promise.resolve()
-let inflight = 0
-/** Порядок, подтверждённый сервером (откат при отказе). */
-let confirmed: number[] = []
-let deferred: number[] | undefined
-/** Свои порядки текущей пачки: устаревшее эхо своей же перестановки не применяется. */
-const ownKeys = new Set<string>()
-
-type OrderManagers = Parameters<typeof loadFolders>[0] & { folders: { updateOrder(order: number[]): Promise<void> } }
-
-/** Своя перестановка: применить сразу и отправить в очередь. */
-export function sendOrder(managers: OrderManagers, order: number[]): Promise<void> {
-  if (inflight === 0) confirmed = currentOrder()
+/**
+ * Порт `FiltersStorage.updateDialogFiltersOrder` (tweb `filters.ts:424-433`):
+ * `messages.updateDialogFiltersOrder`, и ТОЛЬКО ПОСЛЕ ответа сервера — локальный
+ * `onUpdateDialogFilterOrder` (у нас `applyOrder`). Отказ — исключение вызывающему
+ * (у tweb то же: порядок не применяется). Кадр `updateDialogFilterOrder` сервер
+ * присылает и сессии-автору — он просто ставит порядок (`applyOrder`).
+ */
+export async function updateOrder(
+  managers: { folders: { updateOrder(order: number[]): Promise<void> } },
+  order: number[],
+): Promise<void> {
+  await managers.folders.updateOrder(order)
   applyOrder(order)
-  const applied = currentOrder()
-  ++inflight
-  ownKeys.add(order.join(','))
-  const run = queue
-    .then(() => managers.folders.updateOrder(order))
-    .then(() => { confirmed = applied }, async () => {
-      // Откат к последнему подтверждённому порядку — без сети, затем сверка с
-      // сервером. Если следом в очереди ждёт ещё перестановка, она сама
-      // приведёт сервер к нужному порядку: откатывать под ней нечего.
-      if (inflight > 1) return
-      applyOrder(confirmed)
-      await loadFolders(managers, { overwrite: true })
-    })
-    .finally(() => {
-      if (--inflight > 0) return
-      const last = deferred
-      deferred = undefined
-      // Эхо СВОЕЙ перестановки (не последней) пришло раньше ответа на последнюю:
-      // применять его значило бы дёрнуть строки назад. Чужой кадр применяется.
-      const echo = last && ownKeys.has(last.join(','))
-      ownKeys.clear()
-      if (last && !echo) applyOrder(last)
-    })
-  queue = run.catch(() => {})
-  return run
-}
-
-/** Сбросить очередь — только для тестов. */
-export function resetOrderQueue(): void {
-  queue = Promise.resolve()
-  inflight = 0
-  confirmed = []
-  deferred = undefined
-  ownKeys.clear()
-}
-
-/** Кадр `updateDialogFilterOrder` с сервера (в том числе эхо своего действия). */
-export function applyOrderFrame(order: number[] | null | undefined): void {
-  const list = order ?? []
-  if (inflight > 0) {
-    deferred = list
-    return
-  }
-  applyOrder(list)
 }
 
 /**
