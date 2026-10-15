@@ -2,20 +2,18 @@
 // по кнопке `.new-message-bot-commands` строки ввода (`ChatInput.constructBotCommands`,
 // tweb `input.ts:962-1046`). База — `AutocompletePeerHelper` (Б-34). Б-36, пачка П-6.
 //
-// Расхождения:
-//  1. Команды — ручкой `GET /bots/{id}/commands` (`managers.bots.commands`), а не
-//     `userFull.bot_info.commands` (`appProfileManager.getProfile`): `bot_info` в
-//     `userFull` бэкенд не производит. Карточку для `processPeerFullForCommands`
-//     собирает вызывающий — так же, как `CommandsHelper`.
-//  2. `AutocompletePeerHelper` берёт `managers` шестым аргументом (аватарки и имена
-//     строк — зеркало карточек), у tweb он импортирует их сам.
+// Расхождение: `AutocompletePeerHelper` берёт `managers` шестым аргументом (аватарки и
+// имена строк — зеркало карточек), у tweb он импортирует их сам.
+// Команды — из полной карточки бота (`userFull.bot_info`), как у оригинала:
+// `getProfileByPeerId` + `processPeerFullForCommands`; кадр `updateBotCommands`
+// правит закэшированную карточку (`chatFullCache.applyBotCommands`).
 import type ChatInput from '@components/chat/input'
-import callbackify from '@helpers/callbackify'
 import AutocompletePeerHelper from '@components/chat/autocompletePeerHelper'
 import processPeerFullForCommands from '@components/chat/processPeerFullForCommands'
 import type { Managers } from '@/client/bootstrap'
 import type { Middleware } from '@helpers/middleware'
 import { toPeerId } from '@core/peers/peerId'
+import { getProfileByPeerId } from '@/stores/fullPeers.solid'
 
 const CLASS_NAME = 'bot-commands'
 export default class ChatBotCommands extends AutocompletePeerHelper {
@@ -43,10 +41,9 @@ export default class ChatBotCommands extends AutocompletePeerHelper {
     }
 
     this.userId = userId
-    return callbackify(this.managers.bots.commands(+userId).catch(() => []), (commands) => {
-      if(!middleware()) return
-      // расхождение 1 шапки
-      const filtered = processPeerFullForCommands(toPeerId(+userId, false), { bot_info: { user_id: userId, commands } })
+    return getProfileByPeerId(this.managers, toPeerId(+userId, false)).catch(() => undefined).then((full) => {
+      if(!middleware() || !full) return
+      const filtered = processPeerFullForCommands(toPeerId(+userId, false), full)
 
       const PADDING_TOP = 8
       // const PADDING_BOTTOM = 8;
