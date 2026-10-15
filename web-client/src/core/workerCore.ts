@@ -414,6 +414,10 @@ export function createWorkerCore() {
       forumTopics.onChatToggleForum(peerId, enabled)
       if (!enabled) messages.flushThreadWindows(peerId)
     },
+    // tweb `onContactUpdated` из `saveApiUser` (appUsersManager.ts:738-754): карточка
+    // сменила `pFlags.contact` — книга двигает индекс и шлёт `contacts_update`.
+    // `contacts` объявлен ниже — стрелка дёргает его лениво.
+    onContactToggle: (userId, isContact, wasContact) => contacts.onContactUpdated(userId, isContact, wasContact),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец

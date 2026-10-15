@@ -437,7 +437,8 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 }
 
 // SetMute: muted=true без until — навсегда (tweb «Forever»), с until —
-// временный mute («For 1 Hour…»); muted=false снимает и то и другое. Смена
+// временный mute («For 1 Hour…»); muted=false снимает и то и другое явным
+// «уведомлять» (mute_until: 0 — три состояния, NULL — наследовать тип). Смена
 // логируется + шлётся dialog_mute на устройства владельца: раньше это был
 // клиентский fake-echo (groupsManager), теперь сервер эмитит его сам, так что
 // mute доезжает и на другие вкладки/устройства и через getDifference (плотный pts).
@@ -454,7 +455,11 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	var muteUntil *time.Time
 	switch {
 	case !muted:
-		muteUntil = nil
+		// Явное «уведомлять», а не NULL: NULL значит «наследовать тип чата»,
+		// и включённый вручную чат не перекрыл бы выключенный тип (tweb
+		// togglePeerMute → mute_until: 0, appMessagesManager.ts:11985-11991).
+		never := time.Unix(domain.MuteUntilNever, 0)
+		muteUntil = &never
 	case until != nil:
 		muteUntil = until
 	default:

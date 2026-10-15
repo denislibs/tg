@@ -160,6 +160,7 @@ func updateCases() []struct {
 			u, _ := NewUpdatePrivacy(PrivacyRuleRecord{Key: PrivacyReadTime, Value: PrivacyNobody})
 			return u
 		}()},
+		{"теги «Избранного»", NewUpdateSavedReactionTags()},
 	}
 }
 
@@ -262,6 +263,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdatePinnedForumTopicTag,
 		UpdateReadChannelDiscussionInboxTag,
 		UpdateReadChannelDiscussionOutboxTag,
+		UpdateSavedReactionTagsTag,
 		NotifyForumTopicTag,
 		NotifyUsersTag,
 		NotifyChatsTag,

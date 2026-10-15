@@ -124,6 +124,10 @@ export const RT = {
   giveawayUpdate: 'rt:giveaway_update',
   suggestedPost: 'rt:suggested_post_update',
   balanceUpdate: 'rt:balance_update',
+  // `updateSavedReactionTags` без параметров: теги «Избранного» сменились — у
+  // оригинала перечитать их, если они в кэше (appReactionsManager.ts:121-132).
+  // Кэша тегов у нас нет (UI тегов не портирован, Б-26), потребителей нет.
+  savedReactionTags: 'rt:saved_reaction_tags',
   paidMediaUnlock: 'rt:paid_media_unlock',
   groupCall: 'rt:group_call',
   livestream: 'rt:livestream',
@@ -717,6 +721,8 @@ export interface BoostUpdateEvt {
   status: import('../models').BoostsStatus
   pts?: number
 }
+/** updateSavedReactionTags#39c67432 = Update; — параметров нет. */
+export interface SavedReactionTagsEvt { _: 'updateSavedReactionTags' }
 /** Баланс звёзд — `updateStarsBalance{balance: StarsAmount}`. Число едет
  *  конструктором, потому что у оригинала звёзды ДРОБНЫЕ (nanos), и целое —
  *  частный случай, а не форма. */
@@ -804,6 +810,7 @@ export type Update =
   | PendingJoinRequestsEvt
   | BoostUpdateEvt
   | BalanceUpdateEvt
+  | SavedReactionTagsEvt
   | BotCallbackAnswerEvt
   | StoryUpdateEvt
   | SentStoryReactionEvt

@@ -330,6 +330,14 @@ func (i *Interactor) VisibleMap(ctx context.Context, viewerID int64, ownerIDs []
 	return i.repo.VisibleMap(ctx, viewerID, ownerIDs, key)
 }
 
+// VisibleMaps — VisibleMap по нескольким ключам одним запросом.
+func (i *Interactor) VisibleMaps(ctx context.Context, viewerID int64, ownerIDs []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	if len(ownerIDs) == 0 || len(keys) == 0 {
+		return map[domain.PrivacyKey]map[int64]bool{}, nil
+	}
+	return i.repo.VisibleMaps(ctx, viewerID, ownerIDs, keys...)
+}
+
 // Block добавляет пользователя в чёрный список. Своим устройствам уходит
 // updatePeerBlocked; заблокированному — не он, а пересчитанные карточка (фото
 // закрыто) и статус («недавно»): ему пересылают вид, а не факт блока. Пересчёт

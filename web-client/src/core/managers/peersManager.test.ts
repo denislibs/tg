@@ -99,12 +99,19 @@ describe('PeersManager — правило инвалидации (владеле
     expect(ops).toEqual([])
   })
 
-  it('пир неизвестен воркеру → ни операции, ни похода в сеть', async () => {
+  // Порт `saveApiUser` (tweb appUsersManager.ts:663-782): приёмник кладёт и
+  // НОВУЮ карточку (`oldUser === undefined` → `mirrorUser`), не только замену.
+  // Иначе кадр со второго устройства («добавил Алису в контакты») пропадал, пока
+  // Алиса не попала в кэш чтением диалога. В сеть за карточкой ходить незачем —
+  // она уже в кадре.
+  it('пир неизвестен воркеру → карточка сохраняется и объявляется, в сеть не ходим', async () => {
     const { mgr, calls, ops } = stand([user(2)])
+    const stranger = user(404)
 
-    mgr.applyUserUpdate(user(404))
+    mgr.applyUserUpdate(stranger)
 
-    expect(ops).toEqual([])
+    expect(ops).toEqual([{ op: 'upsert', peers: [stranger] }])
+    expect(mgr.cachedPeer(404)).toEqual(stranger)
     expect(calls).toEqual([])
   })
 
@@ -451,5 +458,95 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
     // присутствие между ними могло смениться кадром, и снимок его поправит.
     mgr.saveApiPeers({ users: [user(2, { status })] })
     expect(statuses).toHaveLength(2)
+  })
+})
+
+// Смена `pFlags.contact` на карточке — повод двигать книгу контактов (tweb
+// saveApiUser :738-754 → onContactUpdated(userId, newContact, wasContact)).
+// Через `onContactToggle` менеджер сообщает об этом владельцу книги, не зная о нём.
+describe('PeersManager — переключение pFlags.contact', () => {
+  function stand(users: UserReal[]) {
+    const { rest } = fakeRest(users)
+    const toggles: [number, boolean, boolean][] = []
+    const mgr = newPeersManager({ rest, onContactToggle: (id, is, was) => toggles.push([id, is, was]) })
+    return { mgr, toggles }
+  }
+  const asContact = (id: number) => user(id, { first_name: 'Бобби', pFlags: { contact: true } })
+
+  it('замена карточки: чужой → контакт', async () => {
+    const { mgr, toggles } = stand([user(2)])
+    await mgr.getUsers([2])
+
+    mgr.applyUserUpdate(asContact(2))
+
+    expect(toggles).toEqual([[2, true, false]])
+  })
+
+  it('замена карточки: контакт → чужой', async () => {
+    const { mgr, toggles } = stand([asContact(2)])
+    await mgr.getUsers([2])
+    toggles.length = 0
+
+    mgr.applyUserUpdate(user(2))
+
+    expect(toggles).toEqual([[2, false, true]])
+  })
+
+  it('имя сменилось, флаг тот же → переключения нет', async () => {
+    const { mgr, toggles } = stand([asContact(2)])
+    await mgr.getUsers([2])
+
+    mgr.applyUserUpdate({ ...asContact(2), first_name: 'Бобик' })
+
+    expect(toggles).toEqual([])
+  })
+
+  // Кадр user_update про неизвестного: контакт со второго устройства. tweb в
+  // ветке «карточки не было» onContactUpdated не зовёт, но там книга — полный
+  // список с getContacts; у нас она ленивая, и без вызова новый контакт не
+  // попал бы в индекс. Отступление согласовано планом f6-contacts (задача 8).
+  it('неизвестный пользователь с contact: true → переключение в книгу', () => {
+    const { mgr, toggles } = stand([])
+
+    mgr.applyUserUpdate(asContact(7))
+
+    expect(toggles).toEqual([[7, true, false]])
+  })
+
+  it('неизвестный не-контакт → переключения нет', () => {
+    const { mgr, toggles } = stand([])
+
+    mgr.applyUserUpdate(user(7))
+
+    expect(toggles).toEqual([])
+  })
+
+  // Пачка из ответа /contacts (fillContacts) идёт через saveApiPeers: новые
+  // карточки контактов книгу не двигают (она перестраивается тем же вызовом),
+  // иначе первое чтение книги порождало бы шторм contacts_update.
+  it('saveApiPeers новой карточки контакта → переключения нет', () => {
+    const { mgr, toggles } = stand([])
+
+    mgr.saveApiPeers({ users: [asContact(7)] })
+
+    expect(toggles).toEqual([])
+  })
+
+  // Книга двигается ПОСЛЕ объявления карточки зеркалу (tweb: `mirrorUser`, затем
+  // `onContactUpdated`, :749-760): подписчик `contacts_update` читает свежую карточку.
+  it('переключение книги — после rt:peer_op', async () => {
+    const { rest } = fakeRest([user(2)])
+    const order: string[] = []
+    const mgr = newPeersManager({
+      rest,
+      onPeerOps: () => order.push('peer_op'),
+      onContactToggle: () => order.push('toggle'),
+    })
+    await mgr.getUsers([2])
+    order.length = 0
+
+    mgr.applyUserUpdate(asContact(2))
+
+    expect(order).toEqual(['peer_op', 'toggle'])
   })
 })

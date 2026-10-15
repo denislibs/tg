@@ -41,9 +41,10 @@ func (r *StatsRepo) MemberRole(ctx context.Context, chatID, userID int64) (strin
 	return role, rights, err
 }
 
-// Summary — числовой обзор. Уведомления включены у тех, кто не в мьюте:
-// мьют — единственная колонка muted_until (миграция 0104; «навсегда» —
-// to_timestamp(2147483647)).
+// Summary — числовой обзор. Уведомления включены у тех, кто не в мьюте с
+// учётом типа чата (chatMutedSQL — та же копия domain.ChatMuted, что у пуша):
+// мьют чата — колонка muted_until (миграция 0104; «навсегда» —
+// to_timestamp(2147483647); NULL — наследует тип).
 func (r *StatsRepo) Summary(ctx context.Context, chatID int64) (domain.ChannelStatsSummary, error) {
 	var s domain.ChannelStatsSummary
 	err := querier(ctx, r.pool).QueryRow(ctx, `
@@ -54,8 +55,9 @@ func (r *StatsRepo) Summary(ctx context.Context, chatID int64) (domain.ChannelSt
 			(SELECT count(*) FROM reactions r JOIN messages m ON m.id = r.message_id
 			  WHERE m.chat_id=$1 AND m.deleted_at IS NULL),
 			(SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service'),
-			(SELECT count(*) FROM chat_members WHERE chat_id=$1
-			  AND (muted_until IS NULL OR muted_until <= now()))`,
+			(SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
+			  LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
+			  WHERE m.chat_id=$1 AND NOT `+chatMutedSQL(joinedNotify)+`)`,
 		chatID,
 	).Scan(&s.Members, &s.TotalViews, &s.TotalForwards, &s.TotalReactions, &s.PostsCount, &s.NotificationsOn)
 	return s, err

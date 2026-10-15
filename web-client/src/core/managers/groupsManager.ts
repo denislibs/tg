@@ -513,11 +513,12 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
       //
       // Собираем ТОТ ЖЕ конструктор, что построит бэкенд (usecase/chat/group.go
       // ::SetMute): «навсегда» — не отдельный флаг, а далёкий срок; «снять» —
-      // отсутствие переопределения. Второго способа сказать то же самое (пары
-      // `muted` + `until`) больше нет ни на одной стороне.
+      // явное «уведомлять» (`mute_until: 0`, tweb `togglePeerMute` :11985-11991 —
+      // отсутствие ключа значило бы «наследовать тип чата»). Второго способа
+      // сказать то же самое (пары `muted` + `until`) больше нет ни на одной стороне.
       dialogs.applyNotifySettings(peerId, {
         _: 'peerNotifySettings',
-        ...(muted ? { mute_until: until ?? MUTE_UNTIL_FOREVER } : {}),
+        mute_until: muted ? until ?? MUTE_UNTIL_FOREVER : 0,
       })
     },
     // ── Форум-топики ──

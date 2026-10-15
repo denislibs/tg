@@ -22,6 +22,30 @@ describe('RestClient', () => {
     await expect(rest.post('/auth/sign_in', {})).rejects.toThrow('invalid code')
   })
 
+  // Заголовки запроса (ключ входа QR) принадлежат неавторизованному устройству, а
+  // не сессии DNP-канала: такой запрос идёт fetch-ом МИМО готового канала, иначе
+  // сервер не увидел бы заголовок (`rpc_req` их не несёт).
+  it('заголовки запроса идут fetch-ом мимо готового канала', async () => {
+    const channel = { isReady: () => true, call: vi.fn() }
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response('{"_":"boolTrue"}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const rc = new RestClient('/api', () => 'tok', undefined, channel)
+    await rc.post('/auth/export_login_token', {}, { headers: { 'X-Login-Key': 'a'.repeat(64) } })
+    expect(channel.call).not.toHaveBeenCalled()
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.headers).toMatchObject({ 'X-Login-Key': 'a'.repeat(64), 'X-App-Version': APP_VERSION_FULL })
+  })
+
+  it('без заголовков запрос по-прежнему идёт каналом', async () => {
+    const channel = { isReady: () => true, call: vi.fn(async () => ({ status: 200, body: { ok: 1 } })) }
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const rc = new RestClient('/api', () => 'tok', undefined, channel)
+    await expect(rc.post('/x', {})).resolves.toEqual({ ok: 1 })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   // Имя отказа (`ApiError.type` у оригинала) — это и есть `error.text`
   // конструктора: по нему экраны ветвятся, а не по человеческому тексту.
   it('имя отказа доезжает до вызывающего полем type', async () => {

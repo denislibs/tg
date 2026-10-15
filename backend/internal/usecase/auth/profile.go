@@ -378,7 +378,8 @@ func (i *Interactor) ownedMedia(ctx context.Context, owner, id int64, prefix str
 
 // AddProfilePhoto adds a photo to the user's gallery and promotes it to the
 // current avatar. videoMediaID — необязательный видео-вариант аватарки. Оба
-// файла обязаны быть загружены самим пользователем (image/*, video/*).
+// файла обязаны быть загружены самим пользователем (image/*, video/*): tweb
+// ставит фото только загрузкой своих частей (uploadProfilePhoto{file}).
 func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
 	if err := i.ownedMedia(ctx, userID, mediaID, "image/"); err != nil {
 		return domain.ProfilePhoto{}, err
@@ -388,20 +389,7 @@ func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64,
 			return domain.ProfilePhoto{}, err
 		}
 	}
-	return i.addProfilePhoto(ctx, userID, userID, mediaID, videoMediaID)
-}
-
-// AddSuggestedProfilePhoto — принятое предложение фото: файл принадлежит
-// предложившему (его владельца проверил Send при отправке предложения).
-func (i *Interactor) AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error) {
-	if err := i.ownedMedia(ctx, suggesterID, mediaID, "image/"); err != nil {
-		return domain.ProfilePhoto{}, err
-	}
-	return i.addProfilePhoto(ctx, userID, suggesterID, mediaID, nil)
-}
-
-func (i *Interactor) addProfilePhoto(ctx context.Context, userID, ownerID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error) {
-	mediaID = i.squareAvatar(ctx, ownerID, mediaID)
+	mediaID = i.squareAvatar(ctx, userID, mediaID)
 	ph, err := i.users.AddProfilePhoto(ctx, userID, mediaID, videoMediaID, i.avatarPreviewFor(ctx, mediaID))
 	if err == nil {
 		if u, gerr := i.users.GetByID(ctx, userID); gerr == nil {
