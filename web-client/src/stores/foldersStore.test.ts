@@ -167,13 +167,6 @@ describe('foldersStore.applyOrder', () => {
     expect(ids()).toEqual([1, 2, 3])
   })
 
-  it('кадр порядка просто ставит порядок: эхо прежней перестановки и затем последней сводит итог', () => {
-    applyOrder([3, 1, 2]) // эхо первой перестановки
-    expect(ids()).toEqual([3, 1, 2])
-    applyOrder([2, 3, 1]) // эхо последней — итог сервера
-    expect(ids()).toEqual([2, 3, 1])
-  })
-
   it('тот же порядок повторно — ни записи на диск, ни новых ссылок (эхо своего действия)', () => {
     applyOrder([3, 1, 2])
     const after = useAppStateStore.getState().folders

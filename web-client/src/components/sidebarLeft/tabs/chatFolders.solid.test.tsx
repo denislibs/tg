@@ -713,22 +713,22 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     expect(tab.scrollable.container.querySelector('.row-sortable')).not.toBeNull()
   })
 
-  it('эхо прежней перестановки не ломает итоговый порядок: кадр просто ставит порядок, эхо последней сводит', async() => {
+  it('пока ответ на перестановку не пришёл, новый жест закрыт: первая перестановка не затирается', async() => {
     setPremium(false)
+    const reply = deferUpdate()
     const tab = await openList()
 
-    await dragRow(tab, 1, 0) // [Боты, Работа], ответ сразу
+    await dragRow(tab, 1, 0)
+    await dragRow(tab, 1, 0) // второй жест при отложенном ответе
+    expect(folders.updateOrder).toHaveBeenCalledTimes(1)
+
+    reply.finish()
     await vi.waitFor(() => expect(stateIds()).toEqual([BOTS.id, WORK.id]))
-    await dragRow(tab, 1, 0) // [Работа, Боты]
-    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
-
-    frame([BOTS.id, WORK.id]) // эхо первой приходит позже
-    await settle()
-    frame([WORK.id, BOTS.id]) // эхо второй
     await settle()
 
-    expect(stateIds()).toEqual([WORK.id, BOTS.id])
-    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+    await dragRow(tab, 1, 0) // ответ получен — жест снова открыт, order строится от нового порядка
+    expect(folders.updateOrder).toHaveBeenCalledTimes(2)
+    expect(folders.updateOrder).toHaveBeenLastCalledWith([WORK.id, BOTS.id])
   })
 
   it('кадр порядка с другого устройства переставляет строки без перерисовки вкладки', async() => {

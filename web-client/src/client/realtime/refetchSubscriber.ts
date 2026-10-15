@@ -119,10 +119,12 @@ export function registerRefetchSubscriber(managers: Managers): void {
   rootScope.addEventListener(RT.folderUpdate, (raw) => {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
-  // Порядок папок сменился на другом устройстве (tweb `filter_order`,
-  // filters.ts:179-199): тело — сам `updateDialogFilterOrder`, в сеть не идём.
+  // Порядок папок сменился (tweb `filter_order`, filters.ts:179-199): тело — сам
+  // `updateDialogFilterOrder`, в сеть не идём. Сервер шлёт кадр и сессии-автору —
+  // он применяется как есть, как у tweb: позднее эхо прежней перестановки может на
+  // миг вернуть прежний порядок, эхо последней сводит итог.
   rootScope.addEventListener(RT.dialogFilterOrder, (u) => {
-    applyOrder(u.order ?? [])
+    applyOrder(u.order)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
   rootScope.addEventListener('rt:resync', () => {

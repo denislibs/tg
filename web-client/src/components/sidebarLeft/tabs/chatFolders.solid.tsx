@@ -22,7 +22,8 @@
  *     `Sortable`). У tweb строку двигает сам `Sortable`, а порядок в хранилище
  *     появляется по ответу (`filters.ts:424-433`) — здесь строка встаёт на место
  *     тоже по ответу, до него она возвращается на прежнее (видимая разница на
- *     время запроса). `onSort` собирает `order` из строк (`:355-363`), у
+ *     время запроса), и на это время новый жест закрыт (`enabled`): `order`
+ *     собирается из модели, которая до ответа прежняя. `onSort` собирает `order` из строк (`:355-363`), у
  *     не-премиум `0` вырезается (`:365-367`), `foldersStore.updateOrder` шлёт
  *     запрос и только ПО ОТВЕТУ применяет порядок; отказ порядка не меняет.
  *     Строка «Все чаты» (`:108-110`, `toggleAllChats` `:200-203`) есть только у
@@ -168,6 +169,7 @@ const ChatFolders = () => {
   })
   const foldersHidden = createMemo(() => !rows().length)
   let list!: HTMLDivElement
+  let pending = false
 
   const openEditFolder = (filter?: Folder) => {
     const initArgs = AppEditFolderTab.getInitArgs()
@@ -215,13 +217,20 @@ const ChatFolders = () => {
       list,
       middleware: tab.middlewareHelper.get(),
       moveInDom: false,
+      // Пока ответа нет, модель прежняя, и следующий `order` собрался бы от неё,
+      // затерев первую перестановку (у tweb его собирает из DOM, который Sortable
+      // уже сдвинул) — на время запроса жест закрыт (расхождение 1).
+      enabled: () => !pending,
       onSort: (_prevIdx, _newIdx, { from, to }) => {
         const order = rows().map((filter) => filter?.id ?? ALL_FOLDER_ID)
         order.splice(to, 0, ...order.splice(from, 1))
         // tweb :365-367
         const managers = tab.managers!
         const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
-        updateOrder(managers, sent).catch(() => {})
+        pending = true
+        updateOrder(managers, sent)
+        .catch((err) => { console.error('[folders] updateOrder', err) })
+        .finally(() => { pending = false })
       },
       scrollable: tab.scrollable,
     })
