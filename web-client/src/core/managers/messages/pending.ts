@@ -94,8 +94,9 @@ export interface SendOptimistic {
    *  меты файла. Взаимоисключающе с `media`: у готового документа меты нет,
    *  есть он сам — со ступенями и атрибутами. */
   document?: MyDocument
-  /** имя контакта для бабла — проводной contactUserId имени не несёт */
-  contactName?: string
+  /** аккаунт визитки — только для бабла (tweb `inputMedia.user_id ?? '0'`,
+   *  appMessagesManager.ts:4035-4045); на провод `user_id` не идёт */
+  contactUserId?: number
   /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
    *  (знаковый ключ), а не снимок `{title, photo_id}`: имя и аватарку автор
    *  бабла берёт из зеркала карточек — как и у серверного эха, где `from_id`
@@ -377,18 +378,19 @@ function makeGeoMedia(geo: NonNullable<PendingNewEvt['geo']>): MessageMedia {
 }
 
 /**
- * Вложение бабла визитки. Все пять параметров схемы ОБЯЗАТЕЛЬНЫЕ и стоят
- * всегда, в том числе пустыми: телефон гидрирует сервер (приедет с эхом), и до
- * эха это пустая СТРОКА-значение, а не отсутствие параметра.
+ * Вложение бабла визитки — порт ветки `inputMediaContact` tweb
+ * (appMessagesManager.ts:4035-4045): поля берутся ровно из отправляемого
+ * `inputMediaContact`, `user_id ?? 0`. Все пять параметров схемы обязательные и
+ * стоят всегда, в том числе пустыми.
  */
 function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): MessageMedia {
   return {
     _: 'messageMediaContact',
-    phone_number: contact.phone ?? '',
-    first_name: contact.name ?? '',
-    last_name: '',
-    vcard: '',
-    user_id: contact.user_id,
+    phone_number: contact.phone_number,
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    vcard: contact.vcard,
+    user_id: contact.user_id ?? 0,
   }
 }
 
@@ -868,9 +870,9 @@ export function newPendingMethods(ctx: PendingCtx) {
       media: optimistic.media,
       document: optimistic.document,
       geo: args.geo,
-      // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
-      // только локальный снимок имени.
-      contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+      // Бабл визитки показывает те же поля, что уходят на сервер; user_id —
+      // только отсюда (на провод не идёт), эхо new_message его заменит.
+      contact: args.contact ? { ...args.contact, user_id: optimistic.contactUserId } : undefined,
       secret: optimistic.secret,
       send_as: optimistic.sendAs,
       reply_to_id: params.replyToMsgId ?? null,

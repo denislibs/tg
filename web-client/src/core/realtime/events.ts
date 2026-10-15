@@ -939,8 +939,11 @@ export interface PendingNewEvt {
   /** АРГУМЕНТЫ сборки гео-вложения бабла (как и `media` выше — не само
    *  вложение): три конструктора из них собирает `makeGeoMedia`. */
   geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }
-  /** То же для визитки: телефон гидрирует сервер, до эха его нет. */
-  contact?: { user_id: number; name?: string; phone?: string }
+  /** То же для визитки: поля `inputMediaContact`, что уходят на сервер, и
+   *  `user_id` — только для бабла (tweb кладёт его в локальное сообщение,
+   *  `appMessagesManager.ts:4035-4045`; на провод он не идёт). 0 — аккаунт
+   *  неизвестен. */
+  contact?: { user_id?: number; first_name: string; last_name: string; phone_number: string; vcard: string }
   secret?: boolean
   /** send-as: бабл сразу от лица канала/группы. Едет ССЫЛКА (знаковый ключ), а
    *  не снимок `{title, photo_id}`: имя и фото автор бабла берёт из зеркала

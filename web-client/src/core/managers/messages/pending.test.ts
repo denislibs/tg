@@ -535,6 +535,10 @@ describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
 // грузила вкладка вторым RPC (флаг awaitMedia придерживал кадр в воркере до
 // конца аплоада). Теперь и то, и другое — здесь: `ctx.send` приходит инъекцией,
 // `sendFile` владеет аплоадом целиком, как оригинальный appMessagesManager.
+const CONTACT = {
+  _: 'inputMediaContact' as const, first_name: 'Маша', last_name: 'Иванова', phone_number: '+79990000002', vcard: 'BEGIN:VCARD',
+}
+
 describe('sendText: бабл + кадр (порт tweb sendText → beforeMessageSending → message.send)', () => {
   it('с optimistic: заявка собрана из проводных полей, операции разосланы, бабл — ДО кадра', async () => {
     const h = makeCtx()
@@ -542,8 +546,8 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: cid(7), type: 'contact', contactUserId: 42,
-      optimistic: { senderId: 5, contactName: 'Маша' },
+      peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: cid(7), type: 'contact', contact: CONTACT,
+      optimistic: { senderId: 5, contactUserId: 42 },
     })
 
     // порядок обязателен: сперва бабл на экран, потом сеть
@@ -552,11 +556,12 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(msg.random_id).toBe('c1')
     expect(msg.fromId).toBe(5)
     // Визитка бабла — КОНСТРУКТОР `messageMediaContact` в поле `media`, а не
-    // собственный ключ `contact` рядом. Все пять параметров обязательные и
-    // стоят всегда, в том числе пустыми: телефон гидрирует сервер.
+    // собственный ключ `contact` рядом. Бабл показывает ровно те поля, что
+    // уходят на сервер (имя, ФАМИЛИЮ, телефон, vcard), а user_id кладёт только
+    // он (tweb appMessagesManager.ts:4035-4045) — на провод он не идёт.
     expect(msg.media).toEqual({
       _: 'messageMediaContact',
-      phone_number: '', first_name: 'Маша', last_name: '', vcard: '', user_id: 42,
+      phone_number: '+79990000002', first_name: 'Маша', last_name: 'Иванова', vcard: 'BEGIN:VCARD', user_id: 42,
     })
     // на провод уходят только проводные поля — служебный optimistic отрезан
     // Пакет параметров (порт tweb MessageSendingParams) проставляет свои поля
@@ -565,7 +570,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     // Номер корня треда уезжает на провод СЕРВЕРНЫМ — пакет несёт клиентский,
     // приведение стоит ровно в одном месте (`sendingParamsToWire`).
     expect(h.sends).toEqual([{
-      peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
+      peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contact: CONTACT,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
       replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null, allowPaidStars: null,
     }])
