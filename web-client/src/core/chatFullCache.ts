@@ -139,6 +139,23 @@ export function applyChatTheme(peerId: PeerId, themeId: string): void {
 }
 
 /**
+ * Событие `auto_delete_period_update`: срок автоудаления чата сменился. Патчим
+ * ту же карточку (tweb `onUpdatePeerHistoryTTL`: `modifyCachedFullPeer` правит
+ * `ttl_period` только там, где ключ есть — appProfileManager.ts:1544-1548).
+ * Карточки нет — патчить нечего, срок приедет вместе с ней. Нуль — «выключено»:
+ * ключ снимается.
+ */
+export function applyTtlPeriod(peerId: PeerId, period: number): void {
+  const prev = fullMirror.get(peerId)
+  if (!prev || (prev.ttl_period ?? 0) === period) return
+  const next = { ...prev }
+  if (period) next.ttl_period = period
+  else delete next.ttl_period
+  fullMirror.set(peerId, next)
+  bump()
+}
+
+/**
  * Событие `peer_block` (своя или чужая вкладка заблокировала пира): tweb
  * `appProfileManager.onUpdatePeerBlocked` (`:1506-1532`) правит `pFlags.blocked`
  * той же `userFull`, из которой его читают пункты «Заблокировать»/«Разблокировать»

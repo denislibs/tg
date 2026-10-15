@@ -1447,7 +1447,9 @@ func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
 
 // ── Автоудаление чата (Ф-6, f6-ttl) — блок в конце по правилу горячих файлов ──
 
-const UpdatePeerHistoryTTLTag = "updatePeerHistoryTTL"
+const (
+	UpdatePeerHistoryTTLTag = "updatePeerHistoryTTL"
+)
 
 // updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
 //
