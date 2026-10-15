@@ -216,7 +216,7 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 		return 0, err
 	}
 	story.ID = id
-	if _, err := s.publishStory(ctx, authorID, id, true); err != nil {
+	if _, _, err := s.publishStory(ctx, authorID, id, true); err != nil {
 		log.Printf("story: publish post author=%d seq=%d: %v", authorID, seq, err)
 	}
 	// Наружу возвращается НОМЕР внутри автора: им история и адресуется.
@@ -282,7 +282,7 @@ func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int6
 	if err != nil {
 		return 0, err
 	}
-	if _, err := s.publishStory(ctx, authorID, id, true); err != nil {
+	if _, _, err := s.publishStory(ctx, authorID, id, true); err != nil {
 		log.Printf("story: publish repost author=%d seq=%d: %v", authorID, seq, err)
 	}
 	return seq, nil
@@ -632,7 +632,7 @@ func (s *Service) SetPinned(ctx context.Context, authorID, seq, actor int64, pin
 	if err := s.repo.SetPinned(ctx, storyID, authorID, pinned); err != nil {
 		return err
 	}
-	if _, err := s.publishStory(ctx, authorID, storyID, false); err != nil {
+	if _, _, err := s.publishStory(ctx, authorID, storyID, false); err != nil {
 		log.Printf("story: publish pin author=%d seq=%d: %v", authorID, seq, err)
 	}
 	return nil
@@ -667,11 +667,13 @@ func (s *Service) EditStory(ctx context.Context, authorID, seq, actor int64, cap
 	// видит после, держит её в кэше. Старый круг собираем до правки, чтобы потом
 	// отправить потерявшим доступ маркер удаления (как Delete).
 	var before []int64
-	if privacy != nil || allowIDs != nil {
-		if origin, err := s.repo.Origin(ctx, storyID); err == nil {
-			if before, err = s.audience(ctx, authorID, storyID, origin.Privacy); err != nil {
-				log.Printf("story: edit author=%d seq=%d: audience before: %v", authorID, seq, err)
-			}
+	if privacy != nil {
+		origin, err := s.repo.Origin(ctx, storyID)
+		if err == nil {
+			before, err = s.audience(ctx, authorID, storyID, origin.Privacy)
+		}
+		if err != nil {
+			log.Printf("story: edit author=%d seq=%d: audience before: %v", authorID, seq, err)
 		}
 	}
 	if err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -679,29 +681,26 @@ func (s *Service) EditStory(ctx context.Context, authorID, seq, actor int64, cap
 	}); err != nil {
 		return domain.StoryItemReal{}, err
 	}
-	item, err := s.publishStory(ctx, authorID, storyID, true)
+	item, after, err := s.publishStory(ctx, authorID, storyID, true)
 	if err != nil {
 		return domain.StoryItemReal{}, err
 	}
-	if len(before) > 0 {
-		s.retract(ctx, authorID, seq, storyID, before)
-	}
+	s.retract(ctx, authorID, seq, before, after)
 	return item, nil
 }
 
-// retract отправляет маркер `storyItemDeleted` тем из before, кто историю после
-// правки приватности больше не видит.
-func (s *Service) retract(ctx context.Context, authorID, seq, storyID int64, before []int64) {
-	rec, err := s.repo.ByID(ctx, storyID, authorID)
-	if err != nil {
-		return
+// retract отправляет маркер `storyItemDeleted` тем из before (круг до правки
+// приватности), кого нет в after (круг, которому ушла новая версия): они держат
+// историю в кэше, а видеть её больше не должны.
+func (s *Service) retract(ctx context.Context, authorID, seq int64, before, after []int64) {
+	if len(before) == 0 || after == nil {
+		return // круг после правки не посчитан: маркер рассылать нельзя
 	}
-	after, err := s.audience(ctx, authorID, storyID, rec.Privacy)
-	if err != nil {
-		log.Printf("story: retract author=%d seq=%d: %v", authorID, seq, err)
-		return
+	still := make(map[int64]struct{}, len(after))
+	for _, id := range after {
+		still[id] = struct{}{}
 	}
-	lost := slices.DeleteFunc(slices.Clone(before), func(id int64) bool { return slices.Contains(after, id) })
+	lost := slices.DeleteFunc(slices.Clone(before), func(id int64) bool { _, ok := still[id]; return ok })
 	if len(lost) == 0 {
 		return
 	}
@@ -800,7 +799,11 @@ func (s *Service) audience(ctx context.Context, authorID, storyID int64, privacy
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(slices.Clone(visible), func(id int64) bool { return id == authorID }), nil
+	out := slices.DeleteFunc(slices.Clone(visible), func(id int64) bool { return id == authorID })
+	if out == nil {
+		out = []int64{} // «круг известен и пуст» отличается от nil — «круг не удалось посчитать»
+	}
+	return out, nil
 }
 
 // notifyReaction рассылает изменение реакции ДВУМЯ разными апдейтами, потому что
@@ -872,27 +875,28 @@ func sharedRecord(rec domain.StoryRecord) domain.StoryRecord {
 // publishStory пишет апдейт `updateStory` — историю ЦЕЛИКОМ, тем же конструктором,
 // что и витрина: автору всегда (его тело — с просмотрами и аудиторией), а при
 // toAudience ещё и тем, кто историю видит по приватности (общее тело без
-// личного). Возвращает историю глазами автора — ответ `stories.editStory`.
-func (s *Service) publishStory(ctx context.Context, authorID, storyID int64, toAudience bool) (domain.StoryItemReal, error) {
+// личного). Возвращает историю глазами автора (ответ `stories.editStory`) и круг,
+// которому ушла новая версия.
+func (s *Service) publishStory(ctx context.Context, authorID, storyID int64, toAudience bool) (domain.StoryItemReal, []int64, error) {
 	rec, err := s.ownerRecord(ctx, authorID, storyID)
 	if err != nil {
-		return domain.StoryItemReal{}, err
+		return domain.StoryItemReal{}, nil, err
 	}
 	peer := domain.NewPeer(domain.PeerID(authorID))
 	own := rec.ToStoryItem(true)
 	s.emitTo(ctx, []int64{authorID}, "story_update", domain.NewUpdateStory(peer, own))
 	if !toAudience {
-		return own, nil
+		return own, nil, nil
 	}
 	others, err := s.audience(ctx, authorID, storyID, rec.Privacy)
 	if err != nil {
 		log.Printf("story: audience author=%d story=%d: %v", authorID, storyID, err)
-		return own, nil
+		return own, nil, nil
 	}
 	if len(others) > 0 {
 		s.emitTo(ctx, others, "story_update", domain.NewUpdateStory(peer, sharedRecord(rec).ToStoryItem(false)))
 	}
-	return own, nil
+	return own, others, nil
 }
 
 // emitTo — строка журнала с телом-конструктором на каждого получателя и кадр

@@ -24,6 +24,7 @@ import { realStory, storyDate, storyMyReaction } from '../core/stories/story'
 import type { ReactionCount } from '../core/models'
 import { reactionKey } from '../core/reactions/messageReactions'
 import rootScope from '@lib/rootScope'
+import tsNow from '../helpers/tsNow'
 
 /** tweb `StoriesSegment['type']` (`appStoriesManager.ts:76-79`). */
 export type StoriesSegmentType = 'unread' | 'close' | 'read'
@@ -124,10 +125,10 @@ function patchStory(groups: StoryGroup[], authorId: number, storyId: number, fn:
   )
 }
 
-/** История уже истекла (`expire_date` в секундах эпохи); у удалённой срока нет. */
-function storyExpired(story: StoryItem): boolean {
+/** tweb `isStoryExpired`: срок вышел (`expire_date` в секундах эпохи); у удалённой срока нет. */
+export function storyExpired(story: StoryItem): boolean {
   const real = realStory(story)
-  return !!real && real.expire_date <= Math.floor(Date.now() / 1000)
+  return !!real && real.expire_date <= tsNow(true)
 }
 
 /**
@@ -242,7 +243,13 @@ interface LoadDeps {
 }
 
 // Fetch the stories feed and populate the store.
+// Номер последнего запущенного чтения: ответ старше него отбрасывается, иначе
+// медленный ранний GET /stories затёр бы снимок поновее.
+let loadSeq = 0
+
 export async function loadStories(managers: LoadDeps): Promise<void> {
+  const mine = ++loadSeq
   const groups = await managers.stories.feed()
+  if (mine !== loadSeq) return
   useStoriesStore.getState().setGroups(groups)
 }

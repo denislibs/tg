@@ -60,6 +60,15 @@ describe('storiesStore', () => {
     expect(s.loaded).toBe(true)
   })
 
+  it('loadStories: ответ старше последнего запроса не затирает свежий снимок', async () => {
+    let slow!: (g: StoryGroup[]) => void
+    const first = loadStories({ stories: { feed: () => new Promise<StoryGroup[]>((r) => { slow = r }) } })
+    await loadStories(fakeManagers({ groups: [{ author: bob, stories: [mkStory({ id: 9 })], maxReadId: 0 }] }) as never)
+    slow(groups) // ранний медленный ответ приходит последним
+    await first
+    expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
+  })
+
   it('setGroups replaces groups + marks loaded', () => {
     useStoriesStore.getState().setGroups(groups)
     const s = useStoriesStore.getState()

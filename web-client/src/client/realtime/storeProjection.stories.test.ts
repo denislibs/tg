@@ -19,7 +19,7 @@ import type { StoryItem, StoryItemReal } from '../../core/stories/story'
 import { storyCaption, storyMyReaction } from '../../core/stories/story'
 import type { Managers } from '../bootstrap'
 
-import { registerStoreProjection } from './storeProjection'
+import { registerStoreProjection, __resetStoriesReloadTimerForTests } from './storeProjection'
 
 const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
 const story = (id: number): StoryItem =>
@@ -31,7 +31,10 @@ const feed = vi.fn(async () => [])
 describe('storeProjection — кадры историй', () => {
   beforeAll(() => registerStoreProjection({ stories: { feed } } as unknown as Managers))
 
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    __resetStoriesReloadTimerForTests()
+    vi.useRealTimers()
+  })
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
@@ -76,6 +79,17 @@ describe('storeProjection — кадры историй', () => {
 
     expect(feed).toHaveBeenCalledTimes(1)
     expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
+  })
+
+  it('истёкшая история неизвестного автора рефетч не запускает', () => {
+    rootScope.dispatchEventSingle(RT.story, {
+      _: 'updateStory',
+      peer: { _: 'peerUser', user_id: 404 },
+      story: { ...(story(9) as StoryItemReal), expire_date: 1787334100 },
+    })
+    vi.advanceTimersByTime(400)
+
+    expect(feed).not.toHaveBeenCalled()
   })
 
   it('updateReadStories двигает ГОРИЗОНТ группы', () => {
