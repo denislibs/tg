@@ -1,7 +1,7 @@
 // src/core/managers/peersManager.test.ts
 import { describe, it, expect } from 'vitest'
 import { newPeersManager, type PeerOp } from './peersManager'
-import type { RestClient } from '../net/restClient'
+import { HttpError, type RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
 
 const user = (id: number, over: Partial<UserReal> = {}): UserReal => ({
@@ -272,33 +272,37 @@ describe('PeersManager — границы объявления', () => {
 })
 
 // ── resolveUsername ──────────────────────────────────────────────────────────
-// Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:344-359`):
-// индекс имён, один запрос на промахе, именованный отказ. До него имя резолвил
-// СКАН ВИТРИНЫ ДИАЛОГОВ на главном потоке — из-за чего открытие по ссылке
-// стояло за загрузкой чатлиста, тогда как у оригинала `onHashChange` идёт ДО
-// неё (tweb `appImManager.ts:834` против `appDialogsManager.ts:726`).
+// Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:380-410`):
+// индекс имён, на промахе — ОДИН `contacts.resolveUsername` (у нас
+// `GET /contacts/resolve_username`), ответ прогоняется через сохранение пиров
+// (`processResolvedPeer`), пир достаётся по ссылке `peer`. Отказ сервера
+// (`USERNAME_NOT_OCCUPIED`, `USERNAME_INVALID`) пробрасывается как есть. До
+// него имя резолвил СКАН ВИТРИНЫ ДИАЛОГОВ на главном потоке, а затем префиксный
+// `/search` с самодельным отказом — из-за чего открытие по ссылке стояло за
+// чатлистом (tweb `appImManager.ts:834` против `appDialogsManager.ts:726`).
 describe('PeersManager.resolveUsername', () => {
   const channel = (id: number, username: string): Chat =>
     ({ _: 'channel', id, title: `C${id}`, username, photo: { _: 'chatPhotoEmpty' }, date: 0 })
 
-  /** Директория: префиксный поиск, как в `searchrepo.go` (`ILIKE 'q%'`). */
-  function directory(chats: Chat[], users: UserReal[] = []) {
-    const calls: string[] = []
+  /** Ручка `contacts.resolveUsername`: точное совпадение имени без регистра. */
+  function resolver(chats: Chat[], users: UserReal[] = []) {
+    const calls: { path: string; query?: Record<string, string | number> }[] = []
     const rest = {
       async get<R>(path: string, query?: Record<string, string | number>): Promise<R> {
-        calls.push(path)
-        const q = String(query?.q ?? '').toLowerCase()
-        return {
-          chats: chats.filter((c) => 'username' in c && c.username?.toLowerCase().startsWith(q)),
-          users: users.filter((u) => u.username?.toLowerCase().startsWith(q)),
-        } as unknown as R
+        calls.push({ path, query })
+        const name = String(query?.username ?? '').toLowerCase()
+        const chat = chats.find((c) => 'username' in c && c.username?.toLowerCase() === name)
+        if (chat) return { _: 'contacts.resolvedPeer', peer: { _: 'peerChannel', channel_id: chat.id }, chats: [chat], users: [] } as unknown as R
+        const person = users.find((u) => u.username?.toLowerCase() === name)
+        if (person) return { _: 'contacts.resolvedPeer', peer: { _: 'peerUser', user_id: person.id }, chats: [], users: [person] } as unknown as R
+        throw new HttpError(400, 'USERNAME_NOT_OCCUPIED', 'USERNAME_NOT_OCCUPIED')
       },
     } as unknown as RestClient
     return { rest, calls }
   }
 
   it('имя, приехавшее попутно с ответом, резолвится БЕЗ запроса', async () => {
-    const { rest, calls } = directory([])
+    const { rest, calls } = resolver([])
     const mgr = newPeersManager({ rest })
     // Порт `modifyUsernamesCache`: индекс ведётся там же, где карточка ложится
     // в кэш, — то есть на `saveApiPeers` любого ответа.
@@ -308,33 +312,27 @@ describe('PeersManager.resolveUsername', () => {
     expect(calls).toEqual([])
   })
 
-  it('промах индекса — ровно ОДИН запрос, и ответ ложится в кэш', async () => {
-    const { rest, calls } = directory([channel(42, 'durov')])
+  it('промах индекса — ровно ОДИН contacts.resolveUsername, /search не зовётся, ответ ложится в кэш', async () => {
+    const { rest, calls } = resolver([channel(42, 'durov')])
     const mgr = newPeersManager({ rest })
 
-    expect(await mgr.resolveUsername('durov')).toEqual(channel(42, 'durov'))
-    expect(calls).toEqual(['/search'])
+    expect(await mgr.resolveUsername('Durov')).toEqual(channel(42, 'durov'))
+    expect(calls).toEqual([{ path: '/contacts/resolve_username', query: { username: 'durov' } }])
     // Второй раз — уже из индекса.
     await mgr.resolveUsername('durov')
-    expect(calls).toEqual(['/search'])
+    expect(calls).toHaveLength(1)
   })
 
-  it('префиксное совпадение чужим именем не считается', async () => {
-    const { rest } = directory([channel(42, 'durov')])
-    const mgr = newPeersManager({ rest })
-
-    await expect(mgr.resolveUsername('dur')).rejects.toMatchObject({ type: 'USERNAME_NOT_OCCUPIED' })
-  })
-
-  it('имени нет вовсе — именованный отказ оригинала', async () => {
-    const { rest } = directory([])
+  it('отказ сервера USERNAME_NOT_OCCUPIED пробрасывается тем же типом', async () => {
+    const { rest, calls } = resolver([])
     const mgr = newPeersManager({ rest })
 
     await expect(mgr.resolveUsername('nobody')).rejects.toMatchObject({ type: 'USERNAME_NOT_OCCUPIED' })
+    expect(calls.map((c) => c.path)).toEqual(['/contacts/resolve_username'])
   })
 
   it('пустое имя — USERNAME_INVALID, в сеть не ходим', async () => {
-    const { rest, calls } = directory([])
+    const { rest, calls } = resolver([])
     const mgr = newPeersManager({ rest })
 
     await expect(mgr.resolveUsername('@ ')).rejects.toMatchObject({ type: 'USERNAME_INVALID' })
@@ -345,7 +343,7 @@ describe('PeersManager.resolveUsername', () => {
   // снятия переименованный канал вечно резолвился бы по имени, которого у него
   // уже нет, — и ссылка вела бы в чужой чат.
   it('переименование снимает прежнее имя с индекса', async () => {
-    const { rest } = directory([])
+    const { rest } = resolver([])
     const mgr = newPeersManager({ rest })
     mgr.saveApiPeers({ chats: [channel(42, 'durov')] })
     mgr.saveApiPeers({ chats: [channel(42, 'pavel')] })
@@ -356,7 +354,7 @@ describe('PeersManager.resolveUsername', () => {
 
   it('человек резолвится тем же вызовом', async () => {
     const petya = user(7, { username: 'petya' })
-    const { rest } = directory([], [petya])
+    const { rest } = resolver([], [petya])
     const mgr = newPeersManager({ rest })
 
     expect(await mgr.resolveUsername('@petya')).toEqual(petya)
