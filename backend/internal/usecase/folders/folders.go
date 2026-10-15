@@ -45,6 +45,10 @@ type Chats interface {
 	// Preview — карточка расшаренного чата для экрана вступления.
 	Preview(ctx context.Context, chatID int64) (domain.FolderInviteChat, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
+	// CanInvite — у userID право приглашать в чат (создатель или админ с
+	// invite_users; tweb hasRights(peer, 'invite_links'), sharedFolder.tsx:57).
+	// Не участник — false.
+	CanInvite(ctx context.Context, chatID, userID int64) (bool, error)
 	// Join — вступление в чат общей точкой usecase чатов (роль по типу чата,
 	// бан). Идемпотентно.
 	Join(ctx context.Context, chatID, userID int64) error
@@ -263,7 +267,7 @@ func (i *Interactor) RevokeInvite(ctx context.Context, ownerID int64, slug strin
 }
 
 // PreviewInvite — экран вступления по ссылке: заголовок папки + карточки
-// расшаренных чатов.
+// расшаренных чатов. Чат, ставший приватным, не показывается (см. admissible).
 func (i *Interactor) PreviewInvite(ctx context.Context, slug string) (title string, chats []domain.FolderInviteChat, err error) {
 	inv, err := i.repo.GetFolderInviteBySlug(ctx, slug)
 	if err != nil {
@@ -271,6 +275,13 @@ func (i *Interactor) PreviewInvite(ctx context.Context, slug string) (title stri
 	}
 	chats = make([]domain.FolderInviteChat, 0, len(inv.ChatIDs))
 	for _, id := range inv.ChatIDs {
+		ok, e := i.admissible(ctx, id, inv.OwnerID)
+		if e != nil {
+			return "", nil, e
+		}
+		if !ok {
+			continue // удалён, перестал быть группой/каналом или стал приватным
+		}
 		c, e := i.chats.Preview(ctx, id)
 		if errors.Is(e, domain.ErrNotFound) {
 			continue // чат удалён — пропускаем
@@ -286,7 +297,8 @@ func (i *Interactor) PreviewInvite(ctx context.Context, slug string) (title stri
 // JoinInvite вступает в выбранные расшаренные чаты (переиспользует членскую
 // логику chat) и создаёт для userID копию папки с include_chats = вступленные
 // чаты. Уже вступленные чаты пропускаются. chatIDs ограничивается набором
-// ссылки (нельзя вступить в произвольный чат по чужому slug).
+// ссылки (нельзя вступить в произвольный чат по чужому slug). Чат, ставший
+// приватным, пропускается до вступления (см. admissible).
 func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, chatIDs []int64) error {
 	inv, err := i.repo.GetFolderInviteBySlug(ctx, slug)
 	if err != nil {
@@ -308,6 +320,13 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, id := range want {
 			if !allowed[id] {
+				continue
+			}
+			ok, e := i.admissible(ctx, id, inv.OwnerID)
+			if e != nil {
+				return e
+			}
+			if !ok {
 				continue
 			}
 			member, e := i.chats.IsMember(ctx, id, userID)
@@ -373,6 +392,35 @@ func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (
 	return domain.DialogFilter{}, domain.ErrNotFound
 }
 
+// chatKindShareable — группа или канал: единственные виды чатов, на которые
+// бывает ссылка на папку (tweb sharedFolder.tsx:49-55 — личные чаты отсекаются).
+func chatKindShareable(typ string) bool {
+	return typ == "group" || typ == "channel"
+}
+
+// admissible — чат ссылки всё ещё можно показывать и впускать в него: группа/
+// канал, который сейчас публичный или где автор ссылки — создатель/админ с
+// invite_users. По tweb (sharedFolder.tsx:48-58) в ссылку попадает чат с
+// публичным именем или с правом invite_links; сервер обязан держать то же
+// условие и при предпросмотре, и при вступлении, иначе ссылка продолжает
+// впускать в чат, ставший приватным. Удалённый чат — не admissible.
+func (i *Interactor) admissible(ctx context.Context, chatID, ownerID int64) (bool, error) {
+	typ, isPublic, err := i.chats.Info(ctx, chatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !chatKindShareable(typ) {
+		return false, nil
+	}
+	if isPublic {
+		return true, nil
+	}
+	return i.chats.CanInvite(ctx, chatID, ownerID)
+}
+
 // shareableChats оставляет из ids только публичные группы/каналы.
 func (i *Interactor) shareableChats(ctx context.Context, ids []int64) ([]int64, error) {
 	out := make([]int64, 0, len(ids))
@@ -384,7 +432,7 @@ func (i *Interactor) shareableChats(ctx context.Context, ids []int64) ([]int64, 
 		if err != nil {
 			return nil, err
 		}
-		if isPublic && (typ == "group" || typ == "channel") {
+		if isPublic && chatKindShareable(typ) {
 			out = append(out, id)
 		}
 	}

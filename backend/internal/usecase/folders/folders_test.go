@@ -85,7 +85,10 @@ type fakeChats struct {
 	chats  map[int64]fakeChat
 	member map[[2]int64]bool // (chatID,userID) → member
 	banned map[[2]int64]bool // (chatID,userID) → бан: Join отвечает ErrForbidden
-	joined [][2]int64
+	// inviters — (chatID,userID), у которых есть право приглашать (создатель
+	// или админ с invite_users).
+	inviters map[[2]int64]bool
+	joined   [][2]int64
 	// announced — Joined (после коммита) по вступившим именно сейчас.
 	announced [][2]int64
 }
@@ -96,6 +99,9 @@ func (c *fakeChats) Info(_ context.Context, chatID int64) (string, bool, error) 
 		return "", false, domain.ErrNotFound
 	}
 	return ch.typ, ch.isPublic, nil
+}
+func (c *fakeChats) CanInvite(_ context.Context, chatID, userID int64) (bool, error) {
+	return c.inviters[[2]int64{chatID, userID}], nil
 }
 func (c *fakeChats) Preview(_ context.Context, chatID int64) (domain.FolderInviteChat, error) {
 	ch, ok := c.chats[chatID]
@@ -238,5 +244,110 @@ func TestJoinInvite_IgnoresChatsNotInInvite(t *testing.T) {
 	}
 	if len(chats.joined) != 0 {
 		t.Fatalf("joined = %v, want none (11 not in invite)", chats.joined)
+	}
+}
+
+// Б-7. Ссылка, созданная на публичный чат, не впускает в чат, ставший
+// приватным (tweb sharedFolder.tsx:48-58: чат берётся, если есть публичное имя
+// или у автора ссылки право invite_links).
+
+// linkOnPublicChats — Боб (1) делает ссылку на публичные 10 и 11.
+func linkOnPublicChats(t *testing.T) (*Interactor, *fakeRepo, *fakeChats, string) {
+	t.Helper()
+	uc, repo, chats := setup()
+	ctx := context.Background()
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Team", IncludeChats: []int64{10, 11}})
+	inv, err := uc.CreateInvite(ctx, 1, f.ID, "")
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	return uc, repo, chats, inv.Slug
+}
+
+func makePrivate(chats *fakeChats, id int64) {
+	ch := chats.chats[id]
+	ch.isPublic = false
+	chats.chats[id] = ch
+}
+
+func TestJoinInvite_SkipsChatThatBecamePrivate(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10) // Боб в нём рядовой участник: права приглашать нет
+
+	if err := uc.JoinInvite(context.Background(), 2, slug, nil); err != nil {
+		t.Fatalf("JoinInvite: %v", err)
+	}
+	if len(chats.joined) != 1 || chats.joined[0] != [2]int64{11, 2} {
+		t.Fatalf("joined = %v, ждали только (11,2)", chats.joined)
+	}
+	last := repo.created[len(repo.created)-1]
+	if len(last.IncludeChats) != 1 || last.IncludeChats[0] != 11 {
+		t.Fatalf("папка = %+v, ждали только чат 11", last)
+	}
+}
+
+func TestJoinInvite_PrivateButOwnerAdminWithInvite_Joins(t *testing.T) {
+	uc, _, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10)
+	chats.inviters = map[[2]int64]bool{{10, 1}: true} // Боб — админ с invite_users
+
+	if err := uc.JoinInvite(context.Background(), 2, slug, nil); err != nil {
+		t.Fatalf("JoinInvite: %v", err)
+	}
+	if len(chats.joined) != 2 {
+		t.Fatalf("joined = %v, ждали вступление в оба чата", chats.joined)
+	}
+}
+
+func TestPreviewInvite_HidesPrivateChat(t *testing.T) {
+	uc, _, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10)
+
+	_, got, err := uc.PreviewInvite(context.Background(), slug)
+	if err != nil {
+		t.Fatalf("PreviewInvite: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != 11 {
+		t.Fatalf("превью = %+v, ждали только чат 11 (названия приватного нет)", got)
+	}
+}
+
+func TestPreviewInvite_PrivateButOwnerAdminWithInvite_Shown(t *testing.T) {
+	uc, _, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10)
+	chats.inviters = map[[2]int64]bool{{10, 1}: true}
+
+	_, got, err := uc.PreviewInvite(context.Background(), slug)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("превью = %+v, %v, ждали оба чата", got, err)
+	}
+}
+
+func TestJoinInvite_AllSkipped_NoFolder(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10)
+	makePrivate(chats, 11)
+	created := len(repo.created)
+
+	if err := uc.JoinInvite(context.Background(), 2, slug, nil); err != nil {
+		t.Fatalf("JoinInvite: %v", err)
+	}
+	if len(chats.joined) != 0 || len(repo.created) != created {
+		t.Fatalf("joined = %v, создано папок: %d, ждали ни вступлений, ни папки", chats.joined, len(repo.created)-created)
+	}
+}
+
+// Ссылка на чат, ставший личным/секретным (тип не группа и не канал), тоже не
+// впускает, даже если автор «может приглашать».
+func TestPreviewInvite_HidesNonGroupKind(t *testing.T) {
+	uc, _, chats, slug := linkOnPublicChats(t)
+	ch := chats.chats[10]
+	ch.typ = "private"
+	chats.chats[10] = ch
+	chats.inviters = map[[2]int64]bool{{10, 1}: true}
+
+	_, got, err := uc.PreviewInvite(context.Background(), slug)
+	if err != nil || len(got) != 1 || got[0].ID != 11 {
+		t.Fatalf("превью = %+v, %v, ждали только чат 11", got, err)
 	}
 }

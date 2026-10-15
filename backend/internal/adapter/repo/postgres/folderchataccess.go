@@ -66,6 +66,18 @@ func (a *FolderChatAccess) IsMember(ctx context.Context, chatID, userID int64) (
 	return err == nil, err
 }
 
+// CanInvite — создатель или админ с правом invite_users; не участник — false.
+func (a *FolderChatAccess) CanInvite(ctx context.Context, chatID, userID int64) (bool, error) {
+	m, err := a.groups.GetMember(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return domain.HasRight(m.Role, m.Rights, domain.RightInviteUsers), nil
+}
+
 // Join вступает в чат общей точкой вступления usecase чатов.
 func (a *FolderChatAccess) Join(ctx context.Context, chatID, userID int64) error {
 	return a.join(ctx, chatID, userID)
