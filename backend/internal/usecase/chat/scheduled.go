@@ -872,6 +872,7 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 			return nil, e
 		}
 		deleted := make([]int64, len(gone))
+		var toRefund []domain.ScheduledMessage
 		for k, r := range gone {
 			deleted[k] = r.ID
 			if r.PaidStars <= 0 {
@@ -882,9 +883,10 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 			} else if !errors.Is(e, domain.ErrNotFound) {
 				return nil, e
 			}
-			if e := i.refundScheduled(ctx, r, balances); e != nil {
-				return nil, e
-			}
+			toRefund = append(toRefund, r)
+		}
+		if e := i.refundScheduledBatch(ctx, toRefund, balances); e != nil {
+			return nil, e
 		}
 		slices.Sort(deleted)
 		u, e := i.scheduledDeleteUpdate(ctx, chatID, userID, deleted, nil)
@@ -1169,12 +1171,14 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		// Возврат звёзд отвергнутым — в той же транзакции, что снятие, и
 		// только за РЕАЛЬНО снятые строки (DeleteIDs отдаёт каждую ровно
 		// одному снятию): повторная попытка воркера второй раз не вернёт.
+		var refunds []domain.ScheduledMessage
 		for _, id := range deletedRejected {
 			if r, ok := refundOf[id]; ok {
-				if e := i.refundScheduled(ctx, r, balances); e != nil {
-					return nil, e
-				}
+				refunds = append(refunds, r)
 			}
+		}
+		if e := i.refundScheduledBatch(ctx, refunds, balances); e != nil {
+			return nil, e
 		}
 		// Перепостановка повтора — условно, по опубликованному сроку: только
 		// срок и счётчик вхождений, текст и прочее остаются как в строке.
@@ -1241,6 +1245,30 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 	return nil
 }
 
+// refundScheduledBatch — возврат за набор строк одной транзакцией: строки балансов всех
+// участвующих берутся заранее по возрастанию user_id (lockBalances), иначе порядок строк
+// набора ломал бы общий порядок блокировок и взаимоблокировал бы возврат с платной отправкой.
+func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64) error {
+	if i.stars == nil {
+		return nil
+	}
+	var ids []int64
+	for _, r := range rows {
+		if r.PaidStars > 0 {
+			ids = append(ids, r.SenderID, r.PaidTo)
+		}
+	}
+	if err := i.lockBalances(ctx, ids...); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := i.refundScheduled(ctx, r, balances); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // lockScheduledForPublish — в транзакции вставки опубликованного: строка
 // очереди под блокировкой до коммита. Снятие автором (DELETE) ждёт её и
 // после коммита видит вставленное сообщение по ключу публикации — без
@@ -1270,12 +1298,7 @@ func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, ba
 	if err != nil {
 		return err
 	}
-	for _, r := range rows {
-		if err := i.refundScheduled(ctx, r, balances); err != nil {
-			return err
-		}
-	}
-	return nil
+	return i.refundScheduledBatch(ctx, rows, balances)
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли

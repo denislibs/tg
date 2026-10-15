@@ -62,20 +62,26 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
 	}
-	// Отказ оплаты — до строки чек-листа: иначе каждый отказ оставлял бы сироту.
-	if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
-		return domain.Message{}, err
-	}
-	c, err := i.checklists.Create(ctx, domain.Checklist{
-		ChatID: in.ChatID, Title: title, Items: items,
-		OthersCanAdd: in.OthersCanAdd, OthersCanMark: in.OthersCanMark,
-	})
-	if err != nil {
-		return domain.Message{}, err
+	// Повтор принятой отправки (тот же client_msg_id) строки не создаёт и оплату не
+	// переспрашивает — Send отдаст принятое сообщение. Иначе отказ оплаты — до строки
+	// чек-листа: каждый отказ оставлял бы сироту (гонка роста цены — допустима).
+	var checklistID *int64
+	if !i.sendAlreadyAccepted(ctx, in.ChatID, in.SenderID, in.ClientMsgID, false) {
+		if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
+			return domain.Message{}, err
+		}
+		c, err := i.checklists.Create(ctx, domain.Checklist{
+			ChatID: in.ChatID, Title: title, Items: items,
+			OthersCanAdd: in.OthersCanAdd, OthersCanMark: in.OthersCanMark,
+		})
+		if err != nil {
+			return domain.Message{}, err
+		}
+		checklistID = &c.ID
 	}
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "checklist",
-		ClientMsgID: in.ClientMsgID, ChecklistID: &c.ID, AllowPaidStars: in.AllowPaidStars,
+		ClientMsgID: in.ClientMsgID, ChecklistID: checklistID, AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
 		return domain.Message{}, err

@@ -2368,7 +2368,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Баланса рядом больше нет: его владелец — кадр `updateStarsBalance`.
 	_ = bal
-	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top)
+	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top, true)
 }
 
 // GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
@@ -2391,7 +2391,7 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load star reaction")
 		return
 	}
-	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top)
+	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top, false)
 }
 
 // writeStarReaction — витрина ⭐-реакции сообщения.
@@ -2409,16 +2409,20 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 // агрегат сообщения целиком (tweb appReactionsManager.ts:966-972), и ответ с
 // одним платным чипом стёр бы у ставившего его обычные реакции.
 func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor,
-	chatID, msgID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender) {
+	chatID, msgID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender, afterCharge bool) {
 	me, _ := UserFromContext(r.Context())
-	// Здесь звёзды уже списаны и закоммичены: ответ не имеет права падать, иначе клиент
-	// повторит запрос и заплатит второй раз. Сбой чтения полного агрегата заменяется
-	// минимальным (starReactionAggregate), сбой адреса пира — адресом из самого URL.
 	full, fullErr := svc.ReactionsSeenBy(r.Context(), chatID, msgID, me.ID)
 	if fullErr != nil {
-		log.Printf("star_reaction: полный агрегат не прочитан после списания: %v", fullErr)
+		log.Printf("star_reaction: полный агрегат не прочитан: %v", fullErr)
+		status, empty := starReactionFailureResponse(afterCharge)
+		if empty {
+			writeJSON(w, status, emptyStarReactionUpdates())
+			return
+		}
+		writeError(w, status, "could not render star reaction")
+		return
 	}
-	reactions := starReactionAggregate(full, fullErr, agg, svc.CanSeeReactionsList(r.Context(), chatID))
+	reactions := full
 	reactors := make([]domain.MessageReactor, 0, len(top)+1)
 	users := make([]domain.UserReal, 0, len(top))
 	for _, s := range top {
@@ -2714,17 +2718,17 @@ func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// starReactionAggregate — агрегат реакций для ответа платной ⭐-реакции: полный (глазами
-// зрителя), а если его чтение упало ПОСЛЕ списания — минимальный из уже известного
-// агрегата звёзд: один платный чип. Ответ не падает, чтобы клиент не повторил
-// оплаченный запрос; эмодзи-чипы в этом редком случае доедут кадром реакций.
-func starReactionAggregate(full domain.MessageReactions, fullErr error, agg domain.StarReactionAgg, canSeeList bool) domain.MessageReactions {
-	if fullErr == nil {
-		return full
+// starReactionFailureResponse — как отвечать, когда агрегат реакций не прочитан. После
+// списания (afterCharge) отвечаем 200 с пустым контейнером: оплаченный запрос не должен
+// выглядеть для клиента ошибкой (он повторил бы его и заплатил второй раз), а живой кадр
+// реакций уже ушёл по WS — пустой ответ не стирает у клиента агрегат. Без списания (GET) — 500.
+func starReactionFailureResponse(afterCharge bool) (status int, emptyUpdates bool) {
+	if afterCharge {
+		return http.StatusOK, true
 	}
-	out := domain.NewMessageReactions([]domain.MTReactionCount{
-		domain.NewReactionCount(domain.NewReactionPaid(), int(agg.Total), agg.Mine > 0),
-	}, nil)
-	out.SetCanSeeList(canSeeList)
-	return out
+	return http.StatusInternalServerError, false
+}
+
+func emptyStarReactionUpdates() domain.UpdatesReal {
+	return domain.NewUpdates([]domain.Update{}, []domain.UserReal{}, time.Now())
 }

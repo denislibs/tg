@@ -198,6 +198,26 @@ func TestPaidPollChecklist_RefusalLeavesNoRows(t *testing.T) {
 	}
 }
 
+// Повтор УЖЕ принятой платной отправки (потерянный ответ, тот же client_msg_id) возвращает
+// принятое сообщение, а не отказ по балансу/цене и не плодит строки опроса и чек-листа.
+func TestPaidPollChecklist_RetryOfAcceptedSendIsIdempotent(t *testing.T) {
+	f := newPaidFixture(t)
+	ctx := context.Background()
+	f.topUp(t, 2, 5)
+	first, err := f.in.SendPoll(ctx, SendPollInput{ChatID: f.cid, SenderID: 2, Question: "q", Options: []string{"a", "b"}, ClientMsgID: "p-1", AllowPaidStars: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// баланс уже 0: повтор опроса с тем же id — принятое сообщение, без отказа и без новой строки
+	again, err := f.in.SendPoll(ctx, SendPollInput{ChatID: f.cid, SenderID: 2, Question: "q", Options: []string{"a", "b"}, ClientMsgID: "p-1", AllowPaidStars: 5})
+	if err != nil {
+		t.Fatalf("повтор принятой отправки: %v", err)
+	}
+	if again.ID != first.ID || len(f.polls.polls) != 1 || f.balance(2) != 0 {
+		t.Fatalf("повтор: id %d/%d, опросов %d, баланс %d", again.ID, first.ID, len(f.polls.polls), f.balance(2))
+	}
+}
+
 func TestPaidForward_WholeBatch(t *testing.T) {
 	f := newPaidFixture(t)
 	ctx := context.Background()
@@ -380,5 +400,36 @@ func TestPaidComment_NeedsAllowance(t *testing.T) {
 	}
 	if b, _ := stars.Balance(ctx, 9); b != 45 {
 		t.Fatalf("баланс %d, want 45", b)
+	}
+}
+
+type lockOrderStars struct {
+	StarsRepo
+	locks []int64 // user_id нулевых движений (блокировки) по порядку
+}
+
+func (l *lockOrderStars) AddBalance(ctx context.Context, userID, delta int64) (int64, error) {
+	if delta == 0 {
+		l.locks = append(l.locks, userID)
+	}
+	return l.StarsRepo.AddBalance(ctx, userID, delta)
+}
+
+// Возврат отложенных набором берёт строки балансов заранее и по возрастанию user_id, как все
+// остальные пути (moveStars): порядок строк набора не должен ломать общий порядок блокировок.
+func TestRefundScheduledBatch_LocksBalancesInUserIDOrder(t *testing.T) {
+	f := newPaidFixture(t)
+	rec := &lockOrderStars{StarsRepo: f.stars}
+	f.in.SetStars(rec)
+	rows := []domain.ScheduledMessage{
+		{SenderID: 5, PaidTo: 3, PaidStars: 1},
+		{SenderID: 2, PaidTo: 3, PaidStars: 1},
+		{SenderID: 9, PaidTo: 0, PaidStars: 0}, // без оплаты — в набор не входит
+	}
+	if err := f.in.refundScheduledBatch(context.Background(), rows, map[int64]int64{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := rec.locks; len(got) != 3 || got[0] != 2 || got[1] != 3 || got[2] != 5 {
+		t.Fatalf("порядок блокировок %v, want [2 3 5]", got)
 	}
 }

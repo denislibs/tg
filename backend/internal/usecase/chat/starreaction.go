@@ -50,22 +50,16 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	// поставившему и автору — их глазами; остальным — min).
 	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		b, e := i.stars.AddBalance(ctx, userID, -count)
-		if e == domain.ErrForbidden {
-			return domain.ErrBalanceTooLow // недостаточно звёзд
-		}
+		// Списание у отправителя и начисление автору — одним движением с общим порядком
+		// блокировок строк балансов (moveStars). Реакция на своё сообщение — списание и
+		// начисление на один баланс (нетто-ноль), поэтому автору начисляем только если это
+		// не сам отправитель и автор известен.
+		b, ab, e := i.moveStars(ctx, userID, msg.SenderID, count)
 		if e != nil {
-			return e
+			return e // ErrBalanceTooLow — недостаточно звёзд
 		}
 		senderBal = b
-		// Начисляем автору сообщения. Реакция на своё сообщение — списание и
-		// начисление на один баланс (нетто-ноль), поэтому автору начисляем только
-		// если это не сам отправитель и автор известен.
 		if msg.SenderID != 0 && msg.SenderID != userID {
-			ab, e := i.stars.AddBalance(ctx, msg.SenderID, count)
-			if e != nil {
-				return e
-			}
 			authorBal, authorCredit = ab, true
 		}
 		mine, e := i.starReaction.Add(ctx, messageID, userID, count, anonymous)

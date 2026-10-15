@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -250,6 +251,21 @@ func (i *Interactor) precheckPaid(ctx context.Context, chatID, senderID, allow i
 	return nil
 }
 
+// sendAlreadyAccepted — отправка с этим client_msg_id уже принята (сообщение в чате либо
+// строка очереди отложенных): повтор запроса при потерянном ответе обязан вернуть принятое, а
+// не получить отказ по цене/балансу и не создавать побочные строки (опрос, чек-лист).
+func (i *Interactor) sendAlreadyAccepted(ctx context.Context, chatID, senderID int64, clientMsgID string, scheduled bool) bool {
+	if clientMsgID == "" {
+		return false
+	}
+	if scheduled && i.scheduled != nil {
+		_, err := i.scheduled.ByClientMsgID(ctx, chatID, senderID, clientMsgID)
+		return err == nil
+	}
+	_, err := i.msgs.FindByClientMsgID(ctx, chatID, senderID, clientMsgID)
+	return err == nil
+}
+
 // paidPriceFor — цена одного сообщения отправки после гейта согласия.
 // Служебки бесплатны; публикация отложенного не платит второй раз (звёзды
 // списаны при постановке, В-2, tweb allow_paid_stars в запросе с schedule_date,
@@ -284,48 +300,11 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, am
 	if creator == senderID {
 		return paidCharge{}, nil // страховка: владелец не платит сам себе
 	}
-	// Строки балансов блокируются в порядке возрастания user_id: две встречные платные
-	// отправки (A платит владельцу B и B платит владельцу A) иначе берут их крест-накрест и
-	// взаимоблокируются (40P01). Нехватка средств у отправителя откатывает всю транзакцию
-	// отправки, поэтому начисление владельцу «до» списания безопасно.
-	c := paidCharge{applied: true, amount: amount, creatorID: creator}
-	debit := func() error {
-		bal, err := i.stars.AddBalance(ctx, senderID, -amount)
-		if err != nil {
-			if err == domain.ErrForbidden {
-				return domain.ErrBalanceTooLow
-			}
-			return err
-		}
-		c.senderBal = bal
-		return nil
-	}
-	credit := func() error {
-		if creator == 0 {
-			return nil
-		}
-		bal, err := i.stars.AddBalance(ctx, creator, amount)
-		if err != nil {
-			return err
-		}
-		c.creatorBal = bal
-		return nil
-	}
-	first, second := debit, credit
-	if creator != 0 && creator < senderID {
-		first, second = credit, debit
-		// Начисление идёт раньше списания: явная нехватка у отправителя отказывает до него
-		// (откат транзакции вернул бы начисление и так; окончательную проверку делает debit).
-		if bal, e := i.stars.Balance(ctx, senderID); e == nil && bal < amount {
-			return paidCharge{}, domain.ErrBalanceTooLow
-		}
-	}
-	if err := first(); err != nil {
+	fromBal, toBal, err := i.moveStars(ctx, senderID, creator, amount)
+	if err != nil {
 		return paidCharge{}, err
 	}
-	if err := second(); err != nil {
-		return paidCharge{}, err
-	}
+	c := paidCharge{applied: true, amount: amount, creatorID: creator, senderBal: fromBal, creatorBal: toBal}
 	return c, nil
 }
 
@@ -335,4 +314,71 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, am
 func (i *Interactor) publishBalance(ctx context.Context, userID, balance int64) {
 	_ = i.logAndPublish(ctx, 0, []int64{userID}, "balance_update",
 		map[string]any{"_": domain.UpdateStarsBalanceTag, "balance": domain.NewStarsAmount(balance)})
+}
+
+// moveStars — движение звёзд from → to (to == 0 или to == from — только списание) внутри
+// транзакции вызывающего. Строки балансов блокируются в порядке возрастания user_id,
+// ОДИНАКОВОМ для всех путей (платное сообщение, ⭐-реакция, платное медиа, возврат
+// отложенных): иначе встречные потоки — и однонаправленные разные операции одной пары —
+// берут их крест-накрест и взаимоблокируются (40P01). Нехватка у from → ErrBalanceTooLow;
+// при начислении «раньше» списания явная предпроверка баланса отказывает до него (откат
+// транзакции вернул бы начисление и так, окончательную проверку делает само списание).
+func (i *Interactor) moveStars(ctx context.Context, from, to, amount int64) (fromBal, toBal int64, err error) {
+	debit := func() error {
+		b, e := i.stars.AddBalance(ctx, from, -amount)
+		if e != nil {
+			if e == domain.ErrForbidden {
+				return domain.ErrBalanceTooLow
+			}
+			return e
+		}
+		fromBal = b
+		return nil
+	}
+	credit := func() error {
+		if to == 0 || to == from {
+			return nil
+		}
+		b, e := i.stars.AddBalance(ctx, to, amount)
+		if e != nil {
+			return e
+		}
+		toBal = b
+		return nil
+	}
+	first, second := debit, credit
+	if to != 0 && to != from && to < from {
+		first, second = credit, debit
+		if bal, e := i.stars.Balance(ctx, from); e == nil && bal < amount {
+			return 0, 0, domain.ErrBalanceTooLow
+		}
+	}
+	if err = first(); err != nil {
+		return 0, 0, err
+	}
+	if err = second(); err != nil {
+		return 0, 0, err
+	}
+	return fromBal, toBal, nil
+}
+
+// lockBalances берёт строки балансов набора пользователей в порядке возрастания user_id
+// (AddBalance с нулевым движением — только блокировка до конца транзакции). Нужен циклам, где
+// за одну транзакцию движутся балансы многих пар (возврат отложенных): порядок внутри пары
+// не спасает, если пары идут в произвольной последовательности.
+func (i *Interactor) lockBalances(ctx context.Context, ids ...int64) error {
+	if i.stars == nil {
+		return nil
+	}
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+		if _, err := i.stars.AddBalance(ctx, id, 0); err != nil {
+			return err
+		}
+	}
+	return nil
 }
