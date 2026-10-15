@@ -1,7 +1,5 @@
 // Разметка порта `components/checkboxField.ts` — сверена с tweb
 // `src/components/checkboxField.ts:107-152` (ветка без `toggle`).
-// `text`/`checked` — раунд правок 3 плана solid-wave-1 (потребитель:
-// `PopupPeer` чекбоксы, `popupPeer.ts`).
 import { describe, expect, it } from 'vitest'
 import CheckboxField from './checkboxField'
 
@@ -9,13 +7,12 @@ import CheckboxField from './checkboxField'
 // (`main.tsx` → `client/boot.ts`); в прогоне — общий сетап (`src/test/setup.ts`).
 
 describe('CheckboxField', () => {
-  it('span.checkbox-field.checkbox-without-caption > input + .checkbox-box', () => {
+  it('span.checkbox-field > input + .checkbox-box', () => {
     const field = new CheckboxField()
 
     // tweb HEAD :37 (ef41b29db): поле — только контрол, `span`; подпись ему даёт строка-label
     expect(field.label.tagName).toBe('SPAN')
     expect(field.label.classList.contains('checkbox-field')).toBe(true)
-    expect(field.label.classList.contains('checkbox-without-caption')).toBe(true)
     expect(field.label.classList.contains('checkbox-field-round')).toBe(false)
 
     // порядок детей — tweb :123 (input) и :150 (box)
@@ -53,19 +50,14 @@ describe('CheckboxField', () => {
     expect(new CheckboxField().input.id).toBe('')
   })
 
-  it('text → span.checkbox-caption ПОСЛЕ .checkbox-box, без checkbox-without-caption (tweb :106-114, :151-153)', () => {
-    const field = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] })
-
-    expect(field.label.classList.contains('checkbox-without-caption')).toBe(false)
-    // поле С ПОДПИСЬЮ (ветка старой базы для `PopupPeer`) — `label`: щелчок по
-    // подписи обязан переключать поле, строки-label вокруг него нет
-    expect(field.label.tagName).toBe('LABEL')
-    const span = field.label.lastElementChild as HTMLElement
-    expect(span.tagName).toBe('SPAN')
-    expect(span.classList.contains('checkbox-caption')).toBe(true)
-    expect(span.textContent).toBe('Also delete for Maya')
-    // порядок: input, box, span (tweb :123, :150, :153)
-    expect(Array.from(field.label.children).map((c) => c.tagName)).toEqual(['INPUT', 'DIV', 'SPAN'])
+  // tweb HEAD checkboxField.ts:10-13: «a checkbox is only ever the control» — подпись у строки
+  // (`Row.Title`), у поля нет ни опции `text`, ни узла `.checkbox-caption`.
+  it('подписи у поля нет: только input + box', () => {
+    const field = new CheckboxField({ checked: true })
+    expect(field.label.querySelector('.checkbox-caption')).toBeNull()
+    expect(Array.from(field.label.children).map((c) => c.tagName)).toEqual(['INPUT', 'DIV'])
+    // @ts-expect-error `text` снят вместе с подписью (tweb HEAD)
+    new CheckboxField({ text: 'DeleteMessagesOptionAlso' })
   })
 
   it('checked:true — input взведён сразу (tweb :64-66)', () => {
