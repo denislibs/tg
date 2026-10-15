@@ -25,8 +25,9 @@ import type { RestClient } from '../net/restClient'
  *     читает `undefined`, как у tweb на ключе без значения). Пустой ответ не
  *     запоминается: следующий вызов идёт в сеть.
  *  3. Отказ не повторяется на каждый вызов: после него `RETRY_PAUSE_MS` отдаётся копия
- *     (или пустой объект) без запроса, а сам запрос ограничен `REQUEST_TIMEOUT_MS`: меню чата
- *     и реакция ждут конфиг и не должны висеть на мёртвой сети. Воркер прогревает конфиг на
+ *     (или пустой объект) без запроса, а ожидание вызывающего ограничено `REQUEST_TIMEOUT_MS`: меню чата
+ *     и реакция ждут конфиг и не должны висеть на мёртвой сети. Потолок — для ВЫЗЫВАЮЩЕГО: запрос
+ *     дорабатывает в фоне, и поздний ответ всё равно ложится в кэш. Воркер прогревает конфиг на
  *     старте (tweb `appMessagesManager.ts:757`), поэтому на живой сети ожидания нет.
  *  4. Кэш в KV привязан к origin, а не к серверу или аккаунту: значений, зависящих от
  *     пользователя, в конфиге нет (подписка читается живым геттером), а при смене бэкенда
@@ -134,11 +135,16 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
   /** Раньше этого момента после отказа запрос не повторяется. */
   let retryAt = 0
 
-  /** Запрос с потолком ожидания: зависший `fetch` не держит меню и реакцию. */
-  function withTimeout<T>(promise: Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('app config timeout')), REQUEST_TIMEOUT_MS)
-      promise.then(resolve, reject).finally(() => clearTimeout(timer))
+  /**
+   * Потолок ожидания ВЫЗЫВАЮЩЕГО: медленный `fetch` не держит меню и реакцию, но сам запрос
+   * не бросается — он дорабатывает в фоне и при позднем успехе кладёт конфиг в память и в KV
+   * (на сети с RTT дольше потолка конфиг иначе не приехал бы никогда). Поток `flight` сам
+   * не отклоняется: отказы разобраны внутри `request*`.
+   */
+  function raceTimeout<T>(flight: Promise<T>, fallback: () => T): Promise<T> {
+    return new Promise<T>((resolve) => {
+      const timer = setTimeout(() => resolve(fallback()), REQUEST_TIMEOUT_MS)
+      void flight.then((value) => { clearTimeout(timer); resolve(value) })
     })
   }
 
@@ -158,7 +164,7 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
 
   async function requestAppConfig(): Promise<MTAppConfig> {
     try {
-      const res = await withTimeout(rest.get<HelpAppConfig>('/help/app_config', { hash: appConfig?.hash || 0 }))
+      const res = await rest.get<HelpAppConfig>('/help/app_config', { hash: appConfig?.hash || 0 })
       requestedAppConfig = true
       retryAt = 0
       // `processResult` (:355-359): NotModified оставляет прежний конфиг.
@@ -189,12 +195,13 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
       return appConfig
     }
     if (!overwrite && now() < retryAt) return appConfig ?? {}
-    return appConfigFlight ??= requestAppConfig().finally(() => { appConfigFlight = undefined })
+    appConfigFlight ??= requestAppConfig().finally(() => { appConfigFlight = undefined })
+    return raceTimeout(appConfigFlight, () => appConfig ?? {})
   }
 
   async function requestConfig(): Promise<MTConfig> {
     try {
-      const res = await withTimeout(rest.get<Config.config>('/help/config'))
+      const res = await rest.get<Config.config>('/help/config')
       config = res
       configRetryAt = 0
       return res
@@ -207,7 +214,8 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
   function getConfig(overwrite?: boolean): Promise<MTConfig> {
     if (config && !overwrite) return Promise.resolve(config)
     if (!overwrite && now() < configRetryAt) return Promise.resolve({})
-    return configFlight ??= requestConfig().finally(() => { configFlight = undefined })
+    configFlight ??= requestConfig().finally(() => { configFlight = undefined })
+    return raceTimeout(configFlight, () => ({}))
   }
 
   return {

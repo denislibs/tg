@@ -190,14 +190,38 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
     expect(get).toHaveBeenCalledTimes(2)
   })
 
-  it('зависший запрос обрывается по потолку ожидания, а не держит вызывающего', async() => {
+  it('медленный запрос: вызывающий через 5 с получает {}, а поздний ответ всё равно ложится в кэш', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get, store } = setup()
+      let answer!: (v: unknown) => void
+      get.mockImplementation(() => new Promise((resolve) => { answer = resolve }))
+      const pending = mgr.getAppConfig()
+      await vi.advanceTimersByTimeAsync(5000)
+      await expect(pending).resolves.toEqual({})
+
+      // Ответ приехал на 8-й секунде: запрос не бросали.
+      answer(CFG_A)
+      await vi.advanceTimersByTimeAsync(0)
+      await expect(mgr.getAppConfig()).resolves.toMatchObject({ hash: 111 })
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(store.store.has('appConfig')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('пока медленный запрос в полёте, новые вызовы не плодят запросов', async() => {
     vi.useFakeTimers()
     try {
       const { mgr, get } = setup()
       get.mockImplementation(() => new Promise(() => {}))
-      const pending = mgr.getAppConfig()
+      void mgr.getAppConfig()
       await vi.advanceTimersByTimeAsync(5000)
-      await expect(pending).resolves.toEqual({})
+      const second = mgr.getAppConfig()
+      await vi.advanceTimersByTimeAsync(5000)
+      await expect(second).resolves.toEqual({})
+      expect(get).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
