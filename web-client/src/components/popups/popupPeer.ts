@@ -56,9 +56,11 @@
 // `SimpleConfirmationPopup`, см. `deleteMessages.ts:182-193`).
 //
 // Портировано из peer.ts:96-124: класс `have-checkbox` на `this.container`
-// при непустом `checkboxes`; каждый — `new CheckboxField({text, checked})`
-// (`checkboxField.ts`, тот же раунд — добавлены `text`/`checked`, см. его
-// докблок); ВСЕ `button.callback` (не только чекбоксные) оборачиваются, чтобы
+// при непустом `checkboxes`; каждый — строка `.popup-peer-checkbox-row`
+// (peer.tsx:144-156, `popupPeerCheckboxRow.solid.tsx`: подпись в `.row-title`,
+// чекбокс без подписи в `.row-checkbox-field`; Ф-P0 1б, раньше подпись жила
+// внутри `CheckboxField` по старому tweb); ВСЕ `button.callback` (не только
+// чекбоксные) оборачиваются, чтобы
 // получить вторым параметром `Set<string>` отмеченных подписей — 1:1 с
 // tweb `PopupPeerButtonCallback = (e, checkboxes?: Set<LangPackKey>) => void`
 // (у нас без `MouseEvent` первым параметром — та же урезка, что была у
@@ -68,7 +70,8 @@
 // `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
 // портирован ЦЕЛИКОМ.
 import PopupElement, { type PopupButton } from './popupElement'
-import CheckboxField from '@components/checkboxField'
+import type CheckboxField from '@components/checkboxField'
+import { createPopupPeerCheckboxRow } from './popupPeerCheckboxRow.solid'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import type InputField from '@components/inputField'
@@ -199,14 +202,14 @@ export default class PopupPeer extends PopupElement {
 
     // peer.ts:96-124 — чекбоксы строятся ДО кнопок: колбэку кнопки в момент
     // клика нужно ЖИВОЕ состояние (замыкание на `checkboxFields`), не снимок.
-    const checkboxFields: { text: LangPackKey, field: CheckboxField }[] = []
+    // Каждый чекбокс — строка `.popup-peer-checkbox-row` с подписью в `.row-title`
+    // (peer.tsx:144-156): у tweb HEAD подпись принадлежит строке, не `CheckboxField`.
+    const checkboxFields: { text: LangPackKey, field: CheckboxField, row: HTMLElement }[] = []
     if(options.checkboxes?.length) {
       this.container.classList.add('have-checkbox') // peer.ts:104
       for(const o of options.checkboxes) { // peer.ts:106-110
-        checkboxFields.push({
-          text: o.text,
-          field: new CheckboxField({ text: o.text, textArgs: o.textArgs, checked: o.checked }),
-        })
+        const { element, checkboxField } = createPopupPeerCheckboxRow(o, this.middlewareHelper.get())
+        checkboxFields.push({ text: o.text, field: checkboxField, row: element })
       }
     }
 
@@ -253,8 +256,8 @@ export default class PopupPeer extends PopupElement {
     if(inputField) { // peer.tsx:143
       fragment.append(inputField.container)
     }
-    for(const { field } of checkboxFields) { // peer.ts:110 — `fragment.append(checkboxField.label)`
-      fragment.append(field.label)
+    for(const { row } of checkboxFields) { // peer.tsx:144-156
+      fragment.append(row)
     }
     if(fragment.childNodes.length) {
       this.header.after(fragment) // peer.ts:126

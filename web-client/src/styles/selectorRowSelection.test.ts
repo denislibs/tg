@@ -50,7 +50,7 @@ describe('селектор пиров: раскладка чекбоксов с�
       const decls = [...css.matchAll(ruleRe(selector))]
         .filter((m) => /padding-inline-start:[^;}]*!important/.test(m[1]))
         .map((m) => m.index!)
-      return decls.at(-1) ?? -1
+      return decls.length ? decls[decls.length - 1] : -1
     }
     expect(lastDecl(winner), `нет ${winner} с padding-inline-start !important`).toBeGreaterThan(-1)
     expect(lastDecl(loser), `нет ${loser} с padding-inline-start !important`).toBeGreaterThan(-1)
