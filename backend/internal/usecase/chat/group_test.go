@@ -1768,7 +1768,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if _, err := fg.GetMember(ctx, id, 8); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("banned user still a member")
 	}
-	if bans, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsKicked}, 0, 50); bans.Count != 1 || bans.UserIDs[0] != 8 {
+	if bans, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsKicked}, 0, 50); bans.Count != 1 || !slices.Contains(bans.UserIDs, 8) {
 		t.Fatalf("bans = %+v; want [8]", bans)
 	}
 	if _, _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
