@@ -678,14 +678,7 @@ type photoPrivacy struct {
 }
 
 func (p photoPrivacy) AccessRules(ctx context.Context, viewer int64, ids []int64) (domain.UserViewRules, error) {
-	// Замок автора занят нами: повторный захват с мгновенно отменённым ctx не удаётся.
-	c, cancel := context.WithCancel(ctx)
-	cancel()
-	unlock, err := p.i.authorLocks.lock(c, ids[0])
-	if err == nil {
-		unlock()
-	}
-	*p.heldAtRead = append(*p.heldAtRead, err != nil)
+	*p.heldAtRead = append(*p.heldAtRead, p.i.authorLocks.held(ids[0]))
 	r, e := p.statusPrivacy.AccessRules(ctx, viewer, ids)
 	for _, id := range ids {
 		if p.closedPhoto[viewer] {

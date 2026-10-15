@@ -193,7 +193,11 @@ func (i *Interactor) sendUserUpdateBatch(ctx context.Context, u domain.UserRecor
 		// стёрла бы ему аватарку после getDifference), а не молчаливо урезанная
 		// карточка; источника присутствия нет — поле status не едет.
 		var rules domain.UserViewRules
-		if i.privacy != nil {
+		if i.privacy != nil && uid == u.ID {
+			// Своя строка от правил не зависит (фото себе видно всегда, номер
+			// ставится явно): сбой БД не отнимает её у второго устройства.
+			rules = domain.UserViewRules{ViewerID: uid, Status: presence}
+		} else if i.privacy != nil {
 			var err error
 			if rules, err = i.privacy.AccessRules(ctx, uid, []int64{u.ID}); err != nil {
 				i.logf("[user_update] privacy rules viewer=%d user=%d: %v", uid, u.ID, err)

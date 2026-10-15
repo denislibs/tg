@@ -21,6 +21,9 @@ type keyedLockEntry struct {
 
 // lock занимает ключ; ошибка — ctx закончился раньше, чем ключ освободился.
 func (k *keyedLock) lock(ctx context.Context, key int64) (unlock func(), err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err // select при свободном ключе и мёртвом ctx выбирал бы случайно
+	}
 	k.mu.Lock()
 	if k.m == nil {
 		k.m = map[int64]*keyedLockEntry{}
@@ -47,4 +50,12 @@ func (k *keyedLock) lock(ctx context.Context, key int64) (unlock func(), err err
 		release()
 		return nil, ctx.Err()
 	}
+}
+
+// held — занят ли ключ прямо сейчас (для тестов порядка).
+func (k *keyedLock) held(key int64) bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	e := k.m[key]
+	return e != nil && len(e.ch) == 1
 }

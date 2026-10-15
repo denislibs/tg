@@ -408,7 +408,8 @@ func UncheckedUserViewRules(viewerID int64, users []UserReal) UserViewRules {
 	for _, u := range users {
 		all[u.ID] = true
 	}
-	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all}
+	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all,
+		Status: func(int64) UserStatus { return NewUserStatusEmpty() }}
 }
 
 // Apply доводит карточки на месте: self видит себя целиком; фото по правилу

@@ -581,11 +581,10 @@ func (i *Interactor) AccessRules(ctx context.Context, viewerID int64, ids []int6
 	if err != nil {
 		// Дальше BlockedBy не спрашиваем: в прерванной транзакции он заведомо упал бы.
 		return rules, fmt.Errorf("visible maps: %w", err)
-	} else {
-		rules.Photo = maps[domain.PrivacyProfilePhoto]
-		rules.Phone = maps[domain.PrivacyPhoneNumber]
-		rules.LastSeen = maps[domain.PrivacyLastSeen]
 	}
+	rules.Photo = maps[domain.PrivacyProfilePhoto]
+	rules.Phone = maps[domain.PrivacyPhoneNumber]
+	rules.LastSeen = maps[domain.PrivacyLastSeen]
 	// Скрытое время захода: блок («давно») или правило («недавно») — спрашиваем,
 	// только если есть кому скрывать, и одним запросом.
 	var hidden []int64
@@ -596,9 +595,7 @@ func (i *Interactor) AccessRules(ctx context.Context, viewerID int64, ids []int6
 	}
 	if len(hidden) > 0 {
 		if blocked, berr := i.repo.BlockedBy(ctx, viewerID, hidden); berr != nil {
-			if err == nil {
-				err = fmt.Errorf("blocked by: %w", berr)
-			}
+			err = fmt.Errorf("blocked by: %w", berr)
 		} else {
 			rules.Blocked = blocked
 		}
