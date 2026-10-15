@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/usecase/ownsync"
+	"github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
 type fakeMediaReader struct{ m map[int64]domain.Media }
@@ -131,8 +133,7 @@ func (b *fakeBook) List(_ context.Context, owner int64) ([]domain.ContactRecord,
 	var out []domain.ContactRecord
 	for k, r := range b.rows {
 		if k[0] == owner {
-			r.User = b.seen(owner, k[1])
-			r.User.Phone = b.phones[k[1]] // как scanContact: сырой номер, прячет List
+			r.User = b.seen(owner, k[1]) // как scanContact: номер прочитан, но не показан
 			out = append(out, r)
 		}
 	}
@@ -197,31 +198,31 @@ type fakeClose struct{ ids []int64 }
 func (f fakeClose) CloseFriends(context.Context, int64) ([]int64, error) { return f.ids, nil }
 
 // fakePrivacy — правила: allow[ключ] — пускает ли оно зрителя; rulesErr — сбой
-// запроса правил.
+// запроса правил (privacy.ViewRules тогда гасит то, что правила охраняют);
+// status — присутствие контактов (нет записи — userStatusEmpty).
 type fakePrivacy struct {
 	allow    map[domain.PrivacyKey]bool
 	rulesErr error
+	status   map[int64]domain.UserStatus
 }
 
-func (p fakePrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, key domain.PrivacyKey) (map[int64]bool, error) {
-	out := map[int64]bool{}
-	for _, id := range ids {
-		out[id] = p.allow[key]
-	}
-	return out, nil
-}
-func (p fakePrivacy) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
-	if p.rulesErr != nil {
-		return nil, p.rulesErr
-	}
-	out := map[domain.PrivacyKey]map[int64]bool{}
-	for _, k := range keys {
-		out[k] = map[int64]bool{}
-		for _, id := range ids {
-			out[k][id] = p.allow[k]
+func (p fakePrivacy) ViewRules(_ context.Context, viewer int64, ids []int64) domain.UserViewRules {
+	rules := domain.UserViewRules{ViewerID: viewer, Status: func(id int64) domain.UserStatus {
+		if st, ok := p.status[id]; ok {
+			return st
 		}
+		return domain.NewUserStatusEmpty()
+	}}
+	if p.rulesErr != nil {
+		return rules
 	}
-	return out, nil
+	rules.Photo, rules.Phone, rules.LastSeen = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
+	for _, id := range ids {
+		rules.Photo[id] = p.allow[domain.PrivacyProfilePhoto]
+		rules.Phone[id] = p.allow[domain.PrivacyPhoneNumber]
+		rules.LastSeen[id] = p.allow[domain.PrivacyLastSeen]
+	}
+	return rules
 }
 func (p fakePrivacy) Check(_ context.Context, _, _ int64, key domain.PrivacyKey) (bool, error) {
 	return p.allow[key], nil
@@ -557,9 +558,9 @@ type orderPrivacy struct {
 	events *[]string
 }
 
-func (p orderPrivacy) VisibleMaps(ctx context.Context, v int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+func (p orderPrivacy) ViewRules(ctx context.Context, v int64, ids []int64) domain.UserViewRules {
 	*p.events = append(*p.events, "rules")
-	return p.fakePrivacy.VisibleMaps(ctx, v, ids, keys...)
+	return p.fakePrivacy.ViewRules(ctx, v, ids)
 }
 
 func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
@@ -572,5 +573,172 @@ func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
 	}
 	if len(events) < 2 || events[0] != "rules" || events[1] != "emit" {
 		t.Fatalf("порядок = %v; want правила до EmitSnapshot", events)
+	}
+}
+
+// ---- GET /contacts и карточка мутации несут `status` (P0 №2) ----
+//
+// Клиент заменяет карточку в кэше целиком: ответ без `status` стирал живой
+// статус контакта, и «Добавить участников» показывало «был(а) давно» у того, кто
+// в сети. Карточки собираются настоящим privacy.Interactor — тем же сборщиком,
+// что у остальных витрин.
+
+// statusRepo — правила приватности: last_seen закрыт у hiddenBy, hiddenBy ∩
+// blockedBy — заблокировали зрителя; остальные правила открыты.
+type statusRepo struct {
+	privacy.Repo
+	hiddenBy  map[int64]bool
+	blockedBy map[int64]bool
+}
+
+func (r statusRepo) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	out := map[domain.PrivacyKey]map[int64]bool{}
+	for _, k := range keys {
+		out[k] = map[int64]bool{}
+		for _, id := range ids {
+			out[k][id] = !(k == domain.PrivacyLastSeen && r.hiddenBy[id])
+		}
+	}
+	return out, nil
+}
+
+func (r statusRepo) BlockedBy(_ context.Context, _ int64, ids []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range ids {
+		if r.blockedBy[id] {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
+type fixedPresence map[int64]domain.UserStatus
+
+func (fixedPresence) Status(context.Context, int64) (bool, time.Time, time.Time) {
+	return false, time.Time{}, time.Time{}
+}
+
+func (p fixedPresence) Statuses(_ context.Context, ids []int64) map[int64]domain.UserStatus {
+	out := map[int64]domain.UserStatus{}
+	for _, id := range ids {
+		if st, ok := p[id]; ok {
+			out[id] = st
+		}
+	}
+	return out
+}
+
+const (
+	cDarya int64 = 3
+	cEgor  int64 = 4
+)
+
+// newStatusInteractor — книга владельца из Боба, Дарьи и Егора с настоящим
+// сборщиком приватности. Боб в сети, Дарья скрыла last_seen, Егор скрыл и
+// заблокировал зрителя.
+func newStatusInteractor(t *testing.T) (*Interactor, *fakeLog) {
+	t.Helper()
+	i, book, log := newBookInteractor(t)
+	for _, id := range []int64{cDarya, cEgor} {
+		u := domain.NewUser(id, domain.UserFlags{})
+		u.FirstName = "Контакт"
+		book.profile[id] = u
+	}
+	for _, id := range []int64{cBob, cDarya, cEgor} {
+		book.rows[[2]int64{cOwner, id}] = domain.ContactRecord{OwnerID: cOwner, UserID: id, FirstName: "К"}
+	}
+	pr := privacy.New(statusRepo{hiddenBy: map[int64]bool{cDarya: true, cEgor: true}, blockedBy: map[int64]bool{cEgor: true}})
+	pr.SetPresence(fixedPresence{cBob: domain.NewUserStatusOnline(time.Now().Add(time.Minute)), cDarya: domain.NewUserStatusOnline(time.Now().Add(time.Minute))})
+	i.SetPrivacy(pr)
+	return i, log
+}
+
+func statusTag(u domain.UserReal) string {
+	if u.Status == nil {
+		return "<нет поля>"
+	}
+	return u.Status.Tag()
+}
+
+// GET /contacts: статус по правилам — в сети, скрыто правилом («недавно»),
+// скрыто блоком («давно»).
+func TestList_CardsCarryStatus(t *testing.T) {
+	i, _ := newStatusInteractor(t)
+	list, err := i.List(context.Background(), cOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]string{}
+	for _, c := range list {
+		got[c.UserID] = statusTag(c.User)
+	}
+	want := map[int64]string{
+		cBob:   domain.UserStatusOnlineTag,
+		cDarya: domain.UserStatusRecentlyTag,
+		cEgor:  domain.UserStatusEmptyTag,
+	}
+	for id, tag := range want {
+		if got[id] != tag {
+			t.Errorf("контакт %d: статус %q; want %q", id, got[id], tag)
+		}
+	}
+}
+
+// Без проверяющего приватности присутствие неизвестно: карточка без `status`,
+// а не «давно» — иначе клиент принял бы выдумку за статус.
+func TestList_WithoutPrivacyLeavesStatusOut(t *testing.T) {
+	i, book, _ := newBookInteractor(t)
+	book.rows[[2]int64{cOwner, cBob}] = domain.ContactRecord{OwnerID: cOwner, UserID: cBob, FirstName: "Б"}
+	list, err := i.List(context.Background(), cOwner)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List: %v %v", list, err)
+	}
+	if list[0].User.Status != nil {
+		t.Fatalf("статус = %v; want без поля", list[0].User.Status)
+	}
+}
+
+// Карточка мутации — тот же статус, что в GET /contacts: ответ Add, ответ
+// Delete и строка журнала user_update.
+func TestMutationCards_CarryStatus(t *testing.T) {
+	i, log := newStatusInteractor(t)
+	ctx := context.Background()
+
+	c, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Бобби"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusOnlineTag {
+		t.Fatalf("ответ Add: статус %q; want в сети", got)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusOnlineTag {
+		t.Fatalf("журнал после Add: статус %q; want в сети", got)
+	}
+
+	card, found, err := i.Delete(ctx, cOwner, cBob)
+	if err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+	if got := statusTag(card); got != domain.UserStatusOnlineTag {
+		t.Fatalf("ответ Delete: статус %q; want в сети", got)
+	}
+	row, _ = rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusOnlineTag {
+		t.Fatalf("журнал после Delete: статус %q; want в сети", got)
+	}
+
+	// Скрытый last_seen в карточке мутации — «недавно», а заблокировавший — «давно».
+	if c, err = i.Add(ctx, cOwner, AddInput{UserID: cDarya, FirstName: "Д"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusRecentlyTag {
+		t.Fatalf("скрыто правилом: %q; want userStatusRecently", got)
+	}
+	if c, err = i.Add(ctx, cOwner, AddInput{UserID: cEgor, FirstName: "Е"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusEmptyTag {
+		t.Fatalf("заблокировал: %q; want userStatusEmpty", got)
 	}
 }

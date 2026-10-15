@@ -29,24 +29,24 @@ func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{po
 // линза, что у любого другого ответа с этим пользователем.
 var contactSelect = `
 	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.note_entities, c.share_phone, c.created_at,
-	       ` + userSeenCols("u.", "c.owner_id") + `, u.phone
+	       ` + userSeenCols("u.", "c.owner_id") + `
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
 func scanContact(row pgx.Row) (domain.ContactRecord, error) {
 	var c domain.ContactRecord
 	var u userSeenScan
-	var phone, noteText string
+	var noteText string
 	var noteEntities []byte
 	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &noteText, &noteEntities, &c.SharePhone, &c.CreatedAt}
 	dest = append(dest, u.dest()...)
-	dest = append(dest, &phone)
 	if err := row.Scan(dest...); err != nil {
 		return domain.ContactRecord{}, err
 	}
 	c.Note = contactNote(noteText, noteEntities)
 	c.IsBot = u.isBot
+	// Номер прочитан (userViewerCols), но не показан: его выпускает правило
+	// phone_number в UserViewRules.Apply, а не сырая карточка репозитория.
 	c.User = u.user(true)
-	c.User.Phone = phone
 	return c, nil
 }
 

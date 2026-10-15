@@ -80,7 +80,7 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	// транзакции переводит её в aborted, и «гасим фото и номер» стоило бы строки
 	// журнала. Правила замком курсора владельца не упорядочиваются: их смена —
 	// предмет f6-privacy, не этой строки.
-	rules := i.privacyRules(ctx, ownerID, userID)
+	rules := i.viewRules(ctx, ownerID, []int64{userID})
 	if i.emit != nil {
 		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
 			u, err := i.seenByOwner(ctx, ownerID, userID, rules)
@@ -100,40 +100,40 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	return i.seenByOwner(ctx, ownerID, userID, rules)
 }
 
-// ownerPrivacy — ответы правил приватности пользователя ЗРИТЕЛЮ-владельцу.
-type ownerPrivacy struct{ photo, phone map[int64]bool }
-
-// privacyRules — profile_photo и phone_number одним запросом. Сбой гасит то, что
-// правила охраняют (фото и номер не показываются), как usecase/privacy.ViewUsers.
-// Без проверяющего приватности фото видно, номер скрыт.
-func (i *Interactor) privacyRules(ctx context.Context, ownerID, userID int64) ownerPrivacy {
-	if i.privacy == nil {
-		return ownerPrivacy{photo: map[int64]bool{userID: true}, phone: map[int64]bool{}}
+// viewRules — правила карточки `user` (фото, номер, статус) и присутствие для
+// пачки ids глазами ownerID: тот же сборщик, что у всех витрин
+// (privacy.ViewRules → domain.UserViewRules.Apply). Сбой правила гасит то, что
+// оно охраняет (фото и номер не показываются, статус — «недавно»). Без
+// проверяющего приватности фото видно, номер скрыт, а статус карточки не
+// трогается: о присутствии ничего не известно, и «давно» клиент принял бы за
+// настоящий статус.
+func (i *Interactor) viewRules(ctx context.Context, ownerID int64, ids []int64) domain.UserViewRules {
+	if i.privacy != nil {
+		return i.privacy.ViewRules(ctx, ownerID, ids)
 	}
-	maps, err := i.privacy.VisibleMaps(ctx, ownerID, []int64{userID}, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
-	if err != nil {
-		log.Printf("[user_update] privacy rules owner=%d user=%d: %v", ownerID, userID, err)
-		return ownerPrivacy{photo: map[int64]bool{}, phone: map[int64]bool{}}
+	all := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		all[id] = true
 	}
-	return ownerPrivacy{photo: maps[domain.PrivacyProfilePhoto], phone: maps[domain.PrivacyPhoneNumber]}
+	return domain.UserViewRules{ViewerID: ownerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all}
 }
 
 // seenByOwner — краткая карточка userID глазами ownerID: имя и pFlags.contact
 // из его книги (SeenUser), аватарка по правилу profile_photo пользователя и
-// поверх неё личное фото владельца, номер по правилу phone_number
-// (rules — privacyRules), pFlags.close_friend. Читает только через ctx: зовётся
-// и внутри транзакции с замком курсора владельца.
-func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rules ownerPrivacy) (domain.UserReal, error) {
+// поверх неё личное фото владельца, номер по правилу phone_number, статус по
+// last_seen и присутствию (rules — viewRules; всё это делает Apply),
+// pFlags.close_friend. Читает только через ctx: зовётся и внутри транзакции с
+// замком курсора владельца.
+//
+// Статус в карточке есть всегда: клиент заменяет карточку в кэше целиком, и
+// карточка без `status` стёрла бы у него настоящий статус (tweb насчёт этого
+// держит поле живым, appUsersManager.ts:90-102).
+func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rules domain.UserViewRules) (domain.UserReal, error) {
 	u, err := i.repo.SeenUser(ctx, ownerID, userID)
 	if err != nil {
 		return domain.UserReal{}, err
 	}
 	users := []domain.UserReal{u}
-	view := domain.UncheckedUserViewRules(ownerID, users)
-	// Присутствие в снимок не входит: своё место у него — updateUserStatus, а
-	// «ничего не известно» в карточке стёрло бы у клиента настоящий статус.
-	view.Status = nil
-	view.Photo, view.Phone = rules.photo, rules.phone
 	// Личное фото задано ЗРИТЕЛЕМ (pFlags.personal): правило аватарки его не гасит.
 	if i.photos != nil {
 		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID})
@@ -144,7 +144,7 @@ func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rul
 			users[0].Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 		}
 	}
-	view.Apply(users)
+	rules.Apply(users)
 	u = users[0]
 	if i.close != nil {
 		friends, err := i.close.CloseFriends(ctx, ownerID)
@@ -383,23 +383,6 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 	for _, c := range list {
 		ids = append(ids, c.UserID)
 	}
-	if i.privacy != nil {
-		// Фото и номер — одним запросом; тот же набор правил, что в карточке после
-		// мутации (seenByOwner), иначе одна и та же карточка выходит разной из
-		// GET /contacts и из ответа добавления.
-		maps, err := i.privacy.VisibleMaps(ctx, ownerID, ids, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
-		if err != nil {
-			return nil, err
-		}
-		for idx := range list {
-			if !maps[domain.PrivacyPhoneNumber][list[idx].UserID] {
-				list[idx].User.Phone = ""
-			}
-			if !maps[domain.PrivacyProfilePhoto][list[idx].UserID] {
-				list[idx].User.Photo = domain.NewUserProfilePhotoEmpty()
-			}
-		}
-	}
 	// Личное фото: подменяем настоящий аватар контакта тем, что владелец задал сам.
 	if i.photos != nil {
 		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, ids)
@@ -414,6 +397,18 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 				list[idx].HasCustomPhoto = true
 			}
 		}
+	}
+	// Фото, номер и статус — тем же сборщиком и теми же правилами, что в карточке
+	// после мутации (seenByOwner), иначе одна и та же карточка выходит разной из
+	// GET /contacts и из ответа добавления. Статус обязателен: клиент заменяет
+	// карточку целиком и без него стирает живое присутствие контакта.
+	cards := make([]domain.UserReal, len(list))
+	for idx := range list {
+		cards[idx] = list[idx].User
+	}
+	i.viewRules(ctx, ownerID, ids).Apply(cards)
+	for idx := range list {
+		list[idx].User = cards[idx]
 	}
 	// Близкие друзья — ФЛАГ КАРТОЧКИ, а не отдельная витрина-список: у
 	// оригинала метода чтения нет вовсе, признак читается с самого `user`

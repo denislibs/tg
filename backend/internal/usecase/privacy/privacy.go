@@ -531,6 +531,14 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 	for _, u := range users {
 		ids = append(ids, u.ID)
 	}
+	i.ViewRules(ctx, viewerID, ids).Apply(users)
+}
+
+// ViewRules — ответы правил приватности и присутствие для пачки пользователей
+// ids глазами viewerID: то, из чего ViewUsers доводит карточки. Отдельно — для
+// витрин, которые должны прочитать правила ДО своей транзакции, а карточки
+// довести внутри неё (usecase/contacts: снимок для журнала владельца).
+func (i *Interactor) ViewRules(ctx context.Context, viewerID int64, ids []int64) domain.UserViewRules {
 	rules := domain.UserViewRules{ViewerID: viewerID}
 	// Три правила — одним запросом, присутствие — одним конвейером: витрина
 	// доводит пачку, а не каждого по отдельности.
@@ -565,7 +573,7 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 			return domain.NewUserStatusEmpty()
 		}
 	}
-	rules.Apply(users)
+	return rules
 }
 
 // PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого
