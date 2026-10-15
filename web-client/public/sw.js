@@ -386,6 +386,10 @@ self.addEventListener('message', (event) => {
     requestBridgePortIfNeeded(event.source)
     return
   }
+  if (d && d.type === 'push-ready') {
+    event.waitUntil(onPushReady(event.source))
+    return
+  }
 })
 
 async function clearOldCache(ttlSeconds, maxSize) {
@@ -414,32 +418,100 @@ async function clearOldCache(ttlSeconds, maxSize) {
   } catch (_e) { /* не роняем SW */ }
 }
 
+/* ---- Web Push (порт tweb `serviceWorker/push.ts`) ---------------------------
+ * Тело пуша — `PushNotificationObject` tweb (`push.ts:30-54`): `title`,
+ * `description`, `loc_key`/`loc_args`, `custom{msg_id, from_id | channel_id}`.
+ * Не портировано (у нас нет предмета): подавление пуша при живом окне
+ * (`push.ts:176-181` — у нас гейт по онлайну на сервере), `ignoreMessages`,
+ * `actions` (`mute1d`), мультиаккаунт и шифрованные пуши (`p`), иконка и бейдж
+ * (в `public/` нет картинок), `renotify` (у tweb нет). */
+
+/* Текст без превью: tweb берёт `lang.push_message_nopreview` (:441), по умолчанию
+ * «You have a new message» (:131). Ключа в нашем словаре нет, у SW словаря нет
+ * вовсе — прежний текст воркера. */
+const PUSH_NOPREVIEW_TEXT = 'New message'
+
+/* Клик, который некому отдать: окна нет (его только открывают) или приложение
+ * заперто код-паролем. Отдаётся по `push-ready` от вкладки (tweb `pendingNotification`,
+ * `onPing` :482-487). В памяти SW, как у tweb. */
+let pendingNotification
+
+/** tweb `fillPushObject` (:403-418). Группы и каналы у нас — каналы: `channel_id`. */
+function fillPushObject(obj) {
+  const custom = obj.custom || (obj.custom = {})
+  let peerId
+  if (custom.channel_id) {
+    peerId = '' + -custom.channel_id
+  } else if (custom.chat_id) {
+    peerId = '' + -custom.chat_id
+  } else {
+    peerId = custom.from_id || ''
+  }
+  custom.peerId = '' + peerId
+  return obj
+}
+
+/** tweb `fireNotification` (:420-470) без `ignoreMessages` и `actions`. */
+function notificationOptions(obj) {
+  obj = fillPushObject(obj)
+  const peerId = obj.custom.peerId
+  let title = obj.title || 'Telegram'
+  let body = obj.description || ''
+  let tag = 'peer' + peerId
+  if (!obj.loc_key) { // превью выключено: адрес в `data` остаётся, на экране его нет
+    title = 'Telegram'
+    body = PUSH_NOPREVIEW_TEXT
+    tag = 'unknown_peer'
+  } else if (!body) { // MESSAGE_NOTEXT: описания у нас нет (медиа без подписи)
+    body = PUSH_NOPREVIEW_TEXT
+  }
+  return { title, options: { body, tag, data: obj, silent: obj.custom.silent === '1' } }
+}
+
 self.addEventListener('push', (event) => {
-  let d = {}
-  try { d = event.data ? event.data.json() : {} } catch (_e) { d = {} }
-  const title = (d.sender && d.sender.name) || 'New message'
-  // Пустой text = Message Preview выключен на бэке — показываем generic-текст
-  const body = d.text || 'New message'
-  const chatId = d.chat_id
+  let obj = null
+  try { obj = event.data ? event.data.json() : null } catch (_e) { obj = null }
+  if (!obj || typeof obj !== 'object') obj = {} // userVisibleOnly: уведомление показать обязаны
+  const { title, options } = notificationOptions(obj)
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+/** Приложение заперто код-паролем: флаг есть, ключа нет (tweb `isPasscodeLocked` :~270). */
+async function isPasscodeLocked() {
+  const state = await getPasscodeState()
+  return state.on && !state.key
+}
+
+/** tweb `onNotificationClick` (:~280-345): окно есть — фокус и адрес вкладке, нет — открыть. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const data = event.notification.data
+  if (!data) return
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      tag: chatId != null ? 'chat-' + chatId : undefined,
-      renotify: true,
-      data: { chatId },
-    }),
+    Promise.all([
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }),
+      isPasscodeLocked(),
+    ]).then(([clientList, locked]) => {
+      pendingNotification = data
+      for (const client of clientList) {
+        if (!('focus' in client)) continue
+        client.focus()
+        if (locked) return // ждём push-ready после разблокировки
+        client.postMessage({ type: 'push-click', payload: pendingNotification })
+        pendingNotification = undefined
+        return
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('/')
+    }).catch(() => { /* matchAll/openWindow могут отклониться — не роняем SW */ }),
   )
 })
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  const chatId = event.notification.data && event.notification.data.chatId
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
-      for (const c of cs) {
-        if ('focus' in c) { c.focus(); c.postMessage({ type: 'open-chat', chatId }); return }
-      }
-      if (self.clients.openWindow) return self.clients.openWindow('/')
-    }),
-  )
-})
+/** tweb `onPing` (:482-487): вкладка готова принять адрес клика. Заперто — ждём следующий пинг. */
+async function onPushReady(source) {
+  if (!pendingNotification || !source) return
+  if (await isPasscodeLocked()) return
+  const payload = pendingNotification
+  if (!payload) return // за время ожидания отдал соседний пинг
+  pendingNotification = undefined
+  source.postMessage({ type: 'push-click', payload })
+}
