@@ -111,6 +111,85 @@ func (r *FoldersRepo) Count(ctx context.Context, ownerID int64) (int, error) {
 	return n, err
 }
 
+// Reorder переставляет папки владельца: order — id папок первыми, в этом
+// порядке; неперечисленные идут следом в прежнем порядке (tweb передаёт в
+// messages.updateDialogFiltersOrder весь список, но сервер обязан пережить и
+// неполный — вкладка могла не увидеть свежую папку с другого устройства).
+// Чужой или несуществующий id и повтор — domain.ErrInvalid, ничего не меняется.
+// Позиции перенумеровываются плотно (0..n-1). Строки владельца блокируются на
+// время чтения и записи: две параллельные перестановки идут друг за другом.
+func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64) error {
+	if len(order) == 0 {
+		return nil
+	}
+	return r.tx(ctx, func(ctx context.Context) error {
+		q := querier(ctx, r.pool)
+		rows, err := q.Query(ctx,
+			`SELECT id FROM folders WHERE owner_id=$1 ORDER BY pos, id FOR UPDATE`, ownerID)
+		if err != nil {
+			return err
+		}
+		current := make([]int64, 0)
+		owned := make(map[int64]bool)
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			current = append(current, id)
+			owned[id] = true
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		seq := make([]int64, 0, len(current))
+		seen := make(map[int64]bool, len(order))
+		for _, id := range order {
+			if !owned[id] || seen[id] {
+				return domain.ErrInvalid
+			}
+			seen[id] = true
+			seq = append(seq, id)
+		}
+		for _, id := range current {
+			if !seen[id] {
+				seq = append(seq, id)
+			}
+		}
+		_, err = q.Exec(ctx,
+			`UPDATE folders SET pos = v.ord - 1
+			   FROM unnest($2::bigint[]) WITH ORDINALITY AS v(id, ord)
+			  WHERE folders.id = v.id AND folders.owner_id = $1`, ownerID, seq)
+		return err
+	})
+}
+
+// SetAllChatsPos запоминает место «Все чаты» среди папок владельца.
+func (r *FoldersRepo) SetAllChatsPos(ctx context.Context, ownerID int64, pos int) error {
+	ct, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE users SET dialog_filters_all_pos=$2 WHERE id=$1`, ownerID, pos)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// AllChatsPos — место «Все чаты» среди папок владельца (0 — первой).
+func (r *FoldersRepo) AllChatsPos(ctx context.Context, ownerID int64) (int, error) {
+	var pos int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT dialog_filters_all_pos FROM users WHERE id=$1`, ownerID).Scan(&pos)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return pos, err
+}
+
 // --- Ссылки-приглашения в папку (folder_invites) ---
 
 // inviteSlug — случайный URL-safe слаг (12 байт → 16 символов base64url).

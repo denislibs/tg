@@ -29,6 +29,13 @@ type Repo interface {
 	Delete(ctx context.Context, ownerID, folderID int64) error
 	Count(ctx context.Context, ownerID int64) (int, error)
 
+	// Порядок папок (Ф7-З). Reorder: order — id папок БЕЗ 0; чужой/несуществующий
+	// id и повтор — domain.ErrInvalid. SetAllChatsPos/AllChatsPos — место «Все
+	// чаты» среди папок (число папок перед ней, 0 — первой).
+	Reorder(ctx context.Context, ownerID int64, order []int64) error
+	SetAllChatsPos(ctx context.Context, ownerID int64, pos int) error
+	AllChatsPos(ctx context.Context, ownerID int64) (int, error)
+
 	// Ссылки-приглашения в папку.
 	CreateFolderInvite(ctx context.Context, inv domain.FolderInvite) (slug string, err error)
 	ListFolderInvites(ctx context.Context, folderID, ownerID int64) ([]domain.FolderInvite, error)
@@ -184,6 +191,11 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.DialogFi
 	return i.repo.List(ctx, ownerID)
 }
 
+// AllChatsPos — место «Все чаты» среди папок владельца (0 — первой).
+func (i *Interactor) AllChatsPos(ctx context.Context, ownerID int64) (int, error) {
+	return i.repo.AllChatsPos(ctx, ownerID)
+}
+
 func (i *Interactor) Create(ctx context.Context, ownerID int64, f domain.DialogFilter) (domain.DialogFilter, error) {
 	if err := validate(&f); err != nil {
 		return domain.DialogFilter{}, err
@@ -213,6 +225,71 @@ func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.DialogF
 	}
 	i.emitFolderUpdate(ctx, ownerID, map[string]any{"folder": i.folderJSON(ctx, ownerID, updated)})
 	return updated, nil
+}
+
+// Reorder — messages.updateDialogFiltersOrder: order — id папок в новом порядке;
+// 0 — «Все чаты» (присутствует, только если клиент его переставлял — у
+// не-премиум tweb вырезает 0, chatFolders.tsx:365-367). Место «Все чаты» —
+// индекс 0 в order; без 0 оно не меняется. Неперечисленные папки идут в хвост в
+// прежнем порядке. Чужой/несуществующий id, повтор, второй 0 — domain.ErrInvalid.
+//
+// Перестановка и строка журнала — одна транзакция: журнал без перестановки (и
+// наоборот) разводит устройства навсегда. Кадр — после коммита. Журналируется
+// order как пришёл: клиент применяет его теми же правилами, что и сервер.
+func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) error {
+	if len(order) > domain.MaxFoldersPerUser+1 {
+		return domain.ErrInvalid
+	}
+	folderIDs := make([]int64, 0, len(order))
+	allIdx := -1
+	for idx, id := range order {
+		if id != 0 {
+			folderIDs = append(folderIDs, id)
+			continue
+		}
+		if allIdx >= 0 {
+			return domain.ErrInvalid
+		}
+		allIdx = idx
+	}
+	var pts int64
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if allIdx >= 0 {
+			if err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx); err != nil {
+				return err
+			}
+		}
+		if err := i.repo.Reorder(ctx, ownerID, folderIDs); err != nil {
+			return err
+		}
+		if i.updates == nil {
+			return nil
+		}
+		payload, err := json.Marshal(domain.NewUpdateDialogFilterOrder(order))
+		if err != nil {
+			return err
+		}
+		pts, err = i.updates.AppendUpdate(ctx, ownerID, 1, time.Now().Unix(), domain.UpdateDialogFilterOrderTag, payload)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if pts == 0 || i.pub == nil {
+		return nil
+	}
+	// Конструктор без параметра pts: курсор в конверте, рядом с телом (тот же
+	// вид, что у общего пути конструкторов — usecase/chat/frame.go).
+	frame, err := json.Marshal(map[string]any{
+		"t": domain.UpdateDialogFilterOrderTag, "pts": pts,
+		"d": domain.NewUpdateDialogFilterOrder(order),
+	})
+	if err == nil {
+		// Мутация закоммичена: сбой публикации не ломает ответ, устройство
+		// догонит строку журнала через getDifference.
+		_ = i.pub.PublishToUser(ctx, ownerID, frame)
+	}
+	return nil
 }
 
 func (i *Interactor) Delete(ctx context.Context, ownerID, folderID int64) error {

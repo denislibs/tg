@@ -161,6 +161,7 @@ func updateCases() []struct {
 			return u
 		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
+		{"порядок папок", NewUpdateDialogFilterOrder([]int64{0, 3, 1})},
 	}
 }
 
@@ -264,6 +265,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateReadChannelDiscussionInboxTag,
 		UpdateReadChannelDiscussionOutboxTag,
 		UpdateSavedReactionTagsTag,
+		UpdateDialogFilterOrderTag,
 		NotifyForumTopicTag,
 		NotifyUsersTag,
 		NotifyChatsTag,

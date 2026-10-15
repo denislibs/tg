@@ -108,6 +108,9 @@ const (
 	// Теги «Избранного» (Ф-6, f6-contacts) — updateSavedReactionTags без
 	// параметров: «перечитай теги» (tweb appReactionsManager.ts:121-132).
 	UpdateSavedReactionTagsTag = "updateSavedReactionTags"
+	// Порядок папок (Ф7-З, MC-10) — updateDialogFilterOrder{order}
+	// (tweb filters.ts:179-199).
+	UpdateDialogFilterOrderTag = "updateDialogFilterOrder"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1443,4 +1446,23 @@ func (u UpdateSavedReactionTags) Tag() string { return u.Underscore }
 
 func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
 	return UpdateSavedReactionTags{Underscore: UpdateSavedReactionTagsTag}
+}
+
+// updateDialogFilterOrder#a5d72105 order:Vector<int> = Update; — порядок папок
+// сменился на другом устройстве владельца (tweb filters.ts:179-199). order — id
+// папок в новом порядке; 0 — «Все чаты», он присутствует, только если
+// устройство его переставляло (у не-премиум tweb вырезает его из order,
+// chatFolders.tsx:365-367). Папки, которых в списке нет, остаются в хвосте в
+// прежнем порядке — так же, как их ставит сервер. Своего pts у конструктора
+// нет — курсор едет в конверте.
+type UpdateDialogFilterOrder struct {
+	Underscore string  `json:"_"`
+	Order      []int64 `json:"order"`
+}
+
+func (UpdateDialogFilterOrder) isUpdate()     {}
+func (u UpdateDialogFilterOrder) Tag() string { return u.Underscore }
+
+func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
+	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
 }

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -120,5 +121,112 @@ func TestFoldersRepo_Invites(t *testing.T) {
 	}
 	if _, err := r.GetFolderInviteBySlug(ctx, slug2); err != domain.ErrNotFound {
 		t.Fatalf("after folder delete: %v, want ErrNotFound (cascade)", err)
+	}
+}
+
+// Ф7-З: порядок папок (messages.updateDialogFiltersOrder) и позиция «Все чаты».
+func TestFoldersRepo_Reorder(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewFoldersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7811")
+	other := seedUser(t, pool, "+7812")
+
+	var ids [3]int64
+	for i, title := range []string{"a", "b", "c"} {
+		f, err := r.Create(ctx, owner, domain.DialogFilter{Title: title, Groups: true})
+		if err != nil {
+			t.Fatalf("Create %s: %v", title, err)
+		}
+		ids[i] = f.ID
+	}
+	foreign, err := r.Create(ctx, other, domain.DialogFilter{Title: "x", Groups: true})
+	if err != nil {
+		t.Fatalf("Create foreign: %v", err)
+	}
+	order := func() []int64 {
+		t.Helper()
+		list, err := r.List(ctx, owner)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		out := make([]int64, len(list))
+		for i, f := range list {
+			out[i] = f.ID
+		}
+		return out
+	}
+	eq := func(got, want []int64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("order = %v; want %v", got, want)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("order = %v; want %v", got, want)
+			}
+		}
+	}
+
+	// Полный порядок.
+	if err := r.Reorder(ctx, owner, []int64{ids[2], ids[0], ids[1]}); err != nil {
+		t.Fatalf("Reorder full: %v", err)
+	}
+	eq(order(), []int64{ids[2], ids[0], ids[1]})
+
+	// Частичный: перечисленные первыми, остальные — в хвост в прежнем порядке.
+	if err := r.Reorder(ctx, owner, []int64{ids[1]}); err != nil {
+		t.Fatalf("Reorder partial: %v", err)
+	}
+	eq(order(), []int64{ids[1], ids[2], ids[0]})
+
+	// Пустой порядок — ничего не меняет.
+	if err := r.Reorder(ctx, owner, nil); err != nil {
+		t.Fatalf("Reorder empty: %v", err)
+	}
+	eq(order(), []int64{ids[1], ids[2], ids[0]})
+
+	// Чужая, несуществующая папка и повтор — ErrInvalid, порядок не тронут.
+	for name, bad := range map[string][]int64{
+		"чужая":          {ids[0], foreign.ID},
+		"несуществующая": {999999},
+		"повтор":         {ids[0], ids[0]},
+	} {
+		if err := r.Reorder(ctx, owner, bad); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("Reorder %s: %v; want ErrInvalid", name, err)
+		}
+		eq(order(), []int64{ids[1], ids[2], ids[0]})
+	}
+	// Чужие папки не затронуты.
+	if list, _ := r.List(ctx, other); len(list) != 1 || list[0].Pos != 0 {
+		t.Fatalf("foreign list = %+v", list)
+	}
+
+	// Новая папка после перестановки встаёт в конец.
+	nf, err := r.Create(ctx, owner, domain.DialogFilter{Title: "d", Groups: true})
+	if err != nil {
+		t.Fatalf("Create after reorder: %v", err)
+	}
+	eq(order(), []int64{ids[1], ids[2], ids[0], nf.ID})
+}
+
+func TestFoldersRepo_AllChatsPos(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewFoldersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7821")
+	other := seedUser(t, pool, "+7822")
+
+	if pos, err := r.AllChatsPos(ctx, owner); err != nil || pos != 0 {
+		t.Fatalf("default AllChatsPos = %d, %v; want 0", pos, err)
+	}
+	if err := r.SetAllChatsPos(ctx, owner, 2); err != nil {
+		t.Fatalf("SetAllChatsPos: %v", err)
+	}
+	if pos, _ := r.AllChatsPos(ctx, owner); pos != 2 {
+		t.Fatalf("AllChatsPos = %d; want 2", pos)
+	}
+	if pos, _ := r.AllChatsPos(ctx, other); pos != 0 {
+		t.Fatalf("чужая позиция = %d; want 0", pos)
 	}
 }
