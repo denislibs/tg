@@ -297,6 +297,23 @@ describe('pending: подтверждение сервера', () => {
     expect(msg.media).toMatchObject({ _: 'messageMediaWebPage' })
   })
 
+  // f6-contact: user_id визитки в бабле — клиентский (из inputMedia); сервер
+  // выводит свой по номеру (0, если скрыт), и ack, приходящий раньше эха, его
+  // подтверждает — иначе до перезагрузки у отправителя аватар/клик ведут к
+  // чужому id (tweb: `newMessage.media = updates.media`).
+  it('ack заменяет визитку серверной: user_id выводит сервер', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+    await p.sendText({
+      peerId: 1, text: '', clientMsgId: 'c1', threadId: null, type: 'contact', contact: CONTACT,
+      optimistic: { senderId: 5 },
+    })
+    const media = { _: 'messageMediaContact' as const, phone_number: '+79990000002', first_name: 'Маша', last_name: 'Иванова', vcard: 'BEGIN:VCARD', user_id: 0 }
+    const ops = p.ackPendingMessage({ client_msg_id: 'c1', id: 20, date: 5, media } as never)
+    expect((ops[0] as { msg: MessageReal }).msg.media).toMatchObject({ _: 'messageMediaContact', user_id: 0 })
+  })
+
   // Счёт истории (`historyStorage.count`) растёт на ФИНАЛЬНОМ сообщении, а не
   // на временном бабле: своя отправка — единственный путь новых сообщений в
   // «Избранном», и без этого «N messages» в его шапке стоял бы на месте.

@@ -872,7 +872,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       geo: args.geo,
       // Бабл визитки показывает те же поля, что уходят на сервер; user_id берётся
       // из inputMedia, как у tweb (`inputMedia.user_id ?? '0'`, :4041), на провод
-      // он не идёт (connectionManager), эхо new_message его заменит.
+      // он не идёт (connectionManager); серверный user_id придёт с ack.
       contact: args.contact,
       secret: optimistic.secret,
       send_as: optimistic.sendAs,
@@ -1015,10 +1015,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       if (next._ === 'message') {
         if (ack.entities) next.entities = ack.entities
         if (ack.ttl_period) next.ttl_period = ack.ttl_period
-        // Карточку плашки композера подтверждение заменяет серверной (tweb
-        // `newMessage.media = updates.media`, :2776); вложение-файл бабла — нет:
-        // его локальное превью живёт до эха.
-        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage')) next.media = saveMessageMedia(ack.media)
+        // Карточку плашки композера и визитку (её `user_id` выводит сервер по
+        // номеру) подтверждение заменяет серверными (tweb `newMessage.media =
+        // updates.media`, :2776); вложение-файл бабла — нет: его локальное
+        // превью живёт до эха.
+        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage' || next.media._ === 'messageMediaContact')) next.media = saveMessageMedia(ack.media)
       }
       return finalizePendingMessage(ack.client_msg_id, next)
     },
