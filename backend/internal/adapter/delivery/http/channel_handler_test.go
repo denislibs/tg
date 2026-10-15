@@ -1164,3 +1164,144 @@ func linkedPeerOf(t *testing.T, h http.Handler, token, cid string) int64 {
 	}
 	return -out.FullChat.LinkedChatID
 }
+
+// GET /contacts/resolve_username (contacts.resolveUsername): точное @имя в общем
+// пространстве имён → contacts.resolvedPeer{peer, chats, users}; кривая форма —
+// 400 USERNAME_INVALID, свободное имя — 400 USERNAME_NOT_OCCUPIED (tweb
+// internalLinkProcessor.ts:75-81 разбирает оба). Ф7-Е, MC-14.
+func TestResolveUsername_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	ctx := t.Context()
+	tokenOwner, _ := signUp(t, h, pool, "+79990004001")
+	tokenViewer, _ := signUp(t, h, pool, "+79990004002")
+	_, personID := signUp(t, h, pool, "+79990004003")
+	if _, err := pool.Exec(ctx, `UPDATE users SET username='ivan_pub' WHERE id=$1`, personID); err != nil {
+		t.Fatal(err)
+	}
+	rec := authedReq(t, h, http.MethodPost, "/channels", tokenOwner, map[string]any{
+		"title": "Lenta", "username": "lenta4001", "is_public": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("создание канала: %d %s", rec.Code, rec.Body.String())
+	}
+	chanPeer := createdPeerID(t, rec)
+
+	type resolved struct {
+		Underscore string `json:"_"`
+		Peer       struct {
+			Underscore string `json:"_"`
+			ChannelID  int64  `json:"channel_id"`
+			UserID     int64  `json:"user_id"`
+		} `json:"peer"`
+		Chats []struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		} `json:"chats"`
+		Users []struct {
+			ID       int64  `json:"id"`
+			Username string `json:"username"`
+		} `json:"users"`
+	}
+	get := func(username string) *httptest.ResponseRecorder {
+		return authedReq(t, h, http.MethodGet, "/contacts/resolve_username?username="+username, tokenViewer, nil)
+	}
+
+	// Публичный канал; регистр не важен.
+	rec = get("Lenta4001")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("канал: %d %s", rec.Code, rec.Body.String())
+	}
+	var res resolved
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Underscore != "contacts.resolvedPeer" || res.Peer.Underscore != "peerChannel" ||
+		len(res.Chats) != 1 || len(res.Users) != 0 || res.Chats[0].Username != "lenta4001" {
+		t.Fatalf("канал: %s", rec.Body.String())
+	}
+	if domain.PeerID(chanPeer).ToChatID() != res.Chats[0].ID || res.Peer.ChannelID != res.Chats[0].ID {
+		t.Fatalf("peer %d / chat %d / создан %d", res.Peer.ChannelID, res.Chats[0].ID, domain.PeerID(chanPeer).ToChatID())
+	}
+
+	// Пользователь, который зрителю не контакт и без лички.
+	res = resolved{}
+	rec = get("@ivan_pub")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("пользователь: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Peer.Underscore != "peerUser" || res.Peer.UserID != personID ||
+		len(res.Users) != 1 || res.Users[0].ID != personID || len(res.Chats) != 0 {
+		t.Fatalf("пользователь: %s", rec.Body.String())
+	}
+
+	if got := wireErr(t, get("nobody1"), http.StatusBadRequest); got != "USERNAME_NOT_OCCUPIED" {
+		t.Fatalf("свободное имя: %q; want USERNAME_NOT_OCCUPIED", got)
+	}
+	for _, bad := range []string{"", "%20", "a", "with%20space", "кириллица", strings.Repeat("a", 33)} {
+		if got := wireErr(t, get(bad), http.StatusBadRequest); got != "USERNAME_INVALID" {
+			t.Fatalf("username=%q: %q; want USERNAME_INVALID", bad, got)
+		}
+	}
+	// Без сессии — 401, как у соседей.
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/contacts/resolve_username?username=lenta4001", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("без токена: %d", rec.Code)
+	}
+}
+
+// GET /search: чужого по части ИМЕНИ не находят — перебор людей (MC-14, В-8);
+// по @username находят, контакта — по имени. Свои идут в my_results, чужой по
+// @username — в results.
+func TestSearch_NameOnlyAmongOwn_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	ctx := t.Context()
+	tokenViewer, viewerID := signUp(t, h, pool, "+79990004011")
+	_, strangerID := signUp(t, h, pool, "+79990004012")
+	_, contactID := signUp(t, h, pool, "+79990004013")
+	for id, name := range map[int64]string{strangerID: "Zebulon Quux", contactID: "Zebulon Friend"} {
+		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2, first_name=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET username='zebra_stranger' WHERE id=$1`, strangerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id) VALUES ($1, $2)`, viewerID, contactID); err != nil {
+		t.Fatal(err)
+	}
+
+	type found struct {
+		MyResults []struct {
+			UserID int64 `json:"user_id"`
+		} `json:"my_results"`
+		Results []struct {
+			UserID int64 `json:"user_id"`
+		} `json:"results"`
+	}
+	search := func(q string) found {
+		t.Helper()
+		rec := authedReq(t, h, http.MethodGet, "/search?q="+q, tokenViewer, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("/search?q=%s: %d %s", q, rec.Code, rec.Body.String())
+		}
+		var f found
+		if err := json.Unmarshal(rec.Body.Bytes(), &f); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+
+	f := search("Zebulon")
+	if len(f.MyResults) != 1 || f.MyResults[0].UserID != contactID || len(f.Results) != 0 {
+		t.Fatalf("по имени: my=%+v results=%+v; want только контакт %d", f.MyResults, f.Results, contactID)
+	}
+	f = search("zebra")
+	if len(f.MyResults) != 0 || len(f.Results) != 1 || f.Results[0].UserID != strangerID {
+		t.Fatalf("по @username: my=%+v results=%+v; want чужой %d в results", f.MyResults, f.Results, strangerID)
+	}
+}

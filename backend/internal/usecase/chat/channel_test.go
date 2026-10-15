@@ -62,6 +62,8 @@ func (r *fakeChannelRepo) CurrentPts(_ context.Context, channelID int64) (int64,
 type fakeSearchRepo struct {
 	mu        sync.Mutex
 	usernames map[string]int64
+	// userNames — @имена пользователей (UserIDByUsername), нижний регистр.
+	userNames map[string]int64
 	// Выдача поиска пиров и «свои» из неё (OwnPeers).
 	chats              []int64 // ранжированные id публичных чатов
 	users              []domain.UserReal
@@ -73,7 +75,7 @@ type fakeSearchRepo struct {
 }
 
 func newFakeSearchRepo() *fakeSearchRepo {
-	return &fakeSearchRepo{usernames: map[string]int64{}}
+	return &fakeSearchRepo{usernames: map[string]int64{}, userNames: map[string]int64{}}
 }
 
 func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, limit int) ([]int64, error) {
@@ -117,6 +119,15 @@ func (r *fakeSearchRepo) PublicChatByUsername(_ context.Context, username string
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if id, ok := r.usernames[username]; ok {
+		return id, nil
+	}
+	return 0, domain.ErrNotFound
+}
+
+func (r *fakeSearchRepo) UserIDByUsername(_ context.Context, username string) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if id, ok := r.userNames[strings.ToLower(username)]; ok {
 		return id, nil
 	}
 	return 0, domain.ErrNotFound
@@ -644,6 +655,45 @@ func TestJoinPublicChannel(t *testing.T) {
 	}
 	if _, err := fg.GetMember(context.Background(), id, 9); err != nil {
 		t.Fatal("joiner not subscriber")
+	}
+}
+
+// ResolveUsername (contacts.resolveUsername): точное имя в общем пространстве
+// имён — публичный чат или пользователь; ответ — ссылка на пир и его тело
+// глазами зрителя (tweb appUsersManager.ts:380-410).
+func TestResolveUsername(t *testing.T) {
+	ctx := context.Background()
+	i, fg, fs, _ := newChannelTestInteractor(t)
+	id, _ := i.CreateChannel(ctx, 7, "Lenta", "", "lenta", true)
+	fs.usernames["lenta"] = id
+	fg.users[42] = domain.NewUser(42, domain.UserFlags{})
+	fs.userNames["ivan_k"] = 42
+
+	res, err := i.ResolveUsername(ctx, 9, "lenta")
+	if err != nil {
+		t.Fatalf("публичный канал: %v", err)
+	}
+	if res.Peer.PeerID() != domain.NewPeerChannel(id).PeerID() || len(res.Chats) != 1 || len(res.Users) != 0 {
+		t.Fatalf("канал: %+v; want peer=channel %d, одна карточка чата, без людей", res, id)
+	}
+	if ch, ok := res.Chats[0].(domain.Channel); !ok || ch.ID != id {
+		t.Fatalf("карточка чата: %#v", res.Chats[0])
+	}
+
+	if up, err := i.ResolveUsername(ctx, 9, "LENTA"); err != nil || up.Peer.PeerID() != domain.NewPeerChannel(id).PeerID() {
+		t.Fatalf("регистр у публичного чата: %+v %v; want тот же канал", up, err)
+	}
+
+	res, err = i.ResolveUsername(ctx, 9, "Ivan_K")
+	if err != nil {
+		t.Fatalf("пользователь (регистр): %v", err)
+	}
+	if res.Peer.PeerID() != domain.NewPeerUser(42).PeerID() || len(res.Users) != 1 || res.Users[0].ID != 42 || len(res.Chats) != 0 {
+		t.Fatalf("пользователь: %+v; want peer=user 42, одна карточка, без чатов", res)
+	}
+
+	if _, err := i.ResolveUsername(ctx, 9, "nobody"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("нет такого имени: err=%v; want ErrNotFound", err)
 	}
 }
 

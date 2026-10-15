@@ -149,6 +149,9 @@ func allPeerConstructors() []any {
 			[]Chat{NewChannel(9, "канал", NewChatPhotoEmpty(), date, ChannelFlags{Broadcast: true})},
 			[]UserReal{NewUser(43, UserFlags{})}),
 		NewContactsFound(nil, nil, nil, nil),
+		NewContactsResolvedPeer(NewPeerUser(42), nil, []UserReal{NewUser(42, UserFlags{})}),
+		NewContactsResolvedPeer(NewPeerChannel(9),
+			[]Chat{NewChannel(9, "канал", NewChatPhotoEmpty(), date, ChannelFlags{Broadcast: true})}, nil),
 
 		// ── messageFwdHeader (долг шага B) ───────────────────────────────────
 		// Пост канала: автор — сам канал, есть и channel_post, и saved_from_*.
@@ -306,7 +309,7 @@ func peerConstructorTags() []string {
 		UserStatusEmptyTag, UserStatusOnlineTag, UserStatusOfflineTag,
 		UserStatusRecentlyTag, UserStatusLastWeekTag, UserStatusLastMonthTag,
 		UserFullTag, BirthdayTag, UsersUserFullTag,
-		PeerBlockedTag, ContactsBlockedSliceTag, ContactsFoundTag,
+		PeerBlockedTag, ContactsBlockedSliceTag, ContactsFoundTag, ContactsResolvedPeerTag,
 		MessageFwdHeaderTag,
 		ChatEmptyTag, ChatTag, ChatForbiddenTag, ChannelTag, ChannelForbiddenTag,
 		ChatPhotoEmptyTag, ChatPhotoTag,

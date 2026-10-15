@@ -2,7 +2,7 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
 import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
-import { isUser, toUserId } from '../peers/peerId'
+import { getPeerId, isUser, toUserId, type Peer } from '../peers/peerId'
 import type { PresenceEvt } from '../realtime/events'
 
 // Карточка пира — КОНСТРУКТОР схемы (`user` / `channel` / …), а не плоская
@@ -399,10 +399,12 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   }
 
   /**
-   * Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:344-359`):
-   * СНАЧАЛА индекс имён, и только на промахе — ОДИН запрос, чей ответ
-   * прогоняется через сохранение пиров (`processResolvedPeer`, tweb
-   * `appUsersManager.ts:368-373`).
+   * Порт `appUsersManager.resolveUsername` (tweb `appUsersManager.ts:380-397`):
+   * СНАЧАЛА индекс имён, и только на промахе — ОДИН `contacts.resolveUsername`
+   * (у нас `GET /contacts/resolve_username`), чей ответ прогоняется через
+   * сохранение пиров (`processResolvedPeer`, tweb `:405-410`): оба вектора
+   * ложатся в кэш (вместе с ними наполняется и индекс имён), пир достаётся по
+   * ссылке `peer`.
    *
    * До этого порта имя резолвил СКАН ВИТРИНЫ ДИАЛОГОВ на главном потоке
    * (`useUrlSync.ts`), то есть открытие по ссылке было заперто за загрузкой
@@ -413,35 +415,27 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * `index.ts:455`, стоит раньше `bootstrapIm()`), и попадание в него сети не
    * стоит вовсе.
    *
-   * Отличие от оригинала одно, и оно в ручке: `contacts.resolveUsername` у нас
-   * нет, ближайший эквивалент — директория `GET /search` (тот же конструктор
-   * `contacts.found`, тот же один запрос). Совпадение проверяется ТОЧНО по
-   * имени: директория ищет префиксом (`searchrepo.go::SearchChats`, `ILIKE
-   * 'q%'`), и без сверки `@lenta` открывал бы `lenta_news`.
-   *
-   * Отказ — `USERNAME_NOT_OCCUPIED` оригинала: имя отказа переживает границу
-   * воркера (`superMessagePort.ts:239-252` кладёт `HttpError.type` в
-   * `errorType`), и вызывающий ветвится по нему, как `openUsername`
-   * (tweb `appImManager.ts:1801-1809`).
+   * Отказ — `USERNAME_NOT_OCCUPIED` / `USERNAME_INVALID` сервера: имя отказа
+   * переживает границу воркера (`superMessagePort.ts:239-252` кладёт
+   * `HttpError.type` в `errorType`), и вызывающий ветвится по нему, как
+   * `showUsernameResolveError` (tweb `internalLinkProcessor.ts:75-81`,
+   * `appImManager.ts:2175-2178`).
    */
   async function resolveUsername(username: string): Promise<User | Chat> {
     const name = username.replace(/^@+/, '').trim().toLowerCase()
-    if (!name) throw new HttpError(400, 'username invalid', 'USERNAME_INVALID')
+    if (!name) throw new HttpError(400, 'USERNAME_INVALID', 'USERNAME_INVALID')
 
     await hydrateFromDisk()
     const cached = usernames.get(name)
     const peer = cached !== undefined ? cache.get(cached) : undefined
     if (peer) return peer
 
-    const found = await rest.get<{ chats?: Chat[]; users?: UserReal[] }>('/search', { q: name })
-    // Порт `processResolvedPeer` (tweb :368-373): ответ сначала СОХРАНЯЕТСЯ —
-    // вместе с ним наполняется и индекс имён, — и только потом из него
-    // выбирается пир.
-    saveApiPeers(found)
-    const match = [...(found.chats ?? []), ...(found.users ?? [])]
-      .find((p) => peerUsername(p)?.toLowerCase() === name)
-    if (!match) throw new HttpError(404, 'username not occupied', 'USERNAME_NOT_OCCUPIED')
-    return match
+    const resolved = await rest.get<{ peer: Peer; chats?: Chat[]; users?: UserReal[] }>(
+      '/contacts/resolve_username', { username: name })
+    saveApiPeers(resolved)
+    const found = cache.get(getPeerId(resolved.peer))
+    if (!found) throw new HttpError(400, 'USERNAME_NOT_OCCUPIED', 'USERNAME_NOT_OCCUPIED')
+    return found
   }
 
   return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername }
