@@ -1,22 +1,23 @@
 // Порт tweb `src/components/chat/commandsHelper.ts` (812502980) — подсказка
 // команд бота по `/` в начале строки ввода; выбор сразу отправляет команду.
-// Пачка П-6, Б-34.
+// Пачка П-6, Б-34; Ф-6 f6-bots.
+//
+// Команды читаются из ПОЛНОЙ карточки пира, как у оригинала (`:47-63`):
+// `userFull.bot_info` у бота, `channelFull.bot_info` у группы; в группе у команды
+// стоит суффикс `@username` бота (`:24-29`). Кадр `updateBotCommands` правит
+// закэшированную карточку (`chatFullCache.applyBotCommands`), поэтому каждый
+// запрос видит свежий список без повторного похода в сеть.
 //
 // Расхождения с оригиналом:
-//  1. Команды — только у личного чата с ботом: карточка (`getProfileByPeerId` →
-//     `bot_info`) собирается из ручки `GET /bots/{id}/commands`
-//     (`bots.commands`). У групп `chatFull.bot_info` бэкенд не производит
-//     (`domain/mtchat.go`, «нет предмета») — `/` в группе подсказки не даёт,
-//     Б-137. Поэтому и суффикс `@username` бота у команды в группе
-//     (`:24-29`) не строится.
-//  2. Команда ставится в поле текстом (`textContent`), а не `innerHTML` узла
+//  1. Команда ставится в поле текстом (`textContent`), а не `innerHTML` узла
 //     имени: правило «не строить DOM из строки» (`web-client/CLAUDE.md`); имя
 //     команды — латиница без разметки, значение то же.
-//  3. Эфемерных команд (`ephemeralReceiverId`) у бэкенда нет.
+//  2. Эфемерных команд (`ephemeralReceiverId`) у бэкенда нет.
 import type { Managers } from '@/client/bootstrap'
-import { cachedUser } from '@core/peerCache'
-import { isUser } from '@core/peers/peerId'
+import { cachedUser, isAnyGroupPeer } from '@core/peerCache'
+import { isAnyChat, isUser } from '@core/peers/peerId'
 import { isBot as isBotPeer } from '@core/peers/predicates'
+import { getProfileByPeerId } from '@/stores/fullPeers.solid'
 import AutocompletePeerHelper from './autocompletePeerHelper'
 import type AutocompleteHelperController from './autocompleteHelperController'
 import processPeerFullForCommands from './processPeerFullForCommands'
@@ -34,7 +35,17 @@ export default class CommandsHelper extends AutocompletePeerHelper {
       controller,
       'commands-helper',
       (target) => {
-        const name = target.querySelector(`.${AutocompletePeerHelper.BASE_CLASS_LIST_ELEMENT}-name`)!.textContent!
+        const targetElement = target as HTMLElement
+        const botPeerId = +targetElement.dataset.peerId!
+        let name = target.querySelector(`.${AutocompletePeerHelper.BASE_CLASS_LIST_ELEMENT}-name`)!.textContent!
+        if(isAnyChat(chatInput.chat.peerId)) {
+          const bot = cachedUser(botPeerId)
+          const username = bot?._ === 'user' ? bot.username : undefined
+          if(username) {
+            name += '@' + username
+          }
+        }
+
         hideCommandAutocomplete(controller)
         return chatInput.getReadyToSend(() => {
           chatInput.messageInput.textContent = name
@@ -48,17 +59,17 @@ export default class CommandsHelper extends AutocompletePeerHelper {
 
   public async checkQuery(query: string, peerId: PeerId) {
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
-    if(!isBot) { // * расхождение 1
+    if(!isBot && !isAnyGroupPeer(peerId)) {
       return false
     }
 
     const middleware = this.controller!.getMiddleware()
-    void this.managers.bots.commands(peerId).then((commands) => {
-      if(!middleware()) {
+    void getProfileByPeerId(this.managers, peerId).then((full) => {
+      if(!middleware() || !full) {
         return
       }
 
-      const filtered = processPeerFullForCommands(peerId, { bot_info: { user_id: peerId, commands } }, query)
+      const filtered = processPeerFullForCommands(peerId, full, query)
       this.render(filtered, middleware)
     }).catch(() => {})
 

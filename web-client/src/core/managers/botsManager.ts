@@ -6,10 +6,6 @@ import { getServerMessageId } from '../history/messageId'
 // Боты (демо-бот @demobot). Реальных ботов нет — есть один демо-бот, который
 // авто-отвечает на сервере; клиент рендерит его клавиатуры и шлёт callback.
 
-export interface BotCommand {
-  command: string
-  description: string
-}
 export interface CallbackAnswer {
   text: string
   alert: boolean
@@ -48,11 +44,6 @@ interface MessagesBotResults {
 
 export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'> }) {
   return {
-    async commands(botId: number): Promise<BotCommand[]> {
-      // Ответ — сам ВЕКТОР строк `botCommand`, а не список под именем поля.
-      const r = await rest.get<(BotCommand & { _: 'botCommand' })[]>(`/bots/${botId}/commands`)
-      return r ?? []
-    },
     // Нажатие callback-кнопки: возвращает всплывающий ответ (toast/alert).
     //
     // `data` — поле `keyboardButtonCallback.data` кнопки БЕЗ преобразований, как

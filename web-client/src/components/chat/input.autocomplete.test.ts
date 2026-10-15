@@ -16,6 +16,7 @@ import { useSettingsStore } from '@/settings'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { applyBotCommands, resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import type { User } from '@core/peers/peer'
 import ChatInput from './input'
 import { ChatType } from './chatType'
@@ -69,11 +70,6 @@ function makeManagers() {
     },
     bots: {
       menuButton: vi.fn(async() => ({ text: '', url: '' })),
-      commands: vi.fn(async() => [
-        { command: 'start', description: 'Начать' },
-        { command: 'help', description: 'Помощь' },
-        { command: 'settings', description: 'Настройки' },
-      ]),
       inline: vi.fn(async() => ({ results: [], placeholder: '' })),
     },
     stickers: { use: vi.fn(async() => {}), saveGif: vi.fn(async() => {}), searchByEmoji: vi.fn(async() => []) },
@@ -198,6 +194,7 @@ beforeEach(async() => {
   const { default: rootScope } = await import('@lib/rootScope')
   rootScope.myId = ME
   resetPeerMirror()
+  resetChatFullMirror()
   applyPeerOps([{ op: 'upsert', peers: [
     ...users,
     { _: 'channel', id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, participants_count: 3, pFlags: { megagroup: true } },
@@ -280,13 +277,21 @@ describe('автокомплит: `@` — упоминания', () => {
 
 describe('автокомплит: `/` — команды бота', () => {
   it('в чате с ботом показывает отфильтрованные команды, выбор отправляет команду', async() => {
+    // Команды — из лежащей полной карточки бота (`userFull.bot_info`), сети нет.
+    saveChatFull(BOT, {
+      _: 'userFull', id: BOT,
+      bot_info: { _: 'botInfo', user_id: BOT, commands: [
+        { _: 'botCommand', command: 'start', description: 'Начать' },
+        { _: 'botCommand', command: 'help', description: 'Помощь' },
+        { _: 'botCommand', command: 'settings', description: 'Настройки' },
+      ] },
+    })
     mounted = await mountInput(BOT)
     const { input, managers } = mounted
 
     type(input, '/he')
     await flush()
 
-    expect(managers.bots.commands).toHaveBeenCalledWith(BOT)
     const commands = helper(input, 'commands-helper')
     expect(commands.classList.contains('is-visible')).toBe(true)
     const names = [...commands.querySelectorAll('.commands-helper-list-element-name')].map((el) => el.textContent)
@@ -299,13 +304,31 @@ describe('автокомплит: `/` — команды бота', () => {
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ peerId: BOT, text: '/help' })
   })
 
+  it('кадр updateBotCommands перерисовывает открытую подсказку (tweb peer_full_update)', async() => {
+    saveChatFull(BOT, {
+      _: 'userFull', id: BOT,
+      bot_info: { _: 'botInfo', user_id: BOT, commands: [{ _: 'botCommand', command: 'start', description: 'Начать' }] },
+    })
+    mounted = await mountInput(BOT)
+    const { input } = mounted
+
+    type(input, '/')
+    await flush()
+    const names = () => [...helper(input, 'commands-helper').querySelectorAll('.commands-helper-list-element-name')].map((el) => el.textContent)
+    expect(names()).toEqual(['/start'])
+
+    applyBotCommands(BOT, BOT, [{ _: 'botCommand', command: 'fresh', description: 'Новая' }])
+    await flush()
+    expect(names()).toEqual(['/fresh'])
+  })
+
   it('`/` не в начале строки и не в чате с ботом — без подсказки', async() => {
     mounted = await mountInput(GROUP)
-    const { input, managers } = mounted
+    const { input } = mounted
 
     type(input, '/st')
     await flush()
-    expect(managers.bots.commands).not.toHaveBeenCalled()
+    expect(helper(input, 'commands-helper').classList.contains('is-visible')).toBe(false)
   })
 })
 
