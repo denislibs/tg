@@ -1721,8 +1721,9 @@ SCSS (`_chatInlineHelper.scss`):
 `insertAtCaret`, `mentionUser`, `onEmojiSelected` — `W/components/chat/input.ts` (блок в конце
 класса, расхождение 9 шапки). Расхождения — в шапке каждого файла: у `init` наследников —
 поле-стрелка (под `useDefineForClassFields` метод затёрся бы полем базы); упоминания — ручкой
-`GET /chats/{id}/members?q=` без топ-ботов (Б-136); команды — только в чате с ботом через
-`GET /bots/{id}/commands` (Б-137); эмодзи — без пакета ключевых слов и своих эмодзи (Б-138),
+`GET /chats/{id}/members?q=` без топ-ботов (Б-136); команды — из полной карточки пира
+(`userFull.bot_info` / `channelFull.bot_info`, `getProfileByPeerId`; кадр `updateBotCommands`
+правит закэшированную карточку, Ф-6 f6-bots), в группе с суффиксом `@username` бота; эмодзи — без пакета ключевых слов и своих эмодзи (Б-138),
 `appendEmoji`/`getEmojiFromElement`/поиск — ВРЕМЕННО до Б-35 в `emojiHelper.ts`; стикеры —
 ячейка `wrapSticker` вместо `SuperStickerRenderer` (ВРЕМЕННО до Б-35); инлайн — только
 списочный режим, выбор шлёт текст статьи (Б-139). Тултип разметки (§11.4, Б-33) —

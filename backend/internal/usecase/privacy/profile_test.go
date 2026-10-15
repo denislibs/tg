@@ -73,3 +73,49 @@ func TestProfile_PeerFullState(t *testing.T) {
 		t.Fatalf("userFull = %+v, want common_chats_count/pinned_msg_id/stargifts_count/notify_settings", f)
 	}
 }
+
+// botProfileRepo — как profileRepo, но пользователь 42 — бот.
+type botProfileRepo struct{ profileRepo }
+
+func (botProfileRepo) GetUser(_ context.Context, id int64) (domain.UserRecord, error) {
+	return domain.UserRecord{ID: id, IsBot: id == 42, Bio: "био"}, nil
+}
+
+type fakeBotInfo struct {
+	calls int
+}
+
+func (f *fakeBotInfo) BotInfo(_ context.Context, botID, viewerID int64) (*domain.BotInfo, string, error) {
+	f.calls++
+	info := domain.NewBotInfo(botID, "Что умеет бот", []domain.BotCommand{{Command: "start", Description: "начать"}})
+	return &info, "О боте", nil
+}
+
+// Профиль бота несёт userFull.bot_info (описание и команды) и about бота;
+// профиль человека — ничего лишнего и не зовёт источник.
+func TestProfile_BotInfoOfBot(t *testing.T) {
+	src := &fakeBotInfo{}
+	in := New(botProfileRepo{})
+	in.SetBotInfo(src)
+	ctx := context.Background()
+
+	bot, err := in.Profile(ctx, 7, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bi := bot.FullUser.BotInfo
+	if bi == nil || bi.UserID != 42 || bi.Description != "Что умеет бот" || len(bi.Commands) != 1 || bi.Commands[0].Command != "start" {
+		t.Fatalf("bot_info = %+v", bi)
+	}
+	if bot.FullUser.About != "О боте" {
+		t.Fatalf("about бота = %q; want \"О боте\" (BotAccount.About), не био пользователя", bot.FullUser.About)
+	}
+
+	human, err := in.Profile(ctx, 7, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if human.FullUser.BotInfo != nil || src.calls != 1 {
+		t.Fatalf("у человека bot_info=%+v, обращений к источнику %d", human.FullUser.BotInfo, src.calls)
+	}
+}
