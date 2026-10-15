@@ -72,20 +72,8 @@ export type CardPayloadMap = {
   signIn: void
   /** AuthCodeCard.tsx: `phone`/`fullPhone` — оба выводятся из одного `phone`. */
   authCode: { phone: string }
-  /**
-   * PasswordCard.tsx: `token`/`hint` — `pwToken`/`pwHint` хоста. `emailPattern`
-   * — НАШЕ расширение против tweb (задача 5, закрытие долга задачи 4): маска
-   * почты восстановления, которую эта же карточка САМА положила в переход на
-   * `emailRecover` (см. ниже) и получает ОБРАТНО, когда `emailRecover` уводит
-   * назад кнопкой Cancel. Без неё повторный клик «забыли пароль», упёршийся в
-   * серверный `resend_too_soon`, не может отличить «код ещё жив, показать его
-   * ввод снова» от «слишком рано, и мы не знаем куда» — а хранить это в
-   * closure/модульном кэше карточки НЕЛЬЗЯ: карточка размонтируется на КАЖДЫЙ
-   * `navigate` (хост, `mode="outin"`), обе переменные умирают вместе с ней.
-   * Отсутствует при первом приходе с `authCode` — там маски ещё не было ни у
-   * кого. Разбор — докблок `cards/PasswordCard.solid.tsx`.
-   */
-  password: { token: string; hint: string; emailPattern?: string }
+  /** PasswordCard.tsx: `token`/`hint` — `pwToken`/`pwHint` хоста. */
+  password: { token: string; hint: string }
   /** SignUpCard.tsx: `token` — `signUpToken` хоста. */
   signUp: { token: string }
   /**

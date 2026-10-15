@@ -121,14 +121,14 @@ describe('EmailRecoverCard.solid: ввод кода с почты', () => {
 })
 
 describe('EmailRecoverCard.solid: Cancel — возврат на password С ПОЛНОЙ нагрузкой (debt-пин задачи 5)', () => {
-  it('Cancel несёт token/hint/emailPattern ИЗ СВОЕГО PAYLOAD, а не из модульного/закрытого состояния', () => {
+  it('Cancel несёт token/hint ИЗ СВОЕГО PAYLOAD, а не из модульного/закрытого состояния', () => {
     const { navigate, cancelBtn } = mount(vi.fn())
 
     cancelBtn().click()
 
     expect(navigate).toHaveBeenCalledWith({
       name: 'password',
-      payload: { token: 'tok1', hint: 'my hint', emailPattern: 'a***@b.com' },
+      payload: { token: 'tok1', hint: 'my hint' },
     })
   })
 
@@ -155,7 +155,7 @@ describe('EmailRecoverCard.solid: Cancel — возврат на password С П�
 
     expect(navigate).toHaveBeenCalledWith({
       name: 'password',
-      payload: { token: 'tok2', hint: 'other hint', emailPattern: 'z***@w.com' },
+      payload: { token: 'tok2', hint: 'other hint' },
     })
   })
 })
