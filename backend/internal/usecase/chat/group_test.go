@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1767,7 +1768,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if _, err := fg.GetMember(ctx, id, 8); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("banned user still a member")
 	}
-	if bans, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsKicked}, 0, 50); bans.Count != 1 || bans.UserIDs[0] != 8 {
+	if bans, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsKicked}, 0, 50); bans.Count != 1 || !slices.Contains(bans.UserIDs, 8) {
 		t.Fatalf("bans = %+v; want [8]", bans)
 	}
 	if _, _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
@@ -1803,6 +1804,16 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if _, err := fg.Card(ctx, id, 7); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("chat still exists after DeleteGroup")
 	}
+}
+
+// bannedRowFor — строка channelParticipantBanned про пользователя uid.
+func bannedRowFor(p domain.ChannelParticipant, uid int64) bool {
+	b, ok := p.(domain.ChannelParticipantBanned)
+	if !ok {
+		return false
+	}
+	pu, ok := b.Peer.(domain.PeerUser)
+	return ok && pu.UserID == uid
 }
 
 // TestMemberRestrictions covers granular per-user restrictions (Telegram
@@ -1859,8 +1870,14 @@ func TestMemberRestrictions(t *testing.T) {
 	}
 
 	// Listed for admins.
-	if list, err := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50); err != nil || list.Count != 1 || list.UserIDs[0] != 8 {
-		t.Fatalf("banned = %+v (err %v); want [8]", list, err)
+	// users страницы — по ссылкам провода (ревью #409 п. 5): и ограниченный (peer),
+	// и тот, кем ограничен (kicked_by). Порядок вектора не определён (обход map).
+	list, err := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50)
+	if err != nil || list.Count != 1 || len(list.Participants) != 1 || !bannedRowFor(list.Participants[0], 8) {
+		t.Fatalf("banned = %+v (err %v); want one row for user 8", list, err)
+	}
+	if got := slices.Sorted(slices.Values(list.UserIDs)); !slices.Equal(got, []int64{7, 8}) {
+		t.Fatalf("banned users vector = %v; want [7 8]", got)
 	}
 
 	// Unrestrict lifts it.

@@ -2,6 +2,7 @@ package folders
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
@@ -88,8 +89,14 @@ func (r *fakeRepo) SetAllChatsPos(_ context.Context, ownerID int64, pos int) (bo
 func (r *fakeRepo) AllChatsPos(_ context.Context, ownerID int64) (int, error) {
 	return r.allPos[ownerID], nil
 }
-func (r *fakeRepo) Count(_ context.Context, _ int64) (int, error) {
-	return len(r.folders), nil
+func (r *fakeRepo) Count(_ context.Context, ownerID int64) (int, error) {
+	n := 0
+	for id := range r.folders {
+		if r.owner[id] == ownerID {
+			n++
+		}
+	}
+	return n, nil
 }
 func (r *fakeRepo) CreateFolderInvite(_ context.Context, inv domain.FolderInvite) (string, error) {
 	inv.Slug = "slug1"
@@ -442,5 +449,54 @@ func TestJoinInvite_DuplicateSelectionCollapsed(t *testing.T) {
 	last := repo.created[len(repo.created)-1]
 	if len(last.IncludeChats) != 1 || last.IncludeChats[0] != 10 {
 		t.Fatalf("папка = %+v, ждали [10]", last)
+	}
+}
+
+// Предпросмотр и вступление по неизвестному slug — ErrInviteSlugExpired
+// (tweb INVITE_SLUG_EXPIRED, internalLinkProcessor.ts:1437), а не «не найдено».
+func TestInvite_UnknownSlug_Expired(t *testing.T) {
+	uc, _, _ := setup()
+	ctx := context.Background()
+	if _, _, err := uc.PreviewInvite(ctx, "nope"); !errors.Is(err, ErrInviteSlugExpired) {
+		t.Fatalf("PreviewInvite = %v, want ErrInviteSlugExpired", err)
+	}
+	if err := uc.JoinInvite(ctx, 2, "nope", nil); !errors.Is(err, ErrInviteSlugExpired) {
+		t.Fatalf("JoinInvite = %v, want ErrInviteSlugExpired", err)
+	}
+}
+
+// Вступление по ссылке создаёт папку — при полном списке папок отказ ErrTooMany
+// (tweb DIALOG_FILTERS_TOO_MUCH, sharedFolderInvite.tsx:212), и ни в один чат
+// пользователь не вступает.
+func TestJoinInvite_FoldersFull_TooMany(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	ctx := context.Background()
+	for k := 0; k < domain.MaxFoldersPerUser; k++ {
+		if _, err := repo.Create(ctx, 2, domain.DialogFilter{Title: "f", IncludeChats: []int64{10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := uc.JoinInvite(ctx, 2, slug, nil); !errors.Is(err, ErrTooMany) {
+		t.Fatalf("JoinInvite = %v, want ErrTooMany", err)
+	}
+	if len(chats.joined) != 0 {
+		t.Fatalf("вступил в чаты при отказе: %v", chats.joined)
+	}
+}
+
+// Граница лимита: на MaxFoldersPerUser-1 папках вступление проходит (>=, не >).
+func TestJoinInvite_OneBelowLimit_Joins(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	ctx := context.Background()
+	for k := 0; k < domain.MaxFoldersPerUser-1; k++ {
+		if _, err := repo.Create(ctx, 2, domain.DialogFilter{Title: "f", IncludeChats: []int64{10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := uc.JoinInvite(ctx, 2, slug, nil); err != nil {
+		t.Fatalf("JoinInvite = %v, want nil", err)
+	}
+	if len(chats.joined) != 2 {
+		t.Fatalf("joined = %v, ждали оба чата ссылки", chats.joined)
 	}
 }

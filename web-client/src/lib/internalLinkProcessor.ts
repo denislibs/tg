@@ -433,10 +433,13 @@ export class InternalLinkProcessor {
     let chatlistInvite
     try {
       chatlistInvite = await this.managers.folders.previewInvite(link.slug)
-    } catch{
-      // наш `GET /folder_invites/{slug}` отвечает отказом без имени — у tweb это `INVITE_SLUG_EXPIRED`
-      toastNew({ langPackKey: 'SharedFolder.Link.Expired' })
-      return
+    } catch(err) {
+      if((err as ApiError).type === 'INVITE_SLUG_EXPIRED') {
+        toastNew({ langPackKey: 'SharedFolder.Link.Expired' })
+        return
+      }
+
+      throw err
     }
 
     showSharedFolderInvitePopup({
