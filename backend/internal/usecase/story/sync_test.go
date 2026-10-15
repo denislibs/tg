@@ -311,7 +311,7 @@ func TestEditStory_NarrowingRetractsFromLostViewers(t *testing.T) {
 	// до правки круг видит и Боб, и Кэрол; после — только Боб (близкий)
 	svc := New(repo, &fakePartners{ids: []int64{bob, carol}}, &fakeMedia{}, &fakeTx{})
 	log := useJournal(svc, newFakePublisher())
-	repo.visibleSeq = [][]int64{{alice, bob, carol}, {alice, bob}, {alice, bob}}
+	repo.visibleSeq = [][]int64{{alice, bob, carol}, {alice, bob}}
 	priv := "close"
 	if _, err := svc.EditStory(context.Background(), alice, 1, alice, nil, &priv, nil, nil); err != nil {
 		t.Fatal(err)
@@ -323,5 +323,48 @@ func TestEditStory_NarrowingRetractsFromLostViewers(t *testing.T) {
 	bobRows := rowsOf(log, bob, "story_update")
 	if len(bobRows) != 1 || storyOf(t, bobRows[0])["_"] == domain.StoryItemDeletedTag {
 		t.Fatalf("оставшийся Боб должен получить новую версию: %v", log.rows[bob])
+	}
+	// Круг после правки берётся из publishStory, а не считается заново: ровно два
+	// вызова VisibleAmong (до и в публикации).
+	if repo.visibleCalls != 2 || len(repo.visibleSeq) != 0 {
+		t.Fatalf("VisibleAmong вызван %d раз; want 2", repo.visibleCalls)
+	}
+}
+
+// Правка сужает круг до одного автора: «известен и пуст» — маркер уходит всему
+// прежнему кругу.
+func TestEditStory_NarrowingToNobodyRetractsFromAll(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.origin = domain.StoryOrigin{AuthorID: alice, Privacy: "contacts"}
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "selected"}
+	repo.visibleSeq = [][]int64{{alice, bob}, {alice}}
+	svc := New(repo, &fakePartners{ids: []int64{bob}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	priv := "selected"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, nil, &priv, []int64{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(log, bob, "story_update")
+	if len(rows) != 1 || storyOf(t, rows[0])["_"] != domain.StoryItemDeletedTag {
+		t.Fatalf("Боб при сужении до нуля должен получить маркер: %v", log.rows[bob])
+	}
+}
+
+// Круг после правки не удалось посчитать: маркер не рассылаем никому (иначе при
+// простом сбое выборки вся аудитория потеряла бы историю).
+func TestEditStory_AudienceFailureRetractsNobody(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.origin = domain.StoryOrigin{AuthorID: alice, Privacy: "contacts"}
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "contacts"}
+	repo.visibleSeq = [][]int64{{alice, bob}}
+	repo.visibleFailAt = 2
+	svc := New(repo, &fakePartners{ids: []int64{bob}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	priv := "contacts"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, nil, &priv, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(log.rows[bob]); n != 0 {
+		t.Fatalf("при сбое выборки круга Боб получил %d строк; want 0", n)
 	}
 }

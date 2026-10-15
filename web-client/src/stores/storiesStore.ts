@@ -243,13 +243,16 @@ interface LoadDeps {
 }
 
 // Fetch the stories feed and populate the store.
-// Номер последнего запущенного чтения: ответ старше него отбрасывается, иначе
-// медленный ранний GET /stories затёр бы снимок поновее.
+// Номера чтений: ответ старше УЖЕ ПРИМЕНЁННОГО отбрасывается, иначе медленный
+// ранний GET /stories затёр бы снимок поновее. Упавший новый запрос ничего не
+// отбрасывает: успешный старый всё равно применяется.
 let loadSeq = 0
+let appliedSeq = 0
 
 export async function loadStories(managers: LoadDeps): Promise<void> {
   const mine = ++loadSeq
   const groups = await managers.stories.feed()
-  if (mine !== loadSeq) return
+  if (mine < appliedSeq) return
+  appliedSeq = mine
   useStoriesStore.getState().setGroups(groups)
 }

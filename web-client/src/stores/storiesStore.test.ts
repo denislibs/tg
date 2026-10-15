@@ -69,6 +69,15 @@ describe('storiesStore', () => {
     expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
   })
 
+  it('loadStories: упавший новый запрос не отбрасывает успешный старый', async () => {
+    let slow!: (g: StoryGroup[]) => void
+    const first = loadStories({ stories: { feed: () => new Promise<StoryGroup[]>((r) => { slow = r }) } })
+    await expect(loadStories({ stories: { feed: async () => { throw new Error('net') } } })).rejects.toThrow()
+    slow(groups)
+    await first
+    expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([7])
+  })
+
   it('setGroups replaces groups + marks loaded', () => {
     useStoriesStore.getState().setGroups(groups)
     const s = useStoriesStore.getState()

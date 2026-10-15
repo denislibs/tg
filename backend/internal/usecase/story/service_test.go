@@ -41,17 +41,20 @@ type fakeRepo struct {
 	// visibleSeq — ответы VisibleAmong по порядку вызовов (круг до и после правки
 	// приватности); когда исчерпан — действует visibleAmong.
 	visibleSeq [][]int64
-	visibleErr error
-	marked     bool
-	markErr    error
-	author     int64
-	authorErr  error
-	viewers    domain.StoryViewers
-	viewersErr error
-	stats      domain.StoryStats
-	statsErr   error
-	deleted    bool
-	deleteErr  error
+	// visibleFailAt — номер вызова VisibleAmong (с 1), который падает.
+	visibleFailAt int
+	visibleCalls  int
+	visibleErr    error
+	marked        bool
+	markErr       error
+	author        int64
+	authorErr     error
+	viewers       domain.StoryViewers
+	viewersErr    error
+	stats         domain.StoryStats
+	statsErr      error
+	deleted       bool
+	deleteErr     error
 
 	setReaction    string
 	setCalled      bool
@@ -158,6 +161,10 @@ func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, 
 	return f.visible, f.visibleErr
 }
 func (f *fakeRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
+	f.visibleCalls++
+	if f.visibleFailAt == f.visibleCalls {
+		return nil, errors.New("visible: boom")
+	}
 	if f.deleted {
 		return nil, nil // строки истории больше нет — видеть нечего (как в SQL)
 	}
