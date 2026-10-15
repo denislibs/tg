@@ -189,13 +189,17 @@ type botFanoutRun struct {
 	pending []domain.BotCommandScope // различные скоупы, пришедшие за время прохода
 }
 
-// botFanoutPendingMax — сколько различных скоупов копится за проход; сверх —
-// один полный пересчёт (botScopeAll), который никого не пропускает.
-const botFanoutPendingMax = 64
+// botFanoutPendingMax — сколько различных скоупов копится за проход, прежде чем
+// адресные начнут схлопываться до «пересчитать всех в этом чате»
+// (botScopeChatAll). Переменная, а не константа: тест ставит малое число.
+var botFanoutPendingMax = 64
 
-// botScopeAll — внутренний «скоуп»: пересчитать у всех и ничего не пропускать
-// (ни владельцев chat_member, ни победивших скоупов). Наружу не выходит.
-const botScopeAll = "all"
+// botScopeChatAll — внутренний «скоуп»: пересчитать у ВСЕХ участников чата
+// ChatID, ничего не пропуская (ни владельцев chat_member, ни победивших скоупов).
+// Наружу не выходит. Ставится вместо адресных скоупов того же чата при
+// переполнении очереди: узкие изменения не теряются и не склеиваются в проход
+// по всем чатам бота.
+const botScopeChatAll = "chat_all"
 
 // botCommandsChanged — единая точка после смены списка команд: updateBotCommands
 // всем, чья подсказка могла поменяться. Зовётся ПОСЛЕ коммита записи и только
@@ -213,16 +217,11 @@ func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScop
 	if lang != "" || i.bots == nil || i.updates == nil {
 		return
 	}
+	scope.Type = scope.Norm() // "" и "default" — один скоуп
 	runs := &i.botFanouts
 	runs.mu.Lock()
 	if r, ok := runs.runs[botID]; ok {
-		switch {
-		case slices.Contains(r.pending, scope):
-		case len(r.pending) >= botFanoutPendingMax:
-			r.pending = []domain.BotCommandScope{{Type: botScopeAll}}
-		default:
-			r.pending = append(r.pending, scope)
-		}
+		r.enqueue(scope)
 		runs.mu.Unlock()
 		return
 	}
@@ -236,16 +235,26 @@ func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScop
 	i.goBG("bot_commands_fanout", func(context.Context) {
 		// Запись снимается при любом выходе, и при панике (её гасит goBG): иначе
 		// бот навсегда остался бы «в рассылке» и новые изменения только копились.
+		todo := []domain.BotCommandScope{scope}
 		defer func() {
 			runs.mu.Lock()
-			if runs.runs[botID] == r {
+			var lost []domain.BotCommandScope
+			if runs.runs[botID] == r { // выход не через «очередь пуста»: паника
 				delete(runs.runs, botID)
+				lost = append(lost, todo...)
+				lost = append(lost, r.pending...)
 			}
 			runs.mu.Unlock()
+			// Накопленное, но не пройденное не должно пропасть: запускаем заново.
+			// Упавший скоуп снят с очереди до запуска — иначе паника зациклилась бы.
+			for _, sc := range lost {
+				i.botCommandsChanged(botID, sc, "")
+			}
 		}()
-		todo := []domain.BotCommandScope{scope}
 		for {
-			for _, sc := range todo {
+			for len(todo) > 0 {
+				var sc domain.BotCommandScope
+				sc, todo = todo[0], todo[1:]
 				ctx, cancel := context.WithTimeout(context.Background(), botCommandsFanoutTimeout)
 				if err := i.fanoutBotCommands(ctx, botID, sc); err != nil {
 					log.Printf("bot_commands: fanout bot=%d: %v", botID, err)
@@ -265,6 +274,24 @@ func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScop
 			runs.mu.Unlock()
 		}
 	})
+}
+
+// enqueue ставит скоуп в очередь прохода (под замком runs.mu): дубль и скоуп,
+// уже покрытый «пересчётом чата», не добавляются; при переполнении адресный
+// скоуп становится пересчётом своего чата.
+func (r *botFanoutRun) enqueue(scope domain.BotCommandScope) {
+	if scope.ChatID != 0 {
+		all := domain.BotCommandScope{Type: botScopeChatAll, ChatID: scope.ChatID}
+		if slices.Contains(r.pending, all) {
+			return
+		}
+		if len(r.pending) >= botFanoutPendingMax {
+			scope = all
+		}
+	}
+	if !slices.Contains(r.pending, scope) {
+		r.pending = append(r.pending, scope)
+	}
 }
 
 // commandBatch — получатели с одинаковым телом кадра.
@@ -325,17 +352,21 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 	if len(chatIDs) == 0 {
 		return nil
 	}
-	n, err := i.bots.CountChatMembers(ctx, chatIDs, botID, limit+1)
+	// Узкое изменение читает только своих получателей, а не всю группу.
+	var filter domain.BotRecipientFilter
+	switch scope.Norm() {
+	case domain.BotScopeChatMember:
+		filter.UserID = scope.UserID
+	case domain.BotScopeChatAdministrator, domain.BotScopeAllChatAdmins:
+		filter.StaffOnly = true
+	}
+	recipients, err := i.bots.ChatRecipients(ctx, botID, chatIDs, filter, limit+1)
 	if err != nil {
 		return err
 	}
-	if n > limit {
+	if len(recipients) > limit {
 		log.Printf("bot_commands: bot=%d: получателей больше предела %d, рассылки нет", botID, limit)
 		return nil
-	}
-	recipients, err := i.bots.ChatRecipients(ctx, botID, chatIDs)
-	if err != nil {
-		return err
 	}
 	byChat := make(map[int64][]domain.BotRecipient, len(chatIDs))
 	for _, r := range recipients {
@@ -356,7 +387,7 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 		b.users = append(b.users, uid)
 	}
 
-	all := scope.Type == botScopeAll
+	all := scope.Type == botScopeChatAll
 	changed := scope.Norm()
 	sort.Slice(chatIDs, func(a, b int) bool { return chatIDs[a] < chatIDs[b] })
 	for _, chatID := range chatIDs {
@@ -450,7 +481,7 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 
 func scopeReachesPrivate(s domain.BotCommandScope) bool {
 	switch s.Norm() {
-	case domain.BotScopeDefault, domain.BotScopeAllPrivateChats, botScopeAll:
+	case domain.BotScopeDefault, domain.BotScopeAllPrivateChats:
 		return true
 	}
 	return false

@@ -69,7 +69,7 @@ type BotGroupLists struct {
 }
 
 // ResolveGroup — список для участника группы без собственной записи chat_member
-// и скоуп-победитель ("" — списка нет): chat_administrators(chat) [админ] →
+// и скоуп-победитель (при пустом списке — default с пустым списком): chat_administrators(chat) [админ] →
 // chat(chat) → all_chat_administrators [админ] → all_group_chats → default.
 func (l BotGroupLists) ResolveGroup(chatID int64, staff bool) ([]BotCommand, string) {
 	if staff {
@@ -91,12 +91,6 @@ func (l BotGroupLists) ResolveGroup(chatID int64, staff bool) ([]BotCommand, str
 	return l.Global[BotScopeDefault], BotScopeDefault
 }
 
-// Resolve — ResolveGroup без названия победителя.
-func (l BotGroupLists) Resolve(chatID int64, staff bool) []BotCommand {
-	cs, _ := l.ResolveGroup(chatID, staff)
-	return cs
-}
-
 // ResolvePrivate — список для личной переписки с ботом и скоуп-победитель:
 // all_private_chats → default.
 func (l BotGroupLists) ResolvePrivate() ([]BotCommand, string) {
@@ -110,9 +104,9 @@ func (l BotGroupLists) ResolvePrivate() ([]BotCommand, string) {
 // chat_member, chat_administrators, chat, all_chat_administrators, all_group_chats, default;
 // для лички: all_private_chats, default. Неизвестный скоуп — самый слабый.
 func BotScopeRank(scope string, group bool) int {
-	order := []string{BotScopeAllPrivateChats, BotScopeDefault}
+	order := scopeOrderPrivate
 	if group {
-		order = []string{BotScopeChatMember, BotScopeChatAdministrator, BotScopeChat, BotScopeAllChatAdmins, BotScopeAllGroupChats, BotScopeDefault}
+		order = scopeOrderGroup
 	}
 	for n, s := range order {
 		if s == scope {
@@ -120,6 +114,18 @@ func BotScopeRank(scope string, group bool) int {
 		}
 	}
 	return len(order)
+}
+
+var (
+	scopeOrderPrivate = []string{BotScopeAllPrivateChats, BotScopeDefault}
+	scopeOrderGroup   = []string{BotScopeChatMember, BotScopeChatAdministrator, BotScopeChat, BotScopeAllChatAdmins, BotScopeAllGroupChats, BotScopeDefault}
+)
+
+// BotRecipientFilter сужает выборку получателей рассылки: один пользователь
+// (UserID != 0) и/или только создатель и админы чата.
+type BotRecipientFilter struct {
+	UserID    int64
+	StaffOnly bool
 }
 
 // BotRecipient — участник чата бота, которому уходит updateBotCommands.

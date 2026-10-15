@@ -1226,11 +1226,9 @@ type BotRepo interface {
 	// BotChats — чаты бота заданных видов (types: ChatTypePrivate, ChatTypeGroup),
 	// не больше limit: адресаты updateBotCommands.
 	BotChats(ctx context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error)
-	// CountChatMembers — число получателей (участники, кроме бота) в этих чатах,
-	// обрезанное пределом limit.
-	CountChatMembers(ctx context.Context, chatIDs []int64, botID int64, limit int) (int, error)
-	// ChatRecipients — участники этих чатов, кроме самого бота и других ботов.
-	ChatRecipients(ctx context.Context, botID int64, chatIDs []int64) ([]domain.BotRecipient, error)
+	// ChatRecipients — получатели в этих чатах (не больше limit), кроме самого
+	// бота и других ботов; фильтр сужает до одного пользователя или до админов.
+	ChatRecipients(ctx context.Context, botID int64, chatIDs []int64, f domain.BotRecipientFilter, limit int) ([]domain.BotRecipient, error)
 	// GroupLists — списки бота (язык "") для набора групп одним запросом.
 	GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error)
 	// ChatBotIDs — боты-участники чата (не больше limit).

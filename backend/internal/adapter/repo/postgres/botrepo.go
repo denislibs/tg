@@ -143,29 +143,22 @@ func (r *BotRepo) BotChats(ctx context.Context, botID int64, types []string, lim
 	return out, rows.Err()
 }
 
-// CountChatMembers — число получателей в этих чатах (участники, кроме самого
-// бота), обрезанное пределом limit: счёт обрывается на пределе, сверху он не нужен.
-func (r *BotRepo) CountChatMembers(ctx context.Context, chatIDs []int64, botID int64, limit int) (int, error) {
-	if len(chatIDs) == 0 {
-		return 0, nil
-	}
-	var n int
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT count(*) FROM (SELECT 1 FROM chat_members WHERE chat_id = ANY($1) AND user_id <> $2 LIMIT $3) t`,
-		chatIDs, botID, limit).Scan(&n)
-	return n, err
-}
-
-// ChatRecipients — участники этих чатов, кроме самого бота и других ботов (им
-// карточку с командами никто не читает), с признаком «создатель или админ».
-func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int64) ([]domain.BotRecipient, error) {
+// ChatRecipients — получатели в этих чатах (не больше limit): участники, кроме
+// самого бота и других ботов (им карточку с командами никто не читает), с
+// признаком «создатель или админ». Фильтр сужает до одного пользователя
+// (PK-поиск) или до админов (idx_chat_members_chat_staff) — узкое изменение не
+// читает всю группу. Строк больше limit — вызывающий видит превышение предела.
+func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int64, f domain.BotRecipientFilter, limit int) ([]domain.BotRecipient, error) {
 	if len(chatIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT m.chat_id, m.user_id, m.role IN ('creator','admin')
 		   FROM chat_members m JOIN users u ON u.id = m.user_id AND NOT u.is_bot
-		  WHERE m.chat_id = ANY($1) AND m.user_id <> $2`, chatIDs, botID)
+		  WHERE m.chat_id = ANY($1) AND m.user_id <> $2
+		    AND ($3 = 0 OR m.user_id = $3)
+		    AND (NOT $4 OR m.role IN ('creator','admin'))
+		  LIMIT $5`, chatIDs, botID, f.UserID, f.StaffOnly, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +176,7 @@ func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int
 
 // GroupLists — списки бота (язык "") для набора чатов ОДНИМ запросом:
 // безадресные скоупы, chat/chat_administrators этих групп и записи chat_member.
-// Приоритет раскладывает domain.BotGroupLists.Resolve — запроса на группу нет.
+// Приоритет раскладывает domain.BotGroupLists.ResolveGroup — запроса на группу нет.
 func (r *BotRepo) GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error) {
 	out := domain.BotGroupLists{
 		Global: map[string][]domain.BotCommand{},

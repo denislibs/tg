@@ -26,6 +26,8 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
                 WHERE c.relname = 'idx_users_bots' AND NOT i.indisvalid) THEN
+        -- не стоять в очереди за чужим построением с блокировкой всей users
+        SET LOCAL lock_timeout = '5s';
         DROP INDEX idx_users_bots;
     END IF;
 END

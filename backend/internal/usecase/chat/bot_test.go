@@ -24,8 +24,7 @@ func (f fakeBots) CommandsForBots(context.Context, []int64, int64, int64, bool, 
 func (f fakeBots) BotChats(context.Context, int64, []string, int) ([]domain.BotChat, error) {
 	return nil, nil
 }
-func (f fakeBots) CountChatMembers(context.Context, []int64, int64, int) (int, error) { return 0, nil }
-func (f fakeBots) ChatRecipients(context.Context, int64, []int64) ([]domain.BotRecipient, error) {
+func (f fakeBots) ChatRecipients(context.Context, int64, []int64, domain.BotRecipientFilter, int) ([]domain.BotRecipient, error) {
 	return nil, nil
 }
 func (f fakeBots) GroupLists(context.Context, int64, []int64) (domain.BotGroupLists, error) {

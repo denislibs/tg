@@ -84,9 +84,21 @@ func decodeStrictBody(r *http.Request) (map[string]json.RawMessage, int) {
 		}
 		return m, 0
 	}
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&m); err != nil {
 		if errors.Is(err, io.EOF) {
 			return map[string]json.RawMessage{}, 0 // тело из одних пробелов
+		}
+		return fail(err)
+	}
+	// `null` и склеенные объекты читались бы как «нет параметров» / первый объект.
+	if m == nil {
+		return nil, http.StatusBadRequest
+	}
+	var tail json.RawMessage
+	if err := dec.Decode(&tail); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, http.StatusBadRequest
 		}
 		return fail(err)
 	}
@@ -164,7 +176,11 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, botCommandsBodyLimit)
 		var code int
 		if body, code = decodeStrictBody(r); code != 0 {
-			botErr(w, code, "Bad Request: can't parse request body")
+			if code == http.StatusRequestEntityTooLarge {
+				botErr(w, code, "Request Entity Too Large")
+			} else {
+				botErr(w, code, "Bad Request: can't parse request body")
+			}
 			return
 		}
 	} else {

@@ -142,30 +142,26 @@ func (f fakeBotRepo) BotChats(_ context.Context, botID int64, types []string, li
 	return out, nil
 }
 
-func (f fakeBotRepo) CountChatMembers(_ context.Context, chatIDs []int64, botID int64, limit int) (int, error) {
-	f.w.mu.Lock()
-	defer f.w.mu.Unlock()
-	n := 0
-	for _, id := range chatIDs {
-		for uid := range f.w.members[id] {
-			if uid != botID {
-				n++
-			}
-		}
-	}
-	return min(n, limit), nil
-}
-
-func (f fakeBotRepo) ChatRecipients(_ context.Context, botID int64, chatIDs []int64) ([]domain.BotRecipient, error) {
+func (f fakeBotRepo) ChatRecipients(_ context.Context, botID int64, chatIDs []int64, flt domain.BotRecipientFilter, limit int) ([]domain.BotRecipient, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	var out []domain.BotRecipient
 	for _, id := range chatIDs {
-		for uid, role := range f.w.members[id] {
-			if uid == botID || f.w.isBot[uid] {
+		uids := make([]int64, 0, len(f.w.members[id]))
+		for uid := range f.w.members[id] {
+			uids = append(uids, uid)
+		}
+		sort.Slice(uids, func(a, b int) bool { return uids[a] < uids[b] })
+		for _, uid := range uids {
+			role := f.w.members[id][uid]
+			staff := role == domain.RoleCreator || role == domain.RoleAdmin
+			if uid == botID || f.w.isBot[uid] || (flt.UserID != 0 && uid != flt.UserID) || (flt.StaffOnly && !staff) {
 				continue
 			}
-			out = append(out, domain.BotRecipient{ChatID: id, UserID: uid, Staff: role == domain.RoleCreator || role == domain.RoleAdmin})
+			if len(out) == limit {
+				return out, nil
+			}
+			out = append(out, domain.BotRecipient{ChatID: id, UserID: uid, Staff: staff})
 		}
 	}
 	return out, nil
@@ -757,10 +753,10 @@ func TestSetMyCommands_ScopesQueuedDuringFanoutAreAllDelivered(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	set(domain.BotCommandScope{}, "base")                                            // рассылка стартует и ждёт ворота
-	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine") // встаёт в очередь
-	set(domain.BotCommandScope{Type: "chat", ChatID: 201}, "only201")                // встаёт в очередь
-	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine") // повтор той же записи не плодит проход
+	set(domain.BotCommandScope{}, "base")                                             // рассылка стартует и ждёт ворота
+	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine")  // встаёт в очередь
+	set(domain.BotCommandScope{Type: "chat", ChatID: 201}, "only201")                 // встаёт в очередь
+	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine2") // тот же скоуп другим списком: проход не плодится
 	close(gate)
 	e.in.bg.Wait()
 
@@ -771,8 +767,8 @@ func TestSetMyCommands_ScopesQueuedDuringFanoutAreAllDelivered(t *testing.T) {
 		}
 		return rows[len(rows)-1].Cmds
 	}
-	if got := last(4); !reflect.DeepEqual(got, []string{"mine"}) {
-		t.Fatalf("владелец chat_member: %v; want [mine]", got)
+	if got := last(4); !reflect.DeepEqual(got, []string{"mine2"}) {
+		t.Fatalf("владелец chat_member: %v; want [mine2]", got)
 	}
 	if got := last(6); !reflect.DeepEqual(got, []string{"only201"}) {
 		t.Fatalf("участник чата 201: %v; want [only201]", got)
@@ -852,5 +848,73 @@ func TestSetMyCommands_ShadowedScopeSendsNothing(t *testing.T) {
 	e.set(t, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat2")
 	if len(e.rows(t, 3)) != 1 || len(e.rows(t, 1)) != 0 {
 		t.Fatalf("chat(200): рядовой %d строк (want 1), админ %d (want 0)", len(e.rows(t, 3)), len(e.rows(t, 1)))
+	}
+}
+
+// Переполнение очереди: адресные скоупы схлопываются до «пересчитать чат», но не
+// до прохода по всем чатам бота — у бота сверх предела узкие изменения доходят.
+func TestSetMyCommands_QueueOverflowKeepsNarrowChanges(t *testing.T) {
+	old := botFanoutPendingMax
+	botFanoutPendingMax = 1
+	t.Cleanup(func() { botFanoutPendingMax = old })
+
+	e := newBotCmdEnv(t)
+	e.in.botCommandsLimit = 3 // у бота «сверх предела»: проход по всем чатам ничего не шлёт
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	e.chat(200, domain.ChatTypeGroup, map[int64]string{3: domain.RoleMember, 4: domain.RoleMember, 42: domain.RoleMember})
+	e.chat(201, domain.ChatTypeGroup, map[int64]string{6: domain.RoleMember, 42: domain.RoleMember})
+	e.chat(202, domain.ChatTypeGroup, map[int64]string{8: domain.RoleMember, 42: domain.RoleMember})
+	e.chat(203, domain.ChatTypeGroup, map[int64]string{9: domain.RoleMember, 42: domain.RoleMember})
+	gate := make(chan struct{})
+	e.w.gate = gate
+	ctx := context.Background()
+	set := func(scope domain.BotCommandScope, cmd string) {
+		if err := e.in.BotSetCommands(ctx, e.bot, scope, "", []domain.BotCommand{{Command: cmd}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(domain.BotCommandScope{}, "base") // старт прохода, ждёт ворота
+	set(domain.BotCommandScope{Type: "chat", ChatID: 201}, "c201")
+	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine")
+	set(domain.BotCommandScope{Type: "chat", ChatID: 202}, "c202")
+	close(gate)
+	e.in.bg.Wait()
+
+	last := func(uid int64) []string {
+		rows := e.rows(t, uid)
+		if len(rows) == 0 {
+			return nil
+		}
+		return rows[len(rows)-1].Cmds
+	}
+	for uid, want := range map[int64][]string{6: {"c201"}, 4: {"mine"}, 8: {"c202"}} {
+		if got := last(uid); !reflect.DeepEqual(got, want) {
+			t.Errorf("пользователь %d: %v; want %v", uid, got, want)
+		}
+	}
+	if len(e.rows(t, 9)) != 0 {
+		t.Error("чат без изменений получил кадр")
+	}
+}
+
+// Запись chat_member вышедшего из группы пользователя снимается: членство при
+// удалении не проверяется (иначе запись осталась бы навсегда).
+func TestDeleteMyCommands_ChatMemberOfDepartedUser(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(200, domain.ChatTypeGroup, map[int64]string{3: domain.RoleMember, 42: domain.RoleMember})
+	scope := domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4} // 4 уже не в группе
+	e.w.put(42, scope, "", "stale")
+	if err := e.in.BotDeleteCommands(context.Background(), e.bot, scope, ""); err != nil {
+		t.Fatalf("удаление записи вышедшего: %v", err)
+	}
+	e.in.bg.Wait()
+	if got, _ := e.in.BotGetCommands(context.Background(), e.bot, scope, ""); len(got) != 0 {
+		t.Fatalf("запись не снята: %v", got)
+	}
+	if err := e.in.BotSetCommands(context.Background(), e.bot, scope, "", []domain.BotCommand{{Command: "x"}}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("запись для не-участника: %v; want ErrInvalid", err)
+	}
+	if n := len(e.rows(t, 3)); n != 0 {
+		t.Fatalf("рядовой получил кадр на чужую запись: %d", n)
 	}
 }

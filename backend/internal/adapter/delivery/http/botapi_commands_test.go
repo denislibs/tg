@@ -306,7 +306,7 @@ func TestBotAPI_CommandsBodyForms(t *testing.T) {
 	}
 
 	// Обрезанный JSON и мусор — 400, default цел.
-	for _, body := range []string{`{"scope":{"type":"chat","chat_id":`, `not json`, `[1,2]`} {
+	for _, body := range []string{`{"scope":{"type":"chat","chat_id":`, `not json`, `[1,2]`, `null`, `{} {"scope":{"type":"chat","chat_id":1}}`} {
 		if code, _ := e.callRaw(t, "deleteMyCommands", "application/json", body); code != http.StatusBadRequest {
 			t.Errorf("тело %q: код %d; want 400", body, code)
 		}
@@ -347,8 +347,9 @@ func TestBotAPI_CommandsBodyForms(t *testing.T) {
 	if code, res := e.callRaw(t, "setMyCommands", mw.FormDataContentType(), buf.String()); code != 200 {
 		t.Fatalf("multipart setMyCommands: %d %v", code, res)
 	}
-	got, _ := e.call(t, "getMyCommands", map[string]any{})
-	if got != 200 {
-		t.Fatal("getMyCommands после multipart")
+	code, res := e.call(t, "getMyCommands", map[string]any{})
+	list, _ := res["result"].([]any)
+	if code != 200 || len(list) != 1 || list[0].(map[string]any)["command"] != "mp" {
+		t.Fatalf("getMyCommands после multipart: %d %v", code, res)
 	}
 }

@@ -287,13 +287,6 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 	}
 
 	ids := []int64{f.chatX, f.chatY, pm}
-	// Считаются получатели: сам бот не в счёте.
-	if n, err := f.bots.CountChatMembers(ctx, ids, f.bot, 100); err != nil || n != 3+2+1 {
-		t.Fatalf("CountChatMembers = %d %v; want 6", n, err)
-	}
-	if n, _ := f.bots.CountChatMembers(ctx, ids, f.bot, 4); n != 4 {
-		t.Fatalf("счёт с пределом 4 = %d; want 4", n)
-	}
 	// Другой бот в чате — не получатель.
 	other, err := f.api.CreateBot(ctx, f.admin, "Второй", "cmd_bot_two")
 	if err != nil {
@@ -303,9 +296,18 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := f.bots.ChatRecipients(ctx, f.bot, ids)
+	rec, err := f.bots.ChatRecipients(ctx, f.bot, ids, domain.BotRecipientFilter{}, 100)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if capped, _ := f.bots.ChatRecipients(ctx, f.bot, ids, domain.BotRecipientFilter{}, 4); len(capped) != 4 {
+		t.Fatalf("получатели с пределом 4: %d", len(capped))
+	}
+	if one, _ := f.bots.ChatRecipients(ctx, f.bot, []int64{f.chatX}, domain.BotRecipientFilter{UserID: f.bob}, 100); len(one) != 1 || one[0].UserID != f.bob {
+		t.Fatalf("фильтр по пользователю: %+v", one)
+	}
+	if staff, _ := f.bots.ChatRecipients(ctx, f.bot, []int64{f.chatX}, domain.BotRecipientFilter{StaffOnly: true}, 100); len(staff) != 1 || staff[0].UserID != f.admin || !staff[0].Staff {
+		t.Fatalf("фильтр по админам: %+v", staff)
 	}
 	staff := map[[2]int64]bool{}
 	for _, r := range rec {
@@ -341,9 +343,21 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 	if !reflect.DeepEqual(names(lists.Global["default"]), []string{"def"}) {
 		t.Fatalf("default: %v", lists.Global)
 	}
-	if !reflect.DeepEqual(names(lists.Resolve(f.chatX, false)), []string{"x"}) ||
-		!reflect.DeepEqual(names(lists.Resolve(f.chatX, true)), []string{"x_adm"}) {
-		t.Fatalf("Resolve: рядовой %v, админ %v", lists.Resolve(f.chatX, false), lists.Resolve(f.chatX, true))
+	plain, plainScope := lists.ResolveGroup(f.chatX, false)
+	adm, admScope := lists.ResolveGroup(f.chatX, true)
+	if !reflect.DeepEqual(names(plain), []string{"x"}) || plainScope != "chat" ||
+		!reflect.DeepEqual(names(adm), []string{"x_adm"}) || admScope != "chat_administrators" {
+		t.Fatalf("ResolveGroup: рядовой %v/%s, админ %v/%s", plain, plainScope, adm, admScope)
+	}
+	// Без чатов (проход только по личкам) безадресные списки, в том числе
+	// all_private_chats, всё равно читаются.
+	f.set(t, domain.BotCommandScope{Type: "all_private_chats"}, "", cmds("pm"))
+	noChats, err := f.bots.GroupLists(ctx, f.bot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pm, sc := noChats.ResolvePrivate(); !reflect.DeepEqual(names(pm), []string{"pm"}) || sc != "all_private_chats" {
+		t.Fatalf("ResolvePrivate: %v/%s", pm, sc)
 	}
 
 	bots, err := f.bots.ChatBotIDs(ctx, f.chatX, 50)
