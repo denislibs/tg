@@ -31,7 +31,7 @@ import type { MessageReactions, MyMessage, Reaction, ReactionCount } from '@core
 import type { AvailableReaction } from '@core/managers/reactionsManager'
 import type { ChannelFull, ChatReactions } from '@core/peers/peer'
 import { isUser } from '@core/peers/peerId'
-import { beginPeerFullFetch, cachedPeerFull, saveChatFull } from '@core/chatFullCache'
+import { beginPeerFullFetch, cachedPeerFull, endPeerFullFetch, saveChatFull } from '@core/chatFullCache'
 import { canViewReactionsList, isChosen, reactionKey, recentOf, totalReactions } from '@core/reactions/messageReactions'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import { setTransition } from '@core/dom/setTransition'
@@ -209,8 +209,9 @@ async function getChatFull(
     const fetching = groups.card(peerId).then((card) => {
       const fullChat = card?.fullChat
       if (fullChat) saveChatFull(peerId, fullChat, ticket)
+      else endPeerFullFetch(peerId, ticket)
       return fullChat
-    }, () => undefined)
+    }, () => { endPeerFullFetch(peerId, ticket); return undefined })
     chatFullFetches.set(peerId, fetching)
     // Провалившийся поход из карты выбрасывается, чтобы следующий спрашивающий
     // попробовал заново, — тот же приём, что у `catalogCache` выше.

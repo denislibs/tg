@@ -20,6 +20,7 @@ import { useChatsStore } from '@stores/chatsStore'
 import { putMirrorPage, resetMessagesMirror, winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import type { MyMessage } from '@core/models'
 import type { Chat as MTChat, UserReal } from '@core/peers/peer'
 import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
@@ -66,7 +67,6 @@ function makeManagers() {
     stickers: { use: vi.fn(async() => {}), saveGif: vi.fn(async() => {}) },
     peers: { fillMirror: vi.fn(async() => {}) },
     bots: {
-      commands: vi.fn(async(_botId: number) => [] as { command: string, description: string }[]),
       menuButton: vi.fn(async(_botId: number) => ({ text: '', url: '' })),
     },
   }
@@ -150,6 +150,7 @@ afterEach(() => {
   mounted = undefined
   useChatsStore.setState({ dialogs: [], presence: {} })
   resetPeerMirror()
+  resetChatFullMirror()
 })
 
 describe('ChatInput: меню отправки', () => {
@@ -389,7 +390,8 @@ describe('ChatInput: команды бота (Б-36)', () => {
       { _: 'user', id: BOB, first_name: 'Бот', pFlags: { bot: true } } as UserReal,
     ] }])
     const managers = makeManagers()
-    managers.bots.commands.mockResolvedValue([{ command: 'start', description: 'Начать' }])
+    // Команды — из лежащей полной карточки бота (`userFull.bot_info`).
+    saveChatFull(BOB, { _: 'userFull', id: BOB, bot_info: { _: 'botInfo', user_id: BOB, commands: [{ _: 'botCommand', command: 'start', description: 'Начать' }] } })
     mounted = await mountInput({ managers })
     await flush()
     const toggle = mounted.input.newMessageWrapper.firstElementChild as HTMLElement

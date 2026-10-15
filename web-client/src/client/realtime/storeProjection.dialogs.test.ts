@@ -180,6 +180,21 @@ describe('storeProjection — тема чата живёт в карточке, 
     expect(cachedPeerFull(7)).toMatchObject({ pFlags: { blocked: true } })
   })
 
+  // Ф-6 f6-bots: события воркера `bot_commands` правят команды в той же карточке
+  // (tweb `onUpdateBotCommands` → `modifyCachedFullPeer`); мутация «убрать строку
+  // bot_commands из APPLY» оставила бы в подсказке старый список.
+  it('bot_commands патчит команды бота в закэшированной карточке', () => {
+    resetChatFullMirror()
+    saveChatFull(7, { _: 'userFull', id: 7, bot_info: { _: 'botInfo', user_id: 7, commands: [] } })
+
+    rootScope.dispatchEventSingle('bot_commands', {
+      peerId: 7, botId: 7, commands: [{ _: 'botCommand', command: 'start', description: 'Начать' }],
+    })
+
+    const full = cachedPeerFull(7)
+    expect(full?._ === 'userFull' && full.bot_info?.commands?.map((c) => c.command)).toEqual(['start'])
+  })
+
   // Срок автоудаления живёт в той же карточке (tweb `onUpdatePeerHistoryTTL` →
   // `modifyCachedFullPeer`): без строки `auto_delete_period_update` в проекторе
   // карточка осталась бы со старым сроком.
