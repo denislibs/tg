@@ -106,6 +106,7 @@ beforeEach(() => {
     deleteGroup: vi.fn(async() => {}),
     // предзагрузка списка ссылок (`AppChatInviteLinksTab.getInitArgs`) — на клике строки
     getExportedChatInvites: vi.fn(async() => ({ _: 'messages.exportedChatInvites', count: 0, invites: [] })),
+    getAdminsWithInvites: vi.fn(async() => ({ _: 'messages.chatAdminsWithInvites', admins: [], users: [] })),
     exportChatInvite: vi.fn(async() => ({ _: 'chatInviteExported', link: 'https://t.me/+x', admin_id: ME, date: 0 })),
     removeMember: vi.fn(async() => {}),
   }

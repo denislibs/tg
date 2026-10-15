@@ -939,7 +939,7 @@ function Bio() {
  * `chatFull.exported_invite`; поля в нашем `ChannelFull` нет (Task 1,
  * `fullPeers.solid.ts`, докблок «что есть у ChannelFull») — ссылка приходит
  * пропом `exportedInviteUrl` из `useGroupInfo` панели (отдельный поход
- * `groups.listInvites`, докблок поля контекста). С задачи 13 плана shared
+ * `groups.getExportedChatInvites`, докблок поля контекста). С задачи 13 плана shared
  * media обе ветки — ЗДЕСЬ, единственной строкой: прежний React-фолбэк
  * (`UserInfoPanel.tsx`) стоял сиблингом ПОСЛЕ Solid-корня и попадал под
  * absolute-узел шаред-медиа (`.search-super`, `top: 100%` от `.profile-content`).

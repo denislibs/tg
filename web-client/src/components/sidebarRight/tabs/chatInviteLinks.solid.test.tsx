@@ -50,9 +50,14 @@ const CHANNEL_ID = 20
 const PUBLIC_ID = 40
 const CHANNEL: Channel = { _: 'channel', id: CHANNEL_ID, title: 'Channel', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true, creator: true } } as Channel
 const PUBLIC: Channel = { _: 'channel', id: PUBLIC_ID, title: 'Public', username: 'pubch', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true, creator: true } } as Channel
+const ADMIN_ID = 3
+// админ без создателя: право `invite_users` — ссылки видит свои (Б-6), раздела «других админов» нет
+const MODER_ID = 50
+const MODER: Channel = { _: 'channel', id: MODER_ID, title: 'Moder', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true }, admin_rights: { _: 'chatAdminRights', pFlags: { invite_users: true } } } as unknown as Channel
 const USERS = [
   { _: 'user', id: ME, first_name: 'Me', pFlags: { self: true } },
   { _: 'user', id: 2, first_name: 'Bob', pFlags: {} },
+  { _: 'user', id: ADMIN_ID, first_name: 'Carol', pFlags: {} },
 ] as unknown as User[]
 
 const TME = DEFAULT_TME_ORIGIN
@@ -70,11 +75,13 @@ let column: ReturnType<typeof installSidebarRight>
 let groups: Record<string, ReturnType<typeof vi.fn>>
 let active: ChatInviteExported[]
 let revoked: ChatInviteExported[]
+let adminLinks: ChatInviteExported[]
+let adminRevoked: ChatInviteExported[]
 
 beforeEach(() => {
   rootScope.myId = ME
   resetPeerMirror()
-  applyPeerOps([{ op: 'upsert', peers: [CHANNEL, PUBLIC, ...USERS] }])
+  applyPeerOps([{ op: 'upsert', peers: [CHANNEL, PUBLIC, MODER, ...USERS] }])
   toastNew.mockReset()
   copyTextToClipboard.mockClear()
   shareUrlToPeers.mockReset()
@@ -88,11 +95,21 @@ beforeEach(() => {
     invite('primary', { date: now() - 86400 }),
   ]
   revoked = [invite('old', { pFlags: { revoked: true } })]
+  adminLinks = [invite('carol-link', { admin_id: ADMIN_ID, title: 'Carol link' })]
+  adminRevoked = [invite('carol-old', { admin_id: ADMIN_ID, pFlags: { revoked: true } })]
   groups = {
-    getExportedChatInvites: vi.fn(async({ revoked: r }: { revoked?: boolean }) => ({
-      _: 'messages.exportedChatInvites',
-      count: (r ? revoked : active).length,
-      invites: r ? revoked : active,
+    getExportedChatInvites: vi.fn(async({ revoked: r, adminId }: { revoked?: boolean, adminId?: number }) => {
+      const list = adminId ? (r ? adminRevoked : adminLinks) : (r ? revoked : active)
+      return { _: 'messages.exportedChatInvites', count: list.length, invites: list }
+    }),
+    // создатель (ME) и ещё один админ: себя вкладка из списка исключает (tweb :241-244)
+    getAdminsWithInvites: vi.fn(async() => ({
+      _: 'messages.chatAdminsWithInvites',
+      admins: [
+        { _: 'chatAdminWithInvites', admin_id: ME, invites_count: 3, revoked_invites_count: 1 },
+        { _: 'chatAdminWithInvites', admin_id: ADMIN_ID, invites_count: 2, revoked_invites_count: 0 },
+      ],
+      users: [],
     })),
     exportChatInvite: vi.fn(async() => invite('fresh')),
     editExportedChatInvite: vi.fn(async({ link }: { link: string }) => ({
@@ -151,8 +168,8 @@ describe('«Пригласительные ссылки» — разметка �
     expect(tab.container.classList.contains('chat-folders-container')).toBe(true)
     expect(tab.container.classList.contains('chat-discussion-container')).toBe(true)
 
-    // :328-335 — заставка, подпись, основная, дополнительные, отозванные (админов нет — О-121)
-    const [sticker, caption, main, additional, revokedSection, ...rest] = blocks(tab)
+    // :328-335 — заставка, подпись, основная, дополнительные, ссылки других админов, отозванные
+    const [sticker, caption, main, additional, , revokedSection, ...rest] = blocks(tab)
     expect(rest).toHaveLength(0)
     expect(sticker.className).toBe('sticker-container')
     expect(caption.className).toBe('caption')
@@ -195,7 +212,7 @@ describe('«Пригласительные ссылки» — разметка �
     revoked = []
     active = [invite('extra', { title: 'Team' })]
     const tab = await open(PUBLIC_ID)
-    const [, , main, , revokedSection] = blocks(tab)
+    const [, , main, , , revokedSection] = blocks(tab)
 
     expect(revokedSection.classList.contains('hide')).toBe(true)
     expect(text(main.querySelector('.invite-link-text'))).toBe(`${HOST}/pubch`)
@@ -215,7 +232,7 @@ describe('«Пригласительные ссылки» — разметка �
 describe('«Пригласительные ссылки» — действия', () => {
   it('отзыв основной из ⋮: сеть только по кнопке подтверждения, затем новая основная и строка в отозванных', async() => {
     const tab = await open()
-    const [, , main, , revokedSection] = blocks(tab)
+    const [, , main, , , revokedSection] = blocks(tab)
 
     click(main.querySelector('.invite-link-menu')!)
     await settle()
@@ -237,7 +254,7 @@ describe('«Пригласительные ссылки» — действия',
 
   it('«Удалить все отозванные» — по подтверждению, строки уходят, секция прячется', async() => {
     const tab = await open()
-    const revokedSection = blocks(tab)[4]
+    const revokedSection = blocks(tab)[5]
 
     click(revokedSection.querySelector('.sidebar-left-section-content > button')!)
     await settle()
@@ -246,7 +263,7 @@ describe('«Пригласительные ссылки» — действия',
     click(popupButton('Delete'))
     await settle()
 
-    expect(groups.deleteRevokedExportedChatInvites).toHaveBeenCalledWith(CHANNEL_ID)
+    expect(groups.deleteRevokedExportedChatInvites).toHaveBeenCalledWith(CHANNEL_ID, undefined)
     expect(rowsOf(revokedSection)).toHaveLength(0)
     expect(revokedSection.classList.contains('hide')).toBe(true)
   })
@@ -305,6 +322,73 @@ describe('«Пригласительные ссылки» — действия',
     expect(tab.container.isConnected).toBe(false)
     expect(column.slider.querySelector('.chat-folders-container')).toBeNull()
     expect(clearInterval).toHaveBeenCalledWith(timer)
+  })
+})
+
+describe('«Пригласительные ссылки» — только свои (Б-6)', () => {
+  it('создатель: выборки без adminId, раздел «Ссылки других админов» без себя, счётчик ссылок', async() => {
+    const tab = await open()
+    expect(groups.getExportedChatInvites).toHaveBeenCalledWith({ chatId: CHANNEL_ID, adminId: undefined })
+    expect(groups.getAdminsWithInvites).toHaveBeenCalledWith(CHANNEL_ID)
+
+    const adminsSection = blocks(tab)[4]
+    expect(adminsSection.classList.contains('hide')).toBe(false)
+    expect(text(adminsSection.querySelector('.sidebar-left-section-name'))).toBe(lang.LinksCreatedByOtherAdmins)
+    const rows = [...adminsSection.querySelectorAll<HTMLElement>('a.row')]
+    expect(rows.map((row) => row.dataset.peerId)).toEqual([String(ADMIN_ID)])
+    expect(text(rows[0])).toContain('2 invite links')
+  })
+
+  it('создатель без чужих ссылок: раздел спрятан (tweb :246-249)', async() => {
+    groups.getAdminsWithInvites.mockResolvedValue({
+      _: 'messages.chatAdminsWithInvites',
+      admins: [{ _: 'chatAdminWithInvites', admin_id: ME, invites_count: 3, revoked_invites_count: 0 }],
+      users: [],
+    })
+    const tab = await open()
+    expect(blocks(tab)[4].classList.contains('hide')).toBe(true)
+  })
+
+  it('админ без права создателя: чужих ссылок не запрашивает, раздела нет (tweb :150, :285-287)', async() => {
+    const tab = await open(MODER_ID)
+    expect(groups.getAdminsWithInvites).not.toHaveBeenCalled()
+    expect(blocks(tab).map((b) => b.className)).toEqual([
+      'sticker-container', 'caption',
+      expect.stringContaining('sidebar-left-section-container'), expect.stringContaining('sidebar-left-section-container'),
+      expect.stringContaining('sidebar-left-section-container'),
+    ])
+    expect(tab.scrollable.container.textContent).not.toContain(lang.LinksCreatedByOtherAdmins)
+  })
+
+  it('клик по админу открывает вкладку его ссылок: выборки с adminId, без заставки и «Создать ссылку»', async() => {
+    const tab = await open()
+    click(blocks(tab)[4].querySelector('a.row')!)
+    await vi.waitFor(() => {
+      if(activeTab() === tab.container) throw new Error('вкладка админа ещё не открыта')
+    }, { timeout: 5000 })
+    await settle()
+
+    expect(groups.getExportedChatInvites).toHaveBeenCalledWith({ chatId: CHANNEL_ID, adminId: ADMIN_ID })
+    expect(groups.getExportedChatInvites).toHaveBeenCalledWith({ chatId: CHANNEL_ID, adminId: ADMIN_ID, revoked: true })
+    expect(groups.getAdminsWithInvites).toHaveBeenCalledTimes(1)
+    expect(groups.exportChatInvite).not.toHaveBeenCalledWith({ chatId: CHANNEL_ID })
+    const adminTab = activeTab()!
+    const names = [...adminTab.querySelectorAll('.sidebar-left-section-name')].map((el) => text(el))
+    expect(names).toEqual([lang.InviteLink, lang.LinksCreatedByThisAdmin, lang.RevokedLinks])
+    expect(adminTab.querySelector('.sticker-container')).toBeNull()
+    expect(adminTab.querySelector('.caption')).toBeNull()
+    // основная — первая ссылка админа (tweb :543), «Создать ссылку» нет (:220)
+    expect(text(adminTab.querySelector('.invite-link-text'))).toBe(`${HOST}/+carol-link`)
+    expect(text(adminTab)).not.toContain(lang.CreateNewLink)
+    expect(text(adminTab.querySelector('.sidebar-left-section-caption'))).toContain('Carol')
+
+    // «Удалить все отозванные» в режиме админа несёт adminId (tweb :311)
+    const revokedSection = [...adminTab.querySelectorAll<HTMLElement>('.sidebar-left-section-container')].pop()!
+    click(revokedSection.querySelector('.sidebar-left-section-content > button')!)
+    await settle()
+    click(popupButton('Delete'))
+    await settle()
+    expect(groups.deleteRevokedExportedChatInvites).toHaveBeenCalledWith(CHANNEL_ID, ADMIN_ID)
   })
 })
 

@@ -21,20 +21,16 @@
  *     — самая старая неотозванная ссылка без имени, срока, лимита и одобрения
  *     (такую сервер выдаёт группе при рождении), нет её — выпускается новая.
  *     Для публичного чата (с именем) она не нужна и не выпускается (`:575`).
- *  2. (О-121) Ссылок других админов нет на бэкенде (`getAdminsWithInvites`,
- *     фильтр `admin_id` у `getExportedChatInvites`): `adminsInvites` — `false`
- *     (`:150`, как у оригинала без права `change_type`), `adminId` у выборок не
- *     передаётся.
- *  3. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
+ *  2. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
  *     чата целиком (`requested` без ссылки, вкладка «Заявки»
  *     `chatRequests.solid.tsx`) — ручка `/join_requests` со страницами и
  *     поиском `q`, как у оригинала.
- *  4. (О-124) Вступившие ПО ССЫЛКЕ — одна страница сервера (первые 50, без
+ *  3. (О-124) Вступившие ПО ССЫЛКЕ — одна страница сервера (первые 50, без
  *     смещения и поиска `q`): у них `load` отдаёт `isEnd: true` сразу, иначе
  *     селектор переспросил бы ту же страницу.
- *  5. Имя чата в `setChatInvite(username)` — публичный адрес нашего хоста
+ *  4. Имя чата в `setChatInvite(username)` — публичный адрес нашего хоста
  *     (`publicUsernameLink`), а не литерал `'t.me/' + username` (`:57`).
- *  6. `managers` — параметр (`AppManagers` у оригинала берётся из `rootScope`
+ *  5. `managers` — параметр (`AppManagers` у оригинала берётся из `rootScope`
  *     синглтоном, у нас DI-ручки вне вкладки нет — тот же приём, что у
  *     `editFolderShared.ts`); ключ пира — `toPeerId(chatId as number, true)`.
  */
@@ -45,6 +41,7 @@ import noop from '@helpers/noop'
 import { InviteLink } from '@components/sidebarLeft/tabs/inviteLink'
 import { cachedChat } from '@core/peerCache'
 import { toPeerId } from '@core/peers/peerId'
+import { hasRights } from '@core/peers/rights'
 import { publicUsernameLink } from '@core/publicLink'
 import type { Channel } from '@core/peers/peer'
 import type { ChatInviteExported, ChatInviteImporter } from '@core/managers/groupsManager'
@@ -210,18 +207,27 @@ export async function getChatInviteLink(managers: Managers, chatId: ChatId, forc
   return managers.groups.exportChatInvite({ chatId })
 }
 
-export function getChatInviteLinksInitArgs(managers: Managers, chatId: ChatId) {
-  const animationData = lottieLoader.loadAnimationFromURLManually('UtyanLinks')
-  // отказ (нет WASM SIMD) гасит сама вкладка статичным кадром; здесь — чтобы
-  // обещание не считалось необработанным до её подписки (как `preloadFolderAnimation`)
-  animationData.catch(noop)
+export function getChatInviteLinksInitArgs(managers: Managers, chatId: ChatId, adminId?: UserId) {
   const chat = cachedChat(toPeerId(chatId as number, true)) as Channel | undefined
+  // `:147` — заставка только у корневой вкладки; у вкладки админа её нет
+  let animationData: ReturnType<typeof lottieLoader.loadAnimationFromURLManually> | undefined
+  if(!adminId) {
+    animationData = lottieLoader.loadAnimationFromURLManually('UtyanLinks')
+    // отказ (нет WASM SIMD) гасит сама вкладка статичным кадром; здесь — чтобы
+    // обещание не считалось необработанным до её подписки (как `preloadFolderAnimation`)
+    animationData.catch(noop)
+  }
+  const adminsInvites = !adminId && hasRights(chat, 'change_type') ? managers.groups.getAdminsWithInvites(chatId) : undefined
+  // отказ обрабатывает вкладка (раздел убирается, `:285-287`); здесь — чтобы он не считался
+  // необработанным до её подписки
+  adminsInvites?.catch(noop)
   return {
     animationData,
-    invites: managers.groups.getExportedChatInvites({ chatId }),
-    invitesRevoked: managers.groups.getExportedChatInvites({ chatId, revoked: true }),
-    adminsInvites: false as const, // расхождение 2
-    // расхождение 1: публичному чату постоянная ссылка не показывается (`chatInviteLinks.tsx:575`)
-    exportedInvite: chat?.username ? Promise.resolve(undefined) : getChatInviteLink(managers, chatId),
+    invites: managers.groups.getExportedChatInvites({ chatId, adminId }),
+    invitesRevoked: managers.groups.getExportedChatInvites({ chatId, adminId, revoked: true }),
+    // `:150` — ссылки других админов только у создателя (`change_type`); сервер отдаёт их тоже только ему
+    adminsInvites,
+    // расхождение 1: публичному чату и вкладке чужих ссылок постоянная ссылка не нужна (`:575`)
+    exportedInvite: adminId || chat?.username ? Promise.resolve(undefined) : getChatInviteLink(managers, chatId),
   }
 }

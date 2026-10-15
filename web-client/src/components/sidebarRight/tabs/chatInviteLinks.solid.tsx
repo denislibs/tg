@@ -24,28 +24,23 @@
  *     основной: сервер не отдаёт `messages.exportedChatInviteReplaced`, поэтому
  *     новая основная выпускается следом (`exportChatInvite`) — видимый исход
  *     тот же (`:128`, `:140-141`).
- *  2. (О-121) Режим ссылок одного админа (`adminId`: подписи
- *     `ManageLinks.Admin.Permanent.Desc`, `LinksCreatedByThisAdmin`) и секция
- *     «Ссылки других админов» (`:231-290`) — нет на бэкенде, у вкладки нет
- *     открывателя с `adminId`. У оригинала без `adminsInvites` секция
- *     удаляется (`:285-287`) — здесь она и не создаётся.
- *  3. (О-122) Заявок по ссылке нет на проводе: ветки `requested`/`JoinRequests`
+ *  2. (О-122) Заявок по ссылке нет на проводе: ветки `requested`/`JoinRequests`
  *     в подписи строки (`:458`, `:486-490`) не портированы.
- *  4. (О-123) Платные ссылки-подписки (`subscription_pricing`: `StarsAmount`,
+ *  3. (О-123) Платные ссылки-подписки (`subscription_pricing`: `StarsAmount`,
  *     `Stars.Subscriptions.PerMonth`, иконка `link_paid`, `:409-414`, `:436`) —
  *     нет на бэкенде.
- *  5. (О-17) Имена чата — одно поле `username` (`chatType.solid.tsx`, расхождение
+ *  4. (О-17) Имена чата — одно поле `username` (`chatType.solid.tsx`, расхождение
  *     5), `getPeerActiveUsernames` → `[chat.username]`; сообществ (`communityFull`,
  *     `:575`) нет (О-5). Чат — из зеркала (`cachedChat`), а не `getChat` (`:44`).
- *  6. `invite.start_date` (`:510`) не производится сервером — берётся `date`,
+ *  5. `invite.start_date` (`:510`) не производится сервером — берётся `date`,
  *     как у оригинала при его отсутствии.
- *  7. Отказ в подтверждении (`confirmationPopup` — отклонённое обещание)
+ *  6. Отказ в подтверждении (`confirmationPopup` — отклонённое обещание)
  *     гасится в самом действии: у оригинала он улетает необработанным.
- *  8. Кольцо остатка (`:554-558`) собирается `createElementNS`, а не строкой
+ *  7. Кольцо остатка (`:554-558`) собирается `createElementNS`, а не строкой
  *     разметки (правило репо, шапка `putPreloader.ts`); цвета — переменные
  *     темы `--green-color`/`--danger-color` (наш `customProperties.getProperty`
  *     берёт имя с `--`).
- *  9. Заставка: отказ лотти (нет WASM SIMD) — статичный кадр
+ *  8. Заставка: отказ лотти (нет WASM SIMD) — статичный кадр
  *     (`renderStaticAssetFallback`), как в `chatFolders.solid.tsx`.
  */
 import type { Component } from 'solid-js'
@@ -68,10 +63,12 @@ import Section, { appendSectionContent } from '@components/section.solid'
 import UsernameRow from '@components/usernameRow.solid'
 import { wrapLeftDuration } from '@components/wrappers/wrapDuration'
 import { type ChatInvite, type ChatInviteActions, ChatInviteLink, getChatInviteLinksInitArgs, isActiveInvite } from './chatInviteLinkShared'
-import { AppChatInviteLinkTab, AppEditChatInviteLinkTab, type AppChatInviteLinksTab } from '@components/solidJsTabs/tabs'
+import { AppChatInviteLinkTab, AppChatInviteLinksTab, AppEditChatInviteLinkTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import { mountSolidComponent, wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
+import PeerTitle from '@components/chat/peerTitle'
+import { addDialogNew, createChatList } from '@lib/appDialogsManager'
 import { cachedChat } from '@core/peerCache'
 import { toPeerId } from '@core/peers/peerId'
 import type { Channel } from '@core/peers/peer'
@@ -84,8 +81,8 @@ const ChatInviteLinks: Component = () => {
   const promiseCollector = usePromiseCollector()
   const managers = tab.managers!
   const slider = tab.slider as SidebarSlider
-  const { chatId } = tab.payload
-  const p = tab.payload.p ?? getChatInviteLinksInitArgs(managers, chatId)
+  const { chatId, adminId } = tab.payload
+  const p = tab.payload.p ?? getChatInviteLinksInitArgs(managers, chatId, adminId)
 
   const menuButtonsActions = {} as ChatInviteActions
   const actions = menuButtonsActions
@@ -94,7 +91,7 @@ const ChatInviteLinks: Component = () => {
     const loadPromises: Promise<unknown>[] = []
     const middleware = tab.middlewareHelper.get()
     // :43-46 — у оригинала здесь `await Promise.all([getChat, p.chatFull])`;
-    // чат — из зеркала (расхождение 5), `chatFull` — его аналог `exportedInvite`
+    // чат — из зеркала (расхождение 4), `chatFull` — его аналог `exportedInvite`
     // (расхождение 1). Этот `await` ставит узлы вкладки после корня острова.
     const exportedInvite = await p.exportedInvite
     const chat = cachedChat(toPeerId(chatId as number, true)) as Channel | undefined
@@ -103,12 +100,15 @@ const ChatInviteLinks: Component = () => {
     // title is set by the scaffold (title: 'InviteLinks')
     tab.container.classList.add('chat-folders-container', 'chat-discussion-container')
 
-    const stickerContainer = document.createElement('div')
-    stickerContainer.classList.add('sticker-container')
+    let stickerContainer: HTMLElement | undefined, caption: HTMLElement | undefined
+    if(!adminId) {
+      stickerContainer = document.createElement('div')
+      stickerContainer.classList.add('sticker-container')
 
-    const caption = document.createElement('div')
-    caption.classList.add('caption')
-    caption.append(i18n('ChannelLinkInfo'))
+      caption = document.createElement('div')
+      caption.classList.add('caption')
+      caption.append(i18n('ChannelLinkInfo'))
+    }
 
     const wrapInviteTitle = (invite: ChatInvite) => {
       return invite.title ? wrapEmojiText(invite.title) : invite.link.split('://').pop()!
@@ -167,7 +167,7 @@ const ChatInviteLinks: Component = () => {
             },
           })
         } catch {
-          return // расхождение 7
+          return // расхождение 6
         }
 
         const invite = _menuItem?.invite || primaryInvite!
@@ -218,6 +218,12 @@ const ChatInviteLinks: Component = () => {
 
     let inviteLinkSection: HTMLElement
     {
+      // :178-181 — подпись «<админ> видит эту ссылку и приглашает по ней в <чат>»
+      const captionArgs = adminId ? [
+        new PeerTitle({ peerId: toPeerId(adminId as number, false), middleware, managers }).element,
+        new PeerTitle({ peerId: toPeerId(chatId as number, true), middleware, managers }).element,
+      ] : undefined
+
       inviteLink = new ChatInviteLink({
         buttons: menuButtons,
         listenerSetter: tab.listenerSetter,
@@ -233,7 +239,11 @@ const ChatInviteLinks: Component = () => {
       }, { listenerSetter: tab.listenerSetter })
 
       inviteLinkSection = wrapSolidComponent(() => (
-        <Section name="InviteLink">
+        <Section
+          name="InviteLink"
+          caption={adminId ? 'ManageLinks.Admin.Permanent.Desc' : undefined}
+          captionArgs={captionArgs}
+        >
           {inviteLink.container}
         </Section>
       ), tab.middlewareHelper.get())
@@ -243,32 +253,90 @@ const ChatInviteLinks: Component = () => {
     {
       additionalLinks = wrapSolidComponent(() => (
         <Section
-          name="InviteLinks.Additional"
-          caption="InviteLinks.Description"
+          name={adminId ? 'LinksCreatedByThisAdmin' : 'InviteLinks.Additional'}
+          caption={adminId ? undefined : 'InviteLinks.Description'}
           contentProps={{ ref: (element) => additionalLinksContent = element }}
         />
       ), tab.middlewareHelper.get())
 
-      const btn = Button('btn-primary btn-transparent primary', { icon: 'plus', text: 'CreateNewLink' })
+      if(!adminId) {
+        const btn = Button('btn-primary btn-transparent primary', { icon: 'plus', text: 'CreateNewLink' })
 
-      attachClickEvent(btn, () => {
-        const editTab = slider.createTab(AppEditChatInviteLinkTab)
-        editTab.eventListener.addEventListener('finish', (chatInvite) => {
-          const row = createInviteRow(chatInvite)
-          if(primaryInvite) {
-            additionalLinksContent.prepend(row.container)
-          } else {
-            additionalLinksContent.firstElementChild!.after(row.container)
-          }
-        })
-        void editTab.open({ chatId })
-      }, { listenerSetter: tab.listenerSetter })
+        attachClickEvent(btn, () => {
+          const editTab = slider.createTab(AppEditChatInviteLinkTab)
+          editTab.eventListener.addEventListener('finish', (chatInvite) => {
+            const row = createInviteRow(chatInvite)
+            if(primaryInvite) {
+              additionalLinksContent.prepend(row.container)
+            } else {
+              additionalLinksContent.firstElementChild!.after(row.container)
+            }
+          })
+          void editTab.open({ chatId })
+        }, { listenerSetter: tab.listenerSetter })
 
-      additionalLinksContent.append(btn)
-      additionalLinksContent = appendSectionContent(additionalLinks)
+        additionalLinksContent.append(btn)
+        additionalLinksContent = appendSectionContent(additionalLinks)
+      }
     }
 
-    // :231-290 — ссылки других админов (расхождение 2)
+    // :231-290 — ссылки других админов: раздел есть, только если сервер отдал их создателю
+    let adminsLinks: HTMLElement | undefined
+    if(!adminId) {
+      let adminsLinksContent!: HTMLElement
+      const section = adminsLinks = wrapSolidComponent(() => (
+        <Section
+          name="LinksCreatedByOtherAdmins"
+          contentProps={{ ref: (element) => adminsLinksContent = element }}
+        />
+      ), tab.middlewareHelper.get())
+
+      const promise = (p.adminsInvites || Promise.reject(new Error('not creator'))).then((adminsInvites) => {
+        // :241-244 — себя раздел не показывает
+        const admins = adminsInvites.admins.filter((admin) => admin.admin_id !== rootScope.myId)
+        if(!admins.length) {
+          section.classList.add('hide')
+          return
+        }
+
+        const chatlist = createChatList()
+        admins.forEach((admin) => {
+          const { dom } = addDialogNew({
+            peerId: toPeerId(admin.admin_id as number, false),
+            container: chatlist,
+            rippleEnabled: true,
+            avatarSize: 'abitbigger',
+            append: true,
+            wrapOptions: {
+              middleware: tab.middlewareHelper.get(),
+            },
+            managers,
+          })
+
+          dom.lastMessageSpan.append(i18n('InviteLinkCount', [admin.invites_count]))
+        })
+
+        attachClickEvent(chatlist, (e) => {
+          const target = findUpClassName(e.target!, 'chatlist-chat')
+          if(!target) {
+            return
+          }
+
+          const adminTab = slider.createTab(AppChatInviteLinksTab)
+          void adminTab.open({
+            chatId,
+            adminId: Number(target.dataset.peerId) as UserId,
+          })
+        }, { listenerSetter: tab.listenerSetter })
+
+        adminsLinksContent.append(chatlist)
+      }, () => {
+        // :285-287 — отказ (не создатель, сеть): раздела нет
+        section.remove()
+      })
+
+      loadPromises.push(promise)
+    }
 
     let revokedLinks: HTMLElement, revokedLinksContent!: HTMLElement
     {
@@ -292,11 +360,11 @@ const ChatInviteLinks: Component = () => {
             },
           })
         } catch {
-          return // расхождение 7
+          return // расхождение 6
         }
 
         const toggle = toggleDisability(btn, true)
-        await managers.groups.deleteRevokedExportedChatInvites(chatId)
+        await managers.groups.deleteRevokedExportedChatInvites(chatId, adminId)
         toggle()
 
         Array.from(revokedLinksContent.children).forEach((el) => {
@@ -310,13 +378,14 @@ const ChatInviteLinks: Component = () => {
       revokedLinksContent = appendSectionContent(revokedLinks)
     }
 
-    tab.scrollable.append(
+    tab.scrollable.append(...[
       stickerContainer,
       caption,
       inviteLinkSection,
       additionalLinks,
+      adminsLinks,
       revokedLinks,
-    )
+    ].filter((el): el is HTMLElement => !!el))
 
     const openLink = (invite: ChatInvite) => {
       const detailTab = chatInviteLinkTab = slider.createTab(AppChatInviteLinkTab)
@@ -328,7 +397,7 @@ const ChatInviteLinks: Component = () => {
         chatInvite: invite,
         menuButtons,
         actions,
-        // `onUpdate: menuItem?.update` (`:347`) — его зовёт только список заявок вкладки ссылки (расхождение 3)
+        // `onUpdate: menuItem?.update` (`:347`) — его зовёт только список заявок вкладки ссылки (расхождение 2)
       })
     }
 
@@ -360,10 +429,10 @@ const ChatInviteLinks: Component = () => {
       listenerSetter: tab.listenerSetter,
     })
 
-    // расхождение 9
-    const loadAnimationPromise = p.animationData.then(async(cb) => {
+    // расхождение 8
+    const loadAnimationPromise = stickerContainer && p.animationData?.then(async(cb) => {
       const player = await cb({
-        container: stickerContainer,
+        container: stickerContainer!,
         loop: true,
         autoplay: true,
         width: 120,
@@ -373,7 +442,7 @@ const ChatInviteLinks: Component = () => {
 
       return lottieLoader.waitForFirstFrame(player)
     }).catch(() => {
-      renderStaticAssetFallback(stickerContainer, 'UtyanLinks')
+      renderStaticAssetFallback(stickerContainer!, 'UtyanLinks')
     })
 
     type InviteRow = {
@@ -393,7 +462,7 @@ const ChatInviteLinks: Component = () => {
 
     const createInviteRow = (invite: ChatInvite) => {
       let title!: HTMLDivElement, subtitle!: HTMLDivElement, media!: HTMLDivElement
-      // расхождение 4: `subscription_pricing` (`:408-414`)
+      // расхождение 3: `subscription_pricing` (`:408-414`)
 
       const mounted = mountSolidComponent(() => (
         <UsernameRow
@@ -434,7 +503,7 @@ const ChatInviteLinks: Component = () => {
 
         const elements: (HTMLElement | string)[] = []
         const joined = invite.usage || 0
-        // расхождение 3: `invite.requested` (`:458`)
+        // расхождение 2: `invite.requested` (`:458`)
         const time = tsNow(true)
         const expireDate = invite.expire_date
         const isExpired = !!expireDate && expireDate <= time
@@ -483,11 +552,11 @@ const ChatInviteLinks: Component = () => {
 
         if(!invite.pFlags?.revoked && ((expireDate && !isExpired) || (invite.usage_limit && !isLimit))) {
           const limitProgress = invite.usage_limit ? joined / invite.usage_limit : undefined
-          // расхождение 6
+          // расхождение 5
           const timeProgress = expireDate ? 1 - timeLeft! / (expireDate - invite.date) : undefined
           const progress = Math.max(limitProgress ?? 0, timeProgress ?? 0)
 
-          // расхождение 8
+          // расхождение 7
           const color1 = hexToRgb(customProperties.getProperty('--green-color'))
           const color2 = hexToRgb(customProperties.getProperty('--danger-color'))
           const mixedColor = mixColors(color2, color1, progress)
@@ -529,7 +598,7 @@ const ChatInviteLinks: Component = () => {
           middleware.onDestroy(onClean)
         }
 
-        // расхождение 8
+        // расхождение 7
         const svg = document.createElementNS(SVG_NS, 'svg')
         svg.setAttribute('class', 'usernames-username-icon-svg')
         svg.setAttribute('viewBox', '0 0 51 51')
@@ -554,8 +623,10 @@ const ChatInviteLinks: Component = () => {
     }
 
     const loadLinksPromise = Promise.all([p.invites, p.invitesRevoked]).then(([chatInvites, chatInvitesRevoked]) => {
-      // расхождение 1, 5
-      if(!usernames.length) {
+      // расхождение 1, 4
+      if(adminId) {
+        primaryInvite = chatInvites.invites[0]
+      } else if(!usernames.length) {
         primaryInvite = exportedInvite
       }
 
@@ -591,7 +662,8 @@ const ChatInviteLinks: Component = () => {
       })
     })
 
-    loadPromises.push(loadAnimationPromise, loadLinksPromise)
+    if(loadAnimationPromise) loadPromises.push(loadAnimationPromise)
+    loadPromises.push(loadLinksPromise)
     await Promise.all(loadPromises)
   })())
 

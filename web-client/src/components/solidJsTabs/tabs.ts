@@ -614,6 +614,8 @@ export const AppChatInviteLinkTab =
 
 type AppChatInviteLinksTabPayload = {
   chatId: ChatId,
+  /** tweb `:699-712`: ссылки одного админа (открывает создатель из раздела «Ссылки других админов»). */
+  adminId?: UserId,
   p?: ReturnType<typeof getChatInviteLinksInitArgs>
 }
 
