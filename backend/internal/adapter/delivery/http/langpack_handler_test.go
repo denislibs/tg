@@ -169,7 +169,7 @@ func langPackRouterWithRepo(t *testing.T) (http.Handler, *fakeLangPackRepo) {
 	)
 
 	h := NewLangPackHandler(usecaselangpack.New(repo))
-	return NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, h), repo
+	return NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, h, true), repo
 }
 
 func strptr(s string) *string { return &s }
@@ -585,7 +585,7 @@ func TestLangPackHandler_StorageFailureHasName(t *testing.T) {
 	repo := newFakeLangPackRepo()
 	repo.fail = errors.New("база не отвечает")
 	h := NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		NewLangPackHandler(usecaselangpack.New(repo)))
+		NewLangPackHandler(usecaselangpack.New(repo)), true)
 
 	code, body := getLangPack(t, h, "/langpack/languages")
 	if code != http.StatusInternalServerError {

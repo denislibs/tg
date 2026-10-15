@@ -117,7 +117,7 @@ func exportReq(t *testing.T, h http.Handler, key string) *httptest.ResponseRecor
 func qrRouterNoDB() http.Handler {
 	uc := usecaseauth.New(nil, nil, nil, nil, nil, "12345", func(string, ...any) {})
 	uc.SetQRStore(newMemQRStore())
-	return NewRouter(uc, nil, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return NewRouter(uc, nil, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 }
 
 func TestQRRoutes_OldRemoved(t *testing.T) {

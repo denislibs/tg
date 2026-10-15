@@ -231,7 +231,7 @@ func newResetRouter(t *testing.T, window time.Duration) http.Handler {
 }
 
 func routerFor(auth *usecaseauth.Interactor, pool *pgxpool.Pool) http.Handler {
-	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return NewRouter(auth, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.ResponseRecorder {
