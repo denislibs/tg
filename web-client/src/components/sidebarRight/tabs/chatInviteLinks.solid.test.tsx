@@ -95,7 +95,7 @@ beforeEach(() => {
     invite('primary', { date: now() - 86400 }),
   ]
   revoked = [invite('old', { pFlags: { revoked: true } })]
-  adminLinks = [invite('carol-link', { admin_id: ADMIN_ID, title: 'Carol link' })]
+  adminLinks = [invite('carol-link', { admin_id: ADMIN_ID })]
   adminRevoked = [invite('carol-old', { admin_id: ADMIN_ID, pFlags: { revoked: true } })]
   groups = {
     getExportedChatInvites: vi.fn(async({ revoked: r, adminId }: { revoked?: boolean, adminId?: number }) => {
@@ -114,7 +114,7 @@ beforeEach(() => {
     exportChatInvite: vi.fn(async() => invite('fresh')),
     editExportedChatInvite: vi.fn(async({ link }: { link: string }) => ({
       _: 'messages.exportedChatInvite',
-      invite: { ...active.concat(revoked).find((i) => i.link === link)!, pFlags: { revoked: true } },
+      invite: { ...active.concat(revoked, adminLinks).find((i) => i.link === link)!, pFlags: { revoked: true } },
     })),
     deleteExportedChatInvite: vi.fn(async() => {}),
     deleteRevokedExportedChatInvites: vi.fn(async() => {}),
@@ -389,6 +389,48 @@ describe('«Пригласительные ссылки» — только св�
     click(popupButton('Delete'))
     await settle()
     expect(groups.deleteRevokedExportedChatInvites).toHaveBeenCalledWith(CHANNEL_ID, ADMIN_ID)
+  })
+})
+
+describe('«Пригласительные ссылки» — вкладка ссылок одного админа: основная ссылка', () => {
+  const openAdmin = async() => {
+    const tab = column.sidebar.createTab(AppChatInviteLinksTab)
+    await tab.open({ chatId: CHANNEL_ID, adminId: ADMIN_ID })
+    await settle()
+    return tab
+  }
+
+  it('основная — «постоянная» админа (без имени/срока/лимита), а не самая новая ссылка (tweb :542-543, эмуляция О-120)', async() => {
+    adminLinks = [
+      invite('carol-new', { admin_id: ADMIN_ID, title: 'Promo', usage_limit: 5 }),
+      invite('carol-perm', { admin_id: ADMIN_ID, date: now() - 86400 }),
+    ]
+    const tab = await openAdmin()
+    expect(text(blocks(tab)[0].querySelector('.invite-link-text'))).toBe(`${HOST}/+carol-perm`)
+  })
+
+  it('у админа нет подходящей ссылки (только отозванные): секция «Ссылка» скрыта, вкладка не падает', async() => {
+    adminLinks = []
+    const tab = await openAdmin()
+    const [main, additional, revokedSection] = blocks(tab)
+    expect(main.classList.contains('hide')).toBe(true)
+    expect(rowsOf(additional)).toHaveLength(0)
+    expect(rowsOf(revokedSection)).toHaveLength(1)
+  })
+
+  it('отзыв основной во вкладке админа не выпускает замену от имени актора', async() => {
+    const tab = await openAdmin()
+    const main = blocks(tab)[0]
+    click(main.querySelector('.invite-link-menu')!)
+    await settle()
+    click([...document.querySelectorAll<HTMLElement>('.btn-menu .btn-menu-item')].find((el) => text(el) === lang.RevokeLink)!)
+    await settle()
+    click(popupButton('RevokeButton'))
+    await settle()
+
+    expect(groups.editExportedChatInvite).toHaveBeenCalledWith({ chatId: CHANNEL_ID, link: `${TME}/+carol-link`, revoked: true })
+    expect(groups.exportChatInvite).not.toHaveBeenCalled()
+    expect(main.classList.contains('hide')).toBe(true)
   })
 })
 

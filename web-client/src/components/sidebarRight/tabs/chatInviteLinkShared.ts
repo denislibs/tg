@@ -21,16 +21,18 @@
  *     — самая старая неотозванная ссылка без имени, срока, лимита и одобрения
  *     (такую сервер выдаёт группе при рождении), нет её — выпускается новая.
  *     Для публичного чата (с именем) она не нужна и не выпускается (`:575`).
- *  2. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
+ *  2. (О-121, снято М2-1) Ссылки других админов (`getAdminsWithInvites`, фильтр `admin_id`) на бэкенде есть:
+ *     `adminsInvites` — запрос только у создателя (`hasRights(chat, 'change_type')`, `:150`).
+ *  3. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
  *     чата целиком (`requested` без ссылки, вкладка «Заявки»
  *     `chatRequests.solid.tsx`) — ручка `/join_requests` со страницами и
  *     поиском `q`, как у оригинала.
- *  3. (О-124) Вступившие ПО ССЫЛКЕ — одна страница сервера (первые 50, без
+ *  4. (О-124) Вступившие ПО ССЫЛКЕ — одна страница сервера (первые 50, без
  *     смещения и поиска `q`): у них `load` отдаёт `isEnd: true` сразу, иначе
  *     селектор переспросил бы ту же страницу.
- *  4. Имя чата в `setChatInvite(username)` — публичный адрес нашего хоста
+ *  5. Имя чата в `setChatInvite(username)` — публичный адрес нашего хоста
  *     (`publicUsernameLink`), а не литерал `'t.me/' + username` (`:57`).
- *  5. `managers` — параметр (`AppManagers` у оригинала берётся из `rootScope`
+ *  6. `managers` — параметр (`AppManagers` у оригинала берётся из `rootScope`
  *     синглтоном, у нас DI-ручки вне вкладки нет — тот же приём, что у
  *     `editFolderShared.ts`); ключ пира — `toPeerId(chatId as number, true)`.
  */
@@ -183,7 +185,7 @@ export function getImportersLoader({
 }
 
 /** Неотозванная ссылка «как постоянная» (расхождение 1): без имени, срока, лимита и одобрения. */
-const isPermanentLike = (invite: ChatInvite) =>
+export const isPermanentLike = (invite: ChatInvite) =>
   !invite.title && !invite.expire_date && !invite.usage_limit && !invite.pFlags?.request_needed
 
 /**

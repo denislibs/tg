@@ -833,6 +833,22 @@ func TestInviteLinks_OwnerScope_HTTP(t *testing.T) {
 	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true&admin_id="+itoa(idB), tokenA, nil)); len(got) != 0 {
 		t.Fatalf("admin's revoked not cleared: %v", got)
 	}
+	// Создатель чистит отозванные админа через admin_id, свои отозванные не задевает.
+	rec = authedReq(t, h, http.MethodPost, base, tokenB, map[string]any{"title": "admin-link-2"})
+	b2 := inviteToken(t, rec)
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+b2, tokenB, map[string]any{"revoked": true})
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+cTok, tokenA, map[string]any{"revoked": true})
+	if rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/revoked_invite_links?admin_id="+itoa(idB), tokenA, nil); rec.Code != http.StatusOK {
+		t.Fatalf("creator clears admin's revoked: %d %s", rec.Code, rec.Body.String())
+	}
+	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true&admin_id="+itoa(idB), tokenA, nil)); len(got) != 0 {
+		t.Fatalf("admin's revoked not cleared by creator: %v", got)
+	}
+	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true", tokenA, nil)); !contains(got, cTok) {
+		t.Fatalf("creator's own revoked link lost: %v", got)
+	}
+	// возвращаем cTok в активные для проверки счётчиков ниже
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+cTok, tokenA, map[string]any{"revoked": false})
 
 	// admins_with_invites: только создатель; контейнер со счётчиками и карточками.
 	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/admins_with_invites", tokenB, nil); rec.Code != http.StatusForbidden {

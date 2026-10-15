@@ -92,11 +92,18 @@ func TestEditInvite_ForeignLink_ForbiddenForAdmin(t *testing.T) {
 	}
 	// Отозванную чужую ссылку админ тоже не правит (GetByToken отозванные скрывает —
 	// проверка владельца не должна на этом пропускаться).
-	if _, err := i.EditInvite(ctx, id, 8, c1.Token, domain.InviteEdit{Title: &title}); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("admin edits foreign link: want ErrForbidden, got %v", err)
-	}
 	if _, err := i.EditInvite(ctx, id, 7, c1.Token, domain.InviteEdit{Revoked: &revoked}); err != nil {
 		t.Fatalf("creator revokes own: %v", err)
+	}
+	if _, err := i.EditInvite(ctx, id, 8, c1.Token, domain.InviteEdit{Title: &title}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("admin edits foreign revoked link: want ErrForbidden, got %v", err)
+	}
+	// Ссылки с таким токеном в чате нет — прежнее поведение репозитория, не отказ по владельцу.
+	if _, err := i.EditInvite(ctx, id, 8, "no-such-token", domain.InviteEdit{Title: &title}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("edit of missing link: want ErrNotFound, got %v", err)
+	}
+	if err := i.DeleteInvite(ctx, id, 8, "no-such-token"); err != nil {
+		t.Fatalf("delete of missing link must stay a no-op: %v", err)
 	}
 	if _, err := i.EditInvite(ctx, id, 8, c1.Token, domain.InviteEdit{Revoked: new(bool)}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("admin un-revokes creator's revoked link: want ErrForbidden, got %v", err)
@@ -136,6 +143,12 @@ func TestDeleteInvite_ForeignLink_ForbiddenForAdmin(t *testing.T) {
 	if err := i.DeleteInvite(ctx, id, 7, c1.Token); err != nil {
 		t.Fatalf("creator deletes own: %v", err)
 	}
+	if err := i.DeleteInvite(ctx, id, 7, a1.Token); err != nil {
+		t.Fatalf("creator deletes admin's: %v", err)
+	}
+	if act, _ := i.ListInvites(ctx, id, 7, 8, false); hasToken(act, a1.Token) {
+		t.Fatal("admin's link not deleted by creator")
+	}
 }
 
 func TestDeleteAllRevoked_OnlyOwn(t *testing.T) {
@@ -159,8 +172,17 @@ func TestDeleteAllRevoked_OnlyOwn(t *testing.T) {
 	if err := i.DeleteAllRevoked(ctx, id, 8, 7); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("admin clears creator's revoked: want ErrForbidden, got %v", err)
 	}
+	// Создатель чистит отозванные админа (admin_id=8), а свои не трогает.
+	a2, _ := i.CreateInvite(ctx, id, 8, "a2", nil, false, nil)
+	_, _ = i.EditInvite(ctx, id, 8, a2.Token, domain.InviteEdit{Revoked: &revoked})
 	if err := i.DeleteAllRevoked(ctx, id, 7, 8); err != nil {
 		t.Fatalf("creator clears admin's revoked: %v", err)
+	}
+	if rev, _ := i.ListInvites(ctx, id, 7, 8, true); len(rev) != 0 {
+		t.Fatalf("admin's revoked not cleared by creator: %+v", rev)
+	}
+	if rev, _ := i.ListInvites(ctx, id, 7, 0, true); !hasToken(rev, c1.Token) {
+		t.Fatal("creator's own revoked link deleted by DeleteAllRevoked(admin_id=8)")
 	}
 }
 

@@ -23,24 +23,27 @@
  *     (порт `getChatInviteLink`, расхождение 1 `chatInviteLinkShared.ts`). Отзыв
  *     основной: сервер не отдаёт `messages.exportedChatInviteReplaced`, поэтому
  *     новая основная выпускается следом (`exportChatInvite`) — видимый исход
- *     тот же (`:128`, `:140-141`).
- *  2. (О-122) Заявок по ссылке нет на проводе: ветки `requested`/`JoinRequests`
+ *     тот же (`:128`, `:140-141`). Во вкладке одного админа (`adminId`) основная — его «постоянная»
+ *     по той же эмуляции (первая в выдаче у TG, `:542-543`); замена не выпускается, а без неё секция скрыта.
+ *  2. (О-121, снято М2-1) Режим ссылок одного админа (`adminId`) и раздел «Ссылки других админов»
+ *     (`:231-290`) портированы: раздел виден создателю, сервер отдаёт чужие ссылки только ему.
+ *  3. (О-122) Заявок по ссылке нет на проводе: ветки `requested`/`JoinRequests`
  *     в подписи строки (`:458`, `:486-490`) не портированы.
- *  3. (О-123) Платные ссылки-подписки (`subscription_pricing`: `StarsAmount`,
+ *  4. (О-123) Платные ссылки-подписки (`subscription_pricing`: `StarsAmount`,
  *     `Stars.Subscriptions.PerMonth`, иконка `link_paid`, `:409-414`, `:436`) —
  *     нет на бэкенде.
- *  4. (О-17) Имена чата — одно поле `username` (`chatType.solid.tsx`, расхождение
+ *  5. (О-17) Имена чата — одно поле `username` (`chatType.solid.tsx`, расхождение
  *     5), `getPeerActiveUsernames` → `[chat.username]`; сообществ (`communityFull`,
  *     `:575`) нет (О-5). Чат — из зеркала (`cachedChat`), а не `getChat` (`:44`).
- *  5. `invite.start_date` (`:510`) не производится сервером — берётся `date`,
+ *  6. `invite.start_date` (`:510`) не производится сервером — берётся `date`,
  *     как у оригинала при его отсутствии.
- *  6. Отказ в подтверждении (`confirmationPopup` — отклонённое обещание)
+ *  7. Отказ в подтверждении (`confirmationPopup` — отклонённое обещание)
  *     гасится в самом действии: у оригинала он улетает необработанным.
- *  7. Кольцо остатка (`:554-558`) собирается `createElementNS`, а не строкой
+ *  8. Кольцо остатка (`:554-558`) собирается `createElementNS`, а не строкой
  *     разметки (правило репо, шапка `putPreloader.ts`); цвета — переменные
  *     темы `--green-color`/`--danger-color` (наш `customProperties.getProperty`
  *     берёт имя с `--`).
- *  8. Заставка: отказ лотти (нет WASM SIMD) — статичный кадр
+ *  9. Заставка: отказ лотти (нет WASM SIMD) — статичный кадр
  *     (`renderStaticAssetFallback`), как в `chatFolders.solid.tsx`.
  */
 import type { Component } from 'solid-js'
@@ -62,7 +65,7 @@ import { confirmationPopup } from '@components/popups/popupPeer'
 import Section, { appendSectionContent } from '@components/section.solid'
 import UsernameRow from '@components/usernameRow.solid'
 import { wrapLeftDuration } from '@components/wrappers/wrapDuration'
-import { type ChatInvite, type ChatInviteActions, ChatInviteLink, getChatInviteLinksInitArgs, isActiveInvite } from './chatInviteLinkShared'
+import { type ChatInvite, type ChatInviteActions, ChatInviteLink, getChatInviteLinksInitArgs, isActiveInvite, isPermanentLike } from './chatInviteLinkShared'
 import { AppChatInviteLinkTab, AppChatInviteLinksTab, AppEditChatInviteLinkTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
@@ -91,7 +94,7 @@ const ChatInviteLinks: Component = () => {
     const loadPromises: Promise<unknown>[] = []
     const middleware = tab.middlewareHelper.get()
     // :43-46 — у оригинала здесь `await Promise.all([getChat, p.chatFull])`;
-    // чат — из зеркала (расхождение 4), `chatFull` — его аналог `exportedInvite`
+    // чат — из зеркала (расхождение 5), `chatFull` — его аналог `exportedInvite`
     // (расхождение 1). Этот `await` ставит узлы вкладки после корня острова.
     const exportedInvite = await p.exportedInvite
     const chat = cachedChat(toPeerId(chatId as number, true)) as Channel | undefined
@@ -167,7 +170,7 @@ const ChatInviteLinks: Component = () => {
             },
           })
         } catch {
-          return // расхождение 6
+          return // расхождение 7
         }
 
         const invite = _menuItem?.invite || primaryInvite!
@@ -179,8 +182,9 @@ const ChatInviteLinks: Component = () => {
         })
 
         const editedInvite = chatInvite.invite
-        // расхождение 1: замену основной выпускаем сами — у сервера нет `…Replaced`
-        const newInvite = _menuItem ? undefined : await managers.groups.exportChatInvite({ chatId })
+        // расхождение 1: замену основной выпускаем сами — у сервера нет `…Replaced`.
+        // Во вкладке чужого админа — нет: ссылка от имени актора была бы подложена ему «основной».
+        const newInvite = _menuItem || adminId ? undefined : await managers.groups.exportChatInvite({ chatId })
 
         if(_menuItem) {
           revokedLinksContent.prepend(_menuItem.row.container)
@@ -189,7 +193,11 @@ const ChatInviteLinks: Component = () => {
           const row = createInviteRow(editedInvite)
           revokedLinksContent.prepend(row.container)
           primaryInvite = newInvite
-          inviteLink.setChatInvite(primaryInvite!)
+          if(primaryInvite) {
+            inviteLink.setChatInvite(primaryInvite)
+          } else {
+            inviteLinkSection.classList.add('hide')
+          }
         }
 
         onRevokedLinksUpdate()
@@ -360,7 +368,7 @@ const ChatInviteLinks: Component = () => {
             },
           })
         } catch {
-          return // расхождение 6
+          return // расхождение 7
         }
 
         const toggle = toggleDisability(btn, true)
@@ -397,7 +405,7 @@ const ChatInviteLinks: Component = () => {
         chatInvite: invite,
         menuButtons,
         actions,
-        // `onUpdate: menuItem?.update` (`:347`) — его зовёт только список заявок вкладки ссылки (расхождение 2)
+        // `onUpdate: menuItem?.update` (`:347`) — его зовёт только список заявок вкладки ссылки (расхождение 3)
       })
     }
 
@@ -429,7 +437,7 @@ const ChatInviteLinks: Component = () => {
       listenerSetter: tab.listenerSetter,
     })
 
-    // расхождение 8
+    // расхождение 9
     const loadAnimationPromise = stickerContainer && p.animationData?.then(async(cb) => {
       const player = await cb({
         container: stickerContainer!,
@@ -462,7 +470,7 @@ const ChatInviteLinks: Component = () => {
 
     const createInviteRow = (invite: ChatInvite) => {
       let title!: HTMLDivElement, subtitle!: HTMLDivElement, media!: HTMLDivElement
-      // расхождение 3: `subscription_pricing` (`:408-414`)
+      // расхождение 4: `subscription_pricing` (`:408-414`)
 
       const mounted = mountSolidComponent(() => (
         <UsernameRow
@@ -503,7 +511,7 @@ const ChatInviteLinks: Component = () => {
 
         const elements: (HTMLElement | string)[] = []
         const joined = invite.usage || 0
-        // расхождение 2: `invite.requested` (`:458`)
+        // расхождение 3: `invite.requested` (`:458`)
         const time = tsNow(true)
         const expireDate = invite.expire_date
         const isExpired = !!expireDate && expireDate <= time
@@ -552,11 +560,11 @@ const ChatInviteLinks: Component = () => {
 
         if(!invite.pFlags?.revoked && ((expireDate && !isExpired) || (invite.usage_limit && !isLimit))) {
           const limitProgress = invite.usage_limit ? joined / invite.usage_limit : undefined
-          // расхождение 5
+          // расхождение 6
           const timeProgress = expireDate ? 1 - timeLeft! / (expireDate - invite.date) : undefined
           const progress = Math.max(limitProgress ?? 0, timeProgress ?? 0)
 
-          // расхождение 7
+          // расхождение 8
           const color1 = hexToRgb(customProperties.getProperty('--green-color'))
           const color2 = hexToRgb(customProperties.getProperty('--danger-color'))
           const mixedColor = mixColors(color2, color1, progress)
@@ -598,7 +606,7 @@ const ChatInviteLinks: Component = () => {
           middleware.onDestroy(onClean)
         }
 
-        // расхождение 7
+        // расхождение 8
         const svg = document.createElementNS(SVG_NS, 'svg')
         svg.setAttribute('class', 'usernames-username-icon-svg')
         svg.setAttribute('viewBox', '0 0 51 51')
@@ -623,14 +631,20 @@ const ChatInviteLinks: Component = () => {
     }
 
     const loadLinksPromise = Promise.all([p.invites, p.invitesRevoked]).then(([chatInvites, chatInvitesRevoked]) => {
-      // расхождение 1, 4
+      // расхождение 1, 5
       if(adminId) {
-        primaryInvite = chatInvites.invites[0]
+        // у сервера TG постоянная ссылка админа идёт первой (`:542-543`); у нас её нет (О-120) —
+        // та же эмуляция, что для своей вкладки; нет такой — секция «Ссылка» не нужна
+        primaryInvite = chatInvites.invites.filter(isPermanentLike).pop()
       } else if(!usernames.length) {
         primaryInvite = exportedInvite
       }
 
-      inviteLink.setChatInvite(primaryInvite || usernames[0])
+      if(primaryInvite || usernames[0]) {
+        inviteLink.setChatInvite(primaryInvite || usernames[0])
+      } else {
+        inviteLinkSection.classList.add('hide')
+      }
 
       ;([
         [chatInvites.invites, additionalLinksContent],
