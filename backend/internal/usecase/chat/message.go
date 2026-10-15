@@ -1396,11 +1396,18 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, topMsgSeq
 	if i.isBroadcast(ctx, chatID) {
 		return nil
 	}
-	members, err := i.chats.MemberIDs(ctx, chatID)
+	addr, err := i.peerAddress(ctx, chatID)
 	if err != nil {
 		return err
 	}
-	addr, err := i.peerAddress(ctx, chatID)
+	// В группе печатает только тот, кому можно писать (tweb setTyping упирается в
+	// canSendToPeer, appMessagesManager.ts:13900). members != nil — личный чат.
+	if addr.members == nil {
+		if err := i.requireCanWrite(ctx, chatID, userID); err != nil {
+			return err
+		}
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return err
 	}
@@ -1416,11 +1423,38 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, topMsgSeq
 	return nil
 }
 
+// requireCanWrite — право писать сообщения в группе: админам можно всё, прочим
+// нужны PermSendMessages по умолчанию и отсутствие личного запрета. Это часть
+// checkSendAllowed (group_settings.go:135-170) без медиа и медленного режима:
+// печать не сообщение. Сбой чтения ограничения - отказ, как у отправки.
+func (i *Interactor) requireCanWrite(ctx context.Context, chatID, userID int64) error {
+	if i.groups == nil {
+		return nil
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if err == nil && (m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin) {
+		return nil
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	s, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return nil // нет настроек - нет и запретов, как в checkSendAllowed
+	}
+	if s.DefaultPerms&domain.PermSendMessages == 0 {
+		return domain.ErrForbidden
+	}
+	if denied, err := i.restricted(ctx, chatID, userID, domain.PermSendMessages); err != nil || denied {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
 // requireTypingGuest — не участник печатает как гость обсуждения: нужен номер
 // корня треда комментариев и гейт принадлежности, как у отправки гостя
 // (requireDiscussionGuest: тред живого зеркала, чтение канала и join_to_send).
-// Права группы по умолчанию (checkSendAllowed) здесь НЕ проверяются — у
-// участника печать их тоже не проверяет (запись в «Не закрыто» PR). Любой отказ —
+// Права на отправку (requireCanWrite) проверяет общий путь Typing. Любой отказ —
 // domain.ErrForbidden: ответа на печать у клиента нет (tweb setTyping
 // возвращает Bool и не читает его).
 //

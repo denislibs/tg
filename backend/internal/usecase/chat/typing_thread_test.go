@@ -165,3 +165,40 @@ func TestTyping_StrangerForbidden(t *testing.T) {
 		t.Fatal("печать постороннего дошла участникам")
 	}
 }
+
+// Печатает только тот, кому можно писать (tweb setTyping → canSendToPeer,
+// appMessagesManager.ts:13900): запрет отправки по умолчанию и личный запрет
+// глушат печать участника; админ печатает всегда.
+func TestTyping_RequiresSendRights(t *testing.T) {
+	in, _, fg, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner, member, other int64 = 7, 8, 9
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, []int64{member, other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// личный запрет писать у member
+	if err := fg.SetRestriction(ctx, domain.MemberRestriction{ChatID: chatID, UserID: member, DeniedRights: domain.PermSendMessages}); err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	if err := in.Typing(ctx, chatID, member, nil, typingAct()); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("ограниченный участник = %v, want ErrForbidden", err)
+	}
+	if pub.countFor(owner) != 0 || pub.countFor(other) != 0 {
+		t.Fatal("печать ограниченного дошла участникам")
+	}
+	// запрет писать по умолчанию: обычный участник глушится, админ - нет
+	if err := fg.SetPermissions(ctx, chatID, domain.AllMemberPerms&^domain.PermSendMessages, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Typing(ctx, chatID, other, nil, typingAct()); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("участник при запрете по умолчанию = %v, want ErrForbidden", err)
+	}
+	if err := in.Typing(ctx, chatID, owner, nil, typingAct()); err != nil {
+		t.Fatalf("создатель: %v", err)
+	}
+	if pub.countFor(other) != 1 {
+		t.Fatalf("печать создателя не дошла участнику: %d", pub.countFor(other))
+	}
+}

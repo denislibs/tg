@@ -3,14 +3,14 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { getTypingsKey, useChatsStore } from '../../stores/chatsStore'
-import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
+import { applyPeerOps, isForumPeer, resetPeerMirror } from '../../core/peerCache'
 import { applyBotCommands, applyChatTheme, applyPeerBlocked, applyTtlPeriod, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapSuggestedPost } from '../../core/models'
-import { generateMessageId } from '../../core/history/messageId'
-import { getPeerId } from '../../core/peers/peerId'
+import { mapSuggestedPost, type RawMessageReal, type RawMessageService } from '../../core/models'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../../core/history/messageId'
+import { getPeerId, isAnyChat } from '../../core/peers/peerId'
 import { useNotifyStore } from '../../stores/notifyStore'
 import { applyPrivacyUpdate } from '../../stores/privacyStore'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -32,6 +32,23 @@ import { scheduleChatsReload } from './refetchSubscriber'
 // emits no "stopped typing" frame; the client re-sends every ~3s while active).
 const TYPING_TTL = 6000
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Клиентский номер треда ПРОВОДНОГО сообщения — `getMessageThreadId`
+ * (core/models.ts, tweb getMessageThreadId.ts:11-28) без полного разбора
+ * сообщения (`mapMyMessage` на каждый кадр): нужны только `reply_to`, служебка
+ * создания темы и `id`, номера на проводе серверные.
+ */
+function messageThreadId(msg: RawMessageReal | RawMessageService, isForum: boolean): number | undefined {
+  const replyTo = msg.reply_to
+  if (replyTo?._ === 'messageReplyHeader' && (!isForum || replyTo.pFlags?.forum_topic)) {
+    const id = replyTo.reply_to_top_id || replyTo.reply_to_msg_id
+    return id ? generateMessageId(id) : undefined
+  }
+  if (!isForum) return undefined
+  if (msg._ === 'messageService' && msg.action._ === 'messageActionTopicCreate') return generateMessageId(msg.id)
+  return GENERAL_TOPIC_ID
+}
 
 // Лента историй перечитывается ПАЧКОЙ: после офлайна getDifference переигрывает
 // десятки `updateStory` от авторов, которых в зеркале ещё нет, и без объединения
@@ -262,10 +279,12 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    // tweb печать по сообщению не гасит вовсе (appProfileManager.ts:1407-1470) -
-    // гашение ключа ЧАТА здесь наше прежнее отступление; печать темы (ключ с
-    // threadId) сообщением не гасится, только TTL.
-    if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(getTypingsKey(peerId), getPeerId(msg.from_id))
+    // 1:1 с tweb `onUpdateNewMessage` (appMessagesManager.ts:10443-10478): входящее
+    // сообщение пользователя гасит его печать ровно в ОДНОМ ключе —
+    // `peerId_threadId` сообщения (`getThreadKey`, :11903-11921), без треда — ключ чата.
+    if (msg._ !== 'messageEmpty' && msg.from_id && !msg.pFlags?.out && msg.from_id._ === 'peerUser') {
+      store.clearTyping(getTypingsKey(peerId, isAnyChat(peerId) ? messageThreadId(msg, isForumPeer(peerId)) : undefined), getPeerId(msg.from_id))
+    }
     // UI-реакции на новое сообщение (отметка прочтения — в самой ленте
     // `chat/bubbles.ts`, звук, нотификация) — отдельные подписчики rootScope
     // напрямую, без дублирующего тоста.

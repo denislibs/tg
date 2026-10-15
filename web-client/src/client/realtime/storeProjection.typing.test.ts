@@ -7,6 +7,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
+import { applyPeerOps } from '../../core/peerCache'
+import { makeRawMessage } from '../../core/messages/testMessage'
 import { generateMessageId } from '../../core/history/messageId'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Managers } from '../bootstrap'
@@ -125,5 +127,52 @@ describe('storeProjection — «печатает»', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // tweb onUpdateNewMessage (appMessagesManager.ts:10443-10478): входящее сообщение
+  // гасит печать автора ровно в ОДНОМ ключе - `peerId_threadId` сообщения, без
+  // треда - ключ чата.
+  describe('входящее сообщение гасит печать автора', () => {
+    const entry = { action: { _: 'sendMessageTypingAction' as const }, at: 0 }
+    const forum = { _: 'channel' as const, id: 5, title: 'Форум', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const, forum: true as const } }
+    const plain = { _: 'channel' as const, id: 6, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } }
+    const key = (peerId: number, top?: number) => `${peerId}${top ? '_' + generateMessageId(top) : ''}`
+    const send = (peerId: number, over: Record<string, unknown> = {}) => rootScope.dispatchEventSingle(RT.newMessage, {
+      _: 'updateNewMessage',
+      message: { ...makeRawMessage({ id: 40, peerId, fromId: 9, text: 'x' }), ...over },
+    } as never)
+
+    beforeEach(() => { applyPeerOps([{ op: 'upsert', peers: [forum, plain] }]) })
+
+    it('личка: ключ чата', () => {
+      useChatsStore.setState({ typing: { '9': { 9: entry } } })
+      send(9)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('форум, сообщение в теме: гаснет тредовый ключ, ключ чата не задет', () => {
+      useChatsStore.setState({ typing: { [key(-5, 12)]: { 9: entry }, [key(-5)]: { 9: entry } } })
+      send(-5, { reply_to: { _: 'messageReplyHeader', reply_to_msg_id: 12, reply_to_top_id: 12, pFlags: { forum_topic: true } } })
+      expect(Object.keys(useChatsStore.getState().typing)).toEqual([key(-5)])
+    })
+
+    it('форум, сообщение в General (без reply_to): гаснет ключ General', () => {
+      useChatsStore.setState({ typing: { [key(-5, 1)]: { 9: entry } } })
+      send(-5)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('обычная группа, сообщение без ответа: ключ чата', () => {
+      useChatsStore.setState({ typing: { [key(-6)]: { 9: entry } } })
+      send(-6)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('чужой автор и своё исходящее печать не гасят', () => {
+      useChatsStore.setState({ typing: { [key(-6)]: { 9: entry } } })
+      send(-6, { from_id: { _: 'peerUser', user_id: 8 } })
+      send(-6, { pFlags: { out: true } })
+      expect(Object.keys(useChatsStore.getState().typing)).toEqual([key(-6)])
+    })
   })
 })
