@@ -1188,6 +1188,7 @@ const lang = {
   'PaidMessages.ChargeForGroupMessagesDescription': 'If you turn this on, regular members of the group will have to pay Stars to send messages.',
   'PaidMessages.ChargeForMessages': 'Charge for Messages',
   'PaidMessages.PayForMessages': { one_value: 'Pay for %d message', other_value: 'Pay for %d messages' },
+  'PaidMessages.PriceChanged': 'Price changed to %s',
   'PaidMessages.SetPrice': 'Set your price per message',
   'PaidMessages.UserChargesForMultipleMessageWarning': '**%s** charges **%s** per incoming message. Would you like to pay **%s** to send **%d messages**?',
   'PaidMessages.UserChargesForOneMessageWarning': '**%s** charges **%s** per incoming message. Would you like to pay **%s** to send one message?',

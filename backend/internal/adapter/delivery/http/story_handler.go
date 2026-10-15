@@ -43,6 +43,7 @@ func storyAddr(w http.ResponseWriter, r *http.Request) (authorID, seq int64, ok 
 
 func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
+	case writePaidError(w, err):
 	case errors.Is(err, domain.ErrBadReaction):
 		writeError(w, http.StatusBadRequest, "invalid reaction")
 	case errors.Is(err, domain.ErrTooLong):
@@ -152,6 +153,9 @@ func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		PeerIDs []domain.PeerID `json:"peer_ids"`
+		// allow_paid_stars — согласие на плату за одно сообщение в каждый
+		// платный чат (tweb sendMedia).
+		AllowPaidStars int64 `json:"allow_paid_stars"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.PeerIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "peer_ids required")
@@ -165,7 +169,7 @@ func (h *StoryHandler) Share(w http.ResponseWriter, r *http.Request) {
 		}
 		chatIDs = append(chatIDs, id)
 	}
-	sent, err := h.svc.Share(r.Context(), authorID, seq, user.ID, chatIDs)
+	sent, err := h.svc.Share(r.Context(), authorID, seq, user.ID, chatIDs, b.AllowPaidStars)
 	if err != nil {
 		h.mapErr(w, err)
 		return

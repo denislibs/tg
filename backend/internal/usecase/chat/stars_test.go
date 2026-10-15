@@ -165,9 +165,9 @@ func TestTopUpStars(t *testing.T) {
 func TestSendGift(t *testing.T) {
 	in, fs, _ := newStarsInteractor()
 	ctx := context.Background()
-	// нет звёзд — нельзя подарить (нехватка — ErrPaidRequired, а не запрет)
-	if _, _, err := in.SendGift(ctx, 1, 2, 1, "hi", false); err != domain.ErrPaidRequired {
-		t.Fatalf("send without stars should be ErrPaidRequired, got %v", err)
+	// нет звёзд — нельзя подарить (нехватка — ErrBalanceTooLow, а не запрет)
+	if _, _, err := in.SendGift(ctx, 1, 2, 1, "hi", false); err != domain.ErrBalanceTooLow {
+		t.Fatalf("send without stars should be ErrBalanceTooLow, got %v", err)
 	}
 	// пополняем и дарим
 	if _, err := in.TopUpStars(ctx, 1, 50); err != nil {
@@ -249,16 +249,16 @@ func TestPaidMessages_ChargeCreditAndOwnerFree(t *testing.T) {
 		t.Fatalf("non-owner set charge = %v; want ErrForbidden", err)
 	}
 
-	// Нехватка звёзд → ErrPaidRequired.
-	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c1"}); err != domain.ErrPaidRequired {
-		t.Fatalf("send without stars = %v; want ErrPaidRequired", err)
+	// Нехватка звёзд при данном согласии → ErrBalanceTooLow.
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c1", AllowPaidStars: 5}); err != domain.ErrBalanceTooLow {
+		t.Fatalf("send without stars = %v; want ErrBalanceTooLow", err)
 	}
 
 	// Пополняем участнику и шлём: -5 у отправителя, +5 владельцу.
 	if _, err := in.TopUpStars(ctx, 2, 20); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c2"}); err != nil {
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Type: "text", Text: "hi", ClientMsgID: "c2", AllowPaidStars: 5}); err != nil {
 		t.Fatalf("paid send: %v", err)
 	}
 	if bal, _ := fs.Balance(ctx, 2); bal != 15 {

@@ -72,7 +72,7 @@ type chatAPI interface {
 	AddMember(ctx context.Context, chatID, actorID, userID int64) error
 	LinkDiscussion(ctx context.Context, channelID, groupID, actorID int64) (int64, error)
 	PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string, wp ...domain.WebPageInput) (domain.Message, error)
-	PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error)
+	PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string, allowPaidStars int64) (domain.Message, error)
 	Send(ctx context.Context, in usecasechat.SendInput) (domain.Message, error)
 	SendPoll(ctx context.Context, in usecasechat.SendPollInput) (domain.Message, error)
 	VotePoll(ctx context.Context, pollID, userID int64, optionIdxs []int) (domain.PollInfo, error)
@@ -395,7 +395,7 @@ func (s *seeder) comments(ctx context.Context, channelID, discID int64, c channe
 		if _, ok := s.sent(ctx, discID, author, key); ok {
 			continue
 		}
-		if _, err := s.uc.PostComment(ctx, channelID, postID, author, cm.text, key); err != nil {
+		if _, err := s.uc.PostComment(ctx, channelID, postID, author, cm.text, key, 0); err != nil {
 			log.Printf("seed: комментарий %d канала %q не отправлен: %v", cm.key, c.title, err)
 			continue
 		}

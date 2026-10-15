@@ -42,6 +42,9 @@ type SendPollInput struct {
 	// постановка идёт тем же Send (enqueueScheduled), ответ — updates.
 	ScheduleDate         int64
 	ScheduleRepeatPeriod int
+	// AllowPaidStars — согласие на плату в платной группе (tweb
+	// appPollsManager.ts:1149 allow_paid_stars), как SendInput.AllowPaidStars.
+	AllowPaidStars int64
 }
 
 // SendPoll валидирует и отправляет опрос: создаёт poll, затем сообщение через
@@ -84,20 +87,31 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
 	}
-	p, err := i.polls.Create(ctx, domain.Poll{
-		ChatID: in.ChatID, Question: q, Options: opts,
-		Anonymous: in.Anonymous, Multiple: in.Multiple, Quiz: in.Quiz, CorrectOption: in.CorrectOption,
-	})
-	if err != nil {
-		return domain.Message{}, err
+	// Повтор принятой отправки (тот же client_msg_id) строки опроса не создаёт и оплату не
+	// переспрашивает — Send отдаст принятое сообщение. Иначе отказ оплаты — до строки опроса:
+	// каждый отказ оставлял бы сироту (гонка роста цены между проверкой и Send — допустима).
+	var pollID *int64
+	if !i.sendAlreadyAccepted(ctx, in.ChatID, in.SenderID, in.ClientMsgID, in.ScheduleDate != 0) {
+		if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
+			return domain.Message{}, err
+		}
+		p, err := i.polls.Create(ctx, domain.Poll{
+			ChatID: in.ChatID, Question: q, Options: opts,
+			Anonymous: in.Anonymous, Multiple: in.Multiple, Quiz: in.Quiz, CorrectOption: in.CorrectOption,
+		})
+		if err != nil {
+			return domain.Message{}, err
+		}
+		pollID = &p.ID
 	}
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "poll",
-		ClientMsgID: in.ClientMsgID, PollID: &p.ID,
+		ClientMsgID: in.ClientMsgID, PollID: pollID,
 		ReplyToID: in.ReplyToID, ReplyToPeerID: in.ReplyToPeerID,
 		ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
 		ScheduleDate: in.ScheduleDate, ScheduleRepeatPeriod: in.ScheduleRepeatPeriod,
+		AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
 		return domain.Message{}, err

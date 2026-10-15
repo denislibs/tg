@@ -281,7 +281,8 @@ func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, 
 	if !ok {
 		return domain.Message{}, domain.ErrForbidden
 	}
-	return i.Send(ctx, SendInput{ChatID: chatID, SenderID: bot.BotID, Type: "text", Text: text, ReplyMarkup: markup})
+	return i.Send(ctx, SendInput{ChatID: chatID, SenderID: bot.BotID, Type: "text", Text: text, ReplyMarkup: markup,
+		paidConsentNotRequired: true}) // у Bot API нет allow_paid_stars
 }
 
 // BotSetWebhook / BotDeleteWebhook.

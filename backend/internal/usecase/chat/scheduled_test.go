@@ -778,13 +778,13 @@ func TestScheduled_PaidChargedOnEnqueueOnce(t *testing.T) {
 	if err := in.SetChatChargeStars(ctx, cid, 1, 5); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()}); !errors.Is(err, domain.ErrPaidRequired) || fs.count() != 0 {
-		t.Fatalf("без звёзд: %v rows=%d, want ErrPaidRequired", err, fs.count())
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future(), AllowPaidStars: 5}); !errors.Is(err, domain.ErrBalanceTooLow) || fs.count() != 0 {
+		t.Fatalf("без звёзд: %v rows=%d, want ErrBalanceTooLow", err, fs.count())
 	}
 	if _, err := in.TopUpStars(ctx, 2, 20); err != nil {
 		t.Fatal(err)
 	}
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future(), AllowPaidStars: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1296,7 +1296,7 @@ func TestScheduled_PaidRepeatChargesEachOccurrence(t *testing.T) {
 	if _, err := in.TopUpStars(ctx, 2, 12); err != nil {
 		t.Fatal(err)
 	}
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1444,7 +1444,7 @@ func paidScheduledGroup(t *testing.T, topUp int64) (*Interactor, *fakeStars, *fa
 func TestScheduled_RejectedPaidRefundedOnce(t *testing.T) {
 	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1493,7 +1493,7 @@ func TestScheduled_RejectedPaidRefundedOnce(t *testing.T) {
 func TestScheduled_RepeatRefundOnlyRejectedOccurrence(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1522,7 +1522,7 @@ func TestScheduled_RepeatRefundOnlyRejectedOccurrence(t *testing.T) {
 func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1546,7 +1546,7 @@ func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
 func TestScheduled_DeleteGroupRefundsQueue(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()}); err != nil {
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := in.DeleteGroup(ctx, cid, 1); err != nil {
@@ -1565,7 +1565,7 @@ func TestScheduled_DeleteGroupRefundsQueue(t *testing.T) {
 func TestScheduled_EditTimeRefusedAfterPublishedKey(t *testing.T) {
 	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1596,7 +1596,7 @@ func TestScheduled_AuthorDeleteRefunds(t *testing.T) {
 	in, stars, _, s, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
 	send := func(text string) int64 {
-		sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: text, ScheduleDate: future() + int64(len(text))})
+		sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: text, ScheduleDate: future() + int64(len(text))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1644,7 +1644,7 @@ func TestScheduled_AuthorDeleteRefunds(t *testing.T) {
 func TestScheduled_AuthorDeleteRaceWithPublish(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1677,8 +1677,8 @@ func TestScheduled_AuthorDeleteRaceWithPublish(t *testing.T) {
 func TestScheduled_AuthorDeleteRepeat(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	a, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "до", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
-	b, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "после", ScheduleDate: future() + 100, ScheduleRepeatPeriod: 86400})
+	a, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "до", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
+	b, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "после", ScheduleDate: future() + 100, ScheduleRepeatPeriod: 86400})
 	if bal, _ := stars.Balance(ctx, 2); bal != 10 {
 		t.Fatalf("после постановок %d", bal)
 	}
@@ -1706,7 +1706,7 @@ func TestScheduled_AuthorDeleteRepeat(t *testing.T) {
 func TestScheduled_AuthorDeleteDuringSlowPublish(t *testing.T) {
 	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
-	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, AllowPaidStars: 5, Text: "x", ScheduleDate: future()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -177,7 +177,7 @@ func TestPostComment_DiscussionsOff_NotFound(t *testing.T) {
 	i, _, _, _ := newChannelTestInteractor(t)
 	ch, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)
 
-	if _, err := i.PostComment(context.Background(), ch, 100, 8, "hi", ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.PostComment(context.Background(), ch, 100, 8, "hi", "", 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("PostComment with discussions off = %v, want ErrNotFound", err)
 	}
 }
@@ -202,7 +202,7 @@ func TestPostComment_ThreadsWithoutJoining(t *testing.T) {
 		t.Fatalf("MirrorByPost: id=%d err=%v", mirrorID, err)
 	}
 
-	msg, err := i.PostComment(ctx, ch, post.ID, 8, "first comment", "c1")
+	msg, err := i.PostComment(ctx, ch, post.ID, 8, "first comment", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
@@ -241,14 +241,14 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 		t.Fatalf("PostToChannel post2: %v", err)
 	}
 
-	if _, err := i.PostComment(ctx, ch, post1.ID, 8, "c1", "k1"); err != nil {
+	if _, err := i.PostComment(ctx, ch, post1.ID, 8, "c1", "k1", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
-	if _, err := i.PostComment(ctx, ch, post1.ID, 9, "c2", "k2"); err != nil {
+	if _, err := i.PostComment(ctx, ch, post1.ID, 9, "c2", "k2", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
 	// a comment on a different post must not leak into this thread
-	if _, err := i.PostComment(ctx, ch, post2.ID, 9, "other", "k3"); err != nil {
+	if _, err := i.PostComment(ctx, ch, post2.ID, 9, "other", "k3", 0); err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestComments_ThreadOnMirror(t *testing.T) {
 	}
 	post, _ := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
 
-	if _, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1"); err != nil {
+	if _, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -370,7 +370,7 @@ func TestPostComment_RaceLazyMirror_UsesWinnersMirror(t *testing.T) {
 	}
 
 	failNext = true // следующая вставка зеркала «проиграет» гонку
-	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1")
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment вернул ошибку вместо приземления в чужое зеркало: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestPostComment_DeletedPost_NotFound(t *testing.T) {
 		t.Fatalf("SoftDelete: %v", err)
 	}
 
-	if _, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("PostComment на удалённый пост = %v, want ErrNotFound", err)
 	}
 	if root, _ := i.msgs.MirrorByPost(ctx, ch, post.ID); root != 0 {
@@ -452,7 +452,7 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1")
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
