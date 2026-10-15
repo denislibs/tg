@@ -224,11 +224,11 @@ func TestScheduledRepo_TakePaidAndStarsTakeUpTo(t *testing.T) {
 	if _, err := st.AddBalance(ctx, b, 3); err != nil {
 		t.Fatal(err)
 	}
-	if bal, err := st.TakeUpTo(ctx, b, 5); err != nil || bal != 0 {
-		t.Fatalf("TakeUpTo: bal=%d err=%v, want 0", bal, err)
+	if taken, bal, err := st.TakeUpTo(ctx, b, 5); err != nil || bal != 0 || taken != 3 {
+		t.Fatalf("TakeUpTo: taken=%d bal=%d err=%v, want 3/0", taken, bal, err)
 	}
-	if bal, err := st.TakeUpTo(ctx, a, 5); err != nil || bal != 0 {
-		t.Fatalf("TakeUpTo без строки баланса: bal=%d err=%v", bal, err)
+	if taken, bal, err := st.TakeUpTo(ctx, a, 5); err != nil || bal != 0 || taken != 0 {
+		t.Fatalf("TakeUpTo без строки баланса: taken=%d bal=%d err=%v", taken, bal, err)
 	}
 }
 
