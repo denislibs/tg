@@ -296,6 +296,28 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
   })
 
+  // Сбой опроса QR гасит `stopped`, но не значит «вход состоялся»: ключ доступа
+  // остаётся запасным путём, finish обязан вызываться.
+  it('после сбоя опроса QR вход ключом всё равно доходит до finish', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
+    const exportLoginToken = vi.fn().mockRejectedValue(new Error('boom'))
+    const { toIm } = mount({ exportLoginToken, passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(passkeyLoginFinish).toHaveBeenCalled())
+    await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
   it('неожиданный исход (signUpRequired): тост, toIm не зван, цикл не остановлен', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const webauthn = await import('@core/webauthnBrowser')

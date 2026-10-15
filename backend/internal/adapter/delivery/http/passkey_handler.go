@@ -219,7 +219,7 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // `options.data` — строка JSON `{"publicKey":{…}}` (tweb passkeyLoginButton.tsx
 // :38-41), `session` — одноразовый ключ церемонии для finish.
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
-	if !h.limiter.allow("passkey-ip:"+clientIP(r), 0.2, 10) {
+	if !h.limiter.allow("passkey-begin-ip:"+clientIP(r), 0.2, 10) {
 		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
@@ -241,7 +241,7 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 // (`auth.Authorization`): при включённом облачном пароле — `auth.passwordNeeded`
 // (шаг пароля, сессии нет), иначе `auth.authorization`.
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
-	if !h.limiter.allow("passkey-ip:"+clientIP(r), 0.2, 10) {
+	if !h.limiter.allow("passkey-finish-ip:"+clientIP(r), 0.2, 10) {
 		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
@@ -267,7 +267,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "passkey login failed")
 		return
 	}
-	if !h.limiter.allow("passkey-user:"+strconv.FormatInt(matched.UserID, 10), 0.2, 5) {
+	if !h.limiter.allow("passkey-user:"+strconv.FormatInt(matched.UserID, 10), 1.0/60, 3) {
 		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}

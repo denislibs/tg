@@ -85,11 +85,16 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   const [failed, setFailed] = createSignal(false)
   // Как `let stopped` у tweb (:41): цикл и вход ключом доступа гасят его.
   let stopped = false
+  // Вход уже состоялся (другим путём) либо карточку убрали. Отдельно от
+  // `stopped`: тот гасится ещё и сбоем опроса QR (`fail()`), а кнопка ключа после
+  // сбоя остаётся запасным путём входа.
+  let gone = false
   // tweb `rootScope.addEventListener('user_auth', …, {once: true})` (:67-72).
-  const onUserAuth = () => { stopped = true }
+  const onUserAuth = () => { stopped = true; gone = true }
   rootScope.addEventListener(RT.loggedIn, onUserAuth, { once: true })
   onCleanup(() => {
     stopped = true
+    gone = true
     rootScope.removeEventListener(RT.loggedIn, onUserAuth)
   })
 
@@ -171,8 +176,12 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
       const { session, options } = await managers.auth.passkeyLoginBegin()
       const assertion = await getPasskeyAssertion(JSON.parse(options.data))
       // QR могли подтвердить с телефона, пока открыт системный диалог: второй вход
-      // выпустил бы лишнюю серверную сессию.
-      if (stopped) return
+      // выпустил бы лишнюю серверную сессию. Сужает окно гонки, не закрывает: если
+      // вход придёт, пока летит finish, лишняя сессия всё равно возможна.
+      if (gone) {
+        setPasskeyBusy(false)
+        return
+      }
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
       if (!res.passwordNeeded && !res.user) throw new Error('неожиданный исход входа по ключу доступа')
       stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)

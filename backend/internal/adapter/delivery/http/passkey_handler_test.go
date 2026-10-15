@@ -52,8 +52,8 @@ func TestPasskeyBeginLogin_ReturnsPasskeyLoginOptions(t *testing.T) {
 	}
 }
 
-// begin публичный: без лимита один клиент раздувал бы карту церемоний (обход
-// всей карты под общей блокировкой на каждый вызов). Лимит — по реальному IP.
+// begin публичный и без аутентификации: лимит по реальному IP (потолок размера
+// карты церемоний и ключ IPv6 по /64 — вне этой задачи, см. «Не закрыто» в PR).
 func TestPasskeyBeginLogin_RateLimitedByIP(t *testing.T) {
 	h, err := NewPasskeyHandler("localhost", []string{"http://localhost"}, nil, nil)
 	if err != nil {
