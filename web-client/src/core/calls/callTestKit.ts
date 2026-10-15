@@ -125,6 +125,8 @@ export interface Net {
   iceServers: RTCIceServer[]
   /** Сколько раз движки спросили /calls/ice. */
   iceFetches: number
+  /** /calls/ice отвечает ошибкой (420, 5xx). */
+  iceFail: boolean
   /** Вернуть кадры, которые надо доставить в одном тике (пусто — кадр проглочен). */
   tamper?: (from: number, to: number, f: Frame) => Frame[]
   side(id: number): Promise<Side>
@@ -142,6 +144,7 @@ export function createNet(): Net {
     sides: new Map(),
     p2pAllowed: true,
     iceFetches: 0,
+    iceFail: false,
     iceServers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:turn.test:3478?transport=udp'], username: 'u', credential: 'c' }],
     async side(id) {
       vi.resetModules()
@@ -164,7 +167,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => { net.iceFetches++; return { servers: net.iceServers } } },
+            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceFail) throw new Error('420 FLOOD_WAIT_1'); return { servers: net.iceServers, ttlSeconds: 86_400 } } },
             peers: { getUsers: async () => [] },
           },
         }),

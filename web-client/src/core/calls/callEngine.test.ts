@@ -226,4 +226,23 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
     await A.engine.iceServers()
     expect(net.iceFetches).toBe(2)
   })
+
+  it('сбой /calls/ice после кэша: пока креды живы — последний успешный конфиг (с TURN), не STUN-only', async () => {
+    const A = await net.side(1)
+    const first = await A.engine.iceServers()
+    expect(A.engine.hasTurnServer(first)).toBe(true)
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(61_000)
+    const again = await A.engine.iceServers()
+    expect(net.iceFetches).toBe(2)
+    expect(A.engine.hasTurnServer(again)).toBe(true)
+  })
+
+  it('сбой /calls/ice и креды истекли — STUN-only (relay-звонок честно не начнётся)', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(86_400_000 - 30_000) // до истечения осталось 30 с < запаса 60 с
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+  })
 })

@@ -65,6 +65,11 @@ services:
   # сервер: mesh из N участников ≈ 4·N·(N−1) (N=5 → 80), relay-звонок 1:1 ≈ 8. 200 портов —
   # это mesh на 7 участников ИЛИ ≈25 relay-звонков 1:1; при нехватке coturn отвечает 508 и
   # звонок не соединяется. Дальше — расширять диапазон (лучше network_mode: host) или SFU (В-М17).
+  # Защита relay (владелец кредов — любой зарегистрированный пользователь): квота аллокаций на
+  # пользователя (имя кредов `<expiry>:<userID>`, ≈4 порта на pc × до 8 pc) и на сервер (меньше
+  # пула портов), без TCP-relay (RFC 6062) и без пиров во внутренних диапазонах — иначе TURN-клиент
+  # ходит в сеть compose (redis, postgres, minio). Собственный адрес coturn разрешён: relay↔relay
+  # идёт между аллокациями на нём. Entrypoint образа раскрывает $(…) в каждом аргументе.
   coturn:
     image: coturn/coturn:4.6-alpine
     restart: unless-stopped
@@ -77,6 +82,17 @@ services:
       --realm=messenger
       --min-port=49160 --max-port=49359
       --no-cli
+      --user-quota=32 --total-quota=190
+      --no-tcp-relay --no-multicast-peers
+      --allowed-peer-ip=$$(hostname -i)
+      --denied-peer-ip=0.0.0.0-0.255.255.255
+      --denied-peer-ip=10.0.0.0-10.255.255.255
+      --denied-peer-ip=127.0.0.0-127.255.255.255
+      --denied-peer-ip=169.254.0.0-169.254.255.255
+      --denied-peer-ip=172.16.0.0-172.31.255.255
+      --denied-peer-ip=192.168.0.0-192.168.255.255
+      --denied-peer-ip=::1
+      --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"

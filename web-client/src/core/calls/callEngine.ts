@@ -41,16 +41,22 @@ const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // (callInstance.ts:676-688). Серверный TTL — сутки (ice_handler.go), кэш лишь склеивает
 // несколько pc одного входа в звонок.
 const ICE_CACHE_MS = 60_000
-let cachedIce: { servers: RTCIceServer[]; until: number } | null = null
+// Запас до истечения кредов, после которого последний успешный конфиг уже не отдаём.
+const ICE_EXPIRY_MARGIN_MS = 60_000
+let cachedIce: { servers: RTCIceServer[]; until: number; expires: number } | null = null
 export async function iceServers(): Promise<RTCIceServer[]> {
   if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
   try {
     const cfg = await managers().calls.iceConfig()
     if (cfg.servers.length) {
-      cachedIce = { servers: cfg.servers, until: Date.now() + ICE_CACHE_MS }
+      const now = Date.now()
+      cachedIce = { servers: cfg.servers, until: now + ICE_CACHE_MS, expires: now + cfg.ttlSeconds * 1000 }
       return cfg.servers
     }
-  } catch { /* бэк недоступен — деградация до STUN */ }
+  } catch { /* сбой запроса: ниже — последний успешный конфиг, пока его креды живы */ }
+  // Сбой /calls/ice (420 лимитер, 5xx, обновление токена) не должен превращать relay-pc в pc без
+  // единого кандидата: креды ещё действуют — берём последний успешный конфиг, а не STUN-only.
+  if (cachedIce && Date.now() < cachedIce.expires - ICE_EXPIRY_MARGIN_MS) return cachedIce.servers
   return FALLBACK_ICE
 }
 /** Есть ли среди серверов хоть один TURN (`turn:`/`turns:`) — без него `relay` не собрать кандидатов. */
