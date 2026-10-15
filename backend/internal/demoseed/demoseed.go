@@ -65,7 +65,7 @@ type chatAPI interface {
 	// MessageByClientMsgID отвечает ТОЛЬКО участнику чата — как ListPins и
 	// остальные сквозные чтения интерактора; сид зовёт её от автора сообщения.
 	MessageByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
-	ListPins(ctx context.Context, chatID, userID int64) ([]domain.Message, error)
+	ListPins(ctx context.Context, chatID, userID int64, topMsgSeq *int64) ([]domain.Message, error)
 	CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error)
 	CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, []int64, error)
 	JoinPublic(ctx context.Context, username string, userID int64) error
@@ -207,7 +207,7 @@ func (s *seeder) pin(ctx context.Context, chatID, msgID, userID int64, title str
 	if msgID == 0 {
 		return
 	}
-	pins, err := s.uc.ListPins(ctx, chatID, userID)
+	pins, err := s.uc.ListPins(ctx, chatID, userID, nil)
 	if err != nil {
 		log.Printf("seed: закрепления %q не прочитаны: %v", title, err)
 		return

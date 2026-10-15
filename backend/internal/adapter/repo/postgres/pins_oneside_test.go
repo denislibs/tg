@@ -14,7 +14,7 @@ import (
 
 func pinIDs(t *testing.T, chats *ChatsRepo, chatID, viewer int64) []int64 {
 	t.Helper()
-	ms, err := chats.ListPins(context.Background(), chatID, viewer)
+	ms, err := chats.ListPins(context.Background(), chatID, viewer, nil)
 	if err != nil {
 		t.Fatalf("ListPins(viewer %d): %v", viewer, err)
 	}
@@ -170,7 +170,7 @@ func TestPins_UnpinMessageSharedFlag(t *testing.T) {
 
 	_ = chats.PinMessageOneSide(ctx, chatID, m.ID, a)
 	_ = chats.PinMessageOneSide(ctx, chatID, m.ID, b)
-	shared, err := chats.UnpinMessage(ctx, chatID, m.ID, b)
+	shared, _, err := chats.UnpinMessage(ctx, chatID, m.ID, b)
 	if err != nil || shared {
 		t.Fatalf("UnpinMessage(только свой) = %v, %v; want false", shared, err)
 	}
@@ -182,7 +182,7 @@ func TestPins_UnpinMessageSharedFlag(t *testing.T) {
 	}
 	_ = chats.PinMessage(ctx, chatID, m.ID, a)
 	_ = chats.PinMessageOneSide(ctx, chatID, m.ID, b)
-	shared, err = chats.UnpinMessage(ctx, chatID, m.ID, b)
+	shared, _, err = chats.UnpinMessage(ctx, chatID, m.ID, b)
 	if err != nil || !shared {
 		t.Fatalf("UnpinMessage(общий) = %v, %v; want true", shared, err)
 	}
@@ -222,10 +222,11 @@ func TestPins_UnpinAll(t *testing.T) {
 	_ = chats.PinMessageOneSide(ctx, chatID, foreign.ID, a)
 
 	// Тред: общие закрепы корня и сообщения треда, без «вне треда» и без oneside вне треда.
-	shared, oneSide, err := chats.UnpinAll(ctx, chatID, b, &root.ID)
+	un, err := chats.UnpinAll(ctx, chatID, b, &root.ID)
 	if err != nil {
 		t.Fatalf("UnpinAll(тред): %v", err)
 	}
+	shared, oneSide := un.Shared, un.OneSide
 	if !slices.Equal(shared, []int64{root.Seq, inThread.Seq}) || len(oneSide) != 0 {
 		t.Fatalf("UnpinAll(тред) = %v / %v, want [%d %d] / []", shared, oneSide, root.Seq, inThread.Seq)
 	}
@@ -233,10 +234,11 @@ func TestPins_UnpinAll(t *testing.T) {
 		t.Fatalf("после «открепить все» в треде ListPins(B) = %v", got)
 	}
 
-	shared, oneSide, err = chats.UnpinAll(ctx, chatID, b, nil)
+	un, err = chats.UnpinAll(ctx, chatID, b, nil)
 	if err != nil {
 		t.Fatalf("UnpinAll: %v", err)
 	}
+	shared, oneSide = un.Shared, un.OneSide
 	if !slices.Equal(shared, []int64{outside.Seq}) || !slices.Equal(oneSide, []int64{own.Seq}) {
 		t.Fatalf("UnpinAll = %v / %v, want [%d] / [%d]", shared, oneSide, outside.Seq, own.Seq)
 	}
@@ -248,8 +250,51 @@ func TestPins_UnpinAll(t *testing.T) {
 		t.Fatalf("ListPins(A) = %v, want чужой oneside не тронут", got)
 	}
 	// Повтор — пусто.
-	shared, oneSide, err = chats.UnpinAll(ctx, chatID, b, nil)
-	if err != nil || len(shared) != 0 || len(oneSide) != 0 {
-		t.Fatalf("UnpinAll(повтор) = %v / %v, %v", shared, oneSide, err)
+	un, err = chats.UnpinAll(ctx, chatID, b, nil)
+	if err != nil || len(un.Shared) != 0 || len(un.OneSide) != 0 {
+		t.Fatalf("UnpinAll(повтор) = %+v, %v", un, err)
+	}
+}
+
+// Общий закреп снят, а у другого пользователя сообщение осталось закреплённым
+// «только у себя»: репо сообщает об этом (UnpinMessage.keptFor, UnpinAll.OthersKept).
+func TestPins_KeptOneSideOfOthers_AndThreadListPins(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7818")
+	b := seedUser(t, pool, "+7819")
+	chatID := createPrivate(t, pool, a, b)
+	root := insertMsg(t, msgs, chatID, a, "text", "корень")
+	seq, _ := msgs.NextSeq(ctx, chatID)
+	inThread, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "в треде", ThreadRootID: &root.ID})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	outside := insertMsg(t, msgs, chatID, a, "text", "вне")
+
+	_ = chats.PinMessage(ctx, chatID, outside.ID, a)
+	_ = chats.PinMessageOneSide(ctx, chatID, outside.ID, b)
+	shared, kept, err := chats.UnpinMessage(ctx, chatID, outside.ID, a)
+	if err != nil || !shared || !slices.Equal(kept, []int64{b}) {
+		t.Fatalf("UnpinMessage = %v %v %v; want true [B]", shared, kept, err)
+	}
+
+	_ = chats.PinMessage(ctx, chatID, outside.ID, a)
+	_ = chats.PinMessage(ctx, chatID, inThread.ID, a)
+	// Список по треду: только закреп треда; без треда — оба (+ свой oneside Б).
+	if ms, _ := chats.ListPins(ctx, chatID, a, &root.ID); !slices.Equal(msgIDs(ms), []int64{inThread.ID}) {
+		t.Fatalf("ListPins(тред) = %v, want [%d]", msgIDs(ms), inThread.ID)
+	}
+	if got := pinIDs(t, chats, chatID, a); len(got) != 2 {
+		t.Fatalf("ListPins(чат) = %v", got)
+	}
+	un, err := chats.UnpinAll(ctx, chatID, a, nil)
+	if err != nil {
+		t.Fatalf("UnpinAll: %v", err)
+	}
+	if !slices.Equal(un.Shared, []int64{inThread.Seq, outside.Seq}) || !slices.Equal(un.OthersKept[b], []int64{outside.Seq}) || len(un.OthersKept) != 1 {
+		t.Fatalf("UnpinAll = %+v, want Б сохранил только %d", un, outside.Seq)
 	}
 }

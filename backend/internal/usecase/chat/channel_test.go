@@ -396,23 +396,23 @@ func (c groupMembershipChats) PinMessage(ctx context.Context, chatID, msgID, by 
 func (c groupMembershipChats) PinMessageOneSide(context.Context, int64, int64, int64) error {
 	return nil
 }
-func (c groupMembershipChats) UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (bool, error) {
+func (c groupMembershipChats) UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (bool, []int64, error) {
 	if c.s == nil {
-		return false, nil
+		return false, nil, nil
 	}
 	return fakeChats{c.s}.UnpinMessage(ctx, chatID, msgID, userID)
 }
-func (c groupMembershipChats) UnpinAll(ctx context.Context, chatID, userID int64, root *int64) ([]int64, []int64, error) {
+func (c groupMembershipChats) UnpinAll(ctx context.Context, chatID, userID int64, root *int64) (UnpinnedAll, error) {
 	if c.s == nil {
-		return nil, nil, nil
+		return UnpinnedAll{}, nil
 	}
 	return fakeChats{c.s}.UnpinAll(ctx, chatID, userID, root)
 }
-func (c groupMembershipChats) ListPins(ctx context.Context, chatID, viewerID int64) ([]domain.Message, error) {
+func (c groupMembershipChats) ListPins(ctx context.Context, chatID, viewerID int64, root *int64) ([]domain.Message, error) {
 	if c.s == nil {
 		return nil, nil
 	}
-	return fakeChats{c.s}.ListPins(ctx, chatID, viewerID)
+	return fakeChats{c.s}.ListPins(ctx, chatID, viewerID, root)
 }
 func (c groupMembershipChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil

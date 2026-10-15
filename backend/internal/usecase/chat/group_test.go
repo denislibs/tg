@@ -1108,13 +1108,13 @@ func (c groupChats) PinMessage(context.Context, int64, int64, int64) error { ret
 func (c groupChats) PinMessageOneSide(context.Context, int64, int64, int64) error {
 	return nil
 }
-func (c groupChats) UnpinMessage(context.Context, int64, int64, int64) (bool, error) {
-	return false, nil
+func (c groupChats) UnpinMessage(context.Context, int64, int64, int64) (bool, []int64, error) {
+	return false, nil, nil
 }
-func (c groupChats) UnpinAll(context.Context, int64, int64, *int64) ([]int64, []int64, error) {
-	return nil, nil, nil
+func (c groupChats) UnpinAll(context.Context, int64, int64, *int64) (UnpinnedAll, error) {
+	return UnpinnedAll{}, nil
 }
-func (c groupChats) ListPins(context.Context, int64, int64) ([]domain.Message, error) {
+func (c groupChats) ListPins(context.Context, int64, int64, *int64) ([]domain.Message, error) {
 	return nil, nil
 }
 func (c groupChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {

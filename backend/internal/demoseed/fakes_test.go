@@ -209,7 +209,7 @@ func (f *fakeChat) MessageByClientMsgID(_ context.Context, chatID, senderID int6
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (f *fakeChat) ListPins(_ context.Context, chatID, userID int64) ([]domain.Message, error) {
+func (f *fakeChat) ListPins(_ context.Context, chatID, userID int64, _ *int64) ([]domain.Message, error) {
 	c := f.chats[chatID]
 	if c == nil || !c.members[userID] {
 		return nil, errFake

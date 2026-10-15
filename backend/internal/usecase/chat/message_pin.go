@@ -47,6 +47,14 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	if cur.ChatID != chatID || cur.Deleted {
 		return domain.UpdatesReal{}, domain.ErrNotFound
 	}
+	// Закрепить можно только то, что актор видит (удалённое им у себя, ниже
+	// горизонта очистки, до вступления при скрытой предыстории — нельзя: служебка
+	// «закрепил» назвала бы такое сообщение всем). Снять закреп можно всегда.
+	if pin {
+		if err := i.RequireMessagesVisible(ctx, userID, []int64{msgID}); err != nil {
+			return domain.UpdatesReal{}, err
+		}
+	}
 	typ, err := i.chats.ChatType(ctx, chatID)
 	if err != nil {
 		return domain.UpdatesReal{}, err
@@ -63,6 +71,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		sharedGone := true
+		var keptFor []int64
 		switch {
 		case oneSide:
 			if e := i.chats.PinMessageOneSide(ctx, chatID, msgID, userID); e != nil {
@@ -73,11 +82,11 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 				return e
 			}
 		default:
-			shared, e := i.chats.UnpinMessage(ctx, chatID, msgID, userID)
+			shared, kept, e := i.chats.UnpinMessage(ctx, chatID, msgID, userID)
 			if e != nil {
 				return e
 			}
-			sharedGone = shared
+			sharedGone, keptFor = shared, kept
 		}
 		if broadcast {
 			channelBody = channelPinPayload(chatID, []int64{cur.Seq}, pin)
@@ -100,9 +109,26 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 				return e
 			}
 			slices.Sort(mem)
-			members = mem
+			// Снятие общего закрепа не касается тех, у кого сообщение осталось
+			// закреплённым «только у себя»: их кадр «открепили» снял бы бит.
+			members = slices.DeleteFunc(mem, func(uid int64) bool { return uid != userID && slices.Contains(keptFor, uid) })
 		}
 		date := nowUnix()
+		// Группа: ключ пира один на всех — тело общее, строки одним запросом.
+		if addr.members == nil && len(members) > 0 {
+			payload, e := json.Marshal(pinPayload(addr.forViewer(userID), []int64{cur.Seq}, pin))
+			if e != nil {
+				return e
+			}
+			pm, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "pin_message", payload)
+			if e != nil {
+				return e
+			}
+			for _, uid := range members {
+				ptsByUser[uid] = pm[uid]
+			}
+			return nil
+		}
 		for _, uid := range members {
 			payload, e := json.Marshal(pinPayload(addr.forViewer(uid), []int64{cur.Seq}, pin))
 			if e != nil {
@@ -194,9 +220,14 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 	bodies := map[int64]map[string]any{}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		shared, oneSide, e := i.chats.UnpinAll(ctx, chatID, userID, root)
+		un, e := i.chats.UnpinAll(ctx, chatID, userID, root)
 		if e != nil {
 			return e
+		}
+		shared, oneSide := un.Shared, un.OneSide
+		// Нечего снимать: ни участников, ни журнала, ни кэша диалогов.
+		if len(shared) == 0 && len(oneSide) == 0 {
+			return nil
 		}
 		if broadcast {
 			if len(shared) == 0 {
@@ -241,6 +272,9 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 				seqs = slices.Concat(shared, oneSide)
 				slices.Sort(seqs)
 				seqs = slices.Compact(seqs)
+			} else if kept := un.OthersKept[uid]; len(kept) > 0 {
+				// Закреплённое у него «только у себя» остаётся закреплённым.
+				seqs = slices.DeleteFunc(slices.Clone(shared), func(q int64) bool { return slices.Contains(kept, q) })
 			}
 			if len(seqs) == 0 {
 				continue
@@ -284,8 +318,9 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 }
 
 // ListPins returns a chat's pinned messages (newest pin first) for a member:
-// общие закрепы и его «только у себя», только то, что он видит.
-func (i *Interactor) ListPins(ctx context.Context, chatID, userID int64) ([]domain.Message, error) {
+// общие закрепы и его «только у себя», только то, что он видит; с topMsgSeq —
+// закрепы одного треда (номер корня в чате).
+func (i *Interactor) ListPins(ctx context.Context, chatID, userID int64, topMsgSeq *int64) ([]domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
@@ -293,7 +328,7 @@ func (i *Interactor) ListPins(ctx context.Context, chatID, userID int64) ([]doma
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return i.chats.ListPins(ctx, chatID, userID)
+	return i.chats.ListPins(ctx, chatID, userID, i.resolveThreadRootForQuery(ctx, chatID, topMsgSeq))
 }
 
 // Порог «кто прочитал» (tweb appConfig chat_read_mark_size_threshold и

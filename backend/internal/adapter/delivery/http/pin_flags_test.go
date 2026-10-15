@@ -121,6 +121,16 @@ func TestPinFlags_UpdatesAndUnpinAll_HTTP(t *testing.T) {
 		t.Fatalf("ответ unpin: %d %s", rec.Code, rec.Body.String())
 	}
 
+	// Кривой top_msg_id — 400, а не «весь чат».
+	for _, q := range []string{"?top_msg_id=-5", "?top_msg_id=0", "?top_msg_id=x"} {
+		if rec := authedReq(t, h, http.MethodDelete, "/chats/"+peerB+"/pins"+q, tokenB, nil); rec.Code != http.StatusBadRequest {
+			t.Fatalf("DELETE pins%s: %d, want 400", q, rec.Code)
+		}
+		if rec := authedReq(t, h, http.MethodGet, "/chats/"+peerB+"/pins"+q, tokenB, nil); rec.Code != http.StatusBadRequest {
+			t.Fatalf("GET pins%s: %d, want 400", q, rec.Code)
+		}
+	}
+
 	// Чужой пользователь: чата с этим собеседником у него нет — 404.
 	tokenC, _ := signUp(t, h, pool, "+79990000272")
 	if rec := authedReq(t, h, http.MethodDelete, "/chats/"+peerA+"/pins", tokenC, nil); rec.Code != http.StatusNotFound {

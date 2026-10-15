@@ -85,10 +85,10 @@ func TestSetPin_OneSide_PrivateOnlyActor(t *testing.T) {
 	if len(rows) != 1 || !slices.Equal(pinSeqs(t, rows[0]), []int64{msg.Seq}) {
 		t.Fatalf("у актора строки закрепа = %v", rows)
 	}
-	if pins, _ := in.ListPins(ctx, chatID, 1); len(pins) != 0 {
+	if pins, _ := in.ListPins(ctx, chatID, 1, nil); len(pins) != 0 {
 		t.Fatalf("ListPins собеседника = %d, want 0", len(pins))
 	}
-	if pins, _ := in.ListPins(ctx, chatID, 2); len(pins) != 1 {
+	if pins, _ := in.ListPins(ctx, chatID, 2, nil); len(pins) != 1 {
 		t.Fatalf("ListPins актора = %d, want 1", len(pins))
 	}
 	// Ответ — Updates с updatePinnedMessages, pts актора.
@@ -178,7 +178,7 @@ func TestUnpin_PrivateRemovesSharedAndOwnOneSide(t *testing.T) {
 	if u := upd.Updates[0].(domain.UpdatePinnedMessages); u.Pinned() {
 		t.Fatal("ответ снятия несёт pinned")
 	}
-	if pins, _ := in.ListPins(ctx, chatID, 2); len(pins) != 0 {
+	if pins, _ := in.ListPins(ctx, chatID, 2, nil); len(pins) != 0 {
 		t.Fatalf("после снятия у актора закреп: %d", len(pins))
 	}
 
@@ -197,7 +197,7 @@ func TestUnpin_PrivateRemovesSharedAndOwnOneSide(t *testing.T) {
 		t.Fatal("снятие общего закрепа не дошло до собеседника")
 	}
 	for _, uid := range []int64{1, 2} {
-		if pins, _ := in.ListPins(ctx, chatID, uid); len(pins) != 0 {
+		if pins, _ := in.ListPins(ctx, chatID, uid, nil); len(pins) != 0 {
 			t.Fatalf("после снятия у %d остался закреп", uid)
 		}
 	}
@@ -238,7 +238,7 @@ func TestUnpinAll_PrivateRowsAndAffectedHistory(t *testing.T) {
 		t.Fatalf("строка актора = %v", last)
 	}
 	for _, uid := range []int64{1, 2} {
-		if pins, _ := in.ListPins(ctx, chatID, uid); len(pins) != 0 {
+		if pins, _ := in.ListPins(ctx, chatID, uid, nil); len(pins) != 0 {
 			t.Fatalf("у %d остались закрепы: %d", uid, len(pins))
 		}
 	}
@@ -294,7 +294,7 @@ func TestUnpinAll_ThreadOnly(t *testing.T) {
 	if last := rows[len(rows)-1]; !slices.Equal(pinSeqs(t, last), []int64{inThread.Seq}) {
 		t.Fatalf("снято %v, want только закреп треда %d", pinSeqs(t, last), inThread.Seq)
 	}
-	pins, _ := in.ListPins(ctx, chatID, 2)
+	pins, _ := in.ListPins(ctx, chatID, 2, nil)
 	if len(pins) != 1 || pins[0].ID != outside.ID {
 		t.Fatalf("после «открепить все» в треде закрепы = %v", pins)
 	}
@@ -428,7 +428,89 @@ func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
 			t.Fatalf("строка %d = %v", uid, last)
 		}
 	}
-	if pins, _ := in.ListPins(ctx, chatID, 8); len(pins) != 0 {
+	if pins, _ := in.ListPins(ctx, chatID, 8, nil); len(pins) != 0 {
 		t.Fatalf("у участника остались закрепы: %d", len(pins))
+	}
+}
+
+// Сообщение закреплено и общим, и «только у себя» собеседника: снятие общего его
+// закрепа не касается — ему кадр «открепили» не уходит (иначе его окно снимает бит).
+func TestUnpin_KeepsOneSidePinOfOtherUser(t *testing.T) {
+	in, s, _, chatID, msg := privatePinEnv(t)
+	ctx := context.Background()
+	_, _ = in.SetPin(ctx, chatID, msg.ID, 2, true, PinOpts{OneSide: true}) // Боб у себя
+	_, _ = in.SetPin(ctx, chatID, msg.ID, 1, true, PinOpts{})              // Алиса для всех
+	rowsB := len(pinRows(t, s, 2))
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 1, false, PinOpts{}); err != nil {
+		t.Fatalf("Unpin: %v", err)
+	}
+	if got := len(pinRows(t, s, 2)); got != rowsB {
+		t.Fatalf("Бобу ушла строка снятия общего закрепа, хотя у него свой: %d строк, было %d", got, rowsB)
+	}
+	if pins, _ := in.ListPins(ctx, chatID, 2, nil); len(pins) != 1 {
+		t.Fatalf("у Боба свой закреп пропал: %d", len(pins))
+	}
+	if pins, _ := in.ListPins(ctx, chatID, 1, nil); len(pins) != 0 {
+		t.Fatalf("у Алисы закреп остался: %d", len(pins))
+	}
+}
+
+// То же при «Открепить все»: в кадре собеседника нет номеров, которые у него
+// закреплены «только у себя»; если других нет — строки нет вовсе.
+func TestUnpinAll_KeepsOneSidePinOfOtherUser(t *testing.T) {
+	in, s, _, chatID, m1 := privatePinEnv(t)
+	ctx := context.Background()
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Text: "второе"})
+	_, _ = in.SetPin(ctx, chatID, m1.ID, 2, true, PinOpts{OneSide: true})
+	for _, m := range []domain.Message{m1, m2} {
+		_, _ = in.SetPin(ctx, chatID, m.ID, 1, true, PinOpts{})
+	}
+	rowsB := len(pinRows(t, s, 2))
+	if _, err := in.UnpinAll(ctx, chatID, 1, nil); err != nil {
+		t.Fatalf("UnpinAll: %v", err)
+	}
+	rows := pinRows(t, s, 2)
+	if len(rows) != rowsB+1 || !slices.Equal(pinSeqs(t, rows[len(rows)-1]), []int64{m2.Seq}) {
+		t.Fatalf("строки Боба = %v, want последняя только с %d", rows, m2.Seq)
+	}
+	if pins, _ := in.ListPins(ctx, chatID, 2, nil); len(pins) != 1 || pins[0].ID != m1.ID {
+		t.Fatalf("у Боба должен остаться свой закреп m1: %v", pins)
+	}
+}
+
+// Закрепить можно только видимое актору: удалённое им у себя — не найдено.
+func TestSetPin_InvisibleMessageNotFound(t *testing.T) {
+	in, s, _, chatID, msg := privatePinEnv(t)
+	ctx := context.Background()
+	s.mu.Lock()
+	s.hidden = map[int64]map[int64]bool{2: {msg.ID: true}}
+	s.mu.Unlock()
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 2, true, PinOpts{}); err != domain.ErrNotFound {
+		t.Fatalf("закреп скрытого у себя: %v, want ErrNotFound", err)
+	}
+	if rows := pinRows(t, s, 1); len(rows) != 0 {
+		t.Fatalf("собеседнику ушла строка: %v", rows)
+	}
+	// Открепить можно и невидимое — чтобы застрявший закреп не нельзя было снять.
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 2, false, PinOpts{}); err != nil {
+		t.Fatalf("Unpin невидимого: %v", err)
+	}
+}
+
+// ListPins с номером корня — закрепы одного треда.
+func TestListPins_ThreadOnly(t *testing.T) {
+	in, _, _, chatID, root := privatePinEnv(t)
+	ctx := context.Background()
+	inThread, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Text: "в треде", ThreadRootID: &root.ID})
+	outside, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Text: "вне"})
+	for _, m := range []domain.Message{inThread, outside} {
+		_, _ = in.SetPin(ctx, chatID, m.ID, 2, true, PinOpts{})
+	}
+	pins, err := in.ListPins(ctx, chatID, 2, &root.Seq)
+	if err != nil || len(pins) != 1 || pins[0].ID != inThread.ID {
+		t.Fatalf("ListPins(тред) = %v, %v", pins, err)
+	}
+	if all, _ := in.ListPins(ctx, chatID, 2, nil); len(all) != 2 {
+		t.Fatalf("ListPins(весь чат) = %d", len(all))
 	}
 }

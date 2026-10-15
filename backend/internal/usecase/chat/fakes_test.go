@@ -916,7 +916,7 @@ func (r fakeChats) PinMessageOneSide(_ context.Context, chatID, msgID, userID in
 	return nil
 }
 
-func (r fakeChats) UnpinMessage(_ context.Context, chatID, msgID, userID int64) (bool, error) {
+func (r fakeChats) UnpinMessage(_ context.Context, chatID, msgID, userID int64) (bool, []int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.pins == nil {
@@ -927,11 +927,18 @@ func (r fakeChats) UnpinMessage(_ context.Context, chatID, msgID, userID int64) 
 	if r.s.pinsOne[chatID] != nil {
 		r.s.pinsOne[chatID][userID] = slices.DeleteFunc(slices.Clone(r.s.pinsOne[chatID][userID]), func(id int64) bool { return id == msgID })
 	}
-	return shared, nil
+	var kept []int64
+	for uid, ids := range r.s.pinsOne[chatID] {
+		if uid != userID && slices.Contains(ids, msgID) {
+			kept = append(kept, uid)
+		}
+	}
+	slices.Sort(kept)
+	return shared, kept, nil
 }
 
 // UnpinAll — как репо: тред — сообщения с thread_root_id или сам корень.
-func (r fakeChats) UnpinAll(_ context.Context, chatID, userID int64, threadRootID *int64) (shared, oneSide []int64, err error) {
+func (r fakeChats) UnpinAll(_ context.Context, chatID, userID int64, threadRootID *int64) (UnpinnedAll, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	inThread := func(m domain.Message) bool {
@@ -945,10 +952,11 @@ func (r fakeChats) UnpinAll(_ context.Context, chatID, userID int64, threadRootI
 		}
 		return domain.Message{}, false
 	}
+	var out UnpinnedAll
 	var keep []int64
 	for _, id := range r.s.pins[chatID] {
 		if m, ok := seqOf(id); ok && inThread(m) {
-			shared = append(shared, m.Seq)
+			out.Shared = append(out.Shared, m.Seq)
 		} else {
 			keep = append(keep, id)
 		}
@@ -960,7 +968,7 @@ func (r fakeChats) UnpinAll(_ context.Context, chatID, userID int64, threadRootI
 	var keepOne []int64
 	for _, id := range r.s.pinsOne[chatID][userID] {
 		if m, ok := seqOf(id); ok && inThread(m) {
-			oneSide = append(oneSide, m.Seq)
+			out.OneSide = append(out.OneSide, m.Seq)
 		} else {
 			keepOne = append(keepOne, id)
 		}
@@ -968,13 +976,26 @@ func (r fakeChats) UnpinAll(_ context.Context, chatID, userID int64, threadRootI
 	if r.s.pinsOne[chatID] != nil {
 		r.s.pinsOne[chatID][userID] = keepOne
 	}
-	slices.Sort(shared)
-	slices.Sort(oneSide)
-	return shared, oneSide, nil
+	slices.Sort(out.Shared)
+	slices.Sort(out.OneSide)
+	for uid, ids := range r.s.pinsOne[chatID] {
+		if uid == userID {
+			continue
+		}
+		for _, id := range ids {
+			if m, ok := seqOf(id); ok && slices.Contains(out.Shared, m.Seq) {
+				if out.OthersKept == nil {
+					out.OthersKept = map[int64][]int64{}
+				}
+				out.OthersKept[uid] = append(out.OthersKept[uid], m.Seq)
+			}
+		}
+	}
+	return out, nil
 }
 
 // ListPins — общие плюс «только у себя» зрителя, без удалённого и скрытого им.
-func (r fakeChats) ListPins(_ context.Context, chatID, viewerID int64) ([]domain.Message, error) {
+func (r fakeChats) ListPins(_ context.Context, chatID, viewerID int64, threadRootID *int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	ids := slices.Concat(r.s.pins[chatID], r.s.pinsOne[chatID][viewerID])
@@ -986,7 +1007,7 @@ func (r fakeChats) ListPins(_ context.Context, chatID, viewerID int64) ([]domain
 		}
 		seen[msgID] = true
 		for _, m := range r.s.messages[chatID] {
-			if m.ID == msgID && !m.Deleted {
+			if m.ID == msgID && !m.Deleted && (threadRootID == nil || m.ID == *threadRootID || (m.ThreadRootID != nil && *m.ThreadRootID == *threadRootID)) {
 				out = append(out, m)
 			}
 		}

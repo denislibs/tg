@@ -513,14 +513,14 @@ func TestPinAndViewers(t *testing.T) {
 	if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
-	pins, _ := in.ListPins(ctx, chatID, b)
+	pins, _ := in.ListPins(ctx, chatID, b, nil)
 	if len(pins) != 1 || pins[0].ID != msg.ID {
 		t.Fatalf("pins = %+v", pins)
 	}
 	if _, err := in.SetPin(ctx, chatID, msg.ID, a, false, PinOpts{}); err != nil {
 		t.Fatalf("Unpin: %v", err)
 	}
-	if pins, _ := in.ListPins(ctx, chatID, b); len(pins) != 0 {
+	if pins, _ := in.ListPins(ctx, chatID, b, nil); len(pins) != 0 {
 		t.Fatalf("after unpin: %+v", pins)
 	}
 

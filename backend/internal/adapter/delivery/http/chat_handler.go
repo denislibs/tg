@@ -1033,6 +1033,21 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// topMsgIDQuery — необязательный `?top_msg_id=<номер корня треда>`: закрепы одной
+// темы/треда. Не число или не положительное — 400 (иначе «весь чат»).
+func topMsgIDQuery(w http.ResponseWriter, r *http.Request) (*int64, bool) {
+	raw := r.URL.Query().Get("top_msg_id")
+	if raw == "" {
+		return nil, true
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid top_msg_id")
+		return nil, false
+	}
+	return &v, true
+}
+
 // UnpinAll — messages.unpinAllMessages (DELETE
 // /chats/{peerID}/pins?top_msg_id=<номер корня треда>; tweb
 // appMessagesManager.ts:6858-6893). Ответ — messages.affectedHistory.
@@ -1041,9 +1056,9 @@ func (h *ChatHandler) UnpinAll(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var top *int64
-	if v := queryInt(r, "top_msg_id", 0); v > 0 {
-		top = &v
+	top, ok := topMsgIDQuery(w, r)
+	if !ok {
+		return
 	}
 	res, err := h.svc.UnpinAll(r.Context(), chatID, h.meID(r), top)
 	switch {
@@ -1063,7 +1078,11 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgs, err := h.svc.ListPins(r.Context(), chatID, h.meID(r))
+	top, ok := topMsgIDQuery(w, r)
+	if !ok {
+		return
+	}
+	msgs, err := h.svc.ListPins(r.Context(), chatID, h.meID(r), top)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
