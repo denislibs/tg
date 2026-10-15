@@ -93,13 +93,13 @@ const LIMIT_KEYS: { [type in ApiLimitType]: [keyof MTAppConfig, keyof MTAppConfi
 }
 
 /** Порт `TLDeserialization.formatJSONValue` (`tl_utils.ts:791-806`): `JSONValue` → обычное значение. */
-export function formatJSONValue(jsonValue: JSONValue): any {
+export function formatJSONValue(jsonValue: JSONValue): unknown {
   if (!jsonValue._) return jsonValue
   switch (jsonValue._) {
     case 'jsonNull':
       return null
     case 'jsonObject': {
-      const out: any = {}
+      const out: Record<string, unknown> = {}
       const objectValues = jsonValue.value
       for (let i = 0, length = objectValues.length; i < length; ++i) {
         const objectValue = objectValues[i]

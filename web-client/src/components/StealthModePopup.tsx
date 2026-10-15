@@ -37,7 +37,7 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   const [periods, setPeriods] = useState<{ past?: number, future?: number }>({})
   useEffect(() => {
     let alive = true
-    managers.appConfig.getAppConfig().then((config) => {
+    void managers.appConfig.getAppConfig().then((config) => {
       if (alive) setPeriods({ past: config.stories_stealth_past_period, future: config.stories_stealth_future_period })
     })
     return () => { alive = false }
