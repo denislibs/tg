@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -60,15 +61,16 @@ func TestPasskeyBeginLogin_RateLimitedByIP(t *testing.T) {
 		t.Fatalf("NewPasskeyHandler: %v", err)
 	}
 	var last int
+	var lastBody string
 	for n := 0; n < 12; n++ {
 		req := httptest.NewRequest(http.MethodPost, "/auth/passkey/begin", nil)
 		req.Header.Set("X-Real-IP", "203.0.113.7")
 		rec := httptest.NewRecorder()
 		h.BeginLogin(rec, req)
-		last = rec.Code
+		last, lastBody = rec.Code, rec.Body.String()
 	}
-	if last != http.StatusTooManyRequests {
-		t.Fatalf("12-й begin с одного IP = %d, ожидался 429", last)
+	if last != 420 || !strings.Contains(lastBody, "FLOOD_WAIT_") {
+		t.Fatalf("12-й begin с одного IP = %d %s, ожидался 420 FLOOD_WAIT_N", last, lastBody)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/auth/passkey/begin", nil)
 	req.Header.Set("X-Real-IP", "203.0.113.8")

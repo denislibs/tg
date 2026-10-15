@@ -56,7 +56,7 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 	// apiManager.ts:759-791). Опрос открытой ленты (раз в 3 с) и догон по
 	// маркеру в лимит укладываются с запасом.
 	if !h.limiter.allow(fmt.Sprintf("chdiff:%d:%d", h.meID(r), chatID), channelDiffRPS, channelDiffBurst) {
-		writeError(w, statusFlood, fmt.Sprintf("FLOOD_WAIT_%d", channelDiffFloodWait))
+		writeFloodWait(w, channelDiffFloodWait)
 		return
 	}
 	d, err := h.svc.UpdatesChannelDifference(r.Context(), h.meID(r), chatID,
@@ -81,6 +81,4 @@ const (
 	channelDiffRPS       = 1
 	channelDiffBurst     = 5
 	channelDiffFloodWait = 1
-	// statusFlood — код ошибки FLOOD_WAIT у оригинала (420).
-	statusFlood = 420
 )

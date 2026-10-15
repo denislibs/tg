@@ -149,8 +149,12 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Троттлинг OTP-запроса: по IP (флуд) и по номеру (SMS-стоимость/спам жертве).
-	if !h.limiter.allow("otp-ip:"+clientIP(r), 0.2, 5) || !h.limiter.allow("otp-phone:"+body.Phone, 0.1, 3) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("otp-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
+		return
+	}
+	if ok, wait := h.limiter.allowWait("otp-phone:"+body.Phone, 0.1, 3); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	if err := h.svc.RequestCode(r.Context(), body.Phone); err != nil {
@@ -174,8 +178,8 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Анти-брутфорс OTP-кода по реальному IP.
-	if !h.limiter.allow("signin-ip:"+clientIP(r), 0.5, 10) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("signin-ip:"+clientIP(r), 0.5, 10); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
@@ -236,8 +240,8 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-перебор токена регистрации по реальному IP (тот же бюджет, что у sign_in:
 	// шаг регистрации — его прямое продолжение).
-	if !h.limiter.allow("signup-ip:"+clientIP(r), 0.5, 10) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("signup-ip:"+clientIP(r), 0.5, 10); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
@@ -275,19 +279,18 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// Троттлинг по IP — поверх серверного таймера повторной отправки.
-	if !h.limiter.allow("recover-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("recover-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	res, err := h.svc.RequestPasswordRecovery(r.Context(), body.PasswordToken)
 	switch {
 	case errors.Is(err, usecaseauth.ErrResendTooSoon):
-		// Остаток секунд едет ВНУТРИ кода ошибки, а не соседним ключом:
-		// у конструктора `error` параметров ровно два (`code`, `text`), и
-		// оригинал выражает ожидание так же — `FLOOD_WAIT_<N>`,
-		// `2FA_CONFIRM_WAIT_<N>` (клиент вынимает число регуляркой,
-		// tweb `getFloodWaitTime.ts`).
-		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("RESEND_TOO_SOON_%d", res.ResendAfter))
+		// Пауза повторной отправки — ожидание оригинала: 420 FLOOD_WAIT_<N>
+		// (остаток секунд едет внутри кода: у конструктора `error` параметров
+		// ровно два). tweb выражает паузу только так (apiManager.ts:759-791 —
+		// ждёт N секунд и повторяет сам), а `RESEND_TOO_SOON_*` не разбирает.
+		writeFloodWait(w, max(res.ResendAfter, 1))
 		return
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
@@ -303,7 +306,7 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// `resend_after` рядом больше нет: паузу повторной отправки держит сервер
-	// (отказ `RESEND_TOO_SOON_<N>` выше), своего таймера клиент не заводит и
+	// (отказ `FLOOD_WAIT_<N>` выше), своего таймера клиент не заводит и
 	// это число не читал.
 	writeJSON(w, http.StatusOK, domain.NewAuthPasswordRecovery(res.EmailPattern))
 }
@@ -323,8 +326,8 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// Анти-перебор кода по реальному IP (в дополнение к лимиту попыток на токен).
-	if !h.limiter.allow("recover-confirm-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("recover-confirm-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
@@ -362,8 +365,8 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-перебор password_token по реальному IP — тот же бюджет, что у остальных
 	// ветвей шага пароля (check_password, password/recover).
-	if !h.limiter.allow("reset-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("reset-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	retryAfter, err := h.svc.ResetAccount(r.Context(), body.PasswordToken)
@@ -397,8 +400,8 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) NearestCountry(w http.ResponseWriter, r *http.Request) {
 	// Щадящий лимит: ручка дёргается на каждом открытии экрана входа, а утечки
 	// в ней нет — только защита от флуда.
-	if !h.limiter.allow("nearest-ip:"+clientIP(r), 1, 20) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("nearest-ip:"+clientIP(r), 1, 20); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	// Тот же путь IP → GeoIP, что наполняет местоположение активных сессий.
@@ -420,8 +423,8 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Анти-перебор веб-токена по реальному IP.
-	if !h.limiter.allow("import-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("import-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
@@ -443,7 +446,7 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 // CancelWebToken сжигает веб-токен, который клиент не стал импортировать
 // (auth.cancelWebTokenAuthorization). Ответ — boolTrue и для токена, который
 // сервер уже забыл. Ведро то же, что у SignImport: отмена не даёт лишних попыток
-// перебора. Следствие: если импорт получил 429, отмена получит его же — токен
+// перебора. Следствие: если импорт получил 420, отмена получит его же — токен
 // доживёт до своего TTL (5 мин); принято планом М1-4.
 func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -453,8 +456,8 @@ func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if !h.limiter.allow("import-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("import-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	switch err := h.svc.CancelWebAuthToken(r.Context(), body.WebAuthToken); {
@@ -476,8 +479,8 @@ func (h *AuthHandler) NewWebAuthToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	if !h.limiter.allow("webtoken-user:"+strconv.FormatInt(u.ID, 10), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("webtoken-user:"+strconv.FormatInt(u.ID, 10), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	token, expiresAt, err := h.svc.NewWebAuthToken(r.Context(), u.ID)
@@ -508,8 +511,8 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// Анти-брутфорс облачного пароля по реальному IP (в дополнение к лимиту попыток
 	// на сам password_token в usecase).
-	if !h.limiter.allow("pw-ip:"+clientIP(r), 0.2, 5) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("pw-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
