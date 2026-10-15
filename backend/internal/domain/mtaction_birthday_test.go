@@ -67,3 +67,23 @@ func TestBirthday_Valid(t *testing.T) {
 		t.Fatalf("без года: %v %v", tm, err)
 	}
 }
+
+// Старые строки messages.action предложения фото несут снятый параметр
+// `accepted` (Ф7-А2): разбор их принимает, а на провод ключ не уходит.
+func TestParseMessageAction_SuggestProfilePhotoLegacyAccepted(t *testing.T) {
+	got, err := ParseMessageAction([]byte(`{"_":"messageActionSuggestProfilePhoto","accepted":true}`))
+	if err != nil {
+		t.Fatalf("старая строка не разобрана: %v", err)
+	}
+	a, ok := got.(MessageActionSuggestProfilePhoto)
+	if !ok || a.Tag() != MessageActionSuggestProfilePhotoTag {
+		t.Fatalf("разобрано %T, want MessageActionSuggestProfilePhoto", got)
+	}
+	wire, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(wire) != `{"_":"messageActionSuggestProfilePhoto","photo":null}` {
+		t.Fatalf("на провод ушло %s", wire)
+	}
+}

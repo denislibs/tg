@@ -142,3 +142,44 @@ func TestSavedTags(t *testing.T) {
 		t.Fatalf("no filter = %d msgs, want 3", len(res.Messages))
 	}
 }
+
+// f6-contacts: переименование тега «Избранного» уходит строкой журнала
+// saved_tags на свои устройства (tweb appReactionsManager.ts:121-132 —
+// updateSavedReactionTags без параметров: перечитай теги). Второе устройство
+// без кадра держало бы старое имя до перезагрузки.
+func TestSetSavedTagName_LogsSavedTagsRow(t *testing.T) {
+	in, s := newInteractor()
+	in.SetSavedTags(&fakeSavedTags{s: s})
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+
+	if err := in.SetSavedTagName(ctx, a, "👍", "Работа"); err != nil {
+		t.Fatalf("SetSavedTagName: %v", err)
+	}
+	pts := assertLoggedRow(t, s, a, "saved_tags")
+	assertLiveFramePts(t, pub, a, "saved_tags", pts)
+	assertInDifference(t, in, a, "saved_tags", pts)
+	if d := lastFrameFor(t, pub, a); d["_"] != domain.UpdateSavedReactionTagsTag {
+		t.Fatalf("кадр = %v; want %s", d["_"], domain.UpdateSavedReactionTagsTag)
+	}
+	// Чужим устройствам строки нет.
+	s.mu.Lock()
+	n := len(s.updates[b])
+	s.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("у постороннего %d строк журнала", n)
+	}
+	// Отказ валидации кадра не пишет.
+	pub.reset()
+	if err := in.SetSavedTagName(ctx, a, "👍", "0123456789012"); !errors.Is(err, domain.ErrTooLong) {
+		t.Fatalf("err=%v; want ErrTooLong", err)
+	}
+	s.mu.Lock()
+	rows := len(s.updates[a])
+	s.mu.Unlock()
+	if rows != 1 {
+		t.Fatalf("после отказа строк журнала = %d; want 1", rows)
+	}
+}

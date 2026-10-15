@@ -77,6 +77,8 @@ func ParseMessageAction(raw []byte) (MessageAction, error) {
 		if err := json.Unmarshal(raw, &a); err != nil {
 			return nil, err
 		}
+		// Исторический ключ `accepted` у старых строк (параметр снят в Ф7-А2) тут
+		// отбрасывается: разбор не строгий, на провод он не уходит.
 		a.Photo = nil // фото приезжает с media_id сообщения, см. шапку файла
 		return a, nil
 	case MessageActionSuggestBirthdayTag:

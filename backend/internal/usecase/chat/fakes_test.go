@@ -1681,23 +1681,6 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entiti
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) UpdateAction(_ context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	now := time.Now()
-	for chatID, msgs := range r.s.messages {
-		for idx, m := range msgs {
-			if m.ID == msgID {
-				m.Action = action
-				m.EditedAt = &now
-				r.s.messages[chatID][idx] = m
-				return m, nil
-			}
-		}
-	}
-	return domain.Message{}, domain.ErrNotFound
-}
-
 func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

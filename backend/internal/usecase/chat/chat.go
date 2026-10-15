@@ -58,7 +58,6 @@ type Interactor struct {
 	suggested    SuggestedPostRepo
 	premium      PremiumRepo
 	contactPics  ContactPhotoLookup
-	profilePics  ProfilePhotoAdder
 	presence     PresenceQuery
 	botHub       *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
@@ -232,10 +231,6 @@ func (i *Interactor) SetContactPhotos(p ContactPhotoLookup) { i.contactPics = p 
 
 // SetDialogsCache attaches an optional per-user dialogs-snapshot cache.
 func (i *Interactor) SetDialogsCache(c DialogsCache) { i.dialogsCache = c }
-
-// SetProfilePhotos подключает добавление фото в галерею пользователя (optional):
-// нужно для принятия предложенного фото профиля.
-func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
 
 // SetPresence подключает запрос онлайн-статуса (optional): нужен диспетчеру
 // запланированных «отправить когда онлайн». Без него такие сообщения ждут.

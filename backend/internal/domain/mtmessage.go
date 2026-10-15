@@ -811,28 +811,20 @@ func NewMessageActionTopicEdit() MessageActionTopicEdit {
 
 // messageActionSuggestProfilePhoto#57de635e photo:Photo = MessageAction;
 //
-// Наше `suggest_photo`. Photo — предложенная аватарка (сегодня её id ехал и в
-// JSON действия, и на media_id сообщения — два места на одно значение).
-//
-// Accepted — НАШ СОБСТВЕННЫЙ параметр вне схемы, объявленный штатным
-// механизмом (schema_additional_params.json, предикат
-// messageActionSuggestProfilePhoto). Предмета в схеме у него нет: у оригинала
-// принятое предложение видно по тому, что фото стало аватаркой, а у нас
-// признак хранится на самом действии и по нему клиент прячет кнопку
-// «Установить фото» на ВСЕХ устройствах разом (data.ts:60).
+// Наше `suggest_photo`. Photo — предложенная аватарка (её id едет на media_id
+// сообщения, второго места нет). Признака «принято» нет: у оригинала принятого
+// предложения не существует вовсе — «Установить фото» каждый раз скачивает файл
+// и ставит его своей загрузкой (tweb bubbles.ts:8236-8250).
 type MessageActionSuggestProfilePhoto struct {
 	Underscore string `json:"_"`
 	Photo      *Photo `json:"photo"`
-	Accepted   bool   `json:"accepted,omitempty"`
 }
 
 func (MessageActionSuggestProfilePhoto) isMessageAction() {}
 func (a MessageActionSuggestProfilePhoto) Tag() string    { return a.Underscore }
 
-func NewMessageActionSuggestProfilePhoto(photo *Photo, accepted bool) MessageActionSuggestProfilePhoto {
-	return MessageActionSuggestProfilePhoto{
-		Underscore: MessageActionSuggestProfilePhotoTag, Photo: photo, Accepted: accepted,
-	}
+func NewMessageActionSuggestProfilePhoto(photo *Photo) MessageActionSuggestProfilePhoto {
+	return MessageActionSuggestProfilePhoto{Underscore: MessageActionSuggestProfilePhotoTag, Photo: photo}
 }
 
 // messageActionSuggestBirthday#2c8f2a25 birthday:Birthday = MessageAction;

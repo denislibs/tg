@@ -1567,8 +1567,7 @@ export namespace MessageAction {
 
   export type messageActionSuggestProfilePhoto = {
     _: 'messageActionSuggestProfilePhoto',
-    photo: Photo,
-    accepted?: boolean
+    photo: Photo
   };
 
   export type messageActionRequestedPeer = {

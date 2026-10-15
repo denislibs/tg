@@ -338,9 +338,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        c.photo_media_id, pm.blur_preview,
 		        m.last_read_seq, `+dialogUnreadCount("m", "c")+`, m.unread_mentions_count, m.unread_reactions,
-		        -- Мьют едет СРОКОМ, а не булевым: предикат «замьючен ли сейчас»
-		        -- в домене один (PeerNotifySettings.Muted), и пяти копий условия
-		        -- в SQL больше нет.
+		        -- Мьют едет СРОКОМ, а не булевым (NULL — не задан, наследует тип
+		        -- чатов): «замьючен ли сейчас» решает domain.ChatMuted, пачкой в
+		        -- SQL — его копия chatMutedSQL.
 		        m.muted_until,
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
 		        m.notify_preview, m.notify_sound,
@@ -1029,17 +1029,18 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	return seq, err
 }
 
-// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — мьют чата
-// сроком в будущем (тот же срок, что читает PeerNotifySettings.Muted).
+// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — domain.ChatMuted:
+// свой мьют чата, если задан (срок в будущем), иначе тип чата (chatMutedSQL).
 func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`UPDATE chat_members SET archived = false
-		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND archived
-		    AND (muted_until IS NULL OR muted_until <= now())
-		  RETURNING user_id`, chatID, userIDs)
+		`UPDATE chat_members m SET archived = false
+		   FROM chats c
+		  WHERE c.id = $1 AND m.chat_id = c.id AND m.user_id = ANY($2::bigint[]) AND m.archived
+		    AND NOT `+chatMutedSQL(memberNotify)+`
+		  RETURNING m.user_id`, chatID, userIDs)
 	if err != nil {
 		return nil, err
 	}

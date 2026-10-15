@@ -207,9 +207,17 @@ func (s *Service) Post(ctx context.Context, authorID, mediaID int64, caption, pr
 	return seq, nil
 }
 
+// originIsPublic — историю можно репостить и пересылать в чаты только когда она
+// публична (privacy everyone). Копия файла живёт дальше в сообщении чата или в
+// новой истории, и её аудитория не должна быть шире правила приватности автора.
+// В tweb пункт «Поделиться» есть только при `pFlags.public && !noforwards`
+// (components/stories/viewer.tsx:2222-2224); серверное правило tweb не показывает,
+// вывод из клиента.
+func originIsPublic(o domain.StoryOrigin) bool { return o.Privacy == "everyone" }
+
 // Repost creates a new story for authorID that references an existing story
 // (tweb fwd_from / repostInfo). The reposter must be able to see the source
-// (else domain.ErrForbidden); the new story reuses the source's media and points
+// and the source must be public (else domain.ErrForbidden); the new story reuses the source's media and points
 // fwd_from at the source's author+id. Privacy/period/caption behave like Post.
 func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int64, caption, privacy string, allowIDs []int64, period int64) (int64, error) {
 	srcStoryID, err := s.resolve(ctx, srcAuthorID, srcSeq)
@@ -226,6 +234,9 @@ func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int6
 	origin, err := s.repo.Origin(ctx, srcStoryID)
 	if err != nil {
 		return 0, err
+	}
+	if !originIsPublic(origin) {
+		return 0, domain.ErrForbidden
 	}
 	if utf8.RuneCountInString(caption) > maxCaptionRunes {
 		return 0, domain.ErrTooLong
@@ -261,7 +272,7 @@ func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int6
 
 // Share posts a story into each of the given chats as a regular media message
 // with an attribution caption (tweb inputMediaStory, lightweight variant). The
-// sharer must be able to see the story (else domain.ErrForbidden); non-member
+// sharer must be able to see the story and it must be public (else domain.ErrForbidden); non-member
 // target chats are silently skipped. Returns how many messages were sent.
 // domain.ErrUnavailable when no message sender is wired.
 func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chatIDs []int64) (int, error) {
@@ -282,6 +293,9 @@ func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chat
 	origin, err := s.repo.Origin(ctx, storyID)
 	if err != nil {
 		return 0, err
+	}
+	if !originIsPublic(origin) {
+		return 0, domain.ErrForbidden
 	}
 	caption := "История"
 	if origin.AuthorName != "" {
