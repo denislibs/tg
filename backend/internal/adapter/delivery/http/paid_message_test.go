@@ -1,13 +1,19 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
+	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/store/postgres"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 // Ф7-Г (MC-06): отказ платной отправки называется кодами TG.
@@ -67,6 +73,11 @@ func TestPaidGroup_HTTPNeedsAllowance(t *testing.T) {
 		map[string]any{"question": "q", "options": []string{"a", "b"}})
 	if rec.Code != http.StatusForbidden || errText(t, rec) != "ALLOW_PAYMENT_REQUIRED_5" {
 		t.Fatalf("опрос без суммы: %d %s", rec.Code, rec.Body.String())
+	}
+	// Отказ согласия не оставил строки опроса в БД (проверка идёт до её создания).
+	var polls int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM polls`).Scan(&polls); err != nil || polls != 0 {
+		t.Fatalf("после отказа в polls %d строк (err %v), want 0", polls, err)
 	}
 	// С суммой — проходит, списывает цену (потолок 7 → 5).
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenB,
@@ -153,5 +164,98 @@ func TestStarReaction_ResponseKeepsEmojiChips(t *testing.T) {
 	}
 	if !paid || !thumbs {
 		t.Fatalf("агрегат неполный (paid=%v 👍=%v): %s", paid, thumbs, rec.Body.String())
+	}
+}
+
+// Ревью-пункт «деньги»: ответ звёздной реакции не должен падать ПОСЛЕ коммита
+// списания — клиент увидел бы ошибку и повторил запрос (двойная оплата). Сбой
+// чтения полного агрегата заменяется минимальным: платный чип по агрегату,
+// который уже есть.
+func TestStarReactionAggregate_FallbackAfterCharge(t *testing.T) {
+	full := domain.NewMessageReactions([]domain.MTReactionCount{
+		domain.NewReactionCount(domain.NewReactionPaid(), 5, true),
+		domain.NewReactionCount(domain.NewReactionEmoji("👍"), 1, false),
+	}, nil)
+	agg := domain.StarReactionAgg{Total: 5, Mine: 5}
+
+	got := starReactionAggregate(full, nil, agg, true)
+	if len(got.Results) != 2 {
+		t.Fatalf("при успешном чтении агрегат отдаётся как есть: %+v", got.Results)
+	}
+
+	got = starReactionAggregate(domain.MessageReactions{}, errors.New("db down"), agg, true)
+	if len(got.Results) != 1 || got.Results[0].Count != 5 || !got.PFlags["can_see_list"] {
+		t.Fatalf("при сбое чтения — платный чип из уже известного агрегата (%+v)", got)
+	}
+}
+
+// barrierStars сводит первые два AddBalance (от двух разных транзакций) в одну точку ПОСЛЕ
+// выполнения: обе уже держат первую строку баланса, когда идут за второй. Без единого порядка
+// блокировок встречные платные отправки (A→владелец B и B→владелец A) тогда
+// неизбежно упираются друг в друга — deadlock 40P01.
+type barrierStars struct {
+	usecasechat.StarsRepo
+	mu      sync.Mutex
+	arrived int
+	release chan struct{}
+}
+
+func (b *barrierStars) AddBalance(ctx context.Context, userID, delta int64) (int64, error) {
+	bal, err := b.StarsRepo.AddBalance(ctx, userID, delta) // строка уже заблокирована транзакцией
+	b.mu.Lock()
+	b.arrived++
+	n := b.arrived
+	if n == 2 {
+		close(b.release)
+	}
+	b.mu.Unlock()
+	if n <= 2 {
+		select {
+		case <-b.release:
+		case <-time.After(700 * time.Millisecond): // второй не пришёл — не виснем
+		}
+	}
+	return bal, err
+}
+
+// Ревью-пункт «деньги»: блокировки балансов берутся в порядке возрастания user_id, и
+// две одновременные встречные платные отправки не взаимоблокируются.
+func TestPaidCharge_OppositeDirectionsDoNotDeadlock(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	uc := newChatUC(pool)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	tokenA, idA := signUp(t, h, pool, "+79990130011")
+	tokenB, idB := signUp(t, h, pool, "+79990130012")
+
+	mk := func(owner string, member int64) int64 {
+		peer := createdPeerID(t, authedReq(t, h, http.MethodPost, "/groups", owner, map[string]any{"title": "Paid", "member_ids": []int64{member}}))
+		if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(peer)+"/charge_stars", owner, map[string]any{"charge_stars": 1}); rec.Code != http.StatusOK {
+			t.Fatalf("charge_stars: %d %s", rec.Code, rec.Body.String())
+		}
+		return -peer
+	}
+	g1 := mk(tokenA, idB) // владелец A, платит B
+	g2 := mk(tokenB, idA) // владелец B, платит A
+	for _, tk := range []string{tokenA, tokenB} {
+		if rec := authedReq(t, h, http.MethodPost, "/stars/topup", tk, map[string]any{"amount": 10}); rec.Code != http.StatusOK {
+			t.Fatalf("пополнение: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	uc.SetStars(&barrierStars{StarsRepo: pgadapter.NewStarsRepo(pool), release: make(chan struct{})})
+
+	ctx := context.Background()
+	errs := make(chan error, 2)
+	go func() { // A платит владельцу B
+		_, err := uc.Send(ctx, usecasechat.SendInput{ChatID: g2, SenderID: idA, Type: "text", Text: "a", ClientMsgID: "dl-a", AllowPaidStars: 1})
+		errs <- err
+	}()
+	go func() { // B платит владельцу A
+		_, err := uc.Send(ctx, usecasechat.SendInput{ChatID: g1, SenderID: idB, Type: "text", Text: "b", ClientMsgID: "dl-b", AllowPaidStars: 1})
+		errs <- err
+	}()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatalf("встречная платная отправка упала (взаимоблокировка кошельков?): %v", err)
+		}
 	}
 }

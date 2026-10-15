@@ -62,6 +62,10 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
 	}
+	// Отказ оплаты — до строки чек-листа: иначе каждый отказ оставлял бы сироту.
+	if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
+		return domain.Message{}, err
+	}
 	c, err := i.checklists.Create(ctx, domain.Checklist{
 		ChatID: in.ChatID, Title: title, Items: items,
 		OthersCanAdd: in.OthersCanAdd, OthersCanMark: in.OthersCanMark,

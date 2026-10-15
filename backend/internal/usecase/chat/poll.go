@@ -87,6 +87,10 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
 	}
+	// Отказ оплаты — до строки опроса: иначе каждый отказ оставлял бы сироту.
+	if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
+		return domain.Message{}, err
+	}
 	p, err := i.polls.Create(ctx, domain.Poll{
 		ChatID: in.ChatID, Question: q, Options: opts,
 		Anonymous: in.Anonymous, Multiple: in.Multiple, Quiz: in.Quiz, CorrectOption: in.CorrectOption,

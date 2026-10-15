@@ -2411,11 +2411,14 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor,
 	chatID, msgID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender) {
 	me, _ := UserFromContext(r.Context())
-	reactions, err := svc.ReactionsSeenBy(r.Context(), chatID, msgID, me.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render star reaction")
-		return
+	// Здесь звёзды уже списаны и закоммичены: ответ не имеет права падать, иначе клиент
+	// повторит запрос и заплатит второй раз. Сбой чтения полного агрегата заменяется
+	// минимальным (starReactionAggregate), сбой адреса пира — адресом из самого URL.
+	full, fullErr := svc.ReactionsSeenBy(r.Context(), chatID, msgID, me.ID)
+	if fullErr != nil {
+		log.Printf("star_reaction: полный агрегат не прочитан после списания: %v", fullErr)
 	}
+	reactions := starReactionAggregate(full, fullErr, agg, svc.CanSeeReactionsList(r.Context(), chatID))
 	reactors := make([]domain.MessageReactor, 0, len(top)+1)
 	users := make([]domain.UserReal, 0, len(top))
 	for _, s := range top {
@@ -2435,8 +2438,11 @@ func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.
 
 	peer, err := svc.ChatIDToPeer(r.Context(), me.ID, chatID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render star reaction")
-		return
+		log.Printf("star_reaction: адрес пира не выведен после списания: %v", err)
+		var ok bool
+		if peer, ok = pathPeer(w, r); !ok {
+			return
+		}
 	}
 	// Номер сообщения берётся из САМОГО адреса запроса: снаружи сообщение
 	// адресуется парой «пир + номер», и второй раз выяснять его незачем.
@@ -2706,4 +2712,19 @@ func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// starReactionAggregate — агрегат реакций для ответа платной ⭐-реакции: полный (глазами
+// зрителя), а если его чтение упало ПОСЛЕ списания — минимальный из уже известного
+// агрегата звёзд: один платный чип. Ответ не падает, чтобы клиент не повторил
+// оплаченный запрос; эмодзи-чипы в этом редком случае доедут кадром реакций.
+func starReactionAggregate(full domain.MessageReactions, fullErr error, agg domain.StarReactionAgg, canSeeList bool) domain.MessageReactions {
+	if fullErr == nil {
+		return full
+	}
+	out := domain.NewMessageReactions([]domain.MTReactionCount{
+		domain.NewReactionCount(domain.NewReactionPaid(), int(agg.Total), agg.Mine > 0),
+	}, nil)
+	out.SetCanSeeList(canSeeList)
+	return out
 }

@@ -235,6 +235,21 @@ func (i *Interactor) requirePaidAllowance(ctx context.Context, chatID, senderID 
 	return price, nil
 }
 
+// precheckPaid — ранний отказ платной отправки ДО побочных записей (строки опроса или
+// чек-листа создаются раньше самой отправки): нет согласия на плату → ErrAllowPaymentRequired,
+// не хватает звёзд → ErrBalanceTooLow. Звёзд не списывает; окончательное решение и списание —
+// в транзакции Send (цена там читается заново: гонка с ростом цены даёт отказ уже Send).
+func (i *Interactor) precheckPaid(ctx context.Context, chatID, senderID, allow int64) error {
+	price, err := i.requirePaidAllowance(ctx, chatID, senderID, 1, allow)
+	if err != nil || price == 0 {
+		return err
+	}
+	if bal, e := i.stars.Balance(ctx, senderID); e == nil && bal < price {
+		return domain.ErrBalanceTooLow
+	}
+	return nil
+}
+
 // paidPriceFor — цена одного сообщения отправки после гейта согласия.
 // Служебки бесплатны; публикация отложенного не платит второй раз (звёзды
 // списаны при постановке, В-2, tweb allow_paid_stars в запросе с schedule_date,
@@ -269,20 +284,47 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, am
 	if creator == senderID {
 		return paidCharge{}, nil // страховка: владелец не платит сам себе
 	}
-	senderBal, err := i.stars.AddBalance(ctx, senderID, -amount)
-	if err != nil {
-		if err == domain.ErrForbidden {
+	// Строки балансов блокируются в порядке возрастания user_id: две встречные платные
+	// отправки (A платит владельцу B и B платит владельцу A) иначе берут их крест-накрест и
+	// взаимоблокируются (40P01). Нехватка средств у отправителя откатывает всю транзакцию
+	// отправки, поэтому начисление владельцу «до» списания безопасно.
+	c := paidCharge{applied: true, amount: amount, creatorID: creator}
+	debit := func() error {
+		bal, err := i.stars.AddBalance(ctx, senderID, -amount)
+		if err != nil {
+			if err == domain.ErrForbidden {
+				return domain.ErrBalanceTooLow
+			}
+			return err
+		}
+		c.senderBal = bal
+		return nil
+	}
+	credit := func() error {
+		if creator == 0 {
+			return nil
+		}
+		bal, err := i.stars.AddBalance(ctx, creator, amount)
+		if err != nil {
+			return err
+		}
+		c.creatorBal = bal
+		return nil
+	}
+	first, second := debit, credit
+	if creator != 0 && creator < senderID {
+		first, second = credit, debit
+		// Начисление идёт раньше списания: явная нехватка у отправителя отказывает до него
+		// (откат транзакции вернул бы начисление и так; окончательную проверку делает debit).
+		if bal, e := i.stars.Balance(ctx, senderID); e == nil && bal < amount {
 			return paidCharge{}, domain.ErrBalanceTooLow
 		}
+	}
+	if err := first(); err != nil {
 		return paidCharge{}, err
 	}
-	c := paidCharge{applied: true, amount: amount, senderBal: senderBal, creatorID: creator}
-	if creator != 0 {
-		creatorBal, e := i.stars.AddBalance(ctx, creator, amount)
-		if e != nil {
-			return paidCharge{}, e
-		}
-		c.creatorBal = creatorBal
+	if err := second(); err != nil {
+		return paidCharge{}, err
 	}
 	return c, nil
 }

@@ -20,6 +20,8 @@ type paidFixture struct {
 	fg    *fakeGroupRepo
 	stars *fakeStars
 	sched *fakeScheduled
+	polls *fakePolls
+	lists *fakeChecklists
 	cid   int64 // группа с платой 5, владелец 1, участник 2
 }
 
@@ -38,8 +40,9 @@ func newPaidFixture(t *testing.T) paidFixture {
 	in.SetPublisher(&fakePublisher{})
 	fs := newFakeScheduled()
 	in.SetScheduled(fs)
-	in.SetPolls(newFakePolls())
-	in.SetChecklists(newFakeChecklists())
+	polls, lists := newFakePolls(), newFakeChecklists()
+	in.SetPolls(polls)
+	in.SetChecklists(lists)
 	ctx := context.Background()
 	fg.users[1] = domain.UserReal{ID: 1, FirstName: "Owner"}
 	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Member"}
@@ -50,7 +53,7 @@ func newPaidFixture(t *testing.T) paidFixture {
 	if err := in.SetChatChargeStars(ctx, cid, 1, 5); err != nil {
 		t.Fatal(err)
 	}
-	return paidFixture{in: in, s: s, fg: fg, stars: stars, sched: fs, cid: cid}
+	return paidFixture{in: in, s: s, fg: fg, stars: stars, sched: fs, polls: polls, lists: lists, cid: cid}
 }
 
 func (f paidFixture) topUp(t *testing.T, user, n int64) {
@@ -164,6 +167,34 @@ func TestPaidMessage_EveryUserEntryNeedsAllowance(t *testing.T) {
 	}
 	if f.balance(2) != 100 || f.sched.count() != 0 {
 		t.Fatalf("отказы оставили следы: баланс %d, строк %d", f.balance(2), f.sched.count())
+	}
+}
+
+// Ревью-пункт «деньги»: отказ согласия/баланса не оставляет сиротских строк опроса и
+// чек-листа — проверка идёт ДО их создания.
+func TestPaidPollChecklist_RefusalLeavesNoRows(t *testing.T) {
+	f := newPaidFixture(t)
+	ctx := context.Background()
+	f.topUp(t, 2, 3) // баланса не хватает на цену 5
+
+	poll := func(allow int64) error {
+		_, err := f.in.SendPoll(ctx, SendPollInput{ChatID: f.cid, SenderID: 2, Question: "q", Options: []string{"a", "b"}, AllowPaidStars: allow})
+		return err
+	}
+	list := func(allow int64) error {
+		_, err := f.in.SendChecklist(ctx, SendChecklistInput{ChatID: f.cid, SenderID: 2, Title: "t", Items: []string{"a"}, AllowPaidStars: allow})
+		return err
+	}
+	for name, run := range map[string]func(int64) error{"poll": poll, "checklist": list} {
+		if got := needStars(run(0)); got != 5 {
+			t.Errorf("%s без согласия: need=%d, want 5", name, got)
+		}
+		if err := run(5); !errors.Is(err, domain.ErrBalanceTooLow) {
+			t.Errorf("%s при нехватке баланса: %v, want ErrBalanceTooLow", name, err)
+		}
+	}
+	if len(f.polls.polls) != 0 || len(f.lists.lists) != 0 {
+		t.Fatalf("сиротские строки: опросов %d, чек-листов %d", len(f.polls.polls), len(f.lists.lists))
 	}
 }
 
