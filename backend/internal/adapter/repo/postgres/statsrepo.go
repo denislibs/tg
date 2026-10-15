@@ -47,9 +47,10 @@ func (r *StatsRepo) MemberRole(ctx context.Context, chatID, userID int64) (strin
 // messages(chat_id, created_at) нет, поэтому граница окна по времени
 // переводится в границу по seq: он почти монотонен по времени (расхождение —
 // длительность транзакции отправки, для окон в сутки пренебрежимо).
-// Обратный скан частичного индекса (chat_id, seq) WHERE deleted_at IS NULL
-// (idx_messages_unread_count) идёт от maxSeq вниз и проходит только
-// сообщения новее t, то есть окно.
+// Обратный скан уникального индекса (chat_id, seq) идёт от maxSeq вниз и
+// проходит только сообщения новее t, то есть окно; deleted_at и created_at
+// проверяются по строке кучи, так что цена линейна по размеру окна (EXPLAIN —
+// в описании PR).
 func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.Time) (int64, error) {
 	var seq int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `
@@ -62,27 +63,35 @@ func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.
 	return seq, err
 }
 
+// summarySQL — обзор окна: $1 чат, $2 и $3 — границы seq, $4 — конец окна.
+// Реакции берутся пробами по idx_reactions_message по id постов окна
+// (= ANY(ARRAY(…))): планировщик иначе читает всю таблицу reactions
+// хеш-соединением, и цена растёт с числом реакций во всей БД, а не окна.
+const summarySQL = `
+	SELECT
+		(SELECT count(*) FROM chat_members WHERE chat_id=$1 AND joined_at < $4),
+		w.views, w.forwards,
+		(SELECT count(*) FROM reactions WHERE message_id = ANY(ARRAY(
+			SELECT id FROM messages
+			WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3))),
+		w.posts, w.posters
+	FROM (
+		SELECT coalesce(sum(views),0) AS views, coalesce(sum(forwards),0) AS forwards,
+		       count(*) AS posts, count(DISTINCT sender_id) AS posters
+		FROM messages
+		WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3
+	) w`
+
 // Summary — числовой обзор окна: посты с seq в (fromSeq, toSeq] (не удалённые и
-// не служебные) и участники, вступившие до at. Окно выбирается одной
-// выборкой messages по seq, суммы и реакции считаются по ней же.
+// не служебные) и участники, вступившие до at. Посты окна выбираются
+// по диапазону seq.
 //
 // Участники — приближение: вышедшие и исключённые строк не имеют (членство
 // стирается), поэтому «участников на начало окна» не учитывает тех, кто успел
 // уйти позже; точных исторических снимков состава у нас нет.
 func (r *StatsRepo) Summary(ctx context.Context, chatID, fromSeq, toSeq int64, at time.Time) (domain.ChannelStatsSummary, error) {
 	var s domain.ChannelStatsSummary
-	err := querier(ctx, r.pool).QueryRow(ctx, `
-		WITH win AS (
-			SELECT id, views, forwards, sender_id FROM messages
-			WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3
-		)
-		SELECT
-			(SELECT count(*) FROM chat_members WHERE chat_id=$1 AND joined_at < $4),
-			(SELECT coalesce(sum(views),0) FROM win),
-			(SELECT coalesce(sum(forwards),0) FROM win),
-			(SELECT count(*) FROM reactions r JOIN win ON win.id = r.message_id),
-			(SELECT count(*) FROM win),
-			(SELECT count(DISTINCT sender_id) FROM win)`,
+	err := querier(ctx, r.pool).QueryRow(ctx, summarySQL,
 		chatID, fromSeq, toSeq, at,
 	).Scan(&s.Members, &s.TotalViews, &s.TotalForwards, &s.TotalReactions, &s.PostsCount, &s.PostersCount)
 	return s, err
@@ -93,8 +102,9 @@ func (r *StatsRepo) Summary(ctx context.Context, chatID, fromSeq, toSeq int64, a
 // domain.ChatMuted, что у пуша): мьют чата — колонка muted_until (миграция
 // 0104; «навсегда» — to_timestamp(2147483647); NULL — наследует тип). По схеме
 // `statsPercentValue` предыдущего значения нет — окна у показателя тоже нет.
-// Фильтр `joined_at < at` — тот же, что у Members текущего окна: доля не
-// превышает 100% при расхождении часов приложения и БД.
+// Фильтр `joined_at < at` — тот же, что у Members текущего окна: вступившие
+// после at не попадают в part, но и в total. Общего снимка у двух выборок нет,
+// гонка с вступлением между ними остаётся.
 func (r *StatsRepo) NotificationsOn(ctx context.Context, chatID int64, at time.Time) (int64, error) {
 	var n int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `

@@ -31,6 +31,14 @@ func TestStatsRepo_NotificationsOnRespectsTypeAndExplicitChoice(t *testing.T) {
 	mustExec(t, pool, `UPDATE chat_members SET muted_until = to_timestamp(0) WHERE chat_id=$1 AND user_id=$2`, ch, explicit)
 	mustExec(t, pool, `UPDATE chat_members SET muted_until = now() + interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, ch, timed)
 
+	// Вступивший после at не учитывается — как в Members текущего окна, иначе
+	// part превысит total.
+	lateJoiner := seedUser(t, pool, "+7975")
+	if err := groups.AddMember(ctx, ch, lateJoiner, domain.RoleSubscriber, 0); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, pool, `UPDATE chat_members SET joined_at = now() + interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, ch, lateJoiner)
+
 	on, err := NewStatsRepo(pool).NotificationsOn(ctx, ch, time.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)

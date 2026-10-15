@@ -21,6 +21,7 @@ type fakeRepo struct {
 	summaries    []summaryCall
 	summary      func(summaryCall) domain.ChannelStatsSummary
 	notifyOn     int64
+	notifyAt     time.Time
 	members      []domain.StatPoint
 	recent       []domain.RecentPost
 	postExists   bool
@@ -48,7 +49,8 @@ func (f *fakeRepo) Summary(_ context.Context, _, fromSeq, toSeq int64, at time.T
 	}
 	return f.summary(c), nil
 }
-func (f *fakeRepo) NotificationsOn(context.Context, int64, time.Time) (int64, error) {
+func (f *fakeRepo) NotificationsOn(_ context.Context, _ int64, at time.Time) (int64, error) {
+	f.notifyAt = at
 	return f.notifyOn, nil
 }
 func (f *fakeRepo) MembersByDay(context.Context, int64) ([]domain.StatPoint, error) {
@@ -202,6 +204,10 @@ func TestChannelStatsOverviewTwoWindows(t *testing.T) {
 	}
 	if st.Summary.Members != 9 || st.Previous.Members != 7 || st.Summary.PostsCount != 4 || st.Previous.PostsCount != 2 {
 		t.Fatalf("Summary %+v, Previous %+v", st.Summary, st.Previous)
+	}
+	// Доля уведомлений считается по тем же участникам, что Members текущего окна.
+	if !repo.notifyAt.Equal(now) {
+		t.Fatalf("NotificationsOn(at=%v), ожидалось %v", repo.notifyAt, now)
 	}
 	if !st.At.Equal(now) || st.NotificationsOn != 5 {
 		t.Fatalf("At %v, NotificationsOn %d", st.At, st.NotificationsOn)

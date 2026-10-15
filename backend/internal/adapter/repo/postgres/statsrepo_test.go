@@ -83,6 +83,35 @@ func TestStatsRepo_SeqBeforeSkipsDeletedAndFindsWindowBounds(t *testing.T) {
 	}
 }
 
+// maxSeq включителен и ограничивает скан сверху: вторая граница ищется ниже
+// первой, а пустое предыдущее окно даёт seqStart == seqMid.
+func TestStatsRepo_SeqBeforeMaxSeqIsInclusiveUpperBound(t *testing.T) {
+	r, f := seedStatsWindows(t)
+	ctx := context.Background()
+	day := 24 * time.Hour
+	cases := []struct {
+		name   string
+		maxSeq int64
+		age    time.Duration
+		want   int64
+	}{
+		// без ограничения последний пост до now−2d — пост 6 (3 дня назад)
+		{"maxSeq не задан", math.MaxInt64, 2 * day, 6},
+		{"maxSeq включителен", 3, 7 * day, 3},
+		{"maxSeq отсекает новее", 2, 7 * day, 2},
+		{"пустое окно: граница не выше maxSeq", 1, 7 * day, 1},
+	}
+	for _, tc := range cases {
+		got, err := r.SeqBefore(ctx, f.chat, tc.maxSeq, f.now.Add(-tc.age))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Errorf("%s: SeqBefore = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
 // Окно 7 дней (решение В-9): текущее — последняя неделя, предыдущее — неделя
 // перед ней; посты считаются по seq-диапазону, участники — по joined_at.
 func TestStatsRepo_SummaryWindowsCurrentAndPrevious(t *testing.T) {
