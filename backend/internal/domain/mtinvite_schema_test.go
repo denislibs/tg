@@ -36,6 +36,9 @@ func inviteCases() []struct {
 		{"ждёт одобрения", NewChatInviteImporter(9, time.Unix(1787334148, 0), true, 0)},
 		{"список импортёров", NewMessagesChatInviteImporters(1,
 			[]ChatInviteImporter{NewChatInviteImporter(9, time.Unix(1, 0), false, 7)}, nil)},
+		{"админы со ссылками", NewMessagesChatAdminsWithInvites(
+			[]AdminInvites{{AdminID: 7, Active: 2, Revoked: 1}, {AdminID: 8}}, nil)},
+		{"админы со ссылками, пусто", NewMessagesChatAdminsWithInvites(nil, nil)},
 		{"ответ создания группы", func() MessagesInvitedUsers {
 			u := NewUpdates(nil, nil, time.Unix(1787334148, 0))
 			u.Chats = []Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), time.Unix(1787334148, 0), ChannelFlags{Megagroup: true})}

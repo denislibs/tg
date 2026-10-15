@@ -29,7 +29,7 @@ func TestInviteRepo(t *testing.T) {
 	if err := r.IncUses(ctx, link.ID); err != nil {
 		t.Fatal(err)
 	}
-	list, _ := r.List(ctx, chatID, false)
+	list, _ := r.ListBy(ctx, chatID, u, false)
 	if len(list) != 1 || list[0].Uses != 1 {
 		t.Fatalf("list: %+v", list)
 	}
@@ -42,17 +42,17 @@ func TestInviteRepo(t *testing.T) {
 	if _, err := r.GetByToken(ctx, "tok123"); err == nil {
 		t.Fatal("revoked token should not resolve")
 	}
-	if act, _ := r.List(ctx, chatID, false); len(act) != 0 {
+	if act, _ := r.ListBy(ctx, chatID, u, false); len(act) != 0 {
 		t.Fatalf("active list after revoke: %+v", act)
 	}
-	if rev, _ := r.List(ctx, chatID, true); len(rev) != 1 || rev[0].Token != "tok123" {
+	if rev, _ := r.ListBy(ctx, chatID, u, true); len(rev) != 1 || rev[0].Token != "tok123" {
 		t.Fatalf("revoked list after revoke: %+v", rev)
 	}
 	// Hard-delete removes the row from every list.
 	if err := r.Delete(ctx, chatID, "tok123"); err != nil {
 		t.Fatal(err)
 	}
-	if rev, _ := r.List(ctx, chatID, true); len(rev) != 0 {
+	if rev, _ := r.ListBy(ctx, chatID, u, true); len(rev) != 0 {
 		t.Fatalf("revoked list after delete: %+v", rev)
 	}
 
@@ -142,15 +142,80 @@ func TestInviteRepo_TitleEditImporters(t *testing.T) {
 		t.Fatalf("cross-chat importers: %+v count=%d err=%v, want empty", imps, count, err)
 	}
 
-	// DeleteAllRevoked removes only the chat's revoked links.
+	// DeleteRevokedBy removes only the owner's revoked links in the chat.
 	revoked := true
 	if _, err := r.Update(ctx, chatID, "tt", domain.InviteEdit{Revoked: &revoked}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.DeleteAllRevoked(ctx, chatID); err != nil {
+	if err := r.DeleteRevokedBy(ctx, chatID, owner); err != nil {
 		t.Fatal(err)
 	}
-	if rev, _ := r.List(ctx, chatID, true); len(rev) != 0 {
-		t.Fatalf("revoked list after DeleteAllRevoked: %+v", rev)
+	if rev, _ := r.ListBy(ctx, chatID, owner, true); len(rev) != 0 {
+		t.Fatalf("revoked list after DeleteRevokedBy: %+v", rev)
+	}
+}
+
+// Б-6: выборки по создателю ссылки; отозванные видны GetInChat; счётчики по админам.
+func TestInviteRepo_ByCreator(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7021")
+	admin := seedUser(t, pool, "+7022")
+	g := NewGroupRepo(pool)
+	chatID, _ := g.CreateMultiMember(ctx, "group", "G", "", "", false, owner)
+	other, _ := g.CreateMultiMember(ctx, "group", "Other", "", "", false, owner)
+	r := NewInviteRepo(pool)
+
+	for _, c := range []struct {
+		chat, by int64
+		tok      string
+	}{{chatID, owner, "o1"}, {chatID, owner, "o2"}, {chatID, admin, "a1"}, {chatID, admin, "a2"}, {other, admin, "x1"}} {
+		if _, err := r.Create(ctx, c.chat, c.by, c.tok, "", nil, false, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	revoked := true
+	for _, tok := range []string{"o2", "a2"} {
+		if _, err := r.Update(ctx, chatID, tok, domain.InviteEdit{Revoked: &revoked}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if act, _ := r.ListBy(ctx, chatID, admin, false); len(act) != 1 || act[0].Token != "a1" {
+		t.Fatalf("admin active: %+v", act)
+	}
+	if rev, _ := r.ListBy(ctx, chatID, admin, true); len(rev) != 1 || rev[0].Token != "a2" {
+		t.Fatalf("admin revoked: %+v", rev)
+	}
+	if act, _ := r.ListBy(ctx, chatID, owner, false); len(act) != 1 || act[0].Token != "o1" {
+		t.Fatalf("owner active: %+v", act)
+	}
+
+	// Отозванная ссылка находится GetInChat (GetByToken её скрывает); чужой чат — нет.
+	if l, err := r.GetInChat(ctx, chatID, "a2"); err != nil || l.CreatedBy != admin || !l.Revoked {
+		t.Fatalf("GetInChat revoked: %+v %v", l, err)
+	}
+	if _, err := r.GetInChat(ctx, chatID, "x1"); err != domain.ErrNotFound {
+		t.Fatalf("GetInChat foreign chat: %v; want ErrNotFound", err)
+	}
+
+	counts, err := r.CountsByAdmin(ctx, chatID)
+	want := []domain.AdminInvites{{AdminID: owner, Active: 1, Revoked: 1}, {AdminID: admin, Active: 1, Revoked: 1}}
+	if err != nil || len(counts) != 2 || counts[0] != want[0] || counts[1] != want[1] {
+		t.Fatalf("CountsByAdmin = %+v, %v; want %+v", counts, err, want)
+	}
+
+	// DeleteRevokedBy задевает только отозванные указанного создателя в этом чате.
+	if err := r.DeleteRevokedBy(ctx, chatID, admin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.GetInChat(ctx, chatID, "a2"); err != domain.ErrNotFound {
+		t.Fatalf("a2 after DeleteRevokedBy: %v", err)
+	}
+	if _, err := r.GetInChat(ctx, chatID, "o2"); err != nil {
+		t.Fatalf("owner's revoked link must stay: %v", err)
+	}
+	if _, err := r.GetInChat(ctx, chatID, "a1"); err != nil {
+		t.Fatalf("admin's active link must stay: %v", err)
 	}
 }
