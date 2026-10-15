@@ -13,7 +13,7 @@ import (
 
 // SearchRepo is a postgres-backed adapter implementing the chat usecase's
 // SearchRepo port: public-chat discovery by @username/title prefix (ordered by
-// member_count), user discovery by username/display_name prefix, the «own»
+// member_count), user discovery by username/display_name/contact-book name prefix, the «own»
 // split of those hits (OwnPeers), and
 // case-insensitive @username resolution for join-by-username. The username
 // column is citext, so ILIKE and equality are already case-insensitive. Like the
@@ -42,24 +42,32 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]in
 // SearchUsers — пользователи по префиксу для contacts.search; карточки глазами
 // viewerID (userSeenCols). По @username ищется среди ВСЕХ, по имени — только
 // среди СВОИХ (контакты зрителя ∪ собеседники по личке без скрытого диалога):
-// иначе имя было бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb отдаёт чужих
-// отдельным вектором `results`, appUsersManager.ts:1182-1214). Контакт
-// находится по имени из книги зрителя (имя, фамилия, «имя фамилия» — так он
-// видит человека в списке) и по профильному имени; собеседник по личке — по
-// профильному (Ф7-Е2). Два запроса с
-// ORDER BY вместо одного OR: выдача детерминирована, а чужие по @username не
-// вытесняют своих из limit. Множество «своих» (то же правило, что ветки
-// пользователей в OwnPeers — менять вместе) материализуется в массив и берётся
-// по users_pkey: форма `IN (подзапрос)` планировщик разворачивал в полный
-// Seq Scan по users и chats. Слияние — «свои по имени» первыми, затем по
-// @username, без повторов, всего не больше limit.
+// иначе имя было бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb
+// отдаёт чужих отдельным вектором `results`, appUsersManager.ts:1182-1214).
+//
+// Живой контакт находится по имени из книги зрителя (имя, фамилия, «имя
+// фамилия» — так он видит человека в списке, SeenBy) и по профильному; удалённый
+// аккаунт имени из книги не получает («Deleted Account»), поэтому по книге не
+// ищется. Собеседник по личке — по профильному. Совпадение — префикс СТРОКИ
+// (имя, фамилия или «имя фамилия» целиком), а не любого слова, как в локальном
+// индексе клиента (searchIndex.ts): серверный путь добирает то, чего нет в
+// загруженных контактах и диалогах.
+//
+// Два запроса с ORDER BY вместо одного OR: выдача детерминирована, а чужие по
+// @username не вытесняют своих из limit. Свои сортируются и отсекаются по
+// ВИДИМОМУ зрителю имени (книга, иначе профиль). Множество «своих» (то же
+// правило, что ветки пользователей в OwnPeers — менять вместе) материализуется
+// в массив и берётся по users_pkey: форма `IN (подзапрос)` и JOIN users
+// планировщик разворачивал в Seq Scan по users и chat_members. Слияние — «свои
+// по имени» первыми, затем по @username, без повторов, всего не больше limit.
 func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
 	own, err := r.queryUsers(ctx,
 		`SELECT `+userSeenCols("u.", "$3")+`
 		   FROM users u
+		   LEFT JOIN contacts vc ON vc.owner_id = $3 AND vc.user_id = u.id
 		  WHERE u.id = ANY(ARRAY(
-		        SELECT ct.user_id FROM contacts ct
+		        SELECT ct.user_id FROM contacts ct JOIN users cu ON cu.id = ct.user_id AND cu.deleted_at IS NULL
 		         WHERE ct.owner_id = $3
 		           AND (ct.first_name ILIKE $1 OR ct.last_name ILIKE $1
 		                OR (ct.first_name || ' ' || ct.last_name) ILIKE $1)
@@ -73,7 +81,8 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, 
 		                      WHERE me.user_id = $3 AND NOT me.dialog_hidden AND c.type = 'private'))
 		        ) o JOIN users ou ON ou.id = o.user_id
 		         WHERE ou.display_name ILIKE $1))
-		  ORDER BY u.display_name, u.id LIMIT $2`, like, limit, viewerID)
+		  ORDER BY COALESCE(NULLIF(btrim(vc.first_name || ' ' || vc.last_name), ''), u.display_name), u.id LIMIT $2`,
+		like, limit, viewerID)
 	if err != nil {
 		return nil, err
 	}
