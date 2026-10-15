@@ -1050,21 +1050,73 @@ func (r *ChatsRepo) PinMessage(ctx context.Context, chatID, msgID, byUser int64)
 	return err
 }
 
-// UnpinMessage removes a pin.
-func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID int64) error {
-	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx, `DELETE FROM pinned_messages WHERE chat_id=$1 AND msg_id=$2`, chatID, msgID)
+// PinMessageOneSide — закреп «только у себя» (идемпотентно).
+func (r *ChatsRepo) PinMessageOneSide(ctx context.Context, chatID, msgID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`INSERT INTO pinned_messages_oneside (user_id, chat_id, msg_id) VALUES ($1,$2,$3)
+		 ON CONFLICT (user_id, chat_id, msg_id) DO NOTHING`, userID, chatID, msgID)
 	return err
 }
 
-// PinnedIDs — см. ChatRepo.PinnedIDs.
-func (r *ChatsRepo) PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error) {
+// UnpinMessage снимает общий закреп и закреп «только у себя» userID одним
+// запросом; shared — общий закреп существовал.
+func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (bool, error) {
+	tag, err := querier(ctx, r.pool).Exec(ctx,
+		`WITH o AS (DELETE FROM pinned_messages_oneside WHERE user_id=$3 AND chat_id=$1 AND msg_id=$2)
+		 DELETE FROM pinned_messages WHERE chat_id=$1 AND msg_id=$2`, chatID, msgID, userID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// UnpinAll — «открепить все»: общие закрепы чата (в треде — только его) и
+// закрепы «только у себя» userID. Номера возвращаются номерами в чате, по
+// возрастанию. Тред — тот же фильтр, что у ленты треда (threadFilter), вместе
+// с корневым сообщением.
+func (r *ChatsRepo) UnpinAll(ctx context.Context, chatID, userID int64, threadRootID *int64) (shared, oneSide []int64, err error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`WITH s AS (DELETE FROM pinned_messages p USING messages m
+		              WHERE p.chat_id=$1 AND m.id=p.msg_id AND `+threadFilter("m", "$2", threadRootID, true)+`
+		              RETURNING m.seq),
+		      o AS (DELETE FROM pinned_messages_oneside p USING messages m
+		              WHERE p.user_id=$3 AND p.chat_id=$1 AND m.id=p.msg_id AND `+threadFilter("m", "$2", threadRootID, true)+`
+		              RETURNING m.seq)
+		 SELECT false, seq FROM s UNION ALL SELECT true, seq FROM o ORDER BY 2`,
+		chatID, threadRootID, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var one bool
+		var seq int64
+		if err := rows.Scan(&one, &seq); err != nil {
+			return nil, nil, err
+		}
+		if one {
+			oneSide = append(oneSide, seq)
+		} else {
+			shared = append(shared, seq)
+		}
+	}
+	return shared, oneSide, rows.Err()
+}
+
+// PinnedIDs — см. ChatRepo.PinnedIDs. Закреп «только у себя» удалённого
+// сообщения не считается (удаление мягкое, каскад по messages(id) не
+// срабатывает).
+func (r *ChatsRepo) PinnedIDs(ctx context.Context, viewerID int64, msgIDs []int64) (map[int64]bool, error) {
 	out := make(map[int64]bool)
 	if len(msgIDs) == 0 {
 		return out, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT msg_id FROM pinned_messages WHERE msg_id = ANY($1::bigint[])`, msgIDs)
+		`SELECT msg_id FROM pinned_messages WHERE msg_id = ANY($2::bigint[])
+		 UNION
+		 SELECT o.msg_id FROM pinned_messages_oneside o JOIN messages m ON m.id = o.msg_id
+		  WHERE o.user_id = $1 AND o.msg_id = ANY($2::bigint[]) AND m.deleted_at IS NULL`,
+		viewerID, msgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,13 +1131,21 @@ func (r *ChatsRepo) PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bo
 	return out, rows.Err()
 }
 
-// ListPins returns the chat's pinned messages, newest pin first.
-func (r *ChatsRepo) ListPins(ctx context.Context, chatID int64) ([]domain.Message, error) {
+// ListPins — закрепы чата глазами viewerID, новый закреп первым: общие плюс его
+// «только у себя» (одно сообщение в обоих — один раз), только видимые ему
+// сообщения (messageVisibleTo, как у карточки чата).
+func (r *ChatsRepo) ListPins(ctx context.Context, chatID, viewerID int64) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT `+messageColsPrefixed("m")+`
-		 FROM pinned_messages p JOIN messages m ON m.id=p.msg_id
-		 WHERE p.chat_id=$1 AND m.deleted_at IS NULL ORDER BY p.pinned_at DESC`, chatID)
+		 FROM messages m JOIN (
+		   SELECT msg_id, max(pinned_at) AS pinned_at FROM (
+		     SELECT msg_id, pinned_at FROM pinned_messages WHERE chat_id=$1
+		     UNION ALL
+		     SELECT msg_id, pinned_at FROM pinned_messages_oneside WHERE user_id=$2 AND chat_id=$1
+		   ) u GROUP BY msg_id
+		 ) p ON p.msg_id = m.id
+		 WHERE `+messageVisibleTo("m", "$2")+` ORDER BY p.pinned_at DESC`, chatID, viewerID)
 	if err != nil {
 		return nil, err
 	}

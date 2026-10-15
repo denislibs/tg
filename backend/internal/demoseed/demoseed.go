@@ -76,7 +76,7 @@ type chatAPI interface {
 	Send(ctx context.Context, in usecasechat.SendInput) (domain.Message, error)
 	SendPoll(ctx context.Context, in usecasechat.SendPollInput) (domain.Message, error)
 	VotePoll(ctx context.Context, pollID, userID int64, optionIdxs []int) (domain.PollInfo, error)
-	SetPin(ctx context.Context, chatID, msgID, userID int64, pin bool) error
+	SetPin(ctx context.Context, chatID, msgID, userID int64, pin bool, opts usecasechat.PinOpts) (domain.UpdatesReal, error)
 	React(ctx context.Context, chatID, messageID, userID int64, emoji string, add bool) error
 }
 
@@ -217,7 +217,7 @@ func (s *seeder) pin(ctx context.Context, chatID, msgID, userID int64, title str
 			return
 		}
 	}
-	if err := s.uc.SetPin(ctx, chatID, msgID, userID, true); err != nil {
+	if _, err := s.uc.SetPin(ctx, chatID, msgID, userID, true, usecasechat.PinOpts{}); err != nil {
 		log.Printf("seed: закрепление в %q не удалось: %v", title, err)
 	}
 }

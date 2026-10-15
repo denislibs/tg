@@ -243,13 +243,12 @@ func readPayload(peer domain.PeerID, maxID int64, unread int, inbox bool) map[st
 //
 // «Открепили» — ТОТ ЖЕ конструктор с опущенным битом, а не поле `pinned: false`
 // и не второй тип кадра. Номера едут ВЕКТОРОМ: у оригинала одно действие
-// закрепляет сразу пачку, и форма кадра это допускает, даже когда у нас пока
-// всегда один номер.
-func pinPayload(peer domain.PeerID, seq int64, pinned bool) map[string]any {
+// закрепляет сразу пачку («Открепить все» снимает все закрепы одним кадром).
+func pinPayload(peer domain.PeerID, seqs []int64, pinned bool) map[string]any {
 	p := map[string]any{
 		"_":         domain.UpdatePinnedMessagesTag,
 		"peer":      domain.NewPeer(peer),
-		"messages":  []int64{seq},
+		"messages":  seqs,
 		"pts_count": domain.PtsCountOne,
 	}
 	if pinned {
@@ -380,7 +379,7 @@ func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) m
 	p := i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
 	if msg, ok := p[frameMessageKey].(map[string]any); ok {
 		markMinAggregates(msg)
-		if pinned, err := i.pinnedOf(ctx, []domain.Message{m}); err == nil && pinned[m.ID] {
+		if pinned, err := i.pinnedOf(ctx, 0, []domain.Message{m}); err == nil && pinned[m.ID] {
 			pf, _ := msg["pFlags"].(map[string]any)
 			if pf == nil {
 				pf = map[string]any{}

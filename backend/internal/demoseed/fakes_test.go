@@ -384,10 +384,10 @@ func (f *fakeChat) VotePoll(_ context.Context, _, _ int64, _ []int) (domain.Poll
 
 // SetPin кладёт служебную пилюлю на каждое ЗАКРЕПЛЕНИЕ (messageActionPinMessage),
 // открепление проходит молча — как у интерактора.
-func (f *fakeChat) SetPin(_ context.Context, chatID, msgID, userID int64, pin bool) error {
+func (f *fakeChat) SetPin(_ context.Context, chatID, msgID, userID int64, pin bool, _ usecasechat.PinOpts) (domain.UpdatesReal, error) {
 	c := f.chats[chatID]
 	if c == nil || !c.members[userID] {
-		return errFake
+		return domain.UpdatesReal{}, errFake
 	}
 	if pin {
 		f.pins[chatID] = msgID
@@ -395,7 +395,7 @@ func (f *fakeChat) SetPin(_ context.Context, chatID, msgID, userID int64, pin bo
 	} else {
 		delete(f.pins, chatID)
 	}
-	return nil
+	return domain.UpdatesReal{}, nil
 }
 
 func (f *fakeChat) React(_ context.Context, chatID, messageID, userID int64, emoji string, add bool) error {
