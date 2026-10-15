@@ -146,6 +146,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			fh := NewFoldersHandler(foldersUC)
 			pr.Get("/me/folders", fh.List)
 			pr.Post("/me/folders", fh.Create)
+			pr.Post("/me/folders/order", fh.Reorder)
 			pr.Put("/me/folders/{folderID}", fh.Update)
 			pr.Delete("/me/folders/{folderID}", fh.Delete)
 			// Ссылки-приглашения в папку (chatlist invites)

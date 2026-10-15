@@ -6,7 +6,7 @@ import { create } from 'zustand'
 import { mapFolder, type Folder, type RawFolder } from '../core/managers/foldersManager'
 import type { Contact } from '../core/managers/contactsManager'
 import { reconcileById } from '../core/store/reconcile'
-import { useAppStateKey, useAppStateStore, setAppState } from './appState'
+import { useAppStateKey, useAppStateStore, setAppState, setAppStates } from './appState'
 // Обе константы id папок живут в core/folderIds.ts: их читают и main, и воркер
 // (`dialogsManager.getDialogs({filterId})`), второй копии значения быть не должно.
 import { ALL_FOLDER_ID } from '../core/folderIds'
@@ -60,7 +60,7 @@ export function useFolders(): Folder[] {
  */
 export async function loadFolders(
   managers: {
-    folders: { list(): Promise<Folder[]> }
+    folders: { list(): Promise<{ folders: Folder[]; allChatsPos: number }> }
     contacts: { list(): Promise<Contact[]> }
     // Этап 2 (пагинация диалогов): те же контакты нужны владельцу списка —
     // правила папок `contacts`/`non_contacts` он считает сам, в воркере
@@ -73,7 +73,9 @@ export async function loadFolders(
   // Персист тут НЕ читаем: State уже поднят в boot.ts до рендера.
   if (!useAppStateStore.getState().folders.length || overwrite) {
     try {
-      applyFolders(await managers.folders.list())
+      const { folders, allChatsPos } = await managers.folders.list()
+      applyFolders(folders)
+      applyAllChatsPos(allChatsPos)
     } catch {
       /* оффлайн — остаёмся на том, что подняли из State */
     }
@@ -115,14 +117,13 @@ export interface FolderUpdateEvt {
  * не нужен: снимок кладём в State тем же реконсайлом.
  *
  * Почему одного снимка достаточно, хотя `emitFolderUpdate` шлётся только на ОДНУ
- * папку: `pos` присваивается один раз при вставке (`MAX(pos)+1`,
- * foldersrepo.go:72) и больше не переписывается — `Update` колонку `pos` не
- * трогает (foldersrepo.go:82), `Delete` соседей не перенумеровывает
- * (foldersrepo.go:96), эндпоинта переупорядочивания нет вовсе. Значит мутация
- * одной папки не сдвигает `pos` у остальных, и локальная пересортировка по
- * `pos, id` даёт ровно тот же порядок, что и `List` (`ORDER BY pos, id`,
- * foldersrepo.go:51). Пропуски после оффлайна закрывает догон апдейт-лога по
- * `pts` (folders.go:116).
+ * папку: `pos` присваивается при вставке (`MAX(pos)+1`, foldersrepo.go) и
+ * переписывается только перестановкой (`Reorder`), которая едет отдельным
+ * апдейтом `updateDialogFilterOrder` (`applyOrder` ниже). `Update` колонку
+ * `pos` не трогает, `Delete` соседей не перенумеровывает. Значит мутация одной
+ * папки не сдвигает `pos` у остальных, и локальная пересортировка по `pos, id`
+ * даёт ровно тот же порядок, что и `List` (`ORDER BY pos, id`). Пропуски после
+ * оффлайна закрывает догон апдейт-лога по `pts`.
  */
 export function applyFolderUpdate(evt: FolderUpdateEvt): void {
   const prev = useAppStateStore.getState().folders
@@ -134,6 +135,58 @@ export function applyFolderUpdate(evt: FolderUpdateEvt): void {
   if (!evt.folder) return
   const incoming = mapFolder(evt.folder)
   applyFolders([...prev.filter((f) => f.id !== incoming.id), incoming])
+}
+
+/**
+ * Порядок папок: `updateDialogFilterOrder` с другого устройства и свой
+ * `messages.updateDialogFiltersOrder` (tweb `onUpdateDialogFilterOrder`,
+ * `lib/storages/filters.ts:179-199`, :424-433). `order` — id папок, `0` —
+ * «Все чаты». Перечисленные папки встают первыми в этом порядке, остальные —
+ * следом в прежнем (так же их ставит сервер, `FoldersRepo.Reorder`); id,
+ * которых клиент не знает, пропускаются. Место «Все чаты» — индекс `0` в
+ * `order`; без `0` оно не меняется. Идемпотентно: эхо своего действия ничего
+ * не перерисовывает и не пишет на диск.
+ *
+ * Архив tweb вставляет в порядок вторым (`:184-186`) — у нас архив не папка
+ * (`core/folderIds.ts`), эта вставка не переносится.
+ */
+export function applyOrder(order: number[]): void {
+  const prev = useAppStateStore.getState().folders
+  const byId = new Map(prev.map((f) => [f.id, f]))
+  const seq: Folder[] = []
+  for (const id of order) {
+    const f = byId.get(id)
+    if (f) { seq.push(f); byId.delete(id) }
+  }
+  for (const f of prev) if (byId.has(f.id)) seq.push(f)
+  const sorted = seq.map((f, pos) => (f.pos === pos ? f : { ...f, pos }))
+  const r = reconcileById(prev, sorted, (f) => f.id)
+  const allIdx = order.indexOf(ALL_FOLDER_ID)
+  const allChanged = allIdx >= 0 && useAppStateStore.getState().allChatsPos !== allIdx
+  // Одной записью: два прохода подписчиков (проекция папок пересчитывает
+  // непрочитанное по всем диалогам) показали бы состояние наполовину.
+  if (r.changed && allChanged) setAppStates({ folders: r.list, allChatsPos: allIdx })
+  else if (r.changed) setAppState('folders', r.list)
+  else if (allChanged) setAppState('allChatsPos', allIdx)
+}
+
+function applyAllChatsPos(pos: number): void {
+  if (useAppStateStore.getState().allChatsPos !== pos) setAppState('allChatsPos', pos)
+}
+
+/**
+ * Порт `FiltersStorage.updateDialogFiltersOrder` (tweb `filters.ts:424-433`):
+ * `messages.updateDialogFiltersOrder`, и ТОЛЬКО ПОСЛЕ ответа сервера — локальный
+ * `onUpdateDialogFilterOrder` (у нас `applyOrder`). Отказ — исключение вызывающему
+ * (у tweb то же: порядок не применяется). Кадр `updateDialogFilterOrder` сервер
+ * присылает и сессии-автору — он просто ставит порядок (`applyOrder`).
+ */
+export async function updateOrder(
+  managers: { folders: { updateOrder(order: number[]): Promise<void> } },
+  order: number[],
+): Promise<void> {
+  await managers.folders.updateOrder(order)
+  applyOrder(order)
 }
 
 /**
