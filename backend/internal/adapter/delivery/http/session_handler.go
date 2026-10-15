@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -60,17 +61,25 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewAccountAuthorizations(out))
 }
 
-// RevokeOthers terminates every session except the current one.
+// writeTerminateError — общие отказы завершения сессий.
 //
-// Отказа `FRESH_RESET_AUTHORISATION_FORBIDDEN` мы здесь не порождаем, и это
-// названный пропуск, а не забывчивость: у оригинала он запрещает свежей сессии
-// отзывать чужие первые сутки после входа (защита от того, кто только что увёл
-// аккаунт), — у нас такого правила НЕТ. Не текста не хватает, а самого правила;
-// данные для него есть (`devices.created_at` читается), поэтому завести его
-// можно не трогая форму ответа. Пока не заведено — ветка вкладки
-// «Устройства», показывающая эту всплывашку, в проде недостижима.
-// Задачи на это расхождение НЕТ ни одной: вынесено ведущему финальным ревью
-// волны 2, номер проставить сюда, как только он появится.
+// 406 FRESH_RESET_AUTHORISATION_FORBIDDEN: первые сутки сессия не завершает
+// другие (tweb appAccountManager.ts:71-77). Код 406 tweb не определяет — вывод
+// из клиента: текст отказа он разбирает по `error.type` (getAuthorizationErrorLangKey).
+// ErrNotFound от usecase — строки ТЕКУЩЕЙ сессии уже нет, хотя кэш сессий ещё
+// пропускает токен: тот же ответ, что у currentDeviceID.
+func writeTerminateError(w http.ResponseWriter, err error, msg string) {
+	switch {
+	case errors.Is(err, domain.ErrFreshAuthorization):
+		writeError(w, http.StatusNotAcceptable, "FRESH_RESET_AUTHORISATION_FORBIDDEN")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusUnauthorized, "no session")
+	default:
+		writeError(w, http.StatusInternalServerError, msg)
+	}
+}
+
+// RevokeOthers terminates every session except the current one.
 func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	// «Все прочие» знает, кто текущий, из КОНТЕКСТА запроса, а не из адреса в
@@ -79,9 +88,9 @@ func (h *SessionHandler) RevokeOthers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	n, err := h.svc.RevokeOtherSessions(r.Context(), user.ID, current)
+	n, err := h.svc.TerminateOtherSessions(r.Context(), user.ID, current)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not revoke sessions")
+		writeTerminateError(w, err, "could not revoke sessions")
 		return
 	}
 	// Ответ — «получилось». Число отозванных не читал никто: экран показывает
@@ -100,19 +109,14 @@ func (h *SessionHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Своя сессия по этому пути не отзывается — ни нулём (адрес текущей строки
-	// витрины), ни угаданным настоящим id. У оригинала такой возможности нет по
-	// построению: адреса у текущей авторизации не существует, для неё есть
-	// выход из аккаунта. У нас адрес есть, поэтому отказ явный — иначе выходил
-	// бы «половинный логаут»: сессия умирает на сервере, а вкладка держит
-	// мёртвый токен до ближайшего 401.
-	if deviceID == 0 || deviceID == current {
+	revoked, err := h.svc.TerminateSession(r.Context(), user.ID, current, deviceID)
+	if errors.Is(err, domain.ErrInvalid) {
+		// Своя сессия (ноль или настоящий id) по этому пути не отзывается.
 		writeError(w, http.StatusBadRequest, "current session is not revocable by hash")
 		return
 	}
-	revoked, err := h.svc.RevokeSession(r.Context(), user.ID, deviceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not revoke session")
+		writeTerminateError(w, err, "could not revoke session")
 		return
 	}
 	if !revoked {

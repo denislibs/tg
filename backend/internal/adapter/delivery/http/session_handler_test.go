@@ -1,15 +1,166 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
+
+// ageSession делает сессию токена старше на d: signUp создаёт сессии только что,
+// то есть свежие, а свежая сессия не вправе завершать чужие (Б-3).
+func ageSession(t *testing.T, pool *pgxpool.Pool, token string, d time.Duration) {
+	t.Helper()
+	tag, err := pool.Exec(context.Background(),
+		`UPDATE devices SET created_at = now() - make_interval(secs => $2) WHERE token_hash = $1`,
+		domain.HashToken(token), d.Seconds())
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("ageSession: rows=%d err=%v", tag.RowsAffected(), err)
+	}
+}
+
+const freshForbidden = `{"_":"error","code":406,"text":"FRESH_RESET_AUTHORISATION_FORBIDDEN"}`
+
+func otherSessionHash(t *testing.T, h http.Handler, token string) int64 {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/sessions", token, nil)
+	var listed sessionList
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	for _, a := range listed.Authorizations {
+		if !a.PFlags["current"] {
+			return a.Hash
+		}
+	}
+	t.Fatal("чужая сессия не найдена")
+	return 0
+}
+
+func sessionCount(t *testing.T, h http.Handler, token string) int {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/sessions", token, nil)
+	var listed sessionList
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	return len(listed.Authorizations)
+}
+
+func TestSessions_FreshCurrent_RevokeForbidden(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000040")
+	tokenB, _ := signUp(t, h, pool, "+79990000040")
+	ageSession(t, pool, tokenB, 30*24*time.Hour) // цель давно живёт, свежая — A
+
+	other := otherSessionHash(t, h, tokenA)
+	rec := authedReq(t, h, http.MethodDelete, "/sessions/"+itoa(other), tokenA, nil)
+	if rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("свежая текущая завершает чужую = %d %s; ожидался 406", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != freshForbidden {
+		t.Fatalf("тело = %s; ожидалось %s", got, freshForbidden)
+	}
+	if n := sessionCount(t, h, tokenA); n != 2 {
+		t.Fatalf("после отказа сессий %d; ожидалось 2", n)
+	}
+	if rec := authedReq(t, h, http.MethodGet, "/me", tokenB, nil); rec.Code != http.StatusOK {
+		t.Fatalf("цель умерла несмотря на отказ: %d", rec.Code)
+	}
+}
+
+func TestSessions_FreshCurrent_RevokeOthersForbidden(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000041")
+	tokenB, _ := signUp(t, h, pool, "+79990000041")
+	ageSession(t, pool, tokenB, 30*24*time.Hour)
+
+	rec := authedReq(t, h, http.MethodDelete, "/sessions/others", tokenA, nil)
+	if rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("свежая текущая завершает прочие = %d %s; ожидался 406", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != freshForbidden {
+		t.Fatalf("тело = %s; ожидалось %s", got, freshForbidden)
+	}
+	if n := sessionCount(t, h, tokenA); n != 2 {
+		t.Fatalf("после отказа сессий %d; ожидалось 2", n)
+	}
+}
+
+// Правило одно, без особых случаев: прочих сессий нет — всё равно 406.
+func TestSessions_FreshCurrent_RevokeOthersForbiddenWithoutOthers(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	token, _ := signUp(t, h, pool, "+79990000042")
+	rec := authedReq(t, h, http.MethodDelete, "/sessions/others", token, nil)
+	if rec.Code != http.StatusNotAcceptable {
+		t.Fatalf("= %d %s; ожидался 406", rec.Code, rec.Body.String())
+	}
+}
+
+// Свежесть проверяется ДО «своя сессия по адресу»: свежая сессия получает 406
+// и по нулю, и по собственному настоящему id; старая — прежний 400.
+func TestSessions_FreshnessBeforeOwnSession(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000043")
+	tokenB, _ := signUp(t, h, pool, "+79990000043")
+	ownID := otherSessionHash(t, h, tokenB) // настоящий id A, виден из B
+
+	for _, path := range []string{"/sessions/0", "/sessions/" + itoa(ownID)} {
+		rec := authedReq(t, h, http.MethodDelete, path, tokenA, nil)
+		if rec.Code != http.StatusNotAcceptable {
+			t.Fatalf("свежая, DELETE %s = %d %s; ожидался 406", path, rec.Code, rec.Body.String())
+		}
+	}
+	ageSession(t, pool, tokenA, 48*time.Hour)
+	for _, path := range []string{"/sessions/0", "/sessions/" + itoa(ownID)} {
+		rec := authedReq(t, h, http.MethodDelete, path, tokenA, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("старая, DELETE %s = %d %s; ожидался 400", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Выход из своей сессии правилом не ограничен.
+func TestSessions_FreshCurrent_LogoutAllowed(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	token, _ := signUp(t, h, pool, "+79990000044")
+	if rec := authedReq(t, h, http.MethodPost, "/auth/logout", token, nil); rec.Code != http.StatusOK {
+		t.Fatalf("logout свежей сессии = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Строки текущей сессии в БД уже нет, а контекст запроса её ещё несёт (кэш
+// сессий пропускает токен, пока отзыв из другого места не дошёл до кэша) — это
+// 401 «no session», как у currentDeviceID, а не 500.
+func TestSessions_CurrentRowGone_Unauthorized(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, userID := signUp(t, h, pool, "+79990000045")
+	tokenB, _ := signUp(t, h, pool, "+79990000045")
+	other := otherSessionHash(t, h, tokenA)
+	const goneDevice int64 = 987654321
+
+	for _, c := range []struct{ method, path string }{
+		{http.MethodDelete, "/sessions/" + itoa(other)},
+		{http.MethodDelete, "/sessions/others"},
+	} {
+		req := httptest.NewRequest(c.method, c.path, nil)
+		req = req.WithContext(WithUser(req.Context(), domain.UserRecord{ID: userID}, goneDevice))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s = %d %s; ожидался 401", c.method, c.path, rec.Code, rec.Body.String())
+		}
+	}
+	for _, tok := range []string{tokenA, tokenB} {
+		if rec := authedReq(t, h, http.MethodGet, "/me", tok, nil); rec.Code != http.StatusOK {
+			t.Fatalf("сессия пострадала от отказавшей ручки: %d", rec.Code)
+		}
+	}
+}
 
 func TestSessions_ListAndLogout(t *testing.T) {
 	h, pool := newMessagingRouter(t)
@@ -44,6 +195,7 @@ func TestSessions_RevokeOther(t *testing.T) {
 	// Same phone signs in twice → two devices/sessions.
 	tokenA, _ := signUp(t, h, pool, "+79990000011")
 	tokenB, _ := signUp(t, h, pool, "+79990000011")
+	ageSession(t, pool, tokenA, 48*time.Hour) // свежая сессия не завершает чужие
 
 	rec := authedReq(t, h, http.MethodGet, "/sessions", tokenA, nil)
 	// account.authorizations: адрес сессии зовётся `hash`, а «текущая» это
@@ -77,6 +229,7 @@ func TestSessions_RevokeOthers(t *testing.T) {
 	tokenA, _ := signUp(t, h, pool, "+79990000012")
 	tokenB, _ := signUp(t, h, pool, "+79990000012")
 	tokenC, _ := signUp(t, h, pool, "+79990000012")
+	ageSession(t, pool, tokenA, 48*time.Hour) // свежая сессия не завершает чужие
 
 	// A terminates all other sessions.
 	rec := authedReq(t, h, http.MethodDelete, "/sessions/others", tokenA, nil)
@@ -303,6 +456,7 @@ func TestSessions_RevokeRefusesOwnDeviceByRealID(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990000017")
 	tokenB, _ := signUp(t, h, pool, "+79990000017")
+	ageSession(t, pool, tokenB, 48*time.Hour) // иначе свежесть (406) обгонит проверку «своя сессия»
 
 	// Со стороны B своя сессия — та, которую A видит чужой строкой с настоящим id.
 	rec := authedReq(t, h, http.MethodGet, "/sessions", tokenA, nil)
