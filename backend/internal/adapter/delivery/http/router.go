@@ -268,7 +268,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/messages/{msgSeq}/reactions/users", ch.ReactionUsers)
 		pr.Post("/chats/{peerID}/messages/{msgSeq}/star_reaction", ch.SendStarReaction) // платная ⭐-реакция
 		pr.Get("/chats/{peerID}/messages/{msgSeq}/star_reaction", ch.GetStarReaction)
-		pr.Post("/chats/{peerID}/reactions/read", ch.ReadReactions) // T12: сброс бейджа непрочитанных реакций
+		pr.Post("/chats/{peerID}/reactions/read", ch.ReadReactions) // messages.readReactions{top_msg_id} -> affectedHistory
+		pr.Post("/chats/{peerID}/mentions/read", ch.ReadMentions)   // messages.readMentions{top_msg_id} -> affectedHistory
 
 		// Стикеры и GIF
 		if stickersH != nil {
@@ -382,6 +383,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/chats/{peerID}/messages/{msgSeq}/stats", sth.PostStats)
 		}
 		pr.Get("/search", chh.Search)
+		pr.Get("/contacts/resolve_username", chh.ResolveUsername)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
 
 		if mediaH != nil {

@@ -403,7 +403,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
   // Порт tweb `readMessages` (appMessagesManager.ts:9566, :9607-9609): лента
   // увидела моё сообщение с непрочитанной реакцией — сброс ❤ на сервере, но
   // только пока бейдж горит (`hadUnreadReactions`). Гейт читает владелец строки
-  // — проводка `getUnreadReactionsCount` в workerCore.
+  // — проводка `getUnreadBadge` в workerCore.
   it('увиденная непрочитанная реакция → POST reactions/read, пока горит ❤', async () => {
     const { core } = await bootWithSeededDialog()
     await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])

@@ -433,12 +433,13 @@ func deletePayload(peer domain.PeerID, seqs ...int64) map[string]any {
 	}
 }
 
-// mediaReadPayload — тело кадра «вложение прослушано» (голосовое, кружок).
-func mediaReadPayload(peer domain.PeerID, seq int64) map[string]any {
+// mediaReadPayload — тело кадра «содержимое прочитано» (голосовое, кружок, упоминания).
+// Номеров может быть несколько (readMentions снимает пачку одним кадром).
+func mediaReadPayload(peer domain.PeerID, seqs ...int64) map[string]any {
 	return map[string]any{
 		"_":         domain.UpdateReadPeerMessagesContentsTag,
 		"peer":      domain.NewPeer(peer),
-		"messages":  []int64{seq},
+		"messages":  seqs,
 		"pts_count": domain.PtsCountOne,
 	}
 }
@@ -551,13 +552,20 @@ func notifySettingsPayload(peer domain.PeerID, settings domain.PeerNotifySetting
 // пер-зрительской части; без флага клиент не отличил бы «я не ставил» от
 // «сервер этого не сообщил» и стёр бы собственный выбор при первом же чужом
 // клике), а поставившему и автору сообщения — полный, их глазами
-// (journalReactions).
-func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageReactions) map[string]any {
-	return map[string]any{
+// (journalReactions). topMsgID — номер темы форума или 0 (reactionTopics).
+func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageReactions, topMsgID int64) map[string]any {
+	body := map[string]any{
 		"_":         domain.UpdateMessageReactionsTag,
 		"peer":      domain.NewPeer(peer),
 		"msg_id":    seq,
 		"reactions": reactions,
 		"pts_count": domain.PtsCountOne,
 	}
+	// top_msg_id — номер темы форума, в которой лежит сообщение (General — 1):
+	// по нему клиент ведёт бейдж ❤ ТЕМЫ (tweb onUpdateMessageReactions
+	// :10552-10620). Вне форума ключа нет.
+	if topMsgID != 0 {
+		body["top_msg_id"] = topMsgID
+	}
+	return body
 }

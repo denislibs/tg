@@ -580,6 +580,100 @@ func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq i
 	return out, nil
 }
 
+// LockMember — см. ChatRepo.LockMember.
+//
+// lockMemberRow берёт строку участника до записи строк упоминаний и реакций.
+// Порядок тот же, что у MarkRead (SetRead -> ClearMentions/ReadReactions):
+// обратный порядок дал бы взаимную блокировку, когда лента шлёт прочтение
+// истории и прочтение содержимого одновременно. Заодно пересчёт счётчика
+// ниже идёт по снимку, взятому после замка, и не затирает конкурентный
+// AddMention (см. комментарий ReadMentions).
+func (r *ChatsRepo) LockMember(ctx context.Context, chatID, userID int64) error {
+	return r.lockMemberRow(ctx, chatID, userID)
+}
+
+func (r *ChatsRepo) lockMemberRow(ctx context.Context, chatID, userID int64) error {
+	var one int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE`, chatID, userID).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // не участник: читать нечего, пересчёт пуст
+	}
+	return err
+}
+
+// ReadReactionsIn — см. ChatRepo.ReadReactionsIn. Тема сужается threadFilter
+// (topicsrepo.go): General — страж generalMember, обычная тема — thread_root_id
+// корня. В выборку входят только
+// ВИДИМЫЕ зрителю сообщения (как счётчик пересчёта recountUnreadReactionsSQL),
+// иначе скрытое с непрочитанной реакцией крутило бы offset вечно.
+func (r *ChatsRepo) ReadReactionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]domain.Message, bool, error) {
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	q := querier(ctx, r.pool)
+	root := topic.ThreadRoot()
+	rows, err := q.Query(ctx,
+		`SELECT m.id FROM messages m
+		  WHERE m.chat_id = $1 AND m.sender_id = $2 AND `+threadFilter("m", "$3", root, false)+`
+		    AND m.id IN (SELECT re.message_id FROM reactions re WHERE re.unread)
+		    AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq LIMIT $4`, chatID, userID, root, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	ids, err := scanIDs(rows)
+	if err != nil {
+		return nil, false, err
+	}
+	more := len(ids) > limit
+	if more {
+		ids = ids[:limit]
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	if _, err := q.Exec(ctx, `UPDATE reactions SET unread = false WHERE unread AND message_id = ANY($1)`, ids); err != nil {
+		return nil, false, err
+	}
+	mrows, err := q.Query(ctx,
+		`SELECT `+messageColsPrefixed("m")+` FROM messages m WHERE m.id = ANY($1) ORDER BY m.seq`, ids)
+	if err != nil {
+		return nil, false, err
+	}
+	defer mrows.Close()
+	var out []domain.Message
+	for mrows.Next() {
+		m, e := scanMessage(mrows)
+		if e != nil {
+			return nil, false, e
+		}
+		out = append(out, m)
+	}
+	if err := mrows.Err(); err != nil {
+		return nil, false, err
+	}
+	mrows.Close()
+	if _, err := r.RecountUnreadReactions(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	return out, more, nil
+}
+
+// scanIDs читает колонку id и закрывает rows.
+func scanIDs(rows pgx.Rows) ([]int64, error) {
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // CurrentReadSeq returns a member's current last_read_seq.
 func (r *ChatsRepo) CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error) {
 	q := querier(ctx, r.pool)
@@ -736,6 +830,58 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 	return r.syncUnreadMentions(ctx, chatID, userID)
 }
 
+// ClearMentionsIn — см. ChatRepo.ClearMentionsIn. Выборка идёт по
+// message_mentions_lookup (chat_id, user_id, seq); тема — threadFilter. Видимость
+// НЕ фильтруется: счётчик чата (syncUnreadMentions) считает все непрочитанные
+// строки, и снимать надо то же множество, иначе скрытое упоминание держало бы
+// бейдж, который нечем погасить.
+func (r *ChatsRepo) ClearMentionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]int64, bool, error) {
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	q := querier(ctx, r.pool)
+	root := topic.ThreadRoot()
+	rows, err := q.Query(ctx,
+		`SELECT mm.message_id, mm.seq FROM message_mentions mm
+		   JOIN messages m ON m.id = mm.message_id
+		  WHERE mm.chat_id = $1 AND mm.user_id = $2 AND mm.unread
+		    AND `+threadFilter("m", "$3", root, false)+`
+		  ORDER BY mm.seq LIMIT $4`, chatID, userID, root, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var ids, seqs []int64
+	for rows.Next() {
+		var id, seq int64
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, false, err
+		}
+		ids, seqs = append(ids, id), append(seqs, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	rows.Close()
+	more := len(ids) > limit
+	if more {
+		ids, seqs = ids[:limit], seqs[:limit]
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE message_mentions SET unread = false
+		  WHERE chat_id = $1 AND user_id = $2 AND unread AND message_id = ANY($3)`,
+		chatID, userID, ids); err != nil {
+		return nil, false, err
+	}
+	if _, err := r.syncUnreadMentions(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	return seqs, more, nil
+}
+
 // syncUnreadMentions пересчитывает unread_mentions_count участника по
 // непрочитанным строкам message_mentions (их и возвращает).
 func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64) (int, error) {
@@ -757,13 +903,16 @@ func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64
 // number actually read. Не пересчёт count(*) по истории (строки упоминаний не
 // удаляются, а запись абсолютного значения теряет конкурентный AddMention или
 // ClearMentions): декремент под блокировкой строки участника безопасен —
-// вызывающие ClearMentions берут её заранее через SetRead; остальные записи
+// ReadMentions и ClearMentionsIn берут её сами (lockMemberRow), ClearMentions — заранее через SetRead; остальные записи
 // абсолютного значения (RemoveMention, удаление сообщений) такой гонки не
 // закрывают и были ей подвержены и раньше.
 // Returns the ids of the messages whose mention WAS unread.
 func (r *ChatsRepo) ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
 	if len(msgIDs) == 0 {
 		return nil, nil
+	}
+	if err := r.lockMemberRow(ctx, chatID, userID); err != nil {
+		return nil, err
 	}
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
