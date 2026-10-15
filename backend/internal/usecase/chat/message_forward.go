@@ -353,8 +353,8 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 	for _, c := range copies {
 		p := sendProbe(in.ToChatID, in.SenderID, c)
 		if p.carriesMedia() && !probe.carriesMedia() {
-			probe.MediaID, probe.PollID, probe.ChecklistID, probe.GeoLat, probe.ContactUserID, probe.GiveawayID =
-				p.MediaID, p.PollID, p.ChecklistID, p.GeoLat, p.ContactUserID, p.GiveawayID
+			probe.MediaID, probe.PollID, probe.ChecklistID, probe.GeoLat, probe.Contact, probe.GiveawayID =
+				p.MediaID, p.PollID, p.ChecklistID, p.GeoLat, p.Contact, p.GiveawayID
 		}
 		if c.Type == "voice" || c.Type == "roundVideo" {
 			probe.Type = c.Type

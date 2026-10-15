@@ -8,8 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -171,9 +169,9 @@ func TestForward_CopiesContentAndRegroupsAlbum(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Контакт кладётся строкой: гидрация контакта по аккаунту — не предмет теста.
-	cu, cname, cphone := c, "Кэрол", "+79990000003"
+	cu, cname, clast, cphone, cvcard := c, "Кэрол", "Данверс", "+79990000003", "BEGIN:VCARD"
 	contact, err := (fakeMsgs{s}).Insert(ctx, domain.Message{ChatID: src, Seq: 100, SenderID: b, Type: "contact",
-		ContactUserID: &cu, ContactName: &cname, ContactPhone: &cphone})
+		ContactUserID: &cu, ContactName: &cname, ContactLastName: &clast, ContactPhone: &cphone, ContactVcard: &cvcard})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +193,8 @@ func TestForward_CopiesContentAndRegroupsAlbum(t *testing.T) {
 	if g.GeoLat == nil || *g.GeoLat != 55.7 || g.GeoTitle == nil || *g.GeoTitle != "Кремль" {
 		t.Fatalf("гео потеряно: %+v", g)
 	}
-	if k := out[1]; k.ContactUserID == nil || *k.ContactUserID != c || k.ContactPhone == nil {
+	if k := out[1]; k.ContactUserID == nil || *k.ContactUserID != c || k.ContactPhone == nil ||
+		k.ContactLastName == nil || *k.ContactLastName != "Данверс" || k.ContactVcard == nil || *k.ContactVcard != "BEGIN:VCARD" {
 		t.Fatalf("контакт потерян: %+v", k)
 	}
 	x, y := out[2].GroupedID, out[3].GroupedID
@@ -512,31 +511,11 @@ func TestSecretChat_BlockAndPrivacy(t *testing.T) {
 
 // --- Реле сигналинга звонков (A5-04, A5-32, A2-09) ---
 
-type fakeGroupCalls struct {
-	mu    sync.Mutex
-	parts map[int64][]int64
-}
-
-func (f *fakeGroupCalls) Join(_ context.Context, chatID, userID int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if !slices.Contains(f.parts[chatID], userID) {
-		f.parts[chatID] = append(f.parts[chatID], userID)
-	}
-	return nil
-}
-func (f *fakeGroupCalls) Leave(context.Context, int64, int64) error { return nil }
-func (f *fakeGroupCalls) Participants(_ context.Context, chatID int64) ([]int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.parts[chatID]), nil
-}
-
 func TestGroupCallSignal_OnlyBetweenParticipants(t *testing.T) {
 	in, s := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
-	in.SetGroupCalls(&fakeGroupCalls{parts: map[int64][]int64{}})
+	in.SetGroupCalls(newFakeCallStore(newFakeClock()))
 	ctx := context.Background()
 	s.seedChat(600, domain.ChatTypeGroup, 1, 2, 3)
 	if _, err := in.JoinGroupCall(ctx, 600, 1); err != nil {

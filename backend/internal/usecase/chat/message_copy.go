@@ -34,7 +34,8 @@ func copyContent(src domain.Message) domain.Message {
 		// оригинала, а копия обновлений оригинала не получает (как TDLib copy).
 		GeoLat: src.GeoLat, GeoLng: src.GeoLng,
 		GeoTitle: src.GeoTitle, GeoAddress: src.GeoAddress,
-		ContactUserID: src.ContactUserID, ContactName: src.ContactName, ContactPhone: src.ContactPhone,
+		ContactUserID: src.ContactUserID, ContactName: src.ContactName, ContactLastName: src.ContactLastName,
+		ContactPhone: src.ContactPhone, ContactVcard: src.ContactVcard,
 		ReplyMarkup: copyableMarkup(src.ReplyMarkup),
 		WebPage:     src.WebPage,
 		// «Медиа над текстом» — вид бабла, часть содержимого (как спойлер).
@@ -155,7 +156,7 @@ func sendProbe(chatID, senderID int64, m domain.Message) SendInput {
 	return SendInput{
 		ChatID: chatID, SenderID: senderID, Type: m.Type,
 		MediaID: m.MediaID, PollID: m.PollID, ChecklistID: m.ChecklistID, GiveawayID: m.GiveawayID,
-		GeoLat: m.GeoLat, ContactUserID: m.ContactUserID, GroupedID: deref(m.GroupedID),
+		GeoLat: m.GeoLat, Contact: m.ContactInput(), GroupedID: deref(m.GroupedID),
 		ThreadRootID: m.ThreadRootID,
 	}
 }

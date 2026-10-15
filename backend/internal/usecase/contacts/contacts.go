@@ -305,22 +305,12 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 	if err != nil {
 		return domain.ContactRecord{}, err
 	}
-	userID, err := i.repo.ResolveByPhone(ctx, phone)
+	userID, err := i.lookupByPhone(ctx, ownerID, phone)
 	if err != nil {
-		return domain.ContactRecord{}, err // domain.ErrNotFound → «номер не зарегистрирован»
+		return domain.ContactRecord{}, err
 	}
 	if userID == ownerID {
 		return domain.ContactRecord{}, ErrSelfContact
-	}
-	// Enforcement added_by_phone: цель может ограничить, кто добавляет её по номеру.
-	if i.privacy != nil {
-		ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyAddedByPhone)
-		if err != nil {
-			return domain.ContactRecord{}, err
-		}
-		if !ok {
-			return domain.ContactRecord{}, domain.ErrPrivacy
-		}
 	}
 	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
@@ -338,6 +328,52 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return i.withOwnerCard(ctx, c)
+}
+
+// lookupByPhone — общий поиск аккаунта по нормализованному номеру глазами
+// viewerID: тот, что у «добавить по номеру» и у привязки визитки к аккаунту.
+// domain.ErrNotFound — номер не зарегистрирован (tweb NO_USER); domain.ErrPrivacy
+// — владелец номера запретил находить себя по нему (added_by_phone). Свой
+// номер возвращается как есть: правило владельца на самого себя не действует.
+func (i *Interactor) lookupByPhone(ctx context.Context, viewerID int64, phone string) (int64, error) {
+	userID, err := i.repo.ResolveByPhone(ctx, phone)
+	if err != nil {
+		return 0, err
+	}
+	if userID == viewerID {
+		return userID, nil
+	}
+	if i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, userID, viewerID, domain.PrivacyAddedByPhone)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			return 0, domain.ErrPrivacy
+		}
+	}
+	return userID, nil
+}
+
+// ResolvePhone — аккаунт, чей номер совпал с phone, для привязки присланной
+// визитки (messageMediaContact.user_id; решение В-10: поля визитки принимает
+// сервер от отправителя, а user_id выводит сам). Поиск и правило те же, что у
+// AddByPhone (lookupByPhone). Не найден или скрыт правилом — ok=false, без
+// ошибки: визитка уходит с user_id=0. Ошибка — только сбой хранилища.
+func (i *Interactor) ResolvePhone(ctx context.Context, viewerID int64, phone string) (userID int64, ok bool, err error) {
+	phone = domain.NormalizePhone(phone)
+	if phone == "" {
+		return 0, false, nil
+	}
+	userID, err = i.lookupByPhone(ctx, viewerID, phone)
+	switch {
+	case err == nil:
+		return userID, true, nil
+	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrPrivacy):
+		return 0, false, nil
+	default:
+		return 0, false, err
+	}
 }
 
 // withOwnerCard — запись контакта после мутации: журнал владельцу и ТА ЖЕ

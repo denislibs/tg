@@ -472,7 +472,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			ReplyToPeerID:  replyPeer,
 			ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
-			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
+			GeoLat: d.GeoLat, GeoLng: d.GeoLng, Contact: d.Media.Contact,
 			GeoTitle: d.GeoTitle, GeoAddress: d.GeoAddress,
 			GeoLivePeriod: d.GeoLivePeriod, GeoHeading: d.GeoHeading,
 			ThreadRootID: threadRoot,
@@ -481,7 +481,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
-			WebPage:        d.WebPageInput,
+			WebPage:        d.webPage(),
 			ScheduleDate:   d.ScheduleDate, ScheduleRepeatPeriod: d.ScheduleRepeatPeriod,
 			AllowPaidStars: d.AllowPaidStars,
 		})

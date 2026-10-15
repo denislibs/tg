@@ -120,6 +120,9 @@ func registerServer(p serverParams) {
 	// правит, поэтому источник здесь она, а не второй репозиторий.
 	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
+	// Визитка в сообщении: user_id выводится по номеру тем же поиском и правилом
+	// added_by_phone, что у «добавить контакт по номеру» (В-10).
+	p.ChatUC.SetPhoneResolver(p.ContactsUC)
 
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
@@ -250,6 +253,26 @@ func registerServer(p serverParams) {
 		p.StoryUC.SetPublisher(publisher)
 		p.StoryUC.SetStealthStore(newStealthStore(p.Redis.Client))
 		p.ChatUC.SetGroupCalls(redisGroupCalls(p.Redis))
+		// Отложенные снимки звонка (chat_update с call_active): тикер в каждой
+		// реплике берёт созревшие записи в аренду — рестарт или падение реплики
+		// в окне ограничителя итог не теряют (usecase/chat/callstate.go).
+		p.LC.Append(fx.Hook{OnStart: func(context.Context) error {
+			go func() {
+				t := time.NewTicker(time.Second)
+				defer t.Stop()
+				for {
+					select {
+					case <-p.Ctx.Done():
+						return
+					case <-t.C:
+						if _, err := p.ChatUC.FlushDirtyCallSnapshots(p.Ctx); err != nil {
+							log.Printf("call snapshots: %v", err)
+						}
+					}
+				}
+			}()
+			return nil
+		}})
 		// Состояние 1:1 звонков: по нему сервер сам кладёт лог звонка в чат.
 		p.ChatUC.SetPhoneCalls(newPhoneCallStore(p.Redis.Client))
 		p.ChatUC.SetDialogsCache(newDialogsCache(p.Redis.Client))

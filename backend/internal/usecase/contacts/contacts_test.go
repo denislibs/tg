@@ -790,3 +790,61 @@ func TestPublishContactCard_BlockBeforeLockIsInSnapshot(t *testing.T) {
 		t.Fatalf("строка журнала: статус %q; want userStatusEmpty (блок до замка)", got)
 	}
 }
+
+// ResolvePhone (f6-contact, В-10): номер визитки → аккаунт ТЕМ ЖЕ поиском и ТЕМ
+// ЖЕ правилом added_by_phone, что у AddByPhone.
+func TestResolvePhone(t *testing.T) {
+	ctx := context.Background()
+	t.Run("номер зарегистрирован — id аккаунта", func(t *testing.T) {
+		i, book, _ := newBookInteractor(t)
+		book.phones[cBob] = "+79990000002"
+		i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyAddedByPhone: true}})
+		id, ok, err := i.ResolvePhone(ctx, cOwner, "+7 999 000-00-02")
+		if err != nil || !ok || id != cBob {
+			t.Fatalf("ResolvePhone = %d, %v, %v; want %d, true, nil", id, ok, err, cBob)
+		}
+	})
+	t.Run("правило added_by_phone запрещает — не найден", func(t *testing.T) {
+		i, book, _ := newBookInteractor(t)
+		book.phones[cBob] = "+79990000002"
+		i.SetPrivacy(fakePrivacy{})
+		id, ok, err := i.ResolvePhone(ctx, cOwner, "+79990000002")
+		if err != nil || ok || id != 0 {
+			t.Fatalf("ResolvePhone = %d, %v, %v; want 0, false, nil", id, ok, err)
+		}
+	})
+	t.Run("незарегистрированный номер", func(t *testing.T) {
+		i, _, _ := newBookInteractor(t)
+		id, ok, err := i.ResolvePhone(ctx, cOwner, "+79990000099")
+		if err != nil || ok || id != 0 {
+			t.Fatalf("ResolvePhone = %d, %v, %v; want 0, false, nil", id, ok, err)
+		}
+	})
+	t.Run("пустой номер", func(t *testing.T) {
+		i, _, _ := newBookInteractor(t)
+		if _, ok, err := i.ResolvePhone(ctx, cOwner, "  "); ok || err != nil {
+			t.Fatalf("пустой номер: ok=%v err=%v", ok, err)
+		}
+	})
+	t.Run("свой номер — свой аккаунт (визитка «мои данные»)", func(t *testing.T) {
+		i, book, _ := newBookInteractor(t)
+		book.phones[cOwner] = "+79990000001"
+		i.SetPrivacy(fakePrivacy{})
+		id, ok, err := i.ResolvePhone(ctx, cOwner, "+79990000001")
+		if err != nil || !ok || id != cOwner {
+			t.Fatalf("ResolvePhone = %d, %v, %v; want %d, true, nil", id, ok, err, cOwner)
+		}
+	})
+	t.Run("сбой поиска — ошибка, не user_id=0", func(t *testing.T) {
+		i := New(failingResolveBook{newFakeBook()})
+		if _, _, err := i.ResolvePhone(ctx, cOwner, "+79990000002"); err == nil {
+			t.Fatal("ошибка хранилища проглочена")
+		}
+	})
+}
+
+type failingResolveBook struct{ *fakeBook }
+
+func (failingResolveBook) ResolveByPhone(context.Context, string) (int64, error) {
+	return 0, errors.New("db down")
+}
