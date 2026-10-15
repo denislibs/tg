@@ -23,6 +23,13 @@ func newFakePolls() *fakePolls {
 	return &fakePolls{polls: map[int64]domain.Poll{}, votes: map[int64]map[int64][]int{}}
 }
 
+func (f *fakePolls) Delete(_ context.Context, id int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.polls, id)
+	return nil
+}
+
 func (f *fakePolls) Create(_ context.Context, p domain.Poll) (domain.Poll, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

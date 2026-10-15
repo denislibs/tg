@@ -1057,6 +1057,9 @@ type PresenceQuery interface {
 // PollRepo хранит опросы и голоса.
 type PollRepo interface {
 	Create(ctx context.Context, p domain.Poll) (domain.Poll, error)
+	// Delete убирает опрос, созданный отправкой, которая не состоялась (сирота). Опрос,
+	// на который уже ссылается сообщение, не удаляется (внешний ключ) — ошибка игнорируется.
+	Delete(ctx context.Context, id int64) error
 	ByID(ctx context.Context, id int64) (domain.Poll, error)
 	// SetVotes заменяет голос пользователя целиком (пустой список = отзыв).
 	SetVotes(ctx context.Context, pollID, userID int64, optionIdxs []int) error
@@ -1069,6 +1072,8 @@ type PollRepo interface {
 // ChecklistRepo хранит чек-листы и отметки «выполнено».
 type ChecklistRepo interface {
 	Create(ctx context.Context, c domain.Checklist) (domain.Checklist, error)
+	// Delete — как PollRepo.Delete: убирает чек-лист несостоявшейся отправки.
+	Delete(ctx context.Context, id int64) error
 	ByID(ctx context.Context, id int64) (domain.Checklist, error)
 	// SetItems заменяет список пунктов целиком (при добавлении пунктов).
 	SetItems(ctx context.Context, checklistID int64, items []domain.ChecklistItem) error

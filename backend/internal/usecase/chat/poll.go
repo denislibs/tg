@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"log"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -114,7 +115,14 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 		AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
+		// Send не состоялся (откат транзакции): созданная строка опроса — сирота. Ошибка
+		// Send — ТОЛЬКО до коммита, поэтому ссылок на опрос нет.
+		i.dropOrphanPoll(ctx, pollID)
 		return domain.Message{}, err
+	}
+	if pollID != nil && msg.PollID != nil && *msg.PollID != *pollID {
+		// Параллельный дубль принят раньше (дедуп по client_msg_id): наш опрос лишний.
+		i.dropOrphanPoll(ctx, pollID)
 	}
 	if in.ScheduleDate != 0 {
 		// Отложенное: ответ ручки — updateNewScheduledMessage (ScheduledUpdates
@@ -348,5 +356,17 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID, acto
 			return
 		}
 		_ = i.logAndPublishPerPeer(ctx, chatID, []int64{actorID}, "poll_update", body(mine.ToMedia()))
+	}
+}
+
+// dropOrphanPoll убирает строку опроса, созданную отправкой, которая не состоялась или
+// проиграла параллельному дублю. Сбой удаления не меняет исхода отправки (строка — сирота,
+// не ошибка пользователя).
+func (i *Interactor) dropOrphanPoll(ctx context.Context, id *int64) {
+	if id == nil || i.polls == nil {
+		return
+	}
+	if err := i.polls.Delete(ctx, *id); err != nil {
+		log.Printf("poll %d: не удалён опрос несостоявшейся отправки: %v", *id, err)
 	}
 }
