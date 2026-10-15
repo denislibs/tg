@@ -127,6 +127,7 @@ import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import useDynamicCachedValue from '../helpers/solid/useDynamicCachedValue'
 import {
   beginPeerFullFetch,
+  endPeerFullFetch,
   cachedPeerFull,
   saveChatFull,
   subscribeChatFullMirror,
@@ -167,15 +168,23 @@ async function requestFullPeer(managers: Managers, peerId: PeerId, overwrite: bo
   const ticket = beginPeerFullFetch(peerId)
 
   let full: PeerFull | null
-  if (isUser(peerId)) {
-    const profile = await managers.privacy.profile(peerId)
-    full = profile.fullUser
-    saveProfilePhone(peerId, profile.user.phone ?? '', ticket)
-  } else {
-    full = (await managers.groups.card(peerId))?.fullChat ?? null
+  try {
+    if (isUser(peerId)) {
+      const profile = await managers.privacy.profile(peerId)
+      full = profile.fullUser
+      saveProfilePhone(peerId, profile.user.phone ?? '', ticket)
+    } else {
+      full = (await managers.groups.card(peerId))?.fullChat ?? null
+    }
+  } catch (e) {
+    endPeerFullFetch(peerId, ticket)
+    throw e
   }
 
-  if (!full) return
+  if (!full) {
+    endPeerFullFetch(peerId, ticket)
+    return
+  }
   if (overwrite) expirations.set(peerId, Date.now() + PEER_FULL_TTL)
   saveChatFull(peerId, full, ticket)
 }

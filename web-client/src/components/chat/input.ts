@@ -100,7 +100,7 @@
 //     с соседними ветками П-6 без конфликтов). Без своих эмодзи (`getCustomEmojiSuggestionEmoticon`,
 //     `checkEmoticon` — Б-74/Б-138), гостевых ботов (`knownGuestBots`, `canSendGuestChat`),
 //     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
-//     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
+//     и перепроверки по `settings_updated` (своих событий нет); `peer_full_update` — подписка на зеркало карточек (`setChatListeners`). Права
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
 //     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
 // 11. Превью ссылки: черновик несёт решение плашки (`pFlags.no_webpage`/`invert_media`/
@@ -220,6 +220,7 @@ import ReplyKeyboard from './replyKeyboard.solid'
 import ChatBotCommands from './botCommands'
 import type { BotCommand } from '@core/peers/peer'
 import { getProfileByPeerId } from '@/stores/fullPeers.solid'
+import { cachedPeerFull, subscribeChatFullMirror } from '@core/chatFullCache'
 import getTextWidth from '@helpers/canvas/getTextWidth'
 import { FontFull } from '@config/font'
 import replaceContent from '@helpers/dom/replaceContent'
@@ -1076,6 +1077,19 @@ export default class ChatInput {
       }
     })
     this.middlewareHelper.onDestroy(unsubscribe)
+
+    // tweb `peer_full_update` (:1700-1708): карточка пира сменилась (в том числе
+    // кадром `updateBotCommands`) — открытая подсказка `/` перерисовывается.
+    let lastFull = cachedPeerFull(this.chat.peerId)
+    this.middlewareHelper.onDestroy(subscribeChatFullMirror(() => {
+      const full = cachedPeerFull(this.chat?.peerId)
+      if(full === lastFull) return
+      lastFull = full
+      if(this.previousQuery?.startsWith('/')) {
+        this.previousQuery = undefined
+        void this.checkAutocomplete()
+      }
+    }))
   }
 
   /** tweb `:1711-1727` */

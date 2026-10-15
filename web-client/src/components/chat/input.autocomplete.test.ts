@@ -16,7 +16,7 @@ import { useSettingsStore } from '@/settings'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
+import { applyBotCommands, resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import type { User } from '@core/peers/peer'
 import ChatInput from './input'
 import { ChatType } from './chatType'
@@ -302,6 +302,24 @@ describe('автокомплит: `/` — команды бота', () => {
 
     expect(managers.messages.sendText).toHaveBeenCalledTimes(1)
     expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ peerId: BOT, text: '/help' })
+  })
+
+  it('кадр updateBotCommands перерисовывает открытую подсказку (tweb peer_full_update)', async() => {
+    saveChatFull(BOT, {
+      _: 'userFull', id: BOT,
+      bot_info: { _: 'botInfo', user_id: BOT, commands: [{ _: 'botCommand', command: 'start', description: 'Начать' }] },
+    })
+    mounted = await mountInput(BOT)
+    const { input } = mounted
+
+    type(input, '/')
+    await flush()
+    const names = () => [...helper(input, 'commands-helper').querySelectorAll('.commands-helper-list-element-name')].map((el) => el.textContent)
+    expect(names()).toEqual(['/start'])
+
+    applyBotCommands(BOT, BOT, [{ _: 'botCommand', command: 'fresh', description: 'Новая' }])
+    await flush()
+    expect(names()).toEqual(['/fresh'])
   })
 
   it('`/` не в начале строки и не в чате с ботом — без подсказки', async() => {

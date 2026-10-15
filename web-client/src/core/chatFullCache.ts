@@ -90,7 +90,17 @@ export function canViewStatistics(peerId: PeerId): boolean {
 export function beginPeerFullFetch(peerId: PeerId): number {
   const ticket = (latestFetch.get(peerId) ?? 0) + 1
   latestFetch.set(peerId, ticket)
+  fetching.add(peerId)
   return ticket
+}
+
+/** Поход за карточкой peerId не удался: кадры, которые копились для его ответа
+ *  (`pendingBotCommands`), ему не нужны. Устаревший билет игнорируется — идёт
+ *  более новый поход. */
+export function endPeerFullFetch(peerId: PeerId, ticket: number): void {
+  if (latestFetch.get(peerId) !== ticket) return
+  fetching.delete(peerId)
+  pendingBotCommands.delete(peerId)
 }
 
 /**
@@ -119,7 +129,10 @@ export function isFetchTicketCurrent(peerId: PeerId, ticket?: number): boolean {
  */
 export function saveChatFull(peerId: PeerId, full: PeerFull, ticket?: number): void {
   if (!isFetchTicketCurrent(peerId, ticket)) return
-  if (ticket !== undefined) full = withPendingBotCommands(peerId, full, ticket)
+  if (ticket !== undefined) {
+    full = withPendingBotCommands(peerId, full, ticket)
+    fetching.delete(peerId)
+  }
   const prev = fullMirror.get(peerId)
   if (prev && JSON.stringify(prev) === JSON.stringify(full)) return
   fullMirror.set(peerId, full)
@@ -133,10 +146,11 @@ export function saveChatFull(peerId: PeerId, full: PeerFull, ticket?: number): v
  * выданный на пира билет, и его команды ложатся только в ответ с билетом не
  * больше этого. Порт `applyCachedBotCommands` tweb (`appProfileManager.ts:149`,
  * `:452-465`): там кэш команд живёт в состоянии и применяется ко всякой
- * сохраняемой карточке; здесь он живёт только пока в пути ответ, потому что
- * сервер рассылает кадр не всем (предел рассылки) и вечный кэш откатил бы
- * свежую карточку.
+ * сохраняемой карточке; здесь кадр запоминается только пока в пути поход за
+ * карточкой (`fetching`), потому что сервер рассылает кадр не всем (предел
+ * рассылки) и вечный кэш откатил бы свежую карточку.
  */
+const fetching = new Set<PeerId>() // пиры, за карточкой которых идёт поход
 const pendingBotCommands = new Map<PeerId, Map<number, { commands: BotCommand[]; ticket: number }>>()
 
 function withPendingBotCommands(peerId: PeerId, full: PeerFull, ticket: number): PeerFull {
@@ -173,9 +187,11 @@ function patchBotCommands(full: PeerFull, peerId: PeerId, botId: number, command
  * поход в сеть, кадр запоминается (см. `pendingBotCommands`).
  */
 export function applyBotCommands(peerId: PeerId, botId: number, commands: BotCommand[]): void {
-  const frames = pendingBotCommands.get(peerId) ?? new Map()
-  frames.set(botId, { commands, ticket: latestFetch.get(peerId) ?? 0 })
-  pendingBotCommands.set(peerId, frames)
+  if (fetching.has(peerId)) {
+    const frames = pendingBotCommands.get(peerId) ?? new Map()
+    frames.set(botId, { commands, ticket: latestFetch.get(peerId) ?? 0 })
+    pendingBotCommands.set(peerId, frames)
+  }
 
   const prev = fullMirror.get(peerId)
   const next = prev && patchBotCommands(prev, peerId, botId, commands)
@@ -217,6 +233,7 @@ export function applyPeerBlocked(peerId: PeerId, blocked: boolean | undefined): 
  *  `resetPeerMirror`). */
 export function resetChatFullMirror(): void {
   pendingBotCommands.clear()
+  fetching.clear()
   if (!fullMirror.size) return
   fullMirror.clear()
   bump()

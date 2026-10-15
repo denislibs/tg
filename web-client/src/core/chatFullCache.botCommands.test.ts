@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyBotCommands,
   beginPeerFullFetch,
+  endPeerFullFetch,
   cachedPeerFull,
   chatFullMirrorVersion,
   resetChatFullMirror,
@@ -101,5 +102,24 @@ describe('applyBotCommands: кадр во время похода за карт�
     saveChatFull(-5, groupFull(5, info(77, 'stale'), info(88, 'b')), ticket)
     expect(names(-5, 77)).toEqual(['fresh'])
     expect(names(-5, 88)).toEqual(['b'])
+  })
+})
+
+describe('applyBotCommands: кадры без похода не копятся', () => {
+  it('кадр, пришедший во время похода, который провалился, не ложится в следующий ответ', () => {
+    const failed = beginPeerFullFetch(9)
+    applyBotCommands(9, 9, [cmd('frame')])
+    endPeerFullFetch(9, failed) // сеть отказала
+
+    const ticket = beginPeerFullFetch(9)
+    saveChatFull(9, botFull(9, info(9, 'server_now')), ticket)
+    expect(names(9)).toEqual(['server_now'])
+  })
+
+  it('кадр без похода в пути не запоминается вовсе: ответ, начатый позже, остаётся как пришёл', () => {
+    applyBotCommands(9, 9, [cmd('frame')])
+    const ticket = beginPeerFullFetch(9)
+    saveChatFull(9, botFull(9, info(9, 'server_now')), ticket)
+    expect(names(9)).toEqual(['server_now'])
   })
 })
