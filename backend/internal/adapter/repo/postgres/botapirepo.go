@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -113,41 +114,129 @@ func (r *BotAPIRepo) RegenToken(ctx context.Context, botID int64) (string, error
 	return token, err
 }
 
-func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope, lang string, cmds []domain.BotCommand) error {
-	if scope == "" {
-		scope = "default"
-	}
-	q := querier(ctx, r.pool)
-	if _, err := q.Exec(ctx, `DELETE FROM bot_commands WHERE bot_id = $1 AND scope = $2 AND language_code = $3`, botID, scope, lang); err != nil {
-		return err
-	}
-	for i, c := range cmds {
-		if _, err := q.Exec(ctx,
-			`INSERT INTO bot_commands (bot_id, command, description, sort, scope, language_code) VALUES ($1, $2, $3, $4, $5, $6)`,
-			botID, c.Command, c.Description, i, scope, lang); err != nil {
+// SetCommands заменяет список команд бота для скоупа (с адресом) и языка и
+// отвечает, изменилось ли что-то: тот же список повторно (рестарт бота) ничего не
+// пишет. Пустой список — то же, что DeleteCommands (Bot API: пустой setMyCommands
+// сбрасывает скоуп). Запись и сравнение — под advisory-замком бота в одной
+// транзакции (своей, если внешней нет): два параллельных вызова одного скоупа
+// выстраиваются в очередь и не смешивают строки.
+func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) (bool, error) {
+	var changed bool
+	err := r.inTx(ctx, func(q Querier) error {
+		if err := lockBotCommands(ctx, q, botID); err != nil {
 			return err
 		}
+		old, err := readCommands(ctx, q, botID, scope, lang)
+		if err != nil {
+			return err
+		}
+		if slices.Equal(old, cmds) || (len(old) == 0 && len(cmds) == 0) {
+			return nil
+		}
+		if _, err := deleteCommands(ctx, q, botID, scope, lang); err != nil {
+			return err
+		}
+		for i, c := range cmds {
+			if _, err := q.Exec(ctx,
+				`INSERT INTO bot_commands (bot_id, command, description, sort, scope, scope_chat_id, scope_user_id, language_code)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				botID, c.Command, c.Description, i, scope.Norm(), scope.ChatID, scope.UserID, lang); err != nil {
+				return err
+			}
+		}
+		changed = true
+		return nil
+	})
+	return changed, err
+}
+
+// DeleteCommands снимает список бота для ровно этого скоупа и языка; changed —
+// список был.
+func (r *BotAPIRepo) DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) (bool, error) {
+	var changed bool
+	err := r.inTx(ctx, func(q Querier) error {
+		if err := lockBotCommands(ctx, q, botID); err != nil {
+			return err
+		}
+		n, err := deleteCommands(ctx, q, botID, scope, lang)
+		changed = n > 0
+		return err
+	})
+	return changed, err
+}
+
+// lockBotCommands — замок записи команд одного бота до конца транзакции.
+func lockBotCommands(ctx context.Context, q Querier, botID int64) error {
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('bot_commands:' || $1::bigint::text, 0))`, botID)
+	return err
+}
+
+func readCommands(ctx context.Context, q Querier, botID int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error) {
+	rows, err := q.Query(ctx,
+		`SELECT command, description FROM bot_commands
+		  WHERE bot_id = $1 AND scope = $2 AND scope_chat_id = $3 AND scope_user_id = $4 AND language_code = $5
+		  ORDER BY sort`, botID, scope.Norm(), scope.ChatID, scope.UserID, lang)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+	var out []domain.BotCommand
+	for rows.Next() {
+		var c domain.BotCommand
+		if err := rows.Scan(&c.Command, &c.Description); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func deleteCommands(ctx context.Context, q Querier, botID int64, scope domain.BotCommandScope, lang string) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`DELETE FROM bot_commands
+		  WHERE bot_id = $1 AND scope = $2 AND scope_chat_id = $3 AND scope_user_id = $4 AND language_code = $5`,
+		botID, scope.Norm(), scope.ChatID, scope.UserID, lang)
+	return tag.RowsAffected(), err
+}
+
+// inTx выполняет fn в транзакции ctx, а без неё — в собственной.
+func (r *BotAPIRepo) inTx(ctx context.Context, fn func(Querier) error) error {
+	if tx, ok := ctx.Value(txKey).(pgx.Tx); ok {
+		return fn(tx)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CommandsScoped читает команды бота для скоупа/языка с фолбэком: сначала точный
-// (scope, lang), затем (scope, ""), затем (default, "").
-func (r *BotAPIRepo) CommandsScoped(ctx context.Context, botID int64, scope, lang string) ([]domain.BotCommand, error) {
-	if scope == "" {
-		scope = "default"
-	}
+// (scope, lang), затем (scope, ""), затем (default, ""). Это getMyCommands:
+// адрес скоупа (чат, пользователь) входит в ключ.
+func (r *BotAPIRepo) CommandsScoped(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error) {
 	q := querier(ctx, r.pool)
-	tries := [][2]string{{scope, lang}, {scope, ""}, {"default", ""}}
-	seen := map[[2]string]bool{}
+	type try struct {
+		scope domain.BotCommandScope
+		lang  string
+	}
+	tries := []try{{scope, lang}, {scope, ""}, {domain.BotCommandScope{}, ""}}
+	seen := map[try]bool{}
 	for _, t := range tries {
+		t.scope.Type = t.scope.Norm()
 		if seen[t] {
 			continue
 		}
 		seen[t] = true
 		rows, err := q.Query(ctx,
-			`SELECT command, description FROM bot_commands WHERE bot_id = $1 AND scope = $2 AND language_code = $3 ORDER BY sort`,
-			botID, t[0], t[1])
+			`SELECT command, description FROM bot_commands
+			  WHERE bot_id = $1 AND scope = $2 AND scope_chat_id = $3 AND scope_user_id = $4 AND language_code = $5
+			  ORDER BY sort`,
+			botID, t.scope.Type, t.scope.ChatID, t.scope.UserID, t.lang)
 		if err != nil {
 			return nil, err
 		}

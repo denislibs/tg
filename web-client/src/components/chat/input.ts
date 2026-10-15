@@ -100,7 +100,7 @@
 //     с соседними ветками П-6 без конфликтов). Без своих эмодзи (`getCustomEmojiSuggestionEmoticon`,
 //     `checkEmoticon` — Б-74/Б-138), гостевых ботов (`knownGuestBots`, `canSendGuestChat`),
 //     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
-//     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
+//     и перепроверки по `settings_updated` (своих событий нет); `peer_full_update` — подписка на зеркало карточек (`setChatListeners`). Права
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
 //     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
 // 11. Превью ссылки: черновик несёт решение плашки (`pFlags.no_webpage`/`invert_media`/
@@ -218,7 +218,9 @@ import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
 import ReplyKeyboard from './replyKeyboard.solid'
 import ChatBotCommands from './botCommands'
-import type { BotCommand } from '@core/managers/botsManager'
+import type { BotCommand } from '@core/peers/peer'
+import { getProfileByPeerId } from '@/stores/fullPeers.solid'
+import { cachedPeerFull, subscribeChatFullMirror } from '@core/chatFullCache'
 import getTextWidth from '@helpers/canvas/getTextWidth'
 import { FontFull } from '@config/font'
 import replaceContent from '@helpers/dom/replaceContent'
@@ -1075,6 +1077,19 @@ export default class ChatInput {
       }
     })
     this.middlewareHelper.onDestroy(unsubscribe)
+
+    // tweb `peer_full_update` (:1700-1708): карточка пира сменилась (в том числе
+    // кадром `updateBotCommands`) — открытая подсказка `/` перерисовывается.
+    let lastFull = cachedPeerFull(this.chat.peerId)
+    this.middlewareHelper.onDestroy(subscribeChatFullMirror(() => {
+      const full = cachedPeerFull(this.chat?.peerId)
+      if(full === lastFull) return
+      lastFull = full
+      if(this.previousQuery?.startsWith('/')) {
+        this.previousQuery = undefined
+        void this.checkAutocomplete()
+      }
+    }))
   }
 
   /** tweb `:1711-1727` */
@@ -1579,9 +1594,12 @@ export default class ChatInput {
     const isBroadcast = isBroadcastPeer(peerId)
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
     const canPin = canPinMessage(peerId)
-    // расхождение 1 `chat/botCommands.ts`: команды и кнопка-меню — ручками, а не `userFull.bot_info`
+    // Команды — из `userFull.bot_info` (tweb `:2569`, `:2630-2634`); кнопка-меню
+    // пока ручкой `bots.menuButton`
     const botInfoPromise = isBot && botCommandsToggle ? Promise.all([
-      this.managers.bots.commands(toUserId(peerId)).catch((): BotCommand[] => []),
+      getProfileByPeerId(this.managers, peerId)
+        .then((full): BotCommand[] => full?._ === 'userFull' ? full.bot_info?.commands ?? [] : [])
+        .catch((): BotCommand[] => []),
       this.managers.bots.menuButton(toUserId(peerId)).catch(() => undefined),
     ]) : undefined
     const [
@@ -1772,7 +1790,7 @@ export default class ChatInput {
     })
   }
 
-  /** tweb `:2891-2925` — расхождение 1 `chat/botCommands.ts` (ручки вместо `bot_info`). */
+  /** tweb `:2891-2925` (кнопка-меню — отдельной ручкой, см. `finishPeerChange`). */
   private updateBotCommands(botInfo: { commands: BotCommand[], menuButton?: { text: string, url: string } }, skipAnimation?: boolean) {
     const toggle = this.botCommandsToggle!
     this.hasBotCommands = !!botInfo.commands.length
