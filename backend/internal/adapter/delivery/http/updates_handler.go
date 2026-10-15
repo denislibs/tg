@@ -16,7 +16,7 @@ import (
 func (h *ChatHandler) UpdatesState(w http.ResponseWriter, r *http.Request) {
 	st, err := h.svc.UpdatesState(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get state failed")
+		writeDomainError(w, err, "get state failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -29,7 +29,7 @@ func (h *ChatHandler) UpdatesState(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) UpdatesDifference(w http.ResponseWriter, r *http.Request) {
 	d, err := h.svc.UpdatesDifference(r.Context(), h.meID(r), queryInt(r, "pts", 0), queryInt(r, "date", 0))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get difference failed")
+		writeDomainError(w, err, "get difference failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, d)

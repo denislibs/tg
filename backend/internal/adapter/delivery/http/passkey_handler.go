@@ -188,7 +188,7 @@ func (h *PasskeyHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	list, err := h.uc.List(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	out := make([]map[string]any, 0, len(list))
@@ -280,7 +280,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	res, err := h.authUC.PasskeySignIn(ctx, matched.UserID,
 		r.URL.Query().Get("device"), r.URL.Query().Get("platform"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeSignInResult(w, res)

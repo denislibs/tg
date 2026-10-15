@@ -128,7 +128,7 @@ func (h *ContactsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	contacts, err := h.uc.List(r.Context(), u.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list contacts failed")
+		writeDomainError(w, err, "list contacts failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, contactsContainer(contacts))

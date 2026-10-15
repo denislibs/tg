@@ -57,7 +57,7 @@ func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	st, err := h.uc.PasswordState(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": st.Enabled, "hint": st.Hint, "email": st.Email})

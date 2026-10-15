@@ -44,7 +44,7 @@ func (h *ChatHandler) CreatePrivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.svc.CreatePrivateChat(r.Context(), h.meID(r), body.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create chat")
+		writeDomainError(w, err, "could not create chat")
 		return
 	}
 	// Наружу — ключ пира, а не id строки в chats: для приватного диалога это id
@@ -234,7 +234,7 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 // Saved returns (creating on first access) the caller's "Saved Messages" chat.
 func (h *ChatHandler) Saved(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.svc.GetOrCreateSaved(r.Context(), h.meID(r)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not open saved messages")
+		writeDomainError(w, err, "could not open saved messages")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewPeer(domain.PeerID(h.meID(r))))
@@ -245,7 +245,7 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 	me := h.meID(r)
 	page, err := h.svc.SavedDialogsPage(r.Context(), me)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list saved dialogs")
+		writeDomainError(w, err, "could not list saved dialogs")
 		return
 	}
 	dialogs := make([]domain.SavedDialog, 0, len(page.Dialogs))
@@ -260,7 +260,7 @@ func (h *ChatHandler) SavedDialogs(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := h.svc.MessagesWire(r.Context(), me, page.Messages)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render saved dialogs")
+		writeDomainError(w, err, "could not render saved dialogs")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesSavedDialogs(dialogs, msgs, page.Chats, page.Users))
@@ -322,7 +322,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.svc.DialogsPage(r.Context(), h.meID(r), page)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list chats")
+		writeDomainError(w, err, "could not list chats")
 		return
 	}
 	// Вектор messages контейнера — те же конструкторы схемы, что отдаёт история:
@@ -330,7 +330,7 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 	// наконец покрыт сверкой со схемой вместе с остальными тремя.
 	wire, err := messagesJSON(r.Context(), h.svc, res.Messages)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list chats")
+		writeDomainError(w, err, "could not list chats")
 		return
 	}
 	messages := make([]any, 0, len(wire))
@@ -365,12 +365,12 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := h.svc.PeerDialogs(r.Context(), h.meID(r), peers)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		writeDomainError(w, err, "could not get dialogs")
 		return
 	}
 	wire, err := messagesJSON(r.Context(), h.svc, res.Messages)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		writeDomainError(w, err, "could not get dialogs")
 		return
 	}
 	messages := make([]any, 0, len(wire))
@@ -551,7 +551,7 @@ func writeHistory(w http.ResponseWriter, r *http.Request, svc *usecasechat.Inter
 	me, _ := UserFromContext(r.Context())
 	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
+		writeDomainError(w, err, "could not render messages")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesChannelMessages(pts, count, out, chats, users))
@@ -1382,7 +1382,7 @@ func (h *ChatHandler) GlobalSearchMessages(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "search failed")
+		writeDomainError(w, err, "search failed")
 		return
 	}
 	writeMessagesSliceRate(w, r, h.svc, res.Count, res.Messages, res.NextRate)
@@ -1394,7 +1394,7 @@ func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
 	limit := int(queryInt(r, "limit", 40))
 	calls, err := h.svc.CallLog(r.Context(), h.meID(r), offset, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load calls")
+		writeDomainError(w, err, "could not load calls")
 		return
 	}
 	// Журнал звонков — вектор СООБЩЕНИЙ плюс вектор пиров, а не собственная
@@ -1412,7 +1412,7 @@ func (h *ChatHandler) CallLog(w http.ResponseWriter, r *http.Request) {
 	}
 	wire, err := messagesJSON(r.Context(), h.svc, msgs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load calls")
+		writeDomainError(w, err, "could not load calls")
 		return
 	}
 	// Собеседники собраны выше по самим звонкам, поэтому общий сборщик авторов
@@ -1685,7 +1685,7 @@ func writeScheduledSent(w http.ResponseWriter, r *http.Request, svc *usecasechat
 	}
 	updates, err := svc.ScheduledUpdates(r.Context(), chatID, me.ID, ids)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "scheduled failed")
+		writeDomainError(w, err, "scheduled failed")
 		return
 	}
 	writeScheduledUpdates(w, r, updates)
@@ -1886,7 +1886,7 @@ func writeTopicUpdates(w http.ResponseWriter, r *http.Request, svc *usecasechat.
 	me, _ := UserFromContext(r.Context())
 	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, []domain.Message{*m})
 	if err != nil || len(out) != 1 {
-		writeError(w, http.StatusInternalServerError, "could not render topic update")
+		writeDomainError(w, err, "could not render topic update")
 		return
 	}
 	update := domain.UpdateNewChannelMessage{Underscore: domain.UpdateNewChannelMessageTag, Message: out[0]}
@@ -1953,7 +1953,7 @@ func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := h.svc.MessagesWire(r.Context(), me, page.Messages)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render topics")
+		writeDomainError(w, err, "could not render topics")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesForumTopics(topics, msgs, nil, page.Users))
@@ -2380,7 +2380,7 @@ func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) SavedTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.svc.SavedTags(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load saved tags")
+		writeDomainError(w, err, "could not load saved tags")
 		return
 	}
 	// Реакция тега — ОБЪЕДИНЕНИЕ `Reaction`, а не строка эмодзи: тот же
@@ -2415,7 +2415,7 @@ func (h *ChatHandler) SetSavedTagName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update tag")
+		writeDomainError(w, err, "could not update tag")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -2595,7 +2595,7 @@ func writeMessagesSliceRate(w http.ResponseWriter, r *http.Request, svc *usecase
 	me, _ := UserFromContext(r.Context())
 	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
+		writeDomainError(w, err, "could not render messages")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, chats, users).WithNextRate(nextRate))
@@ -2607,7 +2607,7 @@ func writeMessagesAll(w http.ResponseWriter, r *http.Request, svc *usecasechat.I
 	me, _ := UserFromContext(r.Context())
 	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
+		writeDomainError(w, err, "could not render messages")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, chats, users))
@@ -2620,7 +2620,7 @@ func writeMessagesAll(w http.ResponseWriter, r *http.Request, svc *usecasechat.I
 func writeMessage(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, m domain.Message) {
 	out, err := messagesJSON(r.Context(), svc, []domain.Message{m})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render message")
+		writeDomainError(w, err, "could not render message")
 		return
 	}
 	writeJSON(w, http.StatusOK, out[0])
@@ -2648,7 +2648,7 @@ func queryInt(r *http.Request, key string, def int64) int64 {
 func (h *ChatHandler) MyAutoDelete(w http.ResponseWriter, r *http.Request) {
 	period, err := h.svc.MyAutoDelete(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewDefaultHistoryTTL(period))
@@ -2760,7 +2760,7 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 	drafts, err := h.svc.MyDrafts(r.Context(), h.meID(r))
 	if err != nil {
 		log.Printf("getAllDrafts failed: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	out := make([]domain.Update, 0, len(drafts))
@@ -2824,7 +2824,7 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ClearAllDrafts(r.Context(), h.meID(r)); err != nil {
 		log.Printf("clearAllDrafts failed: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

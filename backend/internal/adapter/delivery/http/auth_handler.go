@@ -134,7 +134,7 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.RequestCode(r.Context(), body.Phone); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not request code")
+		writeDomainError(w, err, "could not request code")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -165,7 +165,7 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "sign in failed")
+		writeDomainError(w, err, "sign in failed")
 		return
 	}
 	writeSignInResult(w, res)
@@ -502,7 +502,7 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "check password failed")
+		writeDomainError(w, err, "check password failed")
 		return
 	}
 	writeSignInResult(w, res)

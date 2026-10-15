@@ -48,7 +48,7 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	devices, err := h.svc.ListSessions(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list sessions")
+		writeDomainError(w, err, "could not list sessions")
 		return
 	}
 	// «Текущая» — ФЛАГ конструктора, а не булево поле рядом: прежде ехало
@@ -134,7 +134,7 @@ func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.svc.RevokeSession(r.Context(), user.ID, deviceID); err != nil {
-		writeError(w, http.StatusInternalServerError, "logout failed")
+		writeDomainError(w, err, "logout failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
