@@ -111,6 +111,12 @@ const (
 	// Порядок папок (Ф7-З, MC-10) — updateDialogFilterOrder{order}
 	// (tweb filters.ts:179-199).
 	UpdateDialogFilterOrderTag = "updateDialogFilterOrder"
+	// Стикеры и GIF (Ф-6, f6-stickers) — свои устройства (tweb
+	// appStickersManager.ts:80-88, appGifsManager.ts:21-29).
+	UpdateNewStickerSetTag  = "updateNewStickerSet"
+	UpdateRecentStickersTag = "updateRecentStickers"
+	UpdateFavedStickersTag  = "updateFavedStickers"
+	UpdateSavedGifsTag      = "updateSavedGifs"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1471,4 +1477,56 @@ func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
 		order = []int64{}
 	}
 	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
+// updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; —
+// набор установлен на другом устройстве. Тело — тот же контейнер, что ответ
+// GET набора (tweb appStickersManager.ts:80-84 кладёт его в кэш и объявляет
+// stickers_installed).
+type UpdateNewStickerSet struct {
+	Underscore string             `json:"_"`
+	Stickerset MessagesStickerSet `json:"stickerset"`
+}
+
+func (UpdateNewStickerSet) isUpdate()     {}
+func (u UpdateNewStickerSet) Tag() string { return u.Underscore }
+
+func NewUpdateNewStickerSet(set MessagesStickerSet) UpdateNewStickerSet {
+	return UpdateNewStickerSet{Underscore: UpdateNewStickerSetTag, Stickerset: set}
+}
+
+// updateRecentStickers#9a422c20 = Update; — параметров нет: клиент перечитывает
+// недавние (tweb appStickersManager.ts:86 → onStickersUpdated).
+type UpdateRecentStickers struct {
+	Underscore string `json:"_"`
+}
+
+func (UpdateRecentStickers) isUpdate()     {}
+func (u UpdateRecentStickers) Tag() string { return u.Underscore }
+
+func NewUpdateRecentStickers() UpdateRecentStickers {
+	return UpdateRecentStickers{Underscore: UpdateRecentStickersTag}
+}
+
+// updateFavedStickers#e511996d = Update; — перечитать избранные (tweb :88).
+type UpdateFavedStickers struct {
+	Underscore string `json:"_"`
+}
+
+func (UpdateFavedStickers) isUpdate()     {}
+func (u UpdateFavedStickers) Tag() string { return u.Underscore }
+
+func NewUpdateFavedStickers() UpdateFavedStickers {
+	return UpdateFavedStickers{Underscore: UpdateFavedStickersTag}
+}
+
+// updateSavedGifs#9375341e = Update; — перечитать сохранённые GIF (tweb
+// appGifsManager.ts:26-28).
+type UpdateSavedGifs struct {
+	Underscore string `json:"_"`
+}
+
+func (UpdateSavedGifs) isUpdate()     {}
+func (u UpdateSavedGifs) Tag() string { return u.Underscore }
+
+func NewUpdateSavedGifs() UpdateSavedGifs {
+	return UpdateSavedGifs{Underscore: UpdateSavedGifsTag}
 }

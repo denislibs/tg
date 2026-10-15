@@ -197,11 +197,11 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   }
 
   // Реакция (tweb sendReaction): тап по той же эмодзи снимает её, иначе ставит/
-  // меняет. Оптимистично правим стор, затем шлём на бэк; счётчик догонит story_reaction.
+  // меняет. Оптимистично правим стор, затем шлём на бэк; счётчик догонит `updateStory` автора.
   const toggleReaction = (emoji: string) => {
     if (!story) return
     const next = storyMyReaction(story) === emoji ? null : emoji
-    setMyReaction(story.id, next)
+    setMyReaction(group!.author.id, story.id, next)
     if (next) void managers.stories.setReaction(group!.author.id, story.id, next)
     else void managers.stories.removeReaction(group!.author.id, story.id)
   }
@@ -236,9 +236,9 @@ export function useStoryViewer({ groupIndex, onClose, onNextPeer, onPrevPeer }: 
   const togglePinned = () => {
     if (!story) return
     const next = !isStoryPinned(story)
-    setStoryPinned(story.id, next)
+    setStoryPinned(group!.author.id, story.id, next)
     void managers.stories.pin(group!.author.id, story.id, next).catch(() => {
-      setStoryPinned(story.id, !next)
+      setStoryPinned(group!.author.id, story.id, !next)
       rootScope.dispatchEvent('ui:toast', 'Не удалось обновить закрепление')
     })
   }

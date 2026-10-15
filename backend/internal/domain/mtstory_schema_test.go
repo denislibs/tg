@@ -72,7 +72,7 @@ func storyCases() []struct {
 			[]User{&UserReal{Underscore: UserTag, ID: 5, FirstName: "Аня"}},
 			NewStoriesStealthMode(0, 0),
 		)},
-		{"плоский список (архив/закреплённые)", NewStoriesStories(
+		{"плоский список (архив/закреплённые)", NewStoriesStories(1,
 			[]StoryItem{story},
 			[]User{&UserReal{Underscore: UserTag, ID: 5, FirstName: "Аня"}},
 		)},

@@ -639,11 +639,13 @@ type StoriesStories struct {
 	Users      []User      `json:"users"`
 }
 
-// NewStoriesStories — плоский список историй с картотекой пиров.
-func NewStoriesStories(stories []StoryItem, users []User) StoriesStories {
+// NewStoriesStories — плоский список историй с картотекой пиров. `count` — ВСЕГО
+// историй в выборке, а не на странице: по нему клиент решает, что выгрузка
+// закончена (tweb `appStoriesManager.ts:985-1000`, `array.length === count`).
+func NewStoriesStories(count int, stories []StoryItem, users []User) StoriesStories {
 	return StoriesStories{
 		Underscore: StoriesStoriesTag,
-		Count:      len(stories),
+		Count:      count,
 		Stories:    orEmpty(stories),
 		Chats:      []Chat{},
 		Users:      orEmpty(users),

@@ -13,6 +13,8 @@ import (
 // сообщение+пользователь).
 type fakeStarReactions struct {
 	mu sync.Mutex
+	// ключи идемпотентности: (userID, randomID) -> (messageID, count)
+	claims map[[2]int64][2]int64
 	// msgID -> userID -> вклад
 	stars map[int64]map[int64]int64
 	anon  map[int64]map[int64]bool
@@ -20,6 +22,26 @@ type fakeStarReactions struct {
 
 func newFakeStarReactions() *fakeStarReactions {
 	return &fakeStarReactions{stars: map[int64]map[int64]int64{}, anon: map[int64]map[int64]bool{}}
+}
+
+// Claim фейка НЕ откатывается вместе с транзакцией (fakeTx без отката): ключ, занятый
+// запросом, который затем упал, остаётся. Семантику отката — ключ не ложится при ошибке —
+// проверяет тест на реальном Postgres (TestStarReaction_RolledBackAttemptDoesNotConsumeKey).
+func (f *fakeStarReactions) Claim(_ context.Context, userID, randomID, messageID, count int64) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.claims == nil {
+		f.claims = map[[2]int64][2]int64{}
+	}
+	key := [2]int64{userID, randomID}
+	if prev, ok := f.claims[key]; ok {
+		if prev != [2]int64{messageID, count} {
+			return false, domain.ErrInvalid
+		}
+		return false, nil
+	}
+	f.claims[key] = [2]int64{messageID, count}
+	return true, nil
 }
 
 func (f *fakeStarReactions) Add(_ context.Context, messageID, userID, delta int64, anonymous bool) (int64, error) {
@@ -103,7 +125,7 @@ func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
 	chatID, msgID := seedStarReactionMsg(t, in)
 
 	// Без звёзд — ErrBalanceTooLow.
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false); err != domain.ErrBalanceTooLow {
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 0); err != domain.ErrBalanceTooLow {
 		t.Fatalf("star react without stars = %v; want ErrBalanceTooLow", err)
 	}
 
@@ -111,7 +133,7 @@ func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
 	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
 		t.Fatal(err)
 	}
-	agg, _, bal, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false)
+	agg, _, bal, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 0)
 	if err != nil {
 		t.Fatalf("SendStarReaction: %v", err)
 	}
@@ -123,7 +145,7 @@ func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
 	}
 
 	// Накопление: ещё 5 → вклад 15, агрегат 15.
-	agg, _, bal, err = in.SendStarReaction(ctx, chatID, msgID, 2, 5, false)
+	agg, _, bal, err = in.SendStarReaction(ctx, chatID, msgID, 2, 5, false, 0)
 	if err != nil {
 		t.Fatalf("SendStarReaction 2: %v", err)
 	}
@@ -153,7 +175,7 @@ func TestStarReaction_AnonymousHidesSender(t *testing.T) {
 	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
 		t.Fatal(err)
 	}
-	_, top, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, true)
+	_, top, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, true, 0)
 	if err != nil {
 		t.Fatalf("SendStarReaction: %v", err)
 	}
@@ -172,14 +194,14 @@ func TestStarReaction_BadCountAndDisabled(t *testing.T) {
 	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 0, false); err != domain.ErrBadReaction {
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 0, false, 0); err != domain.ErrBadReaction {
 		t.Fatalf("zero count = %v; want ErrBadReaction", err)
 	}
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, maxStarReaction+1, false); err != domain.ErrBadReaction {
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, maxStarReaction+1, false, 0); err != domain.ErrBadReaction {
 		t.Fatalf("over-max count = %v; want ErrBadReaction", err)
 	}
 	// Не член чата (user 3) — ErrNotFound.
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 3, 5, false); err != domain.ErrNotFound {
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 3, 5, false, 0); err != domain.ErrNotFound {
 		t.Fatalf("non-member = %v; want ErrNotFound", err)
 	}
 }
@@ -202,7 +224,7 @@ func TestStarReaction_FrameIsMessageReactionsWithPaidChip(t *testing.T) {
 	}
 
 	pub.reset()
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false); err != nil {
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 0); err != nil {
 		t.Fatalf("SendStarReaction: %v", err)
 	}
 
@@ -274,5 +296,55 @@ func TestStarReaction_FrameIsMessageReactionsWithPaidChip(t *testing.T) {
 	// Две: эмодзи-реакция и платная — обе одним типом.
 	if logged != 2 {
 		t.Fatalf("записей типа reaction = %d; ждали 2", logged)
+	}
+}
+
+// Ф7-Г2: у платной ⭐-реакции есть ключ идемпотентности — random_id (tweb
+// appReactionsManager.ts:960-970). Повтор того же запроса не списывает звёзды второй раз и
+// возвращает тот же результат.
+func TestStarReaction_RandomIDRepeatChargesOnce(t *testing.T) {
+	in, _, fs, _, _ := newStarReactionInteractor()
+	ctx := context.Background()
+	chatID, msgID := seedStarReactionMsg(t, in)
+	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
+		t.Fatal(err)
+	}
+
+	agg1, _, bal1, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 777)
+	if err != nil || agg1.Total != 10 || bal1 != 40 {
+		t.Fatalf("первый запрос: total=%d bal=%d err=%v", agg1.Total, bal1, err)
+	}
+	agg2, _, bal2, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agg2 != agg1 || bal2 != 40 {
+		t.Fatalf("повтор того же random_id: %+v bal=%d, want тот же результат %+v bal=40", agg2, bal2, agg1)
+	}
+	if b, _ := fs.Balance(ctx, 2); b != 40 {
+		t.Fatalf("списано повторно: баланс %d, want 40", b)
+	}
+	if b, _ := fs.Balance(ctx, 1); b != 10 {
+		t.Fatalf("автору начислено повторно: %d, want 10", b)
+	}
+
+	// другой random_id — новая оплата
+	agg3, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false, 778)
+	if err != nil || agg3.Total != 20 {
+		t.Fatalf("новый random_id: total=%d err=%v, want 20", agg3.Total, err)
+	}
+	// тот же ключ с другим содержимым — клиентская ошибка, а не молчаливый повтор
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 5, false, 777); err != domain.ErrInvalid {
+		t.Fatalf("тот же random_id с другим count: %v, want ErrInvalid", err)
+	}
+	// random_id == 0 — старый клиент без ключа: идемпотентности нет, как раньше
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 1, false, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 1, false, 0); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := fs.Balance(ctx, 2); b != 28 { // 50 −10 −10 −1 −1
+		t.Fatalf("баланс %d, want 28", b)
 	}
 }

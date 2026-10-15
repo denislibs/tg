@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"log"
 	"strings"
 	"unicode/utf8"
 
@@ -84,7 +85,12 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 		ClientMsgID: in.ClientMsgID, ChecklistID: checklistID, AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
+		// Send не состоялся (откат транзакции): созданный чек-лист — сирота.
+		i.dropOrphanChecklist(ctx, checklistID)
 		return domain.Message{}, err
+	}
+	if checklistID != nil && msg.ChecklistID != nil && *msg.ChecklistID != *checklistID {
+		i.dropOrphanChecklist(ctx, checklistID) // проиграли параллельному дублю
 	}
 	if msg.ChecklistID != nil {
 		if info, e := i.checklists.Info(ctx, *msg.ChecklistID); e == nil {
@@ -255,4 +261,16 @@ func (i *Interactor) publishChecklistUpdate(ctx context.Context, chatID, checkli
 				"_": domain.UpdateMessageToDoTag, "peer": domain.NewPeer(peer), "media": media,
 			}
 		})
+}
+
+// dropOrphanChecklist — то же, что dropOrphanPoll, для чек-листа.
+func (i *Interactor) dropOrphanChecklist(ctx context.Context, id *int64) {
+	if id == nil || i.checklists == nil {
+		return
+	}
+	// Контекст без отмены: обрыв запроса клиентом не должен оставлять сироту. У чек-листа нет
+	// отложенной постановки, а ссылка из сообщения защищена внешним ключом.
+	if err := i.checklists.Delete(context.WithoutCancel(ctx), *id); err != nil {
+		log.Printf("checklist %d: не удалён чек-лист несостоявшейся отправки: %v", *id, err)
+	}
 }

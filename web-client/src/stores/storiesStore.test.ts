@@ -4,13 +4,13 @@
 // конструктора: «моя реакция» — параметр `sent_reaction` истории, общий агрегат
 // — `views`, закреп и правка — флаги `pFlags`, а «моя» в чипе разбивки это
 // `chosen_order`, а не булево поле.
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useStoriesStore, loadStories, getStoriesSortIndex, getStoriesSegments } from './storiesStore'
 import rootScope from '@lib/rootScope'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { ReactionCount } from '../core/models'
 import type { StoryItem, StoryItemReal } from '../core/stories/story'
-import { isStoryEdited, isStoryPinned, isStoryRead, storyCaption, storyMyReaction, storyPrivacy, storyReactionsCount } from '../core/stories/story'
+import { isStoryPinned, isStoryRead, storyCaption, storyMyReaction, storyReactionsCount } from '../core/stories/story'
 
 const media = { _: 'messageMediaPhoto' as const, photo: { _: 'photo' as const, id: 11, sizes: [] } }
 
@@ -42,7 +42,15 @@ const me = { _: 'user' as const, id: 7, first_name: 'Me' }
 const first = () => useStoriesStore.getState().groups[0].stories[0]
 
 describe('storiesStore', () => {
-  beforeEach(() => useStoriesStore.setState({ groups: [], loaded: false }))
+  // Срок жизни mkStory (`expire_date`) отсчитывается от даты истории: часы стоят там же.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(1787334200 * 1000))
+    rootScope.myId = 7
+    useStoriesStore.setState({ groups: [], loaded: false })
+  })
+
+  afterEach(() => vi.useRealTimers())
 
   it('loadStories populates groups + marks loaded', async () => {
     await loadStories(fakeManagers() as never)
@@ -50,6 +58,24 @@ describe('storiesStore', () => {
     expect(s.groups).toHaveLength(1)
     expect(s.groups[0].author.first_name).toBe('Me')
     expect(s.loaded).toBe(true)
+  })
+
+  it('loadStories: ответ старше последнего запроса не затирает свежий снимок', async () => {
+    let slow!: (g: StoryGroup[]) => void
+    const first = loadStories({ stories: { feed: () => new Promise<StoryGroup[]>((r) => { slow = r }) } })
+    await loadStories(fakeManagers({ groups: [{ author: bob, stories: [mkStory({ id: 9 })], maxReadId: 0 }] }) as never)
+    slow(groups) // ранний медленный ответ приходит последним
+    await first
+    expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
+  })
+
+  it('loadStories: упавший новый запрос не отбрасывает успешный старый', async () => {
+    let slow!: (g: StoryGroup[]) => void
+    const first = loadStories({ stories: { feed: () => new Promise<StoryGroup[]>((r) => { slow = r }) } })
+    await expect(loadStories({ stories: { feed: async () => { throw new Error('net') } } })).rejects.toThrow()
+    slow(groups)
+    await first
+    expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([7])
   })
 
   it('setGroups replaces groups + marks loaded', () => {
@@ -73,16 +99,58 @@ describe('storiesStore', () => {
     expect(useStoriesStore.getState().groups[0].maxReadId).toBe(3)
   })
 
-  it('addStory appends to the author group, skipping duplicates and unknown authors', () => {
+  it('addStory добавляет в группу автора и ЗАМЕНЯЕТ историю с тем же номером (upsert)', () => {
     useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
     useStoriesStore.getState().addStory(2, mkStory({ id: 2 }))
     expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1, 2])
-    // duplicate id → no-op
-    useStoriesStore.getState().addStory(2, mkStory({ id: 2 }))
+    // Тот же номер — правка: подпись заменяется, дубля нет (tweb onUpdateStory
+    // :1710-1721 сохраняет пришедшую историю поверх прежней).
+    useStoriesStore.getState().addStory(2, mkStory({ id: 2, caption: 'edited' }))
     expect(useStoriesStore.getState().groups[0].stories).toHaveLength(2)
+    expect(storyCaption(useStoriesStore.getState().groups[0].stories[1])).toBe('edited')
     // unknown author → no-op (full feed reload handles it)
     useStoriesStore.getState().addStory(999, mkStory({ id: 3 }))
     expect(useStoriesStore.getState().groups).toHaveLength(1)
+  })
+
+  it('addStory с номером чужого автора не задевает историю другого автора', () => {
+    useStoriesStore.getState().setGroups([
+      { author: bob, stories: [mkStory({ id: 1, caption: 'bob' })], maxReadId: 0 },
+      { author: me, stories: [mkStory({ id: 1, caption: 'me' })], maxReadId: 0 },
+    ])
+    useStoriesStore.getState().addStory(7, mkStory({ id: 1, caption: 'me edited' }))
+    const byAuthor = (id: number) => storyCaption(useStoriesStore.getState().groups.find((g) => g.author.id === id)!.stories[0])
+    expect(byAuthor(7)).toBe('me edited')
+    expect(byAuthor(2)).toBe('bob')
+  })
+
+  it('addStory ЗАМЕНЯЕТ историю целиком: приехавшая sent_reaction ставится, отсутствующая — снимает', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
+    // реакция со второго устройства — тело под МЕНЯ с `sent_reaction`
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1, [chip('❤', 1, true)]) }))
+    expect(storyMyReaction(first())).toBe('❤')
+    expect((first() as StoryItemReal).views?.reactions).toContainEqual(chip('❤', 1, true))
+    // сняла — тело без личного
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, views: views(0) }))
+    expect(storyMyReaction(first())).toBeNull()
+  })
+
+  it('addStory не пускает в ленту ИСТЁКШУЮ новую историю, но правит уже показанную', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
+    // закреплённая истёкшая: в активный ряд не попадает (tweb isStoryExpired)
+    useStoriesStore.getState().addStory(2, mkStory({ id: 2, expire_date: 1787334100 }))
+    expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1])
+    // та, что уже в группе, заменяется
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, caption: 'edited' }))
+    expect(storyCaption(first())).toBe('edited')
+  })
+
+  it('addStory ставит новую историю на место по номеру, а не в конец', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 4 })], maxReadId: 0 }])
+    // кадры двух быстрых историй пришли вразнобой: 6, затем 5
+    useStoriesStore.getState().addStory(2, mkStory({ id: 6 }))
+    useStoriesStore.getState().addStory(2, mkStory({ id: 5 }))
+    expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([4, 5, 6])
   })
 
   it('removeStory drops the story and empties out the group', () => {
@@ -93,22 +161,6 @@ describe('storiesStore', () => {
     expect(useStoriesStore.getState().groups).toHaveLength(0) // empty group removed
   })
 
-  it('applyStoryReaction ставит счётчик; свою реакцию — только когда она передана', () => {
-    useStoriesStore.getState().setGroups([{
-      author: bob,
-      stories: [mkStory({ id: 5, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1) })],
-      maxReadId: 0,
-    }])
-    // событие про ЧУЖОЕ действие → счётчик обновился, своя реакция не тронута
-    useStoriesStore.getState().applyStoryReaction(5, 4)
-    expect(storyReactionsCount(first())).toBe(4)
-    expect(storyMyReaction(first())).toBe('❤')
-    // событие про меня (реакция передана, пусть и null)
-    useStoriesStore.getState().applyStoryReaction(5, 3, null)
-    expect(storyReactionsCount(first())).toBe(3)
-    expect(storyMyReaction(first())).toBeNull()
-  })
-
   it('setMyReaction добавляет/меняет/снимает оптимистично: счётчик и чипы', () => {
     useStoriesStore.getState().setGroups([{
       author: bob,
@@ -116,12 +168,12 @@ describe('storiesStore', () => {
       maxReadId: 0,
     }])
     // add ❤
-    useStoriesStore.getState().setMyReaction(5, '❤')
+    useStoriesStore.getState().setMyReaction(2, 5, '❤')
     expect(storyMyReaction(first())).toBe('❤')
     expect(storyReactionsCount(first())).toBe(2)
     expect((first() as StoryItemReal).views?.reactions).toContainEqual(chip('❤', 1, true))
     // switch ❤ → 🔥 (count unchanged, breakdown moves)
-    useStoriesStore.getState().setMyReaction(5, '🔥')
+    useStoriesStore.getState().setMyReaction(2, 5, '🔥')
     expect(storyMyReaction(first())).toBe('🔥')
     expect(storyReactionsCount(first())).toBe(2)
     const results = () => (first() as StoryItemReal).views?.reactions ?? []
@@ -129,7 +181,7 @@ describe('storiesStore', () => {
     expect(results().find((r) => r.reaction._ === 'reactionEmoji' && r.reaction.emoticon === '❤')).toBeUndefined()
     // remove — своя пометка СНИМАЕТСЯ, а не становится ложной: `chosen_order`
     // отсутствует, потому что «не поставил» это отсутствие параметра.
-    useStoriesStore.getState().setMyReaction(5, null)
+    useStoriesStore.getState().setMyReaction(2, 5, null)
     expect(storyMyReaction(first())).toBeNull()
     expect(storyReactionsCount(first())).toBe(1)
     expect(results().find((r) => r.reaction._ === 'reactionEmoji' && r.reaction.emoticon === '🔥')).toEqual(chip('🔥', 1))
@@ -137,30 +189,25 @@ describe('storiesStore', () => {
 
   it('setStoryPinned переключает ФЛАГ истории, а снятый флаг исчезает', () => {
     useStoriesStore.getState().setGroups([{ author: me, stories: [mkStory({ id: 5 })], maxReadId: 0 }])
-    useStoriesStore.getState().setStoryPinned(5, true)
+    useStoriesStore.getState().setStoryPinned(7, 5, true)
     expect(isStoryPinned(first())).toBe(true)
-    useStoriesStore.getState().setStoryPinned(5, false)
+    useStoriesStore.getState().setStoryPinned(7, 5, false)
     expect(isStoryPinned(first())).toBe(false)
     expect((first() as StoryItemReal).pFlags?.pinned).toBeUndefined()
   })
 
-  it('applyStoryEdit правит подпись/аудиторию и поднимает флаг edited', () => {
-    useStoriesStore.getState().setGroups([{
-      author: me,
-      stories: [mkStory({ id: 5, caption: 'old', pFlags: { contacts: true } })],
-      maxReadId: 0,
-    }])
-    useStoriesStore.getState().applyStoryEdit(5, { caption: 'new', privacy: 'close' })
-    expect(storyCaption(first())).toBe('new')
-    expect(storyPrivacy(first())).toBe('close')
-    expect(isStoryEdited(first())).toBe(true)
-    // Аудитория едет и ВЕКТОРОМ ПРАВИЛ — той же формой, что приезжает с провода.
-    expect((first() as StoryItemReal).privacy).toEqual([{ _: 'privacyValueAllowCloseFriends' }])
-    // Пропущенное поле сохраняет прежнее значение, флаг edited остаётся.
-    useStoriesStore.getState().applyStoryEdit(5, { caption: 'newer' })
-    expect(storyCaption(first())).toBe('newer')
-    expect(storyPrivacy(first())).toBe('close')
-    expect(isStoryEdited(first())).toBe(true)
+  it('setMyReaction и setStoryPinned адресуют историю парой (автор, номер): одноимённая чужая не задета', () => {
+    useStoriesStore.getState().setGroups([
+      { author: bob, stories: [mkStory({ id: 5 })], maxReadId: 0 },
+      { author: me, stories: [mkStory({ id: 5 })], maxReadId: 0 },
+    ])
+    const storyOf = (authorId: number) => useStoriesStore.getState().groups.find((g) => g.author.id === authorId)!.stories[0]
+    useStoriesStore.getState().setMyReaction(2, 5, '🔥')
+    expect(storyMyReaction(storyOf(2))).toBe('🔥')
+    expect(storyMyReaction(storyOf(7))).toBeNull()
+    useStoriesStore.getState().setStoryPinned(7, 5, true)
+    expect(isStoryPinned(storyOf(7))).toBe(true)
+    expect(isStoryPinned(storyOf(2))).toBe(false)
   })
 })
 

@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -181,11 +181,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -575,7 +575,8 @@ export function createWorkerCore() {
   const report = newReportManager({ rest })
   const stats = newStatsManager({ rest })
   const bots = newBotsManager({ rest })
-  const stickers = newStickersManager({ rest })
+  // События стикеров/GIF вкладкам (rootScope): `broadcast` объявлен ниже, зовётся позже.
+  const stickers = newStickersManager({ rest, dispatch: (event, payload) => broadcast(event, payload) })
   const reactions = newReactionsManager({ rest })
   const iv = newIVManager({ rest })
   // tweb `appWebPagesManager.getWebPage` — карточка плашки превью над полем ввода
@@ -804,6 +805,22 @@ export function createWorkerCore() {
       // `dialogs.applyChatMeta` перекладывал четыре поля из карточки в строку —
       // ровно то второе зеркало одного факта, которого этот шаг и лишает.
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
+    }
+    // Стикеры и GIF своих устройств (журнал f6-stickers): владелец —
+    // `stickersManager`; вкладкам уезжают события rootScope, а не rt-имя каталога
+    // (tweb appStickersManager.ts:80-88, appGifsManager.ts:21-29).
+    else if (pred === 'updateNewStickerSet') {
+      stickers.onNewStickerSet(d as NewStickerSetEvt)
+      return
+    }
+    else if (pred === 'updateRecentStickers' || pred === 'updateFavedStickers') {
+      void stickers.onStickersUpdated(pred === 'updateRecentStickers' ? 'recent' : 'faved')
+        .catch((e) => console.warn(`[stickers] ${pred}: refresh failed`, e))
+      return
+    }
+    else if (pred === 'updateSavedGifs') {
+      void stickers.onGifsUpdated().catch((e) => console.warn('[stickers] updateSavedGifs: refresh failed', e))
+      return
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
     else if (pred === 'updateChannel') dialogs.applyChannel(toPeerId((d as ChannelEvt).channel_id, true))

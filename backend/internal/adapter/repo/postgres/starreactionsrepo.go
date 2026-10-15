@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -34,6 +36,42 @@ func (r *StarReactionsRepo) Add(ctx context.Context, messageID, userID, delta in
 		 RETURNING stars`,
 		messageID, userID, delta, anonymous).Scan(&stars)
 	return stars, err
+}
+
+// Claim занимает ключ идемпотентности (user_id, random_id) запроса. INSERT … ON CONFLICT DO
+// NOTHING: параллельный дубль блокируется на уникальном ключе до коммита первой транзакции и
+// затем видит конфликт; если первая откатилась (например, не хватило звёзд), дубль проходит
+// как новый. Ключи пользователя старше суток чистятся (окно повтора — потерянный ответ).
+func (r *StarReactionsRepo) Claim(ctx context.Context, userID, randomID, messageID, count int64) (bool, error) {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`DELETE FROM star_reaction_requests WHERE user_id = $1 AND created_at < now() - interval '1 day'`,
+		userID); err != nil {
+		return false, err
+	}
+	var one int
+	err := q.QueryRow(ctx,
+		`INSERT INTO star_reaction_requests (user_id, random_id, message_id, stars)
+		 VALUES ($1,$2,$3,$4)
+		 ON CONFLICT (user_id, random_id) DO NOTHING
+		 RETURNING 1`,
+		userID, randomID, messageID, count).Scan(&one)
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, err
+	}
+	var prevMsg, prevCount int64
+	if err := q.QueryRow(ctx,
+		`SELECT message_id, stars FROM star_reaction_requests WHERE user_id = $1 AND random_id = $2`,
+		userID, randomID).Scan(&prevMsg, &prevCount); err != nil {
+		return false, err
+	}
+	if prevMsg != messageID || prevCount != count {
+		return false, domain.ErrInvalid
+	}
+	return false, nil
 }
 
 // AggregatesFor батч-загружает агрегат звёзд по сообщениям (Total) и личный

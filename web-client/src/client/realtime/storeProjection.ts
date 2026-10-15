@@ -21,9 +21,9 @@ import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, replaceMirrorWindow, resetMessagesMirror, setMirrorHistoryCount, winKey } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
-import { useStoriesStore, loadStories } from '../../stores/storiesStore'
+import { useStoriesStore, loadStories, storyExpired } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
 import { scheduleChatsReload } from './refetchSubscriber'
 
@@ -31,6 +31,24 @@ import { scheduleChatsReload } from './refetchSubscriber'
 // emits no "stopped typing" frame; the client re-sends every ~3s while active).
 const TYPING_TTL = 6000
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+// Лента историй перечитывается ПАЧКОЙ: после офлайна getDifference переигрывает
+// десятки `updateStory` от авторов, которых в зеркале ещё нет, и без объединения
+// каждая строка запускала бы свой GET /stories (ответы приходят вразнобой, и
+// старый снимок затирал бы свежий).
+let storiesReloadTimer: ReturnType<typeof setTimeout> | null = null
+/** Только для тестов: модульный таймер переживает it()-блоки файла. */
+export function __resetStoriesReloadTimerForTests(): void {
+  if (storiesReloadTimer) clearTimeout(storiesReloadTimer)
+  storiesReloadTimer = null
+}
+function scheduleStoriesReload(managers: Managers): void {
+  if (storiesReloadTimer) return
+  storiesReloadTimer = setTimeout(() => {
+    storiesReloadTimer = null
+    void loadStories(managers).catch(() => {})
+  }, 300)
+}
 
 // Реестр «1:1» — типы аргументов приходят из BroadcastEventsListeners, ручные
 // касты не нужны; пропущенное/переименованное событие ловит компилятор.
@@ -342,7 +360,9 @@ export function registerStoreProjection(managers: Managers): void {
     // остаётся ровно для нового автора: его карточки в зеркале ещё нет, а
     // группа без автора смысла не имеет.
     if (st.groups.some((g) => g.author.id === authorId)) st.addStory(authorId, e.story)
-    else void loadStories(managers)
+    // Истёкшая (закреплённая) история чужого автора ленту не меняет — рефетч
+    // вернул бы то же самое, зря грузя /stories у каждого получателя правки.
+    else if (!storyExpired(e.story)) scheduleStoriesReload(managers)
   })
   rootScope.addEventListener(RT.storyRead, (raw) => {
     // Горизонт прочтения сдвинулся на ДРУГОМ устройстве зрителя: кольцо
@@ -351,13 +371,10 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as ReadStoriesEvt
     useStoriesStore.getState().markRead(Number(getPeerId(e.peer)), e.max_id)
   })
-  rootScope.addEventListener(RT.storyReaction, (raw) => {
-    const e = raw as SentStoryReactionEvt
-    // Кадр несёт МОЙ выбор и только его: общий агрегат приезжает внутри самой
-    // истории (`updateStory` выше), поэтому счётчик отсюда не берётся.
-    const emoticon = e.reaction?._ === 'reactionEmoji' ? e.reaction.emoticon : ''
-    useStoriesStore.getState().setMyReaction(e.story_id, emoticon || null)
-  })
+  // `updateSentStoryReaction` стор не меняет: tweb его не слушает (grep по lib и
+  // components пуст). Моя реакция с другого устройства приезжает внутри
+  // `updateStory` (`storyItem.sent_reaction`, В-4), который замещает историю.
+  // Кадр остаётся в каталоге (`UPDATE_RT`), обработчика нет.
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле). Владелец — воркер:
   // и сами байты, и границы аплоада теперь его (messages.sendFile), поэтому
   // `done` (аплоад кончился успехом/ошибкой/отменой) приезжает тем же каналом,

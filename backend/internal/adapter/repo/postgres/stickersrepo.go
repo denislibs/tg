@@ -353,12 +353,21 @@ func (r *StickersRepo) FeaturedSets(ctx context.Context, viewerID int64, limit i
 	return scanSets(rows)
 }
 
-func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error {
+func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, keep int) (bool, error) {
 	q := querier(ctx, r.pool)
-	if _, err := q.Exec(ctx,
-		`INSERT INTO recent_stickers (user_id, media_id) VALUES ($1,$2)
-		 ON CONFLICT (user_id, media_id) DO UPDATE SET used_at = now()`, userID, mediaID); err != nil {
-		return err
+	// Одним оператором: первый до вставки (prev видит снимок ДО upsert) и сам
+	// upsert. Порядок меняется, если файл не был первым.
+	var changed bool
+	if err := q.QueryRow(ctx,
+		`WITH prev AS (
+		        SELECT media_id FROM recent_stickers
+		         WHERE user_id=$1 ORDER BY used_at DESC, media_id DESC LIMIT 1),
+		      up AS (
+		        INSERT INTO recent_stickers (user_id, media_id) VALUES ($1,$2)
+		        ON CONFLICT (user_id, media_id) DO UPDATE SET used_at = now())
+		 SELECT (SELECT media_id FROM prev) IS DISTINCT FROM $2::bigint`,
+		userID, mediaID).Scan(&changed); err != nil {
+		return false, err
 	}
 	// Обрезка хвоста: остаются keep самых свежих (tweb RECENT_STICKERS_COUNT).
 	_, err := q.Exec(ctx,
@@ -366,7 +375,7 @@ func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, k
 		  WHERE user_id=$1 AND media_id NOT IN (
 		        SELECT media_id FROM recent_stickers
 		         WHERE user_id=$1 ORDER BY used_at DESC, media_id DESC LIMIT $2)`, userID, keep)
-	return err
+	return changed, err
 }
 
 // ClearRecent — стереть весь список недавних пользователя (кнопка «очистить»

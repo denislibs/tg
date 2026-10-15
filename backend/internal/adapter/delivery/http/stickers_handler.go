@@ -70,8 +70,7 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load set")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
-		domain.StickerSetWire(set), domain.StickerPacks(sts), domain.StickerDocuments(sts)))
+	writeJSON(w, http.StatusOK, usecasestickers.SetWire(set, sts))
 }
 
 // SetByID — GET /sticker-sets/id/{setID}: тот же набор со стикерами, что и
@@ -91,7 +90,7 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	set, sts, err := h.svc.SetByID(r.Context(), h.meID(r), id)
+	set, err := h.svc.StickerSetWire(r.Context(), h.meID(r), id)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "set not found")
 		return
@@ -100,8 +99,7 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load set")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
-		domain.StickerSetWire(set), domain.StickerPacks(sts), domain.StickerDocuments(sts)))
+	writeJSON(w, http.StatusOK, set)
 }
 
 // Install — POST /sticker-sets/{id}/install.

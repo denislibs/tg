@@ -70,12 +70,16 @@ func (f *fakeRepo) SetBySlug(_ context.Context, _ int64, slug string) (domain.St
 	return domain.StickerSetRecord{}, domain.ErrNotFound
 }
 
-func (f *fakeRepo) SetByID(_ context.Context, _, id int64) (domain.StickerSetRecord, error) {
+func (f *fakeRepo) SetByID(_ context.Context, viewerID, id int64) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.sets[id]
 	if !ok {
 		return domain.StickerSetRecord{}, domain.ErrNotFound
+	}
+	// Срок установки глазами зрителя — как JOIN user_sticker_sets настоящего репо.
+	if _, in := f.installed[viewerID][id]; in {
+		s.InstalledAt = time.Unix(1_700_000_000, 0)
 	}
 	return s, nil
 }
@@ -337,11 +341,18 @@ func newestFirst(f *fakeRepo, m map[int64]int64, limit int) []domain.Sticker {
 	return out
 }
 
-func (f *fakeRepo) TouchRecent(_ context.Context, userID, mediaID int64, keep int) error {
+func (f *fakeRepo) TouchRecent(_ context.Context, userID, mediaID int64, keep int) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Первый до вставки — как CTE prev настоящего репо.
+	var first, firstAt int64
+	for id, at := range f.recent[userID] {
+		if at > firstAt {
+			first, firstAt = id, at
+		}
+	}
 	touch(f.recent, userID, mediaID, f.tick(), keep)
-	return nil
+	return first != mediaID, nil
 }
 
 func (f *fakeRepo) ClearRecent(_ context.Context, userID int64) error {
