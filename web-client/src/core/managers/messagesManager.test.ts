@@ -1100,6 +1100,49 @@ describe('MessagesManager.cacheMediaRead', () => {
   })
 })
 
+// Ф-6, задача 18: кадр `media_read` от readMentions несёт ВСЕ снятые номера
+// (tweb onUpdateReadMessagesContents, appMessagesManager.ts:10996-11079 — цикл
+// по `mids`), впервые от сервера.
+describe('MessagesManager: кадр прочтения содержимого с вектором номеров', () => {
+  const FORUM = -5
+  const forumChat = { _: 'channel', id: 5, title: 'Ф', pFlags: { megagroup: true, forum: true } } as unknown as Chat
+  const unreadMention = { mentioned: true, media_unread: true } as const
+  const inTopic = (id: number, topic: number, flags: Record<string, true> = unreadMention) =>
+    ({ ...makeRawMessage({ id, peerId: FORUM, fromId: 9, text: `m${id}`, replyToMsgId: topic, forumTopic: true }), pFlags: flags }) as RawMessage
+  const general = (id: number, flags: Record<string, true> = unreadMention) =>
+    ({ ...makeRawMessage({ id, peerId: FORUM, fromId: 9, text: `m${id}` }), pFlags: flags }) as RawMessage
+  const frame = (messages: number[]): MediaReadEvt => ({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerChannel', channel_id: 5 }, messages })
+
+  async function setup(list: RawMessage[]) {
+    const rest = { get: async () => ({ messages: list, count: list.length }), post: async () => ({}) } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getPeer: (id) => (id === FORUM ? forumChat : undefined) })
+    await mgr.getHistory({ peerId: FORUM, offsetId: 0, addOffset: 0, limit: 40 })
+    return mgr
+  }
+
+  it('cacheMediaRead гасит точку у КАЖДОГО названного сообщения, а не только у первого', async () => {
+    const mgr = await setup([inTopic(5, 4), general(7), general(8, {})])
+    const ops = mgr.cacheMediaRead(frame([5, 7, 8]))
+    // у 8 точки не было — операции на него нет
+    expect(ops.map((o) => (o as { msgId: number }).msgId).sort((a, b) => a - b)).toEqual([cid(5), cid(7)])
+    expect(mgr.cacheMediaRead(frame([5, 7]))).toEqual([]) // повтор — идемпотентно
+  })
+
+  it('mediaReadEffects: тема каждого снимаемого упоминания и число номеров вне памяти', async () => {
+    const mgr = await setup([inTopic(5, 4), general(7), inTopic(8, 4, {}), { ...inTopic(9, 4), pFlags: { ...unreadMention, out: true } } as RawMessage])
+    // 8 уже прочитано, 9 моё, 50 в памяти нет
+    expect(mgr.mediaReadEffects(frame([5, 7, 8, 9, 50]))).toEqual({ mentionThreads: [cid(4), GENERAL_TOPIC_ID], readReactions: [], missing: 1 })
+  })
+
+  it('не форум: тема не выводится — упоминание считается за диалог', async () => {
+    const rest = { get: async () => ({ messages: [{ ...makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'x' }), pFlags: unreadMention }], count: 1 }), post: async () => ({}) } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.mediaReadEffects({ _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [3] }))
+      .toEqual({ mentionThreads: [undefined], readReactions: [], missing: 0 })
+  })
+})
+
 // Порт цикла tweb onUpdateReadHistory (appMessagesManager.ts:10851-10892) в
 // части «@»: свежими вперёд, выше горизонта кадра — мимо, исходящие — мимо,
 // первое уже прочитанное (по горизонту ДО кадра) обрывает проход.
@@ -1295,6 +1338,18 @@ describe('MessagesManager.cacheDelete', () => {
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
     expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)], missing: 0 }, { peerId: 1, ids: [], missing: 1 }])
+  })
+
+  // Закреп вне окна воркер не знает (кэш закрепов живёт на главном потоке), поэтому
+  // сообщение о удалении несёт ВСЕ удалённые клиентские номера, включая неизвестные
+  // SSOT (`peer_pinned_deleted`, порт `resetPinnedMessagesCache` tweb :14078-14080).
+  it('onMessagesDeleted: четвёртым параметром — клиентский номер, в том числе неизвестного сообщения', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mids: number[][] = []
+    const mgr = newMessagesManager({ rest, onMessagesDeleted: (_peerId, _list, _missing, m) => mids.push(m) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
+    expect(mids).toEqual([[cid(2)], [cid(999)]])
   })
 
   // Владелец диалогов решает по этому срезу, кто станет последним после

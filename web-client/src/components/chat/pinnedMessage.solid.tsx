@@ -55,7 +55,7 @@ import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { getMediaId } from '@core/messages/messageKind'
 import type { MyMessage } from '@core/models'
-import { canPinMessage, getPinnedHistory, getPinnedMessage, getPinnedMessageByMid } from '@core/pinnedMessages'
+import { canPinMessage, getPinnedHistory, getPinnedMessage, getPinnedMessageByMid, isPinnedMessagesHidden } from '@core/pinnedMessages'
 import { subscribeMirror } from '@core/history/messagesMirror'
 
 /** Расхождение 5: члены `ChatTopbar`, которые зовёт плашка. */
@@ -332,10 +332,11 @@ export default function createChatPinnedMessage(
   listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, threadId }) => {
     if(peerId !== chat.peerId || !isOurPinUpdate(threadId)) return
     // A pin update clears the persisted hidden state (`resetPinnedMessagesCache`),
-    // so drop the local flag too — but leave the plate hidden: `_setPinnedMessage`
-    // reveals it once we know what to show. Revealing here would flash the
-    // previous pin, or an empty plate when the last one was just removed.
-    userHidden = false
+    // so follow it — but leave the plate hidden: `_setPinnedMessage` reveals it once
+    // we know what to show. Revealing here would flash the previous pin, or an empty
+    // plate when the last one was just removed. A history clear (`dialog_flush`) drops
+    // only the pins cache (`flushPinnedMessagesCache`) and keeps the hidden state.
+    userHidden = isPinnedMessagesHidden(chat.peerId, chat.threadId)
 
     // Anchor the post-update display at the pin the user was looking at
     // while they are actually walking the pin list (`followPinnedMessage` sets

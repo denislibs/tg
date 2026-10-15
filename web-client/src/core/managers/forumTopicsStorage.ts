@@ -288,6 +288,14 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     if (parentMentionDecrement > 0) deps.onParentMentionsRead?.(peerId, parentMentionDecrement)
   }
 
+  /** `modifyCachedMentionsAndSave` для одного счётчика темы: `true` — +1, `false` — −1 (не ниже нуля). */
+  function modifyBadge(peerId: PeerId, topicId: number, key: 'unread_reactions_count' | 'unread_mentions_count', add: boolean): void {
+    const topic = caches.get(peerId)?.topics.get(topicId)
+    if (!topic) return
+    topic[key] = add ? topic[key] + 1 : Math.max(0, topic[key] - 1)
+    onOps(unreadOps(topic))
+  }
+
   return {
     /**
      * Темы форума страницей — `getDialogs({filterId: peerId})` для форума.
@@ -430,6 +438,43 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     },
 
     applyReadDiscussion,
+
+    /**
+     * Бейдж ❤ темы ±1 — `modifyCachedMentionsAndSave({threadId, addReaction})`
+     * (`appMessagesManager.ts:9330-9363`, вызов из `onUpdateMessageReactions`
+     * :10568-10575). Темы нет в кэше — ничего, как `if(!dialog) return` там.
+     */
+    modifyUnreadReactions(peerId: PeerId, topicId: number, add: boolean): void {
+      modifyBadge(peerId, topicId, 'unread_reactions_count', add)
+    },
+
+    /** Бейдж «@» темы ±1 — тот же `modifyCachedMentionsAndSave` с `addMention`. */
+    modifyUnreadMentions(peerId: PeerId, topicId: number, add: boolean): void {
+      modifyBadge(peerId, topicId, 'unread_mentions_count', add)
+    },
+
+    /**
+     * Ответ `readMentions`/`readReactions` в теме обнуляет её счётчик
+     * (`modifyCachedMentionsAndSave({addMention|addReaction: -dialog.count})`,
+     * :9636-9644). Темы нет в кэше — ничего.
+     */
+    clearUnread(peerId: PeerId, topicId: number, isReaction: boolean): void {
+      const topic = caches.get(peerId)?.topics.get(topicId)
+      if (!topic) return
+      topic[isReaction ? 'unread_reactions_count' : 'unread_mentions_count'] = 0
+      onOps(unreadOps(topic))
+    },
+
+    /** Счётчики тем форума устарели (кадр коснулся сообщения, которого нет в памяти) — список перечитывается, если он уже загружен. */
+    reload(peerId: PeerId): void {
+      if (caches.get(peerId)?.loaded) void load(peerId).catch(() => {})
+    },
+
+    /** Счётчики «@» и ❤ темы — часть `getAnyDialog(peerId, threadId)`, которую читает `readMessages` (:9564-9566). */
+    getUnreadBadge(peerId: PeerId, topicId: number): { mentions: number; reactions: number } | undefined {
+      const topic = caches.get(peerId)?.topics.get(topicId)
+      return topic ? { mentions: topic.unread_mentions_count, reactions: topic.unread_reactions_count } : undefined
+    },
 
     /**
      * Черновик треда изменился — ветка темы слушателя `draft_updated`
