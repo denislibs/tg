@@ -429,6 +429,10 @@ export interface MediaReadEvt {
   _: 'updateReadPeerMessagesContents'
   peer: Peer
   messages: number[]
+  /** Тема форума, в которой сняты упоминания (ответ `readMentions` в теме);
+   *  серверный номер. tweb читает её из кадра (onUpdateReadMessagesContents
+   *  :10998-10999); без неё тема выводится из самого сообщения. */
+  top_msg_id?: number
   pts?: number
 }
 /** Меня удалили из группы / я вышел — диалог убирается из списка. НАШ
@@ -680,6 +684,8 @@ export interface ReactionEvt {
   _: 'updateMessageReactions'
   peer: Peer
   msg_id: number
+  /** Тема форума, в которой лежит сообщение (General — 1); серверный номер. */
+  top_msg_id?: number
   reactions: MessageReactions
 }
 /**
