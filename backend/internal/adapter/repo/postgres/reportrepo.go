@@ -17,14 +17,28 @@ func NewReportRepo(pool *pgxpool.Pool) *ReportRepo { return &ReportRepo{pool: po
 
 var _ usecasereport.Repo = (*ReportRepo)(nil)
 
-func (r *ReportRepo) Add(ctx context.Context, rep domain.Report) error {
-	var comment any
-	if rep.Comment != "" {
-		comment = rep.Comment
+// Add пишет все строки одним INSERT … SELECT unnest: оператор атомарен, поэтому
+// жалоба на несколько сообщений ложится целиком или не ложится вовсе.
+func (r *ReportRepo) Add(ctx context.Context, reps []domain.Report) error {
+	if len(reps) == 0 {
+		return nil
+	}
+	reporters := make([]int64, len(reps))
+	chats := make([]int64, len(reps))
+	msgs := make([]*int64, len(reps))
+	reasons := make([]string, len(reps))
+	comments := make([]*string, len(reps))
+	for n, rep := range reps {
+		reporters[n], chats[n], msgs[n], reasons[n] = rep.ReporterID, rep.ChatID, rep.MsgID, string(rep.Reason)
+		if rep.Comment != "" {
+			c := rep.Comment
+			comments[n] = &c
+		}
 	}
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`INSERT INTO reports (reporter_id, chat_id, msg_id, reason, comment) VALUES ($1,$2,$3,$4,$5)`,
-		rep.ReporterID, rep.ChatID, rep.MsgID, string(rep.Reason), comment)
+		`INSERT INTO reports (reporter_id, chat_id, msg_id, reason, comment)
+		 SELECT * FROM unnest($1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::text[])`,
+		reporters, chats, msgs, reasons, comments)
 	if isForeignKeyViolation(err) {
 		return domain.ErrNotFound
 	}

@@ -137,14 +137,16 @@ describe('GroupsManager', () => {
     expect(dialogs.applyNotifySettings).toHaveBeenCalledWith(9, { _: 'peerNotifySettings', mute_until: 1700000000 })
   })
 
-  it('«навсегда» — далёкий срок, «снять» — отсутствие переопределения', async () => {
+  it('«навсегда» — далёкий срок, «снять» — явное «уведомлять» (mute_until: 0)', async () => {
     const { rest } = fakeRest({})
     const dialogs = fakeDialogs()
     const mgr = newGroupsManager({ rest, dialogs, peers: fakePeers() })
     await mgr.setMute(9, true)
     expect(dialogs.applyNotifySettings).toHaveBeenCalledWith(9, { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER })
     await mgr.setMute(9, false)
-    expect(dialogs.applyNotifySettings).toHaveBeenLastCalledWith(9, { _: 'peerNotifySettings' })
+    // Не отсутствие ключа: оно значит «наследовать тип», и включённый вручную
+    // чат не перекрыл бы выключенный тип (tweb togglePeerMute :11985-11991).
+    expect(dialogs.applyNotifySettings).toHaveBeenLastCalledWith(9, { _: 'peerNotifySettings', mute_until: 0 })
   })
 
   it('addMember POSTs /chats/{id}/members with user_id', async () => {

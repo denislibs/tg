@@ -72,8 +72,8 @@ type DialogRecord struct {
 	// NotifySettings — пер-чатное переопределение уведомлений ЦЕЛИКОМ, а не три
 	// плоских поля (решение Р4). Прежние Muted/NotifyPreview/NotifySound
 	// схлопнулись сюда: мьют это СРОК (mute_until), а звук — объединение
-	// NotificationSound, а не строка. Замьючен ли чат сейчас, отвечает
-	// единственный предикат PeerNotifySettings.Muted.
+	// NotificationSound, а не строка. Замьючен ли чат сейчас, отвечает ChatMuted:
+	// свой срок, если задан (0 — «уведомлять»), иначе тип чатов.
 	NotifySettings PeerNotifySettings
 	// Pinned — диалог закреплён вверху списка (пер-юзерный флаг членства).
 	Pinned bool

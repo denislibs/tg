@@ -412,13 +412,15 @@ func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
 		t.Fatalf("«навсегда» = %v; want %d", got, domain.MuteUntilForever)
 	}
 
-	// Снятие — отсутствие переопределения, а не срок в прошлом.
+	// Снятие — ЯВНОЕ «уведомлять» (mute_until: 0, tweb togglePeerMute
+	// appMessagesManager.ts:11985-11991), а не отсутствие ключа: отсутствие значит
+	// «наследовать тип чата», и включённый чат не перекрыл бы выключенный тип.
 	pub.reset()
 	if err := in.SetMute(ctx, chatID, owner, false, &until); err != nil {
 		t.Fatalf("SetMute(снять): %v", err)
 	}
-	if got, ok := settingsOf(t)["mute_until"]; ok {
-		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", got)
+	if got, ok := settingsOf(t)["mute_until"]; !ok || got != float64(domain.MuteUntilNever) {
+		t.Fatalf("после снятия mute_until = %v (есть=%v); want явный 0", got, ok)
 	}
 }
 

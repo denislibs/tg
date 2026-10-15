@@ -215,8 +215,8 @@ func TestMention_ReadContents(t *testing.T) {
 	m, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: mAlice, Text: "@bob_petrov @carol_x"})
 	carolBefore := len(s.updates[mCarol])
 
-	if err := in.ReadMedia(ctx, chatID, mBob, m.ID); err != nil {
-		t.Fatalf("ReadMedia: %v", err)
+	if err := in.ReadMessageContents(ctx, chatID, mBob, []int64{m.Seq}); err != nil {
+		t.Fatalf("ReadMessageContents: %v", err)
 	}
 	if n := unreadMentionsOf(s, chatID, mBob); n != 0 {
 		t.Fatalf("Боб после прочтения содержимого = %d, want 0", n)
@@ -236,8 +236,8 @@ func TestMention_ReadContents(t *testing.T) {
 	}
 	// Повтор — no-op.
 	n := len(s.updates[mBob])
-	if err := in.ReadMedia(ctx, chatID, mBob, m.ID); err != nil {
-		t.Fatalf("ReadMedia 2: %v", err)
+	if err := in.ReadMessageContents(ctx, chatID, mBob, []int64{m.Seq}); err != nil {
+		t.Fatalf("ReadMessageContents 2: %v", err)
 	}
 	if len(s.updates[mBob]) != n {
 		t.Fatalf("повторное прочтение дало кадр")

@@ -2,10 +2,12 @@ package contacts
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 )
 
 type fakeMediaReader struct{ m map[int64]domain.Media }
@@ -27,10 +29,19 @@ func (f *fakeCustomPhotos) SetCustomPhoto(_ context.Context, _, contactUserID, m
 	return nil
 }
 
-func (f *fakeCustomPhotos) ClearCustomPhoto(context.Context, int64, int64) error { return nil }
+func (f *fakeCustomPhotos) ClearCustomPhoto(_ context.Context, _, contactUserID int64) error {
+	delete(f.set, contactUserID)
+	return nil
+}
 
-func (f *fakeCustomPhotos) CustomPhotoMap(context.Context, int64, []int64) (map[int64]int64, error) {
-	return nil, nil
+func (f *fakeCustomPhotos) CustomPhotoMap(_ context.Context, _ int64, ids []int64) (map[int64]int64, error) {
+	out := map[int64]int64{}
+	for _, id := range ids {
+		if m, ok := f.set[id]; ok {
+			out[id] = m
+		}
+	}
+	return out, nil
 }
 
 // F7-A (MC-16): личное фото контакта ставится только своей картинкой —
@@ -74,5 +85,492 @@ func TestSetCustomPhoto_UnwiredMediaReader(t *testing.T) {
 	err := i.SetCustomPhoto(context.Background(), 1, 2, 6)
 	if err == nil || errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("err=%v; want ошибку проводки, не ErrNotFound", err)
+	}
+}
+
+// ---- f6-contacts: мутации книги пишут владельцу строку журнала user_update ----
+
+// fakeBook — книга контактов в памяти. SeenUser собирает карточку так же, как
+// postgres-репозиторий: профиль пользователя + линза книги зрителя (SeenBy).
+type fakeBook struct {
+	rows    map[[2]int64]domain.ContactRecord // (owner, user)
+	profile map[int64]domain.UserReal         // настоящая карточка пользователя
+	phones  map[int64]string
+	bots    map[int64]bool
+}
+
+func newFakeBook() *fakeBook {
+	return &fakeBook{
+		rows:    map[[2]int64]domain.ContactRecord{},
+		profile: map[int64]domain.UserReal{},
+		phones:  map[int64]string{},
+		bots:    map[int64]bool{},
+	}
+}
+
+func (b *fakeBook) seen(viewer, userID int64) domain.UserReal {
+	u := b.profile[userID]
+	if u.Underscore == "" {
+		u = domain.NewUser(userID, domain.UserFlags{})
+	}
+	view := domain.ContactView{}
+	if r, ok := b.rows[[2]int64{viewer, userID}]; ok {
+		view.Contact, view.FirstName, view.LastName = true, r.FirstName, r.LastName
+	}
+	_, view.Mutual = b.rows[[2]int64{userID, viewer}]
+	return u.SeenBy(view).WithHiddenPhone(b.phones[userID])
+}
+
+func (b *fakeBook) Add(_ context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
+	b.rows[[2]int64{c.OwnerID, c.UserID}] = c
+	c.User = b.seen(c.OwnerID, c.UserID)
+	c.IsBot = b.bots[c.UserID]
+	return c, nil
+}
+func (b *fakeBook) List(_ context.Context, owner int64) ([]domain.ContactRecord, error) {
+	var out []domain.ContactRecord
+	for k, r := range b.rows {
+		if k[0] == owner {
+			r.User = b.seen(owner, k[1])
+			r.User.Phone = b.phones[k[1]] // как scanContact: сырой номер, прячет List
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (b *fakeBook) Delete(_ context.Context, owner, user int64) (bool, error) {
+	_, ok := b.rows[[2]int64{owner, user}]
+	delete(b.rows, [2]int64{owner, user})
+	return ok, nil
+}
+func (b *fakeBook) SeenUser(_ context.Context, viewer, user int64) (domain.UserReal, error) {
+	return b.seen(viewer, user), nil
+}
+func (b *fakeBook) UpdateNote(_ context.Context, owner, user int64, _ domain.TextWithEntities) (bool, error) {
+	_, ok := b.rows[[2]int64{owner, user}]
+	return ok, nil
+}
+func (b *fakeBook) ResolveByPhone(_ context.Context, phone string) (int64, error) {
+	for id, p := range b.phones {
+		if p == phone {
+			return id, nil
+		}
+	}
+	return 0, domain.ErrNotFound
+}
+
+// fakeLog — журнал ownsync: строки по владельцам.
+type fakeLog struct {
+	rows  map[int64][]logRow
+	locks []int64
+}
+type logRow struct {
+	typ  string
+	body map[string]any
+}
+
+func (l *fakeLog) AppendUpdate(_ context.Context, uid int64, _ int, _ int64, typ string, payload json.RawMessage) (int64, error) {
+	if l.rows == nil {
+		l.rows = map[int64][]logRow{}
+	}
+	var body map[string]any
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return 0, err
+	}
+	l.rows[uid] = append(l.rows[uid], logRow{typ, body})
+	return int64(len(l.rows[uid])), nil
+}
+func (l *fakeLog) AppendUpdateBulk(context.Context, []int64, int, int64, string, json.RawMessage) (map[int64]int64, error) {
+	return nil, errors.New("не используется")
+}
+func (l *fakeLog) LockState(_ context.Context, uid int64) error {
+	l.locks = append(l.locks, uid)
+	return nil
+}
+
+type directTx struct{}
+
+func (directTx) WithinTx(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
+
+type fakeClose struct{ ids []int64 }
+
+func (f fakeClose) CloseFriends(context.Context, int64) ([]int64, error) { return f.ids, nil }
+
+// fakePrivacy — правила: allow[ключ] — пускает ли оно зрителя; rulesErr — сбой
+// запроса правил.
+type fakePrivacy struct {
+	allow    map[domain.PrivacyKey]bool
+	rulesErr error
+}
+
+func (p fakePrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, key domain.PrivacyKey) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range ids {
+		out[id] = p.allow[key]
+	}
+	return out, nil
+}
+func (p fakePrivacy) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	if p.rulesErr != nil {
+		return nil, p.rulesErr
+	}
+	out := map[domain.PrivacyKey]map[int64]bool{}
+	for _, k := range keys {
+		out[k] = map[int64]bool{}
+		for _, id := range ids {
+			out[k][id] = p.allow[k]
+		}
+	}
+	return out, nil
+}
+func (p fakePrivacy) Check(_ context.Context, _, _ int64, key domain.PrivacyKey) (bool, error) {
+	return p.allow[key], nil
+}
+
+const (
+	cOwner int64 = 1
+	cBob   int64 = 2
+)
+
+func newBookInteractor(t *testing.T) (*Interactor, *fakeBook, *fakeLog) {
+	t.Helper()
+	book := newFakeBook()
+	book.profile[cBob] = func() domain.UserReal {
+		u := domain.NewUser(cBob, domain.UserFlags{})
+		u.FirstName, u.LastName = "Боб", "Петров"
+		return u
+	}()
+	log := &fakeLog{}
+	i := New(book)
+	i.SetEmitter(ownsync.New(log, nil, directTx{}))
+	return i, book, log
+}
+
+// rowCard достаёт карточку из последней строки user_update владельца.
+func rowCard(t *testing.T, l *fakeLog, owner int64) (domain.UserReal, int) {
+	t.Helper()
+	rows := l.rows[owner]
+	if len(rows) == 0 {
+		t.Fatalf("у владельца %d нет строк журнала", owner)
+	}
+	last := rows[len(rows)-1]
+	if last.typ != "user_update" {
+		t.Fatalf("тип строки = %q; want user_update", last.typ)
+	}
+	if last.body["_"] != domain.UpdateUserSnapshotTag {
+		t.Fatalf("конструктор = %v; want %s", last.body["_"], domain.UpdateUserSnapshotTag)
+	}
+	raw, _ := json.Marshal(last.body["user"])
+	var u domain.UserReal
+	if err := json.Unmarshal(raw, &u); err != nil {
+		t.Fatalf("карточка: %v", err)
+	}
+	return u, len(rows)
+}
+
+// Добавил в контакты → своё второе устройство получает карточку с pFlags.contact
+// и именем из книги (tweb saveApiUser → onContactUpdated). Контакту строки нет.
+func TestAdd_EmitsContactCardToOwner(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Бобби"}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := rowCard(t, log, cOwner)
+	if !u.ContactRecord() || u.FirstName != "Бобби" || u.ID != cBob {
+		t.Fatalf("карточка = %+v; want contact, имя из книги", u)
+	}
+	if len(log.rows[cBob]) != 0 {
+		t.Fatalf("контакту записана строка: %v", log.rows[cBob])
+	}
+	if len(log.locks) != 1 || log.locks[0] != cOwner {
+		t.Fatalf("замок курсора = %v; want [владелец]", log.locks)
+	}
+}
+
+func TestAddByPhone_EmitsContactCardToOwner(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	book.phones[cBob] = "+79990000002"
+	if _, err := i.AddByPhone(context.Background(), cOwner, AddByPhoneInput{Phone: "+7 999 000-00-02", FirstName: "Бобби"}); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := rowCard(t, log, cOwner); !u.ContactRecord() || u.FirstName != "Бобби" {
+		t.Fatalf("карточка = %+v", u)
+	}
+}
+
+// Бот в книге недопустим: запись откатывается, кадра нет.
+func TestAdd_BotRolledBackWithoutRow(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	book.bots[cBob] = true
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Бот"}); !errors.Is(err, ErrCannotAddBot) {
+		t.Fatalf("err=%v", err)
+	}
+	if len(log.rows[cOwner]) != 0 {
+		t.Fatalf("строки журнала для отвергнутого бота: %v", log.rows[cOwner])
+	}
+}
+
+// Удалил из контактов → карточка без pFlags.contact и с профильным именем.
+func TestDelete_EmitsCardWithoutContactFlag(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	ctx := context.Background()
+	if _, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Бобби"}); err != nil {
+		t.Fatal(err)
+	}
+	card, found, err := i.Delete(ctx, cOwner, cBob)
+	if err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+	if card.ContactRecord() || card.FirstName != "Боб" {
+		t.Fatalf("ответ = %+v", card)
+	}
+	u, n := rowCard(t, log, cOwner)
+	if n != 2 || u.ContactRecord() || u.FirstName != "Боб" || u.LastName != "Петров" {
+		t.Fatalf("строка (n=%d) = %+v; want без contact, профильное имя", n, u)
+	}
+	// Повторное удаление: записи нет — строки нет.
+	if _, found, _ := i.Delete(ctx, cOwner, cBob); found {
+		t.Fatal("повторное удаление нашло запись")
+	}
+	if len(log.rows[cOwner]) != 2 {
+		t.Fatalf("повтор записал строку: %d", len(log.rows[cOwner]))
+	}
+}
+
+func TestCustomPhoto_EmitsCardWithPersonalPhoto(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	ctx := context.Background()
+	photos := &fakeCustomPhotos{}
+	i.SetCustomPhotos(photos)
+	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{6: {ID: 6, OwnerID: cOwner, Mime: "image/jpeg"}}})
+
+	if err := i.SetCustomPhoto(ctx, cOwner, cBob, 6); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := rowCard(t, log, cOwner)
+	p, ok := u.Photo.(domain.UserProfilePhotoReal)
+	if !ok || p.PhotoID != 6 || !p.Personal() {
+		t.Fatalf("фото = %+v; want личное 6", u.Photo)
+	}
+
+	if err := i.ClearCustomPhoto(ctx, cOwner, cBob); err != nil {
+		t.Fatal(err)
+	}
+	u, n := rowCard(t, log, cOwner)
+	if n != 2 {
+		t.Fatalf("строк = %d; want 2", n)
+	}
+	if p, ok := u.Photo.(domain.UserProfilePhotoReal); ok && p.Personal() {
+		t.Fatalf("после сброса фото осталось личным: %+v", u.Photo)
+	}
+}
+
+// Карточка глазами владельца: close_friend, номер и фото — по его правам.
+func TestSnapshot_CloseFriendPhoneAndPrivacy(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	ctx := context.Background()
+	book.phones[cBob] = "+79990000002"
+	pr := domain.NewUser(cBob, domain.UserFlags{})
+	pr.FirstName = "Боб"
+	pr.Photo = domain.NewUserProfilePhoto(900, nil, false, false)
+	book.profile[cBob] = pr
+	i.SetCloseFriends(fakeClose{ids: []int64{cBob}})
+
+	// Правила разрешают всё.
+	i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyPhoneNumber: true, domain.PrivacyProfilePhoto: true}})
+	if _, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := rowCard(t, log, cOwner)
+	if !u.PFlags["close_friend"] || u.Phone != "+79990000002" {
+		t.Fatalf("close_friend/phone = %v / %q", u.PFlags, u.Phone)
+	}
+	if p, ok := u.Photo.(domain.UserProfilePhotoReal); !ok || p.PhotoID != 900 {
+		t.Fatalf("фото = %+v", u.Photo)
+	}
+
+	// Правила закрыты: ни номера, ни чужой аватарки в строке журнала.
+	i.SetPrivacy(fakePrivacy{})
+	if _, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	u, _ = rowCard(t, log, cOwner)
+	if u.Phone != "" {
+		t.Fatalf("номер утёк в снимок: %q", u.Phone)
+	}
+	if _, ok := u.Photo.(domain.UserProfilePhotoReal); ok {
+		t.Fatalf("закрытая аватарка утекла в снимок: %+v", u.Photo)
+	}
+}
+
+// Без подключённого эмиттера мутации работают как прежде.
+func TestMutations_WithoutEmitter(t *testing.T) {
+	book := newFakeBook()
+	i := New(book)
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := i.Delete(context.Background(), cOwner, cBob); err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+}
+
+// Ответ ручки и строка журнала — ОДНА карточка: устройство-инициатор получает и
+// кадр, и ответ. Сырая карточка репозитория отдавала номер мимо правила
+// phone_number и без close_friend/личного фото.
+func TestAdd_ResponseMatchesJournalCard(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	ctx := context.Background()
+	book.phones[cBob] = "+79990000002"
+	i.SetCloseFriends(fakeClose{ids: []int64{cBob}})
+	i.SetPrivacy(fakePrivacy{}) // phone_number и profile_photo закрыты
+
+	c, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.User.Phone != "" {
+		t.Fatalf("номер в ответе мимо правила: %q", c.User.Phone)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	got, _ := json.Marshal(c.User)
+	want, _ := json.Marshal(row)
+	if string(got) != string(want) || !c.User.PFlags["close_friend"] {
+		t.Fatalf("ответ %s != журнал %s", got, want)
+	}
+}
+
+// Личное фото владелец поставил сам — правило profile_photo контакта его не гасит.
+func TestSnapshot_PersonalPhotoSurvivesClosedPhotoRule(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	i.SetPrivacy(fakePrivacy{})
+	i.SetCustomPhotos(&fakeCustomPhotos{set: map[int64]int64{cBob: 6}})
+	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{6: {ID: 6, OwnerID: cOwner, Mime: "image/jpeg"}}})
+	if err := i.SetCustomPhoto(context.Background(), cOwner, cBob, 6); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := rowCard(t, log, cOwner)
+	if p, ok := u.Photo.(domain.UserProfilePhotoReal); !ok || !p.Personal() {
+		t.Fatalf("личное фото погашено правилом: %+v", u.Photo)
+	}
+}
+
+// Отказ по added_by_phone — ни записи, ни строки.
+func TestAddByPhone_PrivacyRefusalWritesNothing(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{})
+	_, err := i.AddByPhone(context.Background(), cOwner, AddByPhoneInput{Phone: "+79990000002", FirstName: "Б"})
+	if !errors.Is(err, domain.ErrPrivacy) {
+		t.Fatalf("err=%v; want ErrPrivacy", err)
+	}
+	if len(log.rows[cOwner]) != 0 || len(book.rows) != 0 {
+		t.Fatalf("после отказа: журнал %v, книга %v", log.rows, book.rows)
+	}
+}
+
+type failingEmitter struct{}
+
+func (failingEmitter) EmitSnapshot(context.Context, int64, string, func(context.Context) (map[string]any, error)) error {
+	return errors.New("журнал недоступен")
+}
+
+// Сбой журнала ответ не ломает: мутация закоммичена.
+func TestAdd_EmitterFailureKeepsResponse(t *testing.T) {
+	book := newFakeBook()
+	i := New(book)
+	i.SetEmitter(failingEmitter{})
+	c, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil || !c.User.ContactRecord() {
+		t.Fatalf("Add: c=%+v err=%v", c.User, err)
+	}
+	if _, found, err := i.Delete(context.Background(), cOwner, cBob); err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+}
+
+// Сбой правил приватности гасит то, что они охраняют (фото, номер), но строка
+// журнала об удалении пишется и ответ не 500.
+func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	ctx := context.Background()
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyPhoneNumber: true}, rulesErr: errors.New("бд недоступна")})
+	if _, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	card, found, err := i.Delete(ctx, cOwner, cBob)
+	if err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+	if card.Phone != "" || card.ContactRecord() {
+		t.Fatalf("ответ = %+v", card)
+	}
+	if u, n := rowCard(t, log, cOwner); n != 2 || u.ContactRecord() || u.Phone != "" {
+		t.Fatalf("строка (n=%d) = %+v", n, u)
+	}
+}
+
+// GET /contacts и ответ добавления — одна и та же карточка: правило profile_photo
+// гасит аватарку на обоих путях (иначе она мигает при каждой мутации).
+func TestList_MatchesAddResponse(t *testing.T) {
+	i, book, _ := newBookInteractor(t)
+	ctx := context.Background()
+	pr := book.profile[cBob]
+	pr.Photo = domain.NewUserProfilePhoto(900, nil, false, false)
+	book.profile[cBob] = pr
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyPhoneNumber: true}}) // фото закрыто
+
+	added, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := i.List(ctx, cOwner)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List: %v %v", list, err)
+	}
+	a, _ := json.Marshal(added.User)
+	l, _ := json.Marshal(list[0].User)
+	if string(a) != string(l) {
+		t.Fatalf("Add: %s\nList: %s", a, l)
+	}
+	if _, ok := list[0].User.Photo.(domain.UserProfilePhotoReal); ok {
+		t.Fatalf("закрытая аватарка в книге: %+v", list[0].User.Photo)
+	}
+}
+
+// Правила приватности читаются ДО транзакции с замком курсора: сбой SQL внутри
+// неё переводит транзакцию в aborted, и строка журнала теряется.
+type orderEmitter struct {
+	inner  SnapshotEmitter
+	events *[]string
+}
+
+func (o orderEmitter) EmitSnapshot(ctx context.Context, u int64, typ string, build func(context.Context) (map[string]any, error)) error {
+	*o.events = append(*o.events, "emit")
+	return o.inner.EmitSnapshot(ctx, u, typ, build)
+}
+
+type orderPrivacy struct {
+	fakePrivacy
+	events *[]string
+}
+
+func (p orderPrivacy) VisibleMaps(ctx context.Context, v int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	*p.events = append(*p.events, "rules")
+	return p.fakePrivacy.VisibleMaps(ctx, v, ids, keys...)
+}
+
+func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	var events []string
+	i.SetEmitter(orderEmitter{inner: ownsync.New(log, nil, directTx{}), events: &events})
+	i.SetPrivacy(orderPrivacy{events: &events})
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) < 2 || events[0] != "rules" || events[1] != "emit" {
+		t.Fatalf("порядок = %v; want правила до EmitSnapshot", events)
 	}
 }

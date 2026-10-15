@@ -406,9 +406,9 @@ func (r *StoryRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error)
 func (r *StoryRepo) Origin(ctx context.Context, storyID int64) (domain.StoryOrigin, error) {
 	var o domain.StoryOrigin
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT s.author_id, u.display_name, s.media_id
+		`SELECT s.author_id, u.display_name, s.media_id, s.privacy
 		   FROM stories s JOIN users u ON u.id = s.author_id
-		  WHERE s.id=$1`, storyID).Scan(&o.AuthorID, &o.AuthorName, &o.MediaID)
+		  WHERE s.id=$1`, storyID).Scan(&o.AuthorID, &o.AuthorName, &o.MediaID, &o.Privacy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.StoryOrigin{}, domain.ErrNotFound
 	}

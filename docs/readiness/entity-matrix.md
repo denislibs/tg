@@ -46,7 +46,7 @@
 | Список контактов | ✅ | ✅ `list` |
 | Заблокировать / разблокировать | ✅ | ✅ `privacyManager.block/unblock` |
 | Список заблокированных | ✅ | ✅ `blocked` |
-| Предложить фото контакту | ✅ | ✅ `suggestPhoto` / `acceptPhotoSuggestion` |
+| Предложить фото контакту | ✅ | ✅ `suggestPhoto` (принятие — своей загрузкой `uploadProfilePhoto`, как в tweb; серверной ручки принятия нет) |
 | Снять фото контакта | ✅ | ✅ `clearPhoto` |
 | **Общие чаты** | ✅ `getCommonChats` | ❌ |
 | **Частые контакты (top peers)** | ✅ `getTopPeers` | ❌ |

@@ -67,7 +67,7 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if ns.MuteUntil == nil || *ns.MuteUntil != domain.MuteUntilForever {
 		t.Fatalf("«навсегда» = %v; want срок %d", ns.MuteUntil, domain.MuteUntilForever)
 	}
-	if !ns.Muted(time.Now()) {
+	if !mutedAt(ns, time.Now()) {
 		t.Fatal("mute not set")
 	}
 
@@ -76,7 +76,7 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns, _ = r.NotifySettings(ctx, chatID, u2)
-	if !ns.Muted(time.Now()) {
+	if !mutedAt(ns, time.Now()) {
 		t.Fatal("temporary mute not effective")
 	}
 	// Срок обязан доехать НАРУЖУ: без него клиент не покажет «до 15:00» и не
@@ -89,7 +89,7 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns, _ = r.NotifySettings(ctx, chatID, u2)
-	if ns.Muted(time.Now()) {
+	if mutedAt(ns, time.Now()) {
 		t.Fatal("expired mute still effective")
 	}
 	if err := r.SetMuted(ctx, chatID, u2, nil); err != nil {

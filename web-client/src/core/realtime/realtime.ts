@@ -131,7 +131,7 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
       const ops = messages.cacheMediaRead(frame)
       if (ops.length) broadcast(RT.messageOp, { ops })
       broadcast(RT.mediaRead, frame)
-      conn.markMediaRead(args.peerId, serverId)
+      conn.markMediaRead(args.peerId, [serverId])
       return { ok: true }
     },
     async sendTyping(args: { peerId: number; action?: SendMessageAction }) { conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }); return { ok: true } },
