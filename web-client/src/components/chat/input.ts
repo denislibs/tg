@@ -2168,7 +2168,7 @@ export default class ChatInput {
       const time = Date.now()
       if((time - this.lastTimeType) >= TYPING_THROTTLE_MS && e?.isTrusted) {
         this.lastTimeType = time
-        void this.managers.realtime.sendTyping({ peerId: this.chat.peerId })
+        void this.managers.realtime.sendTyping({ peerId: this.chat.peerId, threadId: this.chat.threadId })
       }
 
       this.botCommands?.toggle(true)

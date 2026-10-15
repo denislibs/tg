@@ -94,9 +94,13 @@ type readMediaData struct {
 // typingData — «печатает» от клиента. Действие едет КОНСТРУКТОРОМ объединения
 // SendMessageAction (у оригинала это messages.setTyping{peer, action}), а не
 // строкой из шести значений: одна форма на обе стороны провода.
+//
+// top_msg_id — серверный номер корня треда или темы (messages.setTyping
+// {top_msg_id}); ключа нет — печать вне треда.
 type typingData struct {
-	PeerID domain.PeerID `json:"peer_id"`
-	Action struct {
+	PeerID   domain.PeerID `json:"peer_id"`
+	TopMsgID *int64        `json:"top_msg_id,omitempty"`
+	Action   struct {
 		Underscore string `json:"_"`
 	} `json:"action"`
 }

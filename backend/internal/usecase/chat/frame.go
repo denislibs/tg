@@ -303,25 +303,6 @@ func (i *Interactor) messageThread(ctx context.Context, m domain.Message, kind s
 	return repliesOf(threads, m.ID)
 }
 
-// geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат
-// трансляции): клиент правит вложение открытого бабла без перезагрузки истории.
-//
-// Координаты едут ТЕМ ЖЕ конструктором, что и в самом сообщении
-// (messageMediaGeoLive под ключом media): собственный ключ `geo` с плоской
-// точкой внутри был второй формой гео на проводе.
-//
-// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
-// и то же edited_at прежде значило и «время правки» на верхнем уровне, и «время
-// обновления координат» внутри гео — два смысла на одну колонку. Оно же решает,
-// каким уедет period остановленной трансляции, поэтому едут они парой.
-func geoLiveUpdatePayload(m domain.Message) map[string]any {
-	p := map[string]any{"id": m.Seq, "media": m.ToWire(domain.MessageContext{}).(domain.MessageReal).Media}
-	if m.EditedAt != nil {
-		p["edit_date"] = m.EditedAt.Unix()
-	}
-	return p
-}
-
 // factCheckJSON — представление «проверки фактов» для клиента (nil → nil).
 func factCheckJSON(fc *domain.FactCheck) map[string]any {
 	if fc == nil {
@@ -453,21 +434,29 @@ func mediaReadPayload(peer domain.PeerID, seqs ...int64) map[string]any {
 // Отсюда и упрощение рассылки: тело одно на всех получателей, потому что
 // пер-зрительского в нём ничего нет. Прежде ключ пира приклеивался снаружи
 // каждому — как у кадров, где он и правда зависит от зрителя.
-func typingPayload(addr chatAddress, userID int64, act domain.SendMessageAction) map[string]any {
+//
+// topMsgID — серверный номер корня треда или темы (0 — вне треда: ключа нет).
+func typingPayload(addr chatAddress, userID, topMsgID int64, act domain.SendMessageAction) map[string]any {
+	var p map[string]any
 	// members != nil — личный чат или «Избранное»: у них пир это человек.
 	if addr.members != nil {
-		return map[string]any{
+		p = map[string]any{
 			"_":       domain.UpdateUserTypingTag,
 			"user_id": userID,
 			"action":  act,
 		}
+	} else {
+		p = map[string]any{
+			"_":          domain.UpdateChannelUserTypingTag,
+			"channel_id": addr.chatID,
+			"from_id":    domain.NewPeerUser(userID),
+			"action":     act,
+		}
 	}
-	return map[string]any{
-		"_":          domain.UpdateChannelUserTypingTag,
-		"channel_id": addr.chatID,
-		"from_id":    domain.NewPeerUser(userID),
-		"action":     act,
+	if topMsgID > 0 {
+		p["top_msg_id"] = topMsgID
 	}
+	return p
 }
 
 // draftPayload — тело кадра черновика.

@@ -7,7 +7,7 @@
 // ни публикации — механика хранилища покрыта у владельца
 // (`managers/messagesManager.test.ts`), здесь предмет — что кадр до него доходит.
 //
-// Приём — тот же, что в workerCore.geoLiveFrame.test.ts: частичные vi.mock
+// Приём — тот же, что в workerCore.postCounterFrames.test.ts: частичные vi.mock
 // connectionManager (перехват onFrame) и messagesManager (шпионы владельца).
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'

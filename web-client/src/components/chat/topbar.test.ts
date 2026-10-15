@@ -259,6 +259,20 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
     await vi.waitFor(() => expect(subtitle.querySelector('.peer-typing-container')).toBeTruthy())
   })
 
+  // Ф-6 f6-typing: tweb getPeerStatus → getPeerTypings(peerId) читает ключ БЕЗ
+  // треда (appImManager.ts:3755-3775), печать в теме шапке не видна.
+  it('группа: печать в теме (ключ с threadId) шапку не задевает', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    const subtitle = q(topbar, '.info')
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(subtitle.textContent).toBe('5 members'))
+
+    useChatsStore.setState({ typing: { [`${GROUP}_${generateMessageId(12)}`]: { [ALICE]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(subtitle.querySelector('.peer-typing-container')).toBeNull()
+    expect(subtitle.textContent).toBe('5 members')
+  })
+
   it('бот: подпись «bot», набор не показывается', async() => {
     useChatsStore.setState({ typing: { [BOT]: { [BOT]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
     const topbar = await open(makeChat({ peerId: BOT }))

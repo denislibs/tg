@@ -46,9 +46,11 @@ export interface RealtimeDeps {
   channelFunnel: ChannelFunnel
   /** Прочтение треда (тема, тред комментариев) — `threadReads.readHistory`. */
   threadReads: { readHistory(peerId: PeerId, threadId: number, maxId: number): Promise<unknown> }
+  /** tweb `setTyping` (appMessagesManager.ts:13873-13875): тред печати остаётся только у форума. */
+  isForumPeer: (peerId: PeerId) => boolean
 }
 
-export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads }: RealtimeDeps) {
+export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads, isForumPeer }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     // Источник правды о `{state, retryAt}` — pull, а не разовый снапшот. Для ЭТОЙ
@@ -134,7 +136,11 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
       conn.markMediaRead(args.peerId, [serverId])
       return { ok: true }
     },
-    async sendTyping(args: { peerId: number; action?: SendMessageAction }) { conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }); return { ok: true } },
+    async sendTyping(args: { peerId: number; action?: SendMessageAction; threadId?: number | null }) {
+      const threadId = args.threadId && isForumPeer(args.peerId) ? args.threadId : undefined
+      conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }, threadId)
+      return { ok: true }
+    },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
     // tweb `apiUpdatesManager.subscribeToChannelUpdates` /
     // `unsubscribeFromChannelUpdates` (:850-875) — опрос разницы открытой ленты

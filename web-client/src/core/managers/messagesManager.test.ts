@@ -850,8 +850,8 @@ describe('MessagesManager.cacheEdit — reply_markup', () => {
 // docs/research/2026-08-10-message-enrichments.md) переведены на операции — по
 // одной 'patch'/'remove' на каждое окно, где сообщение видно. rawPage([id...])
 // заводит id===seq, поэтому msg_id ниже совпадает с seq тестовых фикстур.
-// edit_message/geo_live_update намеренно НЕ переведены (см. комментарии у
-// messages.cacheEdit/cacheGeoLive) — тестов на op-перевод для них здесь нет.
+// Op-перевод правки (messages.cacheEdit, в том числе гео) покрыт сквозным
+// тестом client/realtime/storeProjection.windowWriters.test.ts.
 
 // Тред-фикстура (порт паттерна из describe('MessagesManager.cacheLive') выше):
 // сообщение id=2/seq=2 видно и в основном окне чата (rawPage[3,2,1]), и в окне
