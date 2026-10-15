@@ -28,6 +28,7 @@ import { KNOWN_ANCHOR_ACTIONS } from './richtext/url'
 import { getAnchorListener } from '@helpers/addAnchorListener'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { HttpError } from '@core/net/restClient'
+import { INTERNAL_LINK_TYPE } from './internalLink'
 import type { Managers } from '@/client/bootstrap'
 
 const managers = {
@@ -135,11 +136,20 @@ describe('t.me-ссылки исполняет процессор (делега�
   })
 
   it('t.me/addlist/<slug> недействительный — тост SharedFolder.Link.Expired', async() => {
-    managers.folders.previewInvite.mockRejectedValue(new HttpError(404, 'not found'))
+    // отказ доходит из воркера обычным `Error` с `type`, не `HttpError`
+    managers.folders.previewInvite.mockRejectedValue(Object.assign(new Error('INVITE_SLUG_EXPIRED'), { status: 400, type: 'INVITE_SLUG_EXPIRED' }))
     press(mountLink('https://t.me/addlist/slug1'))
     await flush()
     expect(showSharedFolderInvitePopup).not.toHaveBeenCalled()
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'SharedFolder.Link.Expired' })
+  })
+
+  it('t.me/addlist/<slug> — другой отказ не выдаётся за «ссылка недействительна» (tweb :1437-1441)', async() => {
+    const failure = Object.assign(new Error('internal'), { status: 500, type: '' })
+    managers.folders.previewInvite.mockRejectedValue(failure)
+    await expect(internalLinkProcessor.processListLink({ _: INTERNAL_LINK_TYPE.ADD_LIST, slug: 'slug1' })).rejects.toBe(failure)
+    expect(showSharedFolderInvitePopup).not.toHaveBeenCalled()
+    expect(toastNew).not.toHaveBeenCalled()
   })
 
   it('t.me/addstickers/<имя> — попап набора', () => {
