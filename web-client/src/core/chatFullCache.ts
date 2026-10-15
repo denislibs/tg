@@ -140,10 +140,15 @@ export function applyChatTheme(peerId: PeerId, themeId: string): void {
 
 /**
  * Событие `auto_delete_period_update`: срок автоудаления чата сменился. Патчим
- * ту же карточку (tweb `onUpdatePeerHistoryTTL`: `modifyCachedFullPeer` правит
- * `ttl_period` только там, где ключ есть — appProfileManager.ts:1544-1548).
+ * ту же карточку (tweb `onUpdatePeerHistoryTTL`, appProfileManager.ts:1544-1548).
  * Карточки нет — патчить нечего, срок приедет вместе с ней. Нуль — «выключено»:
  * ключ снимается.
+ *
+ * ОТСТУПЛЕНИЕ от tweb: там правка стоит за `'ttl_period' in peerFull`, и карточка
+ * БЕЗ ключа (срок был выключен) при включении не меняется, а при сбросе ключ
+ * остаётся со значением undefined. Мы патчим всегда — иначе карточка, открытая до
+ * первой установки срока, навсегда показывала бы «выкл». Согласовать с
+ * пользователем (строка «Не закрыто» в PR).
  */
 export function applyTtlPeriod(peerId: PeerId, period: number): void {
   const prev = fullMirror.get(peerId)

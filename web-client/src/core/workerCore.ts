@@ -821,9 +821,11 @@ export function createWorkerCore() {
       // диалога и при расхождении делаем то же, что делает tweb по
       // `updatePeerHistoryTTL`. Диалога нет — объявлять нечего. Совпало —
       // тишина: иначе каждая правка карточки будила бы подписчиков события.
+      // Только канальный снимок: у группы свой кадр, а её снимок читается вне
+      // транзакции журнала и может запоздать за более свежим сроком.
       const snap = d as ChatUpdateEvt
       const peerId = getPeerId(snap.peer)
-      const prev = dialogs.getDialogOnly(peerId)
+      const prev = pred === 'updateChannelFullSnapshot' ? dialogs.getDialogOnly(peerId) : undefined
       if (prev) {
         const next = (snap.chat_full.full_chat as { ttl_period?: number }).ttl_period ?? 0
         if ((prev.ttl_period ?? 0) !== next) {

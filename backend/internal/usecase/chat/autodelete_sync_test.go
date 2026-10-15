@@ -66,12 +66,24 @@ func TestSetChatAutoDelete_PrivateLogsPeerHistoryTTLToBothSides(t *testing.T) {
 	in, s := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
+	cache := &spyDialogsCache{}
+	in.SetDialogsCache(cache)
 	ctx := context.Background()
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
 	if err := in.SetChatAutoDelete(ctx, chatID, a, 86400); err != nil {
 		t.Fatalf("SetChatAutoDelete: %v", err)
+	}
+	// Срок — поле строки списка чатов: снимок диалогов в кэше устарел у обоих.
+	cache.mu.Lock()
+	got := map[int64]bool{}
+	for _, id := range cache.invalidated {
+		got[id] = true
+	}
+	cache.mu.Unlock()
+	if !got[a] || !got[b] {
+		t.Fatalf("кэш диалогов сброшен у %v, want обоих", cache.invalidated)
 	}
 
 	for _, c := range []struct{ uid, other int64 }{{a, b}, {b, a}} {
@@ -125,7 +137,9 @@ func TestSetChatAutoDelete_GroupLogsPeerHistoryTTLToEveryMember(t *testing.T) {
 		if len(rows) != 1 || rows[0]["ttl_period"] != float64(604800) {
 			t.Fatalf("строки у %d = %v", uid, rows)
 		}
-		assertLiveFramePts(t, pub, uid, "peer_history_ttl", ptsOfType(t, s, uid, "peer_history_ttl"))
+		pts := ptsOfType(t, s, uid, "peer_history_ttl")
+		assertLiveFramePts(t, pub, uid, "peer_history_ttl", pts)
+		assertInDifference(t, in, uid, "peer_history_ttl", pts)
 	}
 
 	if err := in.SetChatAutoDelete(ctx, chatID, owner, 0); err != nil {
@@ -150,8 +164,15 @@ func TestSetChatAutoDelete_BroadcastChannelPublishesSnapshot(t *testing.T) {
 	_ = fg.AddMember(ctx, id, 8, domain.RoleSubscriber, 0)
 	_ = fg.AddMember(ctx, id, 9, domain.RoleSubscriber, 0)
 
+	cache := &spyDialogsCache{}
+	i.SetDialogsCache(cache)
+
 	if err := i.SetChatAutoDelete(ctx, id, 7, 86400); err != nil {
 		t.Fatalf("SetChatAutoDelete: %v", err)
+	}
+	// Сбрасывается кэш только того, кто поставил срок (O(подписчиков) не платим).
+	if len(cache.invalidated) != 1 || cache.invalidated[0] != 7 {
+		t.Fatalf("кэш диалогов сброшен у %v, want [7]", cache.invalidated)
 	}
 	if fpub.count != 1 {
 		t.Fatalf("публикаций канала = %d, want 1 (без веера по подписчикам)", fpub.count)

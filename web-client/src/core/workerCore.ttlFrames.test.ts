@@ -150,6 +150,15 @@ describe('createWorkerCore(): срок автоудаления чата (f6-ttl
     expect(dialogOps.filter((o) => o.op === 'patch')).toEqual([])
   })
 
+  it('снимок ГРУППЫ срок не сравнивает: у неё свой кадр, а запоздавший снимок не должен его откатить', async () => {
+    const { events } = await boot([dialog(CHANNEL, 86400)])
+
+    capturedConnDeps!.onFrame('chat_update', { ...snapshot(), _: 'updateChatFullSnapshot' })
+    await settle()
+
+    expect(events).toEqual([])
+  })
+
   it('снимок канала, диалога которого нет, — события нет', async () => {
     const { events } = await boot([dialog(7)])
 

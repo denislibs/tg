@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -52,7 +54,7 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err := i.chats.SetAutoDelete(ctx, chatID, seconds); err != nil {
 		return err
 	}
-	i.publishHistoryTTL(ctx, chatID, actorID, seconds)
+	i.publishHistoryTTL(ctx, chatID, actorID, typ, seconds)
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionSetMessagesTTL(seconds))
 	return nil
 }
@@ -70,24 +72,31 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 //
 // Best-effort, как у темы чата: запись уже закоммичена, сбой журнала не должен
 // вернуться ошибкой запроса.
-func (i *Interactor) publishHistoryTTL(ctx context.Context, chatID, actorID int64, seconds int) {
-	if i.isBroadcast(ctx, chatID) {
+func (i *Interactor) publishHistoryTTL(ctx context.Context, chatID, actorID int64, typ string, seconds int) {
+	// Тип берётся у вызывающего: повторный вопрос к БД при сбое вернул бы «не
+	// канал» и пустил бы канал на миллион подписчиков в per-user веер.
+	if typ == domain.ChatTypeChannel {
 		i.invalidateDialogs(ctx, actorID)
 		i.publishChatUpdate(ctx, chatID)
 		return
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
+		log.Printf("[peer_history_ttl] members of %d: %v", chatID, err)
 		return
 	}
-	_ = i.logAndPublishPerPeer(ctx, chatID, members, "peer_history_ttl",
+	err = i.logAndPublishPerPeer(ctx, chatID, members, "peer_history_ttl",
 		func(peer domain.PeerID) map[string]any {
-			body := map[string]any{"_": domain.UpdatePeerHistoryTTLTag, "peer": domain.NewPeer(peer)}
-			if seconds > 0 { // «выключено» — отсутствие ключа
-				body["ttl_period"] = seconds
-			}
+			// Тело строит конструктор схемы, а не рукописный словарь: форма на
+			// проводе та же, что сверяет mtupdate_schema_test. Нуль — без ключа.
+			raw, _ := json.Marshal(domain.NewUpdatePeerHistoryTTL(domain.NewPeer(peer), seconds))
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
 			return body
 		})
+	if err != nil {
+		log.Printf("[peer_history_ttl] journal of %d (%d members): %v", chatID, len(members), err)
+	}
 }
 
 // PurgeExpiredMessages удаляет «для всех» сообщения с истёкшим auto_delete_at:
