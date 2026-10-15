@@ -24,8 +24,11 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 
 	// Upsert + Get + повторный Upsert (обновление).
 	rule := domain.PrivacyRuleRecord{Key: domain.PrivacyCalls, Value: domain.PrivacyContacts, AllowUserIDs: []int64{stranger}}
-	if err := r.Upsert(ctx, owner, rule); err != nil {
-		t.Fatalf("Upsert: %v", err)
+	if changed, err := r.Upsert(ctx, owner, rule); err != nil || !changed {
+		t.Fatalf("Upsert = %v, %v; want changed", changed, err)
+	}
+	if changed, err := r.Upsert(ctx, owner, rule); err != nil || changed {
+		t.Fatalf("Upsert того же правила = %v, %v; want unchanged", changed, err)
 	}
 	got, err := r.Get(ctx, owner, domain.PrivacyCalls)
 	if err != nil || got.Value != domain.PrivacyContacts || len(got.AllowUserIDs) != 1 || got.AllowUserIDs[0] != stranger {
@@ -34,8 +37,8 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	rule.Value = domain.PrivacyNobody
 	rule.AllowUserIDs = nil
 	rule.DenyUserIDs = []int64{contact}
-	if err := r.Upsert(ctx, owner, rule); err != nil {
-		t.Fatalf("Upsert update: %v", err)
+	if changed, err := r.Upsert(ctx, owner, rule); err != nil || !changed {
+		t.Fatalf("Upsert update = %v, %v; want changed", changed, err)
 	}
 	got, _ = r.Get(ctx, owner, domain.PrivacyCalls)
 	if got.Value != domain.PrivacyNobody || len(got.DenyUserIDs) != 1 || len(got.AllowUserIDs) != 0 {
@@ -58,11 +61,11 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	}
 
 	// Блокировки.
-	if err := r.Block(ctx, owner, stranger); err != nil {
-		t.Fatalf("Block: %v", err)
+	if changed, err := r.Block(ctx, owner, stranger); err != nil || !changed {
+		t.Fatalf("Block = %v, %v; want changed", changed, err)
 	}
-	if err := r.Block(ctx, owner, stranger); err != nil { // идемпотентно
-		t.Fatalf("Block twice: %v", err)
+	if changed, err := r.Block(ctx, owner, stranger); err != nil || changed { // идемпотентно
+		t.Fatalf("Block twice = %v, %v; want unchanged", changed, err)
 	}
 	if ok, _ := r.IsBlocked(ctx, owner, stranger); !ok {
 		t.Fatal("IsBlocked = false after Block")
@@ -78,7 +81,7 @@ func TestPrivacyRepo_RulesAndBlocks(t *testing.T) {
 	if ok, _ := r.IsBlocked(ctx, owner, stranger); ok {
 		t.Fatal("IsBlocked = true after Unblock")
 	}
-	if err := r.Block(ctx, owner, 999999); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := r.Block(ctx, owner, 999999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("Block missing user = %v, want ErrNotFound", err)
 	}
 }
@@ -100,12 +103,14 @@ func TestPrivacyRepo_VisibleMap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(r.Upsert(ctx, closed, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody}))
-	must(r.Upsert(ctx, friend, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts}))
-	must(r.Upsert(ctx, excepted, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody, AllowUserIDs: []int64{viewer}}))
+	mustUpsert := func(_ bool, err error) { must(err) }
+	mustUpsert(r.Upsert(ctx, closed, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody}))
+	mustUpsert(r.Upsert(ctx, friend, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyContacts}))
+	mustUpsert(r.Upsert(ctx, excepted, domain.PrivacyRuleRecord{Key: domain.PrivacyLastSeen, Value: domain.PrivacyNobody, AllowUserIDs: []int64{viewer}}))
 	_, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'V')`, friend, viewer)
 	must(err)
-	must(r.Block(ctx, blocker, viewer))
+	_, err = r.Block(ctx, blocker, viewer)
+	must(err)
 
 	vis, err := r.VisibleMap(ctx, viewer, []int64{viewer, open, closed, friend, blocker, excepted}, domain.PrivacyLastSeen)
 	must(err)
@@ -159,5 +164,77 @@ func TestPrivacyRepo_ContactViews(t *testing.T) {
 	}
 	if _, ok := got[dave]; ok || len(got) != 2 {
 		t.Errorf("лишние зрители: %+v", got)
+	}
+}
+
+// PartnersAmong — то же отношение, что ChatPartners: общий НЕ-канальный чат или
+// контакт в любую сторону; общий канал и посторонний — не партнёры.
+func TestPrivacyRepo_PartnersAmong(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewPrivacyRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7921")
+	inChat := seedUser(t, pool, "+7922")
+	myContact := seedUser(t, pool, "+7923")
+	addedMe := seedUser(t, pool, "+7924")
+	onlyChannel := seedUser(t, pool, "+7925")
+	stranger := seedUser(t, pool, "+7926")
+
+	seedPrivateChat(t, pool, me, inChat)
+	var chID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ('channel') RETURNING id`).Scan(&chID); err != nil {
+		t.Fatal(err)
+	}
+	for _, uid := range []int64{me, onlyChannel} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, chID, uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range [][2]int64{{me, myContact}, {addedMe, me}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, c[0], c[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := r.PartnersAmong(ctx, me, []int64{inChat, myContact, addedMe, onlyChannel, stranger, me})
+	if err != nil {
+		t.Fatalf("PartnersAmong: %v", err)
+	}
+	want := map[int64]bool{inChat: true, myContact: true, addedMe: true}
+	if len(got) != len(want) {
+		t.Fatalf("PartnersAmong = %v; want %v", got, want)
+	}
+	for _, id := range got {
+		if !want[id] {
+			t.Fatalf("лишний партнёр %d в %v", id, got)
+		}
+	}
+	if none, err := r.PartnersAmong(ctx, me, nil); err != nil || len(none) != 0 {
+		t.Fatalf("пустой список кандидатов = %v, %v", none, err)
+	}
+}
+
+// BlockedBy — какие из владельцев заблокировали зрителя (а не наоборот).
+func TestPrivacyRepo_BlockedBy(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewPrivacyRepo(pool)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7931")
+	blocker := seedUser(t, pool, "+7932")
+	blockedByViewer := seedUser(t, pool, "+7933")
+	other := seedUser(t, pool, "+7934")
+	if _, err := r.Block(ctx, blocker, viewer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Block(ctx, viewer, blockedByViewer); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.BlockedBy(ctx, viewer, []int64{blocker, blockedByViewer, other})
+	if err != nil {
+		t.Fatalf("BlockedBy: %v", err)
+	}
+	if len(got) != 1 || !got[blocker] {
+		t.Fatalf("BlockedBy = %v; want только %d", got, blocker)
 	}
 }

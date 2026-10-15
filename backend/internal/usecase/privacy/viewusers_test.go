@@ -62,3 +62,43 @@ func TestViewUsers_Batched(t *testing.T) {
 		t.Fatalf("статус = %v", users[0].Status)
 	}
 }
+
+// hideRepo — правило last_seen закрыто для всех чужих; 3 заблокировал зрителя.
+type hideRepo struct{ Repo }
+
+func (hideRepo) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	out := map[domain.PrivacyKey]map[int64]bool{}
+	for _, k := range keys {
+		out[k] = map[int64]bool{}
+		for _, id := range ids {
+			out[k][id] = k != domain.PrivacyLastSeen
+		}
+	}
+	return out, nil
+}
+
+func (hideRepo) BlockedBy(_ context.Context, _ int64, ids []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range ids {
+		if id == 3 {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
+// Скрытое время захода: правило — userStatusRecently («недавно»), блок —
+// userStatusEmpty («был(а) давно», tweb getUserStatusString: ALongTimeAgo).
+func TestViewUsers_HiddenStatus_RuleIsRecently_BlockIsLongAgo(t *testing.T) {
+	in := New(hideRepo{})
+	users := []domain.UserReal{domain.NewUser(2, domain.UserFlags{}), domain.NewUser(3, domain.UserFlags{})}
+
+	in.ViewUsers(context.Background(), 1, users)
+
+	if got := users[0].Status.Tag(); got != domain.UserStatusRecentlyTag {
+		t.Fatalf("скрыто правилом: %q; want userStatusRecently", got)
+	}
+	if got := users[1].Status.Tag(); got != domain.UserStatusEmptyTag {
+		t.Fatalf("скрыто блоком: %q; want userStatusEmpty", got)
+	}
+}

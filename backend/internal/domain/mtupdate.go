@@ -1369,6 +1369,66 @@ func NewUpdateDeleteScheduledMessages(peer Peer, ids, sent []int64) UpdateDelete
 	return u
 }
 
+// ── Блок и приватность (Ф-6, f6-privacy) — блок в конце по правилу горячих файлов ──
+
+const (
+	UpdatePeerBlockedTag = "updatePeerBlocked"
+	UpdatePrivacyTag     = "updatePrivacy"
+)
+
+// updatePeerBlocked#ebe07752 flags:# blocked:flags.0?true
+// blocked_my_stories_from:flags.1?true peer_id:Peer = Update;
+//
+// Чёрный список изменился на другом устройстве владельца. «Разблокировали» — тот
+// же конструктор с опущенным битом (как у закрепа). blocked_my_stories_from не
+// производится: блокировки «скрыть мои истории» у нас нет.
+//
+// Своего pts у конструктора нет — курсор едет в конверте. Уходит только
+// устройствам самого блокирующего: заблокированному об этом знать не положено,
+// ему уходят пересчитанные карточка и статус.
+type UpdatePeerBlocked struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	PeerID     Peer            `json:"peer_id"`
+}
+
+func (UpdatePeerBlocked) isUpdate()     {}
+func (u UpdatePeerBlocked) Tag() string { return u.Underscore }
+
+func NewUpdatePeerBlocked(peer Peer, blocked bool) UpdatePeerBlocked {
+	u := UpdatePeerBlocked{Underscore: UpdatePeerBlockedTag, PeerID: peer}
+	if blocked {
+		u.PFlags = map[string]bool{"blocked": true}
+	}
+	return u
+}
+
+// updatePrivacy#ee3b272a key:PrivacyKey rules:Vector<PrivacyRule> = Update;
+//
+// Правило одного ключа сменилось на другом устройстве владельца: вектор правил
+// ЦЕЛИКОМ, абсолютный снимок. Исключения (`privacyValueAllowUsers.users`) —
+// голые id (в схеме это Vector<long>), карточек пиров тело не несёт.
+//
+// Своего pts у конструктора нет — курсор едет в конверте.
+type UpdatePrivacy struct {
+	Underscore string         `json:"_"`
+	Key        PrivacyKeyCtor `json:"key"`
+	Rules      []PrivacyRule  `json:"rules"`
+}
+
+func (UpdatePrivacy) isUpdate()     {}
+func (u UpdatePrivacy) Tag() string { return u.Underscore }
+
+// NewUpdatePrivacy — снимок правила одного ключа; второе значение ложно, если
+// ключа нет в соответствии «наш ключ → конструктор схемы».
+func NewUpdatePrivacy(r PrivacyRuleRecord) (UpdatePrivacy, bool) {
+	key, ok := NewPrivacyKeyCtor(r.Key)
+	if !ok {
+		return UpdatePrivacy{}, false
+	}
+	return UpdatePrivacy{Underscore: UpdatePrivacyTag, Key: key, Rules: PrivacyRulesOf(r)}, true
+}
+
 // updateSavedReactionTags#39c67432 = Update; — тег «Избранного» переименован.
 // Параметров нет: клиент перечитывает теги, если они у него в кэше (tweb
 // appReactionsManager.ts:121-132). Кадр пишет только переименование; смена
