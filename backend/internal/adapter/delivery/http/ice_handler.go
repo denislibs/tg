@@ -4,9 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
-	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -35,11 +36,14 @@ func (h *ICEHandler) Get(w http.ResponseWriter, r *http.Request) {
 		mac := hmac.New(sha1.New, []byte(h.turnSecret))
 		mac.Write([]byte(username))
 		credential := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+		// JoinHostPort: голый IPv6 получает скобки (`turn:[2001:db8::1]:3478`), иначе
+		// конструктор RTCPeerConnection бросает на URL.
+		addr := net.JoinHostPort(strings.Trim(h.turnHost, "[]"), "3478")
 		servers = append(servers, map[string]any{
 			"urls": []string{
-				fmt.Sprintf("stun:%s:3478", h.turnHost),
-				fmt.Sprintf("turn:%s:3478?transport=udp", h.turnHost),
-				fmt.Sprintf("turn:%s:3478?transport=tcp", h.turnHost),
+				"stun:" + addr,
+				"turn:" + addr + "?transport=udp",
+				"turn:" + addr + "?transport=tcp",
 			},
 			"username":   username,
 			"credential": credential,

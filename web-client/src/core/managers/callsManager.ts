@@ -11,7 +11,6 @@ interface RawIce {
 
 export interface IceConfig {
   servers: RTCIceServer[]
-  ttlSeconds: number
 }
 
 /**
@@ -46,7 +45,6 @@ export function newCallsManager({ rest, getMeId, peers }: CallsDeps) {
           urls: s.urls,
           ...(s.username ? { username: s.username, credential: s.credential } : {}),
         })),
-        ttlSeconds: r.ttl ?? 3600,
       }
     },
     // Журнал звонков (вкладка «Звонки»), новые сверху.

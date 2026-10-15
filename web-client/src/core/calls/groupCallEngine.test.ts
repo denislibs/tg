@@ -11,7 +11,7 @@ vi.mock('../../client/bootstrap', () => ({
   startClient: () => ({
     managers: {
       realtime: { sendCallFrame: (...a: unknown[]) => sendCallFrame(...a) },
-      calls: { iceConfig: async () => ({ servers: iceServers, ttlSeconds: 3600 }) },
+      calls: { iceConfig: async () => ({ servers: iceServers }) },
       messages: { groupCallParticipants: async () => [] },
     },
   }),

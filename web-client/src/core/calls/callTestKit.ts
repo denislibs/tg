@@ -164,7 +164,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => { net.iceFetches++; return { servers: net.iceServers, ttlSeconds: 86_400 } } },
+            calls: { iceConfig: async () => { net.iceFetches++; return { servers: net.iceServers } } },
             peers: { getUsers: async () => [] },
           },
         }),
