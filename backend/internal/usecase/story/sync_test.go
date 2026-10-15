@@ -299,3 +299,29 @@ func TestArchive_ReturnsTotalCount(t *testing.T) {
 		t.Fatalf("items=%d total=%d err=%v; want 2 / 7", len(items), total, err)
 	}
 }
+
+// Сужение приватности: кто видел историю до правки и не видит после, получает
+// маркер удаления (иначе она висит у него в кэше до перезагрузки ленты), а тот,
+// кто остался в круге, — новую версию.
+func TestEditStory_NarrowingRetractsFromLostViewers(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.origin = domain.StoryOrigin{AuthorID: alice, Privacy: "contacts"}
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "close"}
+	repo.closeFriends = []int64{bob}
+	// до правки круг видит и Боб, и Кэрол; после — только Боб (близкий)
+	svc := New(repo, &fakePartners{ids: []int64{bob, carol}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	repo.visibleSeq = [][]int64{{alice, bob, carol}, {alice, bob}, {alice, bob}}
+	priv := "close"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, nil, &priv, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(log, carol, "story_update")
+	if len(rows) != 1 || storyOf(t, rows[0])["_"] != domain.StoryItemDeletedTag {
+		t.Fatalf("потерявший доступ Кэрол не получил маркер удаления: %v", log.rows[carol])
+	}
+	bobRows := rowsOf(log, bob, "story_update")
+	if len(bobRows) != 1 || storyOf(t, bobRows[0])["_"] == domain.StoryItemDeletedTag {
+		t.Fatalf("оставшийся Боб должен получить новую версию: %v", log.rows[bob])
+	}
+}

@@ -8,9 +8,10 @@
 //    типа, и удалённая история отличалась от новой только конвертом;
 //  • история приезжает ЦЕЛИКОМ и применяется точечно; полный рефетч ленты
 //    остаётся ровно для НОВОГО автора, чьей карточки в зеркале ещё нет;
-//  • `updateSentStoryReaction` стор не меняет: tweb его не слушает (В-4), свою
-//    реакцию вторая вкладка получает телом `updateStory`.
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+//  • `updateSentStoryReaction` несёт МОЙ выбор и адресует историю парой
+//    (peer, story_id): tweb кадр не слушает (В-4), но наш общий `updateStory`
+//    личного не несёт, и без обработчика реакция со второго устройства терялась.
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { useStoriesStore } from '../../stores/storiesStore'
@@ -30,7 +31,11 @@ const feed = vi.fn(async () => [])
 describe('storeProjection — кадры историй', () => {
   beforeAll(() => registerStoreProjection({ stories: { feed } } as unknown as Managers))
 
+  afterEach(() => vi.useRealTimers())
+
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date(1787334200 * 1000))
     feed.mockClear()
     useStoriesStore.setState({ groups: [{ author: bob, stories: [story(1)], maxReadId: 0 }], loaded: true })
   })
@@ -57,12 +62,17 @@ describe('storeProjection — кадры историй', () => {
     expect(useStoriesStore.getState().groups).toHaveLength(0)
   })
 
-  it('новый автор — рефетч ленты: группы без карточки автора не бывает', () => {
-    rootScope.dispatchEventSingle(RT.story, {
-      _: 'updateStory',
-      peer: { _: 'peerUser', user_id: 404 },
-      story: story(9),
-    })
+  it('новые авторы — ОДИН рефетч ленты на пачку кадров: группы без карточки автора не бывает', () => {
+    // после офлайна getDifference переигрывает десятки строк подряд
+    for (const id of [404, 405, 406]) {
+      rootScope.dispatchEventSingle(RT.story, {
+        _: 'updateStory',
+        peer: { _: 'peerUser', user_id: id },
+        story: story(9),
+      })
+    }
+    expect(feed).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(400)
 
     expect(feed).toHaveBeenCalledTimes(1)
     expect(useStoriesStore.getState().groups.map((g) => g.author.id)).toEqual([2])
@@ -79,11 +89,17 @@ describe('storeProjection — кадры историй', () => {
     expect(useStoriesStore.getState().groups[0].maxReadId).toBe(5)
   })
 
-  // tweb `updateSentStoryReaction` не слушает (grep по lib и components пуст,
-  // В-4): своя реакция на другом устройстве придёт в теле `updateStory`, а не
-  // этим кадром. Кадр остаётся в каталоге, но стор не меняет.
-  it('updateSentStoryReaction стор не меняет', () => {
-    const before = useStoriesStore.getState().groups
+  // tweb кадр не слушает: там сервер присылает зрителю `updateStory` с его
+  // `sent_reaction`. Наш общий `updateStory` личного не несёт, поэтому моя реакция
+  // на втором устройстве едет этим кадром и адресуется парой (peer, story_id).
+  it('updateSentStoryReaction ставит МОЮ реакцию именно на историю этого автора', () => {
+    useStoriesStore.setState({
+      groups: [
+        { author: bob, stories: [story(1)], maxReadId: 0 },
+        { author: { _: 'user', id: 3, first_name: 'Eve' }, stories: [story(1)], maxReadId: 0 },
+      ],
+      loaded: true,
+    })
 
     rootScope.dispatchEventSingle(RT.storyReaction, {
       _: 'updateSentStoryReaction',
@@ -92,7 +108,21 @@ describe('storeProjection — кадры историй', () => {
       reaction: { _: 'reactionEmoji', emoticon: '👍' },
     })
 
-    expect(useStoriesStore.getState().groups).toBe(before)
+    const [bobGroup, eveGroup] = useStoriesStore.getState().groups
+    expect(storyMyReaction(bobGroup.stories[0])).toBe('👍')
+    expect(storyMyReaction(eveGroup.stories[0])).toBeNull()
+  })
+
+  it('пустой эмодзи в кадре — «реакцию сняли»', () => {
+    useStoriesStore.getState().setMyReaction(2, 1, '👍')
+
+    rootScope.dispatchEventSingle(RT.storyReaction, {
+      _: 'updateSentStoryReaction',
+      peer: { _: 'peerUser', user_id: 2 },
+      story_id: 1,
+      reaction: { _: 'reactionEmoji', emoticon: '' },
+    })
+
     expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBeNull()
   })
 

@@ -489,7 +489,7 @@ const storyItemCols = `s.id, s.seq, s.media_id, s.caption, s.privacy, s.pinned, 
 // когда зритель ($1) — её автор: у оригинала счёт видит один автор. У чужого
 // зрителя CASE не вычисляет подзапрос (NULL → 0). Подзапрос стоит в списке
 // столбцов, поэтому считается для строк, прошедших LIMIT страницы, а не для всей
-// выборки; идёт по префиксу PK story_views(story_id, viewer_id), Index Only Scan.
+// выборки; идёт по префиксу PK story_views(story_id, viewer_id) (Bitmap/Index Scan).
 const viewsCountCol = `COALESCE(CASE WHEN s.author_id = $1 THEN (SELECT count(*) FROM story_views v WHERE v.story_id = s.id) END, 0) AS views_count`
 
 // scanStoryItems reads a flat story-item list (Archive/Pinned) and attaches the

@@ -124,6 +124,12 @@ function patchStory(groups: StoryGroup[], authorId: number, storyId: number, fn:
   )
 }
 
+/** История уже истекла (`expire_date` в секундах эпохи); у удалённой срока нет. */
+function storyExpired(story: StoryItem): boolean {
+  const real = realStory(story)
+  return !!real && real.expire_date <= Math.floor(Date.now() / 1000)
+}
+
 /**
  * Приехавшая история поверх прежней. Тело `updateStory`, которое получают
  * зрители, одно на всех и личного не несёт — ни `sent_reaction`, ни пометки
@@ -179,7 +185,14 @@ export const useStoriesStore = create<StoriesState>((set) => ({
         if (g.author.id !== authorId) return g
         const prev = g.stories.find((s) => s.id === story.id)
         const next = withMyReaction(story, prev, authorId)
-        return { ...g, stories: prev ? g.stories.map((s) => (s.id === story.id ? next : s)) : [...g.stories, next] }
+        if (prev) return { ...g, stories: g.stories.map((s) => (s.id === story.id ? next : s)) }
+        // Истёкшая история в активную ленту не входит (tweb `isStoryExpired`,
+        // appStoriesManager.ts:1740): её присылают закреплённой.
+        if (storyExpired(story)) return g
+        // Новая — на своё место по номеру: кадры двух быстрых историй могут прийти
+        // вразнобой, а последняя в группе задаёт кольцо и позицию группы.
+        const at = g.stories.findIndex((s) => s.id > story.id)
+        return { ...g, stories: at < 0 ? [...g.stories, next] : [...g.stories.slice(0, at), next, ...g.stories.slice(at)] }
       })),
     })),
   removeStory: (authorId, storyId) =>

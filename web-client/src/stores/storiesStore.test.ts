@@ -4,7 +4,7 @@
 // конструктора: «моя реакция» — параметр `sent_reaction` истории, общий агрегат
 // — `views`, закреп и правка — флаги `pFlags`, а «моя» в чипе разбивки это
 // `chosen_order`, а не булево поле.
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useStoriesStore, loadStories, getStoriesSortIndex, getStoriesSegments } from './storiesStore'
 import rootScope from '@lib/rootScope'
 import type { StoryGroup } from '../core/managers/storiesManager'
@@ -42,10 +42,15 @@ const me = { _: 'user' as const, id: 7, first_name: 'Me' }
 const first = () => useStoriesStore.getState().groups[0].stories[0]
 
 describe('storiesStore', () => {
+  // Срок жизни mkStory (`expire_date`) отсчитывается от даты истории: часы стоят там же.
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(1787334200 * 1000))
     rootScope.myId = 7
     useStoriesStore.setState({ groups: [], loaded: false })
   })
+
+  afterEach(() => vi.useRealTimers())
 
   it('loadStories populates groups + marks loaded', async () => {
     await loadStories(fakeManagers() as never)
@@ -121,6 +126,24 @@ describe('storiesStore', () => {
     }])
     useStoriesStore.getState().addStory(7, mkStory({ id: 1 }))
     expect(storyMyReaction(first())).toBeNull()
+  })
+
+  it('addStory не пускает в ленту ИСТЁКШУЮ новую историю, но правит уже показанную', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
+    // закреплённая истёкшая: в активный ряд не попадает (tweb isStoryExpired)
+    useStoriesStore.getState().addStory(2, mkStory({ id: 2, expire_date: 1787334100 }))
+    expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([1])
+    // та, что уже в группе, заменяется
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, caption: 'edited' }))
+    expect(storyCaption(first())).toBe('edited')
+  })
+
+  it('addStory ставит новую историю на место по номеру, а не в конец', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 4 })], maxReadId: 0 }])
+    // кадры двух быстрых историй пришли вразнобой: 6, затем 5
+    useStoriesStore.getState().addStory(2, mkStory({ id: 6 }))
+    useStoriesStore.getState().addStory(2, mkStory({ id: 5 }))
+    expect(useStoriesStore.getState().groups[0].stories.map((s) => s.id)).toEqual([4, 5, 6])
   })
 
   it('removeStory drops the story and empties out the group', () => {

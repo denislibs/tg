@@ -38,17 +38,20 @@ type fakeRepo struct {
 	feedErr       error
 	visible       bool
 	visibleAmong  map[int64]bool // nil — видят все кандидаты
-	visibleErr    error
-	marked        bool
-	markErr       error
-	author        int64
-	authorErr     error
-	viewers       domain.StoryViewers
-	viewersErr    error
-	stats         domain.StoryStats
-	statsErr      error
-	deleted       bool
-	deleteErr     error
+	// visibleSeq — ответы VisibleAmong по порядку вызовов (круг до и после правки
+	// приватности); когда исчерпан — действует visibleAmong.
+	visibleSeq [][]int64
+	visibleErr error
+	marked     bool
+	markErr    error
+	author     int64
+	authorErr  error
+	viewers    domain.StoryViewers
+	viewersErr error
+	stats      domain.StoryStats
+	statsErr   error
+	deleted    bool
+	deleteErr  error
 
 	setReaction    string
 	setCalled      bool
@@ -157,6 +160,11 @@ func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, 
 func (f *fakeRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
 	if f.deleted {
 		return nil, nil // строки истории больше нет — видеть нечего (как в SQL)
+	}
+	if len(f.visibleSeq) > 0 {
+		next := f.visibleSeq[0]
+		f.visibleSeq = f.visibleSeq[1:]
+		return next, nil
 	}
 	if f.visibleAmong == nil {
 		return viewerIDs, nil
@@ -684,24 +692,8 @@ func TestDelete_BroadcastsStoryDeleted(t *testing.T) {
 	}
 }
 
-func TestDelete_NonAuthor_ForbiddenNoBroadcast(t *testing.T) {
-	repo := &fakeRepo{author: 99}
-	pub := newFakePublisher()
-	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
-	useJournal(svc, pub)
-	if err := svc.Delete(context.Background(), 1, 5, 1); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("want ErrForbidden, got %v", err)
-	}
-	if repo.deleted {
-		t.Fatal("must not delete another user's story")
-	}
-	if len(pub.frames[1]) != 0 || len(pub.frames[2]) != 0 {
-		t.Fatal("must not broadcast story_deleted for a forbidden delete")
-	}
-}
-
 func TestDelete_NotFound_NoBroadcast(t *testing.T) {
-	repo := &fakeRepo{authorErr: domain.ErrNotFound}
+	repo := &fakeRepo{idByPair: map[[2]int64]int64{}}
 	pub := newFakePublisher()
 	svc := New(repo, &fakePartners{ids: []int64{2}}, &fakeMedia{}, &fakeTx{})
 	useJournal(svc, pub)

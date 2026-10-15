@@ -531,13 +531,8 @@ func (s *Service) Delete(ctx context.Context, authorID, seq, actor int64) error 
 	if err != nil {
 		return err // domain.ErrNotFound when the story is gone
 	}
-	author, err := s.repo.GetAuthor(ctx, storyID)
-	if err != nil {
-		return err
-	}
-	if author != authorID {
-		return domain.ErrForbidden
-	}
+	// Номер искали у самого автора (IDBySeq), поэтому чужой строки здесь не бывает —
+	// отдельная сверка владельца не нужна.
 	origin, err := s.repo.Origin(ctx, storyID)
 	if err != nil {
 		return err
@@ -667,12 +662,51 @@ func (s *Service) EditStory(ctx context.Context, authorID, seq, actor int64, cap
 			return domain.StoryItemReal{}, err
 		}
 	}
+	// Смена приватности может СУЗИТЬ аудиторию: кто видел историю до правки и не
+	// видит после, держит её в кэше. Старый круг собираем до правки, чтобы потом
+	// отправить потерявшим доступ маркер удаления (как Delete).
+	var before []int64
+	if privacy != nil || allowIDs != nil {
+		if origin, err := s.repo.Origin(ctx, storyID); err == nil {
+			if before, err = s.audience(ctx, authorID, storyID, origin.Privacy); err != nil {
+				log.Printf("story: edit author=%d seq=%d: audience before: %v", authorID, seq, err)
+			}
+		}
+	}
 	if err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
 		return s.repo.Edit(ctx, storyID, authorID, caption, privacy, allowIDs, mediaAreas)
 	}); err != nil {
 		return domain.StoryItemReal{}, err
 	}
-	return s.publishStory(ctx, authorID, storyID, true)
+	item, err := s.publishStory(ctx, authorID, storyID, true)
+	if err != nil {
+		return domain.StoryItemReal{}, err
+	}
+	if len(before) > 0 {
+		s.retract(ctx, authorID, seq, storyID, before)
+	}
+	return item, nil
+}
+
+// retract отправляет маркер `storyItemDeleted` тем из before, кто историю после
+// правки приватности больше не видит.
+func (s *Service) retract(ctx context.Context, authorID, seq, storyID int64, before []int64) {
+	rec, err := s.repo.ByID(ctx, storyID, authorID)
+	if err != nil {
+		return
+	}
+	after, err := s.audience(ctx, authorID, storyID, rec.Privacy)
+	if err != nil {
+		log.Printf("story: retract author=%d seq=%d: %v", authorID, seq, err)
+		return
+	}
+	lost := slices.DeleteFunc(slices.Clone(before), func(id int64) bool { return slices.Contains(after, id) })
+	if len(lost) == 0 {
+		return
+	}
+	s.emitTo(ctx, lost, "story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), domain.NewStoryItemDeleted(int(seq)),
+	))
 }
 
 // Archive returns the caller's own expired stories, newest first (tweb
