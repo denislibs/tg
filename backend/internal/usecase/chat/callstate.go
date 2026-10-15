@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -161,16 +162,16 @@ func (i *Interactor) FlushDirtyCallSnapshots(ctx context.Context) (int, error) {
 	}
 	published := 0
 	for _, chatID := range ids {
-		err := i.publishChatSnapshot(ctx, chatID)
-		if err != nil && err != domain.ErrNotFound { // удалённый чат снимка не ждёт
-			log.Printf("chat %d: отложенный снимок звонка: %v", chatID, err)
+		pubErr := i.publishChatSnapshot(ctx, chatID)
+		if pubErr != nil && !errors.Is(pubErr, domain.ErrNotFound) { // удалённый чат снимка не ждёт
+			log.Printf("chat %d: отложенный снимок звонка: %v", chatID, pubErr)
 			continue // аренда истечёт — запись подберёт следующий тик
 		}
 		if err := i.groupCalls.FinishDirtySnapshot(ctx, chatID, lease, callSnapshotWindow); err != nil {
 			log.Printf("chat %d: закрытие отложенного снимка звонка: %v", chatID, err)
 			continue
 		}
-		if err == nil {
+		if pubErr == nil {
 			published++
 		}
 	}

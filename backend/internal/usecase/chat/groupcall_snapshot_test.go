@@ -388,3 +388,19 @@ func TestCallFlags_DialogsPageBatchesTheLookup(t *testing.T) {
 		t.Fatalf("флаги звонка по чатам списка = %v, want только 101", active)
 	}
 }
+
+// Чат удалён, пока снимок ждал окна: запись снимается, а не крутится вечно.
+func TestCallSnapshot_DeletedChatLeavesTheQueue(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if err := e.calls.MarkSnapshotDirty(ctx, 99999, e.clock.Now().Add(callSnapshotWindow)); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.advance(6 * time.Second)
+	if n, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil || n != 0 {
+		t.Fatalf("тик: n=%d err=%v, want 0", n, err)
+	}
+	if e.calls.pendingDirty() != 0 {
+		t.Fatal("запись удалённого чата осталась в очереди")
+	}
+}
