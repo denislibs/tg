@@ -24,7 +24,7 @@
  *     основной: сервер не отдаёт `messages.exportedChatInviteReplaced`, поэтому
  *     новая основная выпускается следом (`exportChatInvite`) — видимый исход
  *     тот же (`:128`, `:140-141`). Во вкладке одного админа (`adminId`) основная — его «постоянная»
- *     по той же эмуляции (первая в выдаче у TG, `:542-543`); замена не выпускается, а без неё секция скрыта.
+ *     по той же эмуляции (первая в выдаче у TG, `:573-574`); замена не выпускается, а без неё секция скрыта.
  *  2. (О-121, снято М2-1) Режим ссылок одного админа (`adminId`) и раздел «Ссылки других админов»
  *     (`:231-290`) портированы: раздел виден создателю, сервер отдаёт чужие ссылки только ему.
  *  3. (О-122) Заявок по ссылке нет на проводе: ветки `requested`/`JoinRequests`
@@ -193,8 +193,8 @@ const ChatInviteLinks: Component = () => {
           const row = createInviteRow(editedInvite)
           revokedLinksContent.prepend(row.container)
           primaryInvite = newInvite
-          if(primaryInvite) {
-            inviteLink.setChatInvite(primaryInvite)
+          if(primaryInvite || usernames[0]) {
+            inviteLink.setChatInvite(primaryInvite || usernames[0])
           } else {
             inviteLinkSection.classList.add('hide')
           }
@@ -633,7 +633,7 @@ const ChatInviteLinks: Component = () => {
     const loadLinksPromise = Promise.all([p.invites, p.invitesRevoked]).then(([chatInvites, chatInvitesRevoked]) => {
       // расхождение 1, 5
       if(adminId) {
-        // у сервера TG постоянная ссылка админа идёт первой (`:542-543`); у нас её нет (О-120) —
+        // у сервера TG постоянная ссылка админа идёт первой (`:573-574`); у нас её нет (О-120) —
         // та же эмуляция, что для своей вкладки; нет такой — секция «Ссылка» не нужна
         primaryInvite = chatInvites.invites.filter(isPermanentLike).pop()
       } else if(!usernames.length) {

@@ -400,7 +400,7 @@ describe('«Пригласительные ссылки» — вкладка с�
     return tab
   }
 
-  it('основная — «постоянная» админа (без имени/срока/лимита), а не самая новая ссылка (tweb :542-543, эмуляция О-120)', async() => {
+  it('основная — «постоянная» админа (без имени/срока/лимита), а не самая новая ссылка (tweb :573-574, эмуляция О-120)', async() => {
     adminLinks = [
       invite('carol-new', { admin_id: ADMIN_ID, title: 'Promo', usage_limit: 5 }),
       invite('carol-perm', { admin_id: ADMIN_ID, date: now() - 86400 }),

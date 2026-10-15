@@ -143,10 +143,14 @@ func TestDeleteInvite_ForeignLink_ForbiddenForAdmin(t *testing.T) {
 	if err := i.DeleteInvite(ctx, id, 7, c1.Token); err != nil {
 		t.Fatalf("creator deletes own: %v", err)
 	}
-	if err := i.DeleteInvite(ctx, id, 7, a1.Token); err != nil {
+	a2, _ := i.CreateInvite(ctx, id, 8, "a2", nil, false, nil)
+	if act, _ := i.ListInvites(ctx, id, 7, 8, false); !hasToken(act, a2.Token) {
+		t.Fatal("fixture: admin's second link missing")
+	}
+	if err := i.DeleteInvite(ctx, id, 7, a2.Token); err != nil {
 		t.Fatalf("creator deletes admin's: %v", err)
 	}
-	if act, _ := i.ListInvites(ctx, id, 7, 8, false); hasToken(act, a1.Token) {
+	if act, _ := i.ListInvites(ctx, id, 7, 8, false); hasToken(act, a2.Token) {
 		t.Fatal("admin's link not deleted by creator")
 	}
 }
