@@ -21,10 +21,12 @@ beforeAll(() => {
   }).css
 })
 
-const rule = (selector: string) => {
+const ruleRe = (selector: string) => {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?:^|\\n|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1]
+  return new RegExp(`(?:^|\\n|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`, 'g')
 }
+
+const rule = (selector: string) => ruleRe(selector).exec(css)?.[1]
 
 describe('селектор пиров: раскладка чекбоксов строки (tweb HEAD)', () => {
   it('.selector .selector-row-with-checkbox — полоса справа 1.125 + 1.25 + .5rem', () => {
@@ -35,6 +37,24 @@ describe('селектор пиров: раскладка чекбоксов с�
     expect(rule('.row-with-checkbox-and-media.row-with-padding')).toMatch(/padding-inline-start:\s*7\.5rem\s*!important/)
     expect(rule('.row-selection-media')).toMatch(/margin-inline-start:\s*3rem\s*!important/)
     expect(rule('.row-selection-checkbox')).toMatch(/inset-inline-start:\s*1\.25rem\s*!important/)
+  })
+
+  // Оба правила — (0,2,0) и `!important`, поэтому побеждает то, что в собранном CSS позже.
+  // В tweb `style.scss:3 @use "base"` (там `.chatlist-chat.row-with-padding`, base.scss:1645) стоит
+  // до `partials/row` (style.scss:52), и строка с ведущим чекбоксом выигрывает: 7.5rem, а не 4.5rem.
+  // Иначе аватар `.row-selection-media` ложится на `.row-title` («Добавить участников»).
+  it('каскад: padding-inline-start строки с ведущим чекбоксом побеждает .chatlist-chat.row-with-padding', () => {
+    const winner = '.row-with-checkbox-and-media.row-with-padding'
+    const loser = '.chatlist-chat.row-with-padding'
+    const lastDecl = (selector: string) => {
+      const decls = [...css.matchAll(ruleRe(selector))]
+        .filter((m) => /padding-inline-start:[^;}]*!important/.test(m[1]))
+        .map((m) => m.index!)
+      return decls.at(-1) ?? -1
+    }
+    expect(lastDecl(winner), `нет ${winner} с padding-inline-start !important`).toBeGreaterThan(-1)
+    expect(lastDecl(loser), `нет ${loser} с padding-inline-start !important`).toBeGreaterThan(-1)
+    expect(lastDecl(winner)).toBeGreaterThan(lastDecl(loser))
   })
 
   it('.selector-square больше не раскладывает строку (снято 690514225)', () => {

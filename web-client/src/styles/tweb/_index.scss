@@ -20,6 +20,20 @@
 // в tweb подключаются раньше всего портированного.
 @use "bridge";
 
+// Выдержки из base.scss (целиком не портируем — это глобальный ресет,
+// конфликтующий с нашим styles/index.scss). В tweb `style.scss:3 @use "base"` стоит
+// ДО partials/ripple…row, поэтому и выдержки идут здесь, а не в хвосте: у правил равной
+// специфичности решает позиция (`.chatlist-chat.row-with-padding` base.scss:1645 против
+// `.row-with-checkbox-and-media.row-with-padding` _row.scss:479 — строка выделения
+// селектора обязана выиграть, иначе аватар ложится на имя).
+@use "code";
+@use "chatlistRow";
+@use "storiesList";
+@use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
+@use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
+@use "overlayedIcon"; // выдержка `.overlayed-icon`/`.auto-delete-icon` из base.scss:2438-2455
+@use "appearZoom"; // выдержка `.overflow-hidden`/`.appear-zoom` из base.scss:674-676, :2357-2367
+
 // --- Порядок как в tweb style.scss (номер — строка там) ---
 @use "ripple"; // :6
 @use "section"; // :7
@@ -102,15 +116,7 @@
 @use "popups/premium"; // :110
 @use "popups/confirmation"; // :114
 
-// Выдержки из base.scss (целиком не портируем — это глобальный ресет,
-// конфликтующий с нашим styles/index.scss) и страничные партиалы.
-@use "code";
-@use "chatlistRow";
-@use "storiesList";
-@use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
-@use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
-@use "overlayedIcon"; // выдержка `.overlayed-icon`/`.auto-delete-icon` из base.scss:2438-2455
-@use "appearZoom"; // выдержка `.overflow-hidden`/`.appear-zoom` из base.scss:674-676, :2357-2367
+// Страничные партиалы.
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
 @use "passcodeLockScreen"; // :127
