@@ -593,16 +593,16 @@ describe('PeersManager — переключение pFlags.contact', () => {
 })
 
 // tweb `appUsersManager.getContactMediaInput` (:977-988): визитка пользователя
-// глазами отправителя. В схеме у inputMediaContact `user_id` нет — id привязывает
-// сервер по номеру, а в бабл его кладёт только оптимистичная отправка
-// (`appMessagesManager.ts:4035-4045`), поэтому здесь его нет (В-10).
+// глазами отправителя, `user_id: id` в том числе (:986) — из него бабл берёт
+// `user_id` (`appMessagesManager.ts:4041`). На провод он не уходит
+// (connectionManager.test.ts), сервер привязывает аккаунт по номеру (В-10).
 describe('PeersManager — getContactMediaInput', () => {
-  it('имя, фамилия, телефон отправителя; vcard пуст; user_id нет', async () => {
+  it('имя, фамилия, телефон отправителя; vcard пуст; user_id — id карточки', async () => {
     const { rest } = fakeRest([user(2, { first_name: 'Боб', last_name: 'Иванов', phone: '+79990000002' })])
     const mgr = newPeersManager({ rest })
     await mgr.getUsers([2])
     expect(mgr.getContactMediaInput(2)).toEqual({
-      _: 'inputMediaContact', first_name: 'Боб', last_name: 'Иванов', phone_number: '+79990000002', vcard: '',
+      _: 'inputMediaContact', first_name: 'Боб', last_name: 'Иванов', phone_number: '+79990000002', vcard: '', user_id: 2,
     })
   })
 
@@ -611,7 +611,7 @@ describe('PeersManager — getContactMediaInput', () => {
     const mgr = newPeersManager({ rest })
     await mgr.getUsers([3])
     expect(mgr.getContactMediaInput(3)).toEqual({
-      _: 'inputMediaContact', first_name: 'Кэрол', last_name: '', phone_number: '', vcard: '',
+      _: 'inputMediaContact', first_name: 'Кэрол', last_name: '', phone_number: '', vcard: '', user_id: 3,
     })
   })
 

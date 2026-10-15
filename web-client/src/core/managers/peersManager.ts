@@ -442,10 +442,10 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   /**
    * Порт `appUsersManager.getContactMediaInput` (tweb `appUsersManager.ts:977-988`):
    * визитка пользователя глазами ОТПРАВИТЕЛЯ — имя, фамилия и номер, как карточка
-   * их несёт (скрытый номер — пустая строка), vcard пуст. `user_id` не кладём:
-   * в схеме у `inputMediaContact` его нет, на провод он не уходит, а сервер
-   * привязывает аккаунт по номеру (В-10); tweb кладёт его только в свою локальную
-   * копию сообщения (`appMessagesManager.ts:4035-4045`) — у нас это делает бабл.
+   * их несёт (скрытый номер — пустая строка), vcard пуст, `user_id: id` — как у
+   * tweb (:986): из него бабл берёт `user_id` (`appMessagesManager.ts:4041`). На
+   * провод он не уходит — в схеме у `inputMediaContact` его нет, а сервер
+   * привязывает аккаунт по номеру (В-10); срезает его `connectionManager`.
    * Карточки нет — ошибка, как у tweb (`getUser(id)` без записи).
    */
   function getContactMediaInput(userId: number): InputMedia.inputMediaContact {
@@ -457,6 +457,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
       last_name: user.last_name ?? '',
       phone_number: user.phone ?? '',
       vcard: '',
+      user_id: userId,
     }
   }
 

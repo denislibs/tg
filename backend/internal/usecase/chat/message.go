@@ -331,11 +331,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.Contact == nil {
 			return domain.Message{}, domain.ErrForbidden
 		}
-		uid, err := i.checkContact(ctx, in.SenderID, *in.Contact)
-		if err != nil {
+		if err := validateContact(*in.Contact); err != nil {
 			return domain.Message{}, err
 		}
-		in.contactUserID = uid
 	} else {
 		in.Contact, in.contactUserID = nil, nil
 	}
@@ -409,6 +407,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				return domain.Message{}, domain.ErrForbidden
 			}
 		}
+	}
+
+	// Аккаунт визитки — после гейтов: отказанная отправка поиск по номеру не
+	// тратит.
+	if in.Contact != nil {
+		uid, err := i.resolveContact(ctx, in.SenderID, *in.Contact)
+		if err != nil {
+			return domain.Message{}, err
+		}
+		in.contactUserID = uid
 	}
 
 	// Отложенная отправка (schedule_date): все гейты пройдены — вместо

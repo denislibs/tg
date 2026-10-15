@@ -537,6 +537,7 @@ describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
 // `sendFile` владеет аплоадом целиком, как оригинальный appMessagesManager.
 const CONTACT = {
   _: 'inputMediaContact' as const, first_name: 'Маша', last_name: 'Иванова', phone_number: '+79990000002', vcard: 'BEGIN:VCARD',
+  user_id: 42,
 }
 
 describe('sendText: бабл + кадр (порт tweb sendText → beforeMessageSending → message.send)', () => {
@@ -547,7 +548,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
 
     await p.sendText({
       peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: cid(7), type: 'contact', contact: CONTACT,
-      optimistic: { senderId: 5, contactUserId: 42 },
+      optimistic: { senderId: 5 },
     })
 
     // порядок обязателен: сперва бабл на экран, потом сеть
@@ -557,8 +558,8 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(msg.fromId).toBe(5)
     // Визитка бабла — КОНСТРУКТОР `messageMediaContact` в поле `media`, а не
     // собственный ключ `contact` рядом. Бабл показывает ровно те поля, что
-    // уходят на сервер (имя, ФАМИЛИЮ, телефон, vcard), а user_id кладёт только
-    // он (tweb appMessagesManager.ts:4035-4045) — на провод он не идёт.
+    // уходят на сервер (имя, ФАМИЛИЮ, телефон, vcard), а user_id берёт из
+    // inputMedia (tweb appMessagesManager.ts:4041) — на провод он не идёт.
     expect(msg.media).toEqual({
       _: 'messageMediaContact',
       phone_number: '+79990000002', first_name: 'Маша', last_name: 'Иванова', vcard: 'BEGIN:VCARD', user_id: 42,
@@ -574,6 +575,20 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
       replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null, allowPaidStars: null,
     }])
+  })
+
+  // Визитка превью ссылки не считает (tweb sendOther :3919-3925): иначе
+  // webPageFields.media (inputMediaWebPage) затёр бы media: inputMediaContact в кадре.
+  it('визитка с решением о превью: webPageFields не собираются', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+    await p.sendText({
+      peerId: 1, text: 'https://a.example', clientMsgId: 'c1', threadId: null, type: 'contact', contact: CONTACT,
+      noWebPage: true, invertMedia: true, optimistic: { senderId: 5 },
+    })
+    expect(h.sends[0]).not.toHaveProperty('webPageFields')
+    expect((h.emitted[0][0] as { msg: MessageReal }).msg.media?._).toBe('messageMediaContact')
   })
 
   // Гео-бабл собирается ТЕМ ЖЕ правилом, что и на бэкенде (`geoWire`): три

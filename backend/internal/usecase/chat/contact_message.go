@@ -28,13 +28,10 @@ func (in SendInput) contactFields() (first, last, phone, vcard *string) {
 	return &c.FirstName, &c.LastName, &c.PhoneNumber, &c.Vcard
 }
 
-// checkContact проверяет поля inputMediaContact и выводит аккаунт визитки по
-// номеру (messageMediaContact.user_id). Имена, телефон и vcard не правятся и не
-// заполняются: что прислал отправитель, то и уходит (В-10, tweb
-// appMessagesManager.ts:4035-4045). user_id клиент не присылает вовсе, его
-// выводит сервер тем же поиском и правилом, что «добавить контакт по номеру»
-// (PhoneResolver); не найден или скрыт правилом — nil (на проводе 0).
-func (i *Interactor) checkContact(ctx context.Context, senderID int64, c domain.InputMediaContact) (*int64, error) {
+// validateContact проверяет поля inputMediaContact. Имена, телефон и vcard не
+// правятся и не заполняются: что прислал отправитель, то и уходит (В-10, tweb
+// appMessagesManager.ts:4035-4045).
+func validateContact(c domain.InputMediaContact) error {
 	for _, f := range []struct {
 		v   string
 		max int
@@ -44,12 +41,20 @@ func (i *Interactor) checkContact(ctx context.Context, senderID int64, c domain.
 	} {
 		// NUL Postgres в text не принимает, а битый UTF-8 клиентам не показать.
 		if !utf8.ValidString(f.v) || strings.ContainsRune(f.v, 0) {
-			return nil, domain.ErrInvalid
+			return domain.ErrInvalid
 		}
 		if utf8.RuneCountInString(f.v) > f.max {
-			return nil, domain.ErrTooLong
+			return domain.ErrTooLong
 		}
 	}
+	return nil
+}
+
+// resolveContact выводит аккаунт визитки по номеру (messageMediaContact.user_id).
+// user_id клиент не присылает вовсе: сервер ищет тем же поиском и правилом, что
+// «добавить контакт по номеру» (PhoneResolver); не найден или скрыт правилом —
+// nil (на проводе 0). Сбой хранилища — ошибка отправки, а не молчаливый 0.
+func (i *Interactor) resolveContact(ctx context.Context, senderID int64, c domain.InputMediaContact) (*int64, error) {
 	if i.phones == nil || strings.TrimSpace(c.PhoneNumber) == "" {
 		return nil, nil
 	}

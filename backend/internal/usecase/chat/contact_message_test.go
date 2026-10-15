@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -146,7 +147,7 @@ func TestSendContact_ResolverFailureFailsSend(t *testing.T) {
 
 // type=contact без поля media — отказ; media-визитка у не-визитки игнорируется.
 func TestSendContact_TypeAndMediaMustAgree(t *testing.T) {
-	in, _, _, chat := contactEnv(t)
+	in, _, res, chat := contactEnv(t)
 	ctx := context.Background()
 	if _, err := in.Send(ctx, SendInput{ChatID: chat, SenderID: cmAlice, Type: "contact"}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("contact без media: %v, want ErrForbidden", err)
@@ -158,6 +159,36 @@ func TestSendContact_TypeAndMediaMustAgree(t *testing.T) {
 	}
 	if msg.IsContact() || msg.ContactName != nil {
 		t.Fatalf("визитка прилипла к текстовому сообщению: %+v", msg)
+	}
+	if res.calls != 0 {
+		t.Fatalf("поиск по номеру на отправке не-визитки: %d вызовов", res.calls)
+	}
+}
+
+// Отказанная гейтами отправка поиск по номеру не тратит.
+func TestSendContact_RejectedSendDoesNotResolve(t *testing.T) {
+	in, _, res, chat := contactEnv(t)
+	in.SetPrivacy(blockedBy{owner: cmBob})
+	_, err := sendContact(in, chat, domain.InputMediaContact{FirstName: "К", PhoneNumber: "+79990000003"})
+	if !errors.Is(err, domain.ErrPrivacy) {
+		t.Fatalf("err=%v, want ErrPrivacy", err)
+	}
+	if res.calls != 0 {
+		t.Fatalf("поиск по номеру после отказа: %d вызовов", res.calls)
+	}
+}
+
+// Строка очереди, поставленная до деплоя (contact_user_id + полное имя в
+// contact_name, без фамилии и vcard), публикуется: имя уходит как first_name.
+func TestScheduledContact_LegacyRow(t *testing.T) {
+	var p domain.ScheduledParams
+	if err := json.Unmarshal([]byte(`{"contact_user_id":3,"contact_name":"Кэрол Данверс","contact_phone":"+79990000003"}`), &p); err != nil {
+		t.Fatal(err)
+	}
+	in := sendInputOf(domain.ScheduledMessage{Type: "contact", Params: p})
+	want := domain.InputMediaContact{FirstName: "Кэрол Данверс", PhoneNumber: "+79990000003"}
+	if in.Contact == nil || *in.Contact != want {
+		t.Fatalf("Contact = %+v, want %+v", in.Contact, want)
 	}
 }
 

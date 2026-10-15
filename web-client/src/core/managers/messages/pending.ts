@@ -94,9 +94,6 @@ export interface SendOptimistic {
    *  меты файла. Взаимоисключающе с `media`: у готового документа меты нет,
    *  есть он сам — со ступенями и атрибутами. */
   document?: MyDocument
-  /** аккаунт визитки — только для бабла (tweb `inputMedia.user_id ?? '0'`,
-   *  appMessagesManager.ts:4035-4045); на провод `user_id` не идёт */
-  contactUserId?: number
   /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
    *  (знаковый ключ), а не снимок `{title, photo_id}`: имя и аватарку автор
    *  бабла берёт из зеркала карточек — как и у серверного эха, где `from_id`
@@ -390,7 +387,7 @@ function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): Messa
     first_name: contact.first_name,
     last_name: contact.last_name,
     vcard: contact.vcard,
-    user_id: contact.user_id ?? 0,
+    user_id: Number(contact.user_id ?? 0),
   }
 }
 
@@ -852,7 +849,10 @@ export function newPendingMethods(ctx: PendingCtx) {
     const { optimistic, noWebPage, webPage, webPageOptions, invertMedia, ...o } = input
     const { params, rest } = splitSendingParams(o)
     // tweb `sendText` :2695 (`generateOutgoingWebPage`) и :2746 (`invert_media`)
-    const webPageSend: WebPageSendOptions = { noWebPage, webPage, webPageOptions, invertMedia }
+    // Визитка — не текст со ссылкой: у tweb она идёт через `sendOther`
+    // (appMessagesManager.ts:3919-3925), превью не считается, а ключ `media` кадра
+    // занят `inputMediaContact` и не должен затираться `inputMediaWebPage`.
+    const webPageSend: WebPageSendOptions = o.contact ? {} : { noWebPage, webPage, webPageOptions, invertMedia }
     const webPageFields = sendWebPageWireFields(webPageSend)
     const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params), ...(Object.keys(webPageFields).length ? { webPageFields } : {}) }
     const send = () => ctx.send(args)
@@ -870,9 +870,10 @@ export function newPendingMethods(ctx: PendingCtx) {
       media: optimistic.media,
       document: optimistic.document,
       geo: args.geo,
-      // Бабл визитки показывает те же поля, что уходят на сервер; user_id —
-      // только отсюда (на провод не идёт), эхо new_message его заменит.
-      contact: args.contact ? { ...args.contact, user_id: optimistic.contactUserId } : undefined,
+      // Бабл визитки показывает те же поля, что уходят на сервер; user_id берётся
+      // из inputMedia, как у tweb (`inputMedia.user_id ?? '0'`, :4041), на провод
+      // он не идёт (connectionManager), эхо new_message его заменит.
+      contact: args.contact,
       secret: optimistic.secret,
       send_as: optimistic.sendAs,
       reply_to_id: params.replyToMsgId ?? null,

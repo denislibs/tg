@@ -486,8 +486,9 @@ func NewMessageMediaContact(userID int64, firstName, lastName, phone, vcard stri
 
 // IsContact — сообщение-визитка. Признак — first_name (ContactName): он есть у
 // каждой визитки, даже пустой строкой, тогда как user_id у визитки без
-// найденного аккаунта нет.
-func (m Message) IsContact() bool { return m.ContactName != nil }
+// найденного аккаунта нет; строка с одним только user_id (прежние данные) тоже
+// визитка.
+func (m Message) IsContact() bool { return m.ContactName != nil || m.ContactUserID != nil }
 
 // ContactInput — поля визитки сообщения в форме входа отправки (копия и
 // пересылка кладут их в пробу Send). nil — сообщение не визитка.

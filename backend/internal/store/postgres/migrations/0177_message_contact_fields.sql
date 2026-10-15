@@ -12,6 +12,8 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS contact_last_name TEXT;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS contact_vcard TEXT;
 
 -- +goose Down
--- Потеря данных при откате: фамилии и vcard визиток.
+-- Потеря данных при откате: фамилии и vcard визиток. Откат КОДА без отката
+-- данных ломает отображение визиток без аккаунта (прежний код узнавал визитку
+-- по contact_user_id): миграция рассчитана только на движение вперёд.
 ALTER TABLE messages DROP COLUMN IF EXISTS contact_vcard;
 ALTER TABLE messages DROP COLUMN IF EXISTS contact_last_name;

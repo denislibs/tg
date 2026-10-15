@@ -1,4 +1,5 @@
 // src/core/realtime/events.ts
+import type { InputMedia } from '@layer'
 import type { MessageEntity, RawMessage, RawMyMessage, MessageReactions, Reaction } from '../models'
 import type { MessageMedia, MessageMediaWebPage, MyDocument } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
@@ -954,11 +955,9 @@ export interface PendingNewEvt {
   /** АРГУМЕНТЫ сборки гео-вложения бабла (как и `media` выше — не само
    *  вложение): три конструктора из них собирает `makeGeoMedia`. */
   geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }
-  /** То же для визитки: поля `inputMediaContact`, что уходят на сервер, и
-   *  `user_id` — только для бабла (tweb кладёт его в локальное сообщение,
-   *  `appMessagesManager.ts:4035-4045`; на провод он не идёт). 0 — аккаунт
-   *  неизвестен. */
-  contact?: { user_id?: number; first_name: string; last_name: string; phone_number: string; vcard: string }
+  /** То же для визитки: `inputMediaContact` отправки. `user_id` — только для
+   *  бабла (tweb `appMessagesManager.ts:4041`, `?? '0'`); на провод не идёт. */
+  contact?: Omit<InputMedia.inputMediaContact, '_'>
   secret?: boolean
   /** send-as: бабл сразу от лица канала/группы. Едет ССЫЛКА (знаковый ключ), а
    *  не снимок `{title, photo_id}`: имя и фото автор бабла берёт из зеркала
