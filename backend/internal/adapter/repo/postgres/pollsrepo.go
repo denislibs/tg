@@ -18,6 +18,13 @@ type PollsRepo struct {
 
 func NewPollsRepo(pool *pgxpool.Pool) *PollsRepo { return &PollsRepo{pool: pool} }
 
+// Delete убирает опрос несостоявшейся отправки (голоса — каскадом). Если на опрос уже
+// ссылается сообщение, внешний ключ messages.poll_id не даст удалить — вернётся ошибка.
+func (r *PollsRepo) Delete(ctx context.Context, id int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `DELETE FROM polls WHERE id = $1`, id)
+	return err
+}
+
 func (r *PollsRepo) Create(ctx context.Context, p domain.Poll) (domain.Poll, error) {
 	opts, err := json.Marshal(p.Options)
 	if err != nil {

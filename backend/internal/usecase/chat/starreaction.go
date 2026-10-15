@@ -17,7 +17,12 @@ const starReactionTopN = 3
 // начисляет их автору сообщения, накопительно фиксирует вклад отправителя —
 // транзакционно, затем рассылает новый агрегат участникам чата. Возвращает новый
 // агрегат сообщения (total+mine зрителя), топ-отправителей и новый баланс отправителя.
-func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, userID, count int64, anonymous bool) (domain.StarReactionAgg, []domain.StarReactionSender, int64, error) {
+//
+// randomID — ключ идемпотентности (TL messages.sendPaidReaction.random_id, tweb
+// appReactionsManager.ts:960-970): повтор запроса с тем же ключом (потерянный ответ, повтор
+// прокси, одновременные дубли) звёзд не списывает и возвращает тот же результат. 0 — клиент
+// без ключа (старая сборка): идемпотентности нет.
+func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, userID, count int64, anonymous bool, randomID int64) (domain.StarReactionAgg, []domain.StarReactionSender, int64, error) {
 	if i.starReaction == nil || i.stars == nil {
 		return domain.StarReactionAgg{}, nil, 0, domain.ErrNotFound
 	}
@@ -49,7 +54,25 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	// updateMessageReactions с абсолютным агрегатом сообщения (journalReactions:
 	// поставившему и автору — их глазами; остальным — min).
 	var deliver func(context.Context)
+	repeat := false
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if randomID != 0 {
+			isNew, e := i.starReaction.Claim(ctx, userID, randomID, messageID, count)
+			if e != nil {
+				return e
+			}
+			if !isNew {
+				// Повтор уже проведённого запроса: не платим, отдаём текущий итог.
+				repeat = true
+				byMsg, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, userID)
+				if e != nil {
+					return e
+				}
+				agg = byMsg[messageID]
+				senderBal, e = i.stars.Balance(ctx, userID)
+				return e
+			}
+		}
 		// Списание у отправителя и начисление автору — одним движением с общим порядком
 		// блокировок строк балансов (moveStars). Реакция на своё сообщение — списание и
 		// начисление на один баланс (нетто-ноль), поэтому автору начисляем только если это
@@ -84,6 +107,10 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	})
 	if err != nil {
 		return domain.StarReactionAgg{}, nil, 0, err
+	}
+	if repeat {
+		top, _ := i.starReaction.TopSenders(ctx, userID, messageID, starReactionTopN)
+		return agg, hideAnonymousSenders(top), senderBal, nil
 	}
 	deliver(ctx)
 	i.publishBalance(ctx, userID, senderBal)

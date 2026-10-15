@@ -194,19 +194,20 @@ describe('StoriesManager', () => {
     expect(calls[1].path).toBe('/stories/archive')
   })
 
-  it('pin POSTs /stories/:id/pin; pinnedStories GETs by peer', async () => {
-    const { rest, calls } = fakeRest({ stories: [] }, { ok: true })
+  it('pin POSTs /stories/:id/pin и отдаёт Vector<int>; pinnedStories GETs by peer', async () => {
+    const { rest, calls } = fakeRest({ stories: [] }, [7])
     const mgr = newStoriesManager({ rest })
-    await mgr.pin(2, 7, true)
+    expect(await mgr.pin(2, 7, true)).toEqual([7])
     expect(calls[0]).toEqual({ method: 'POST', path: '/stories/2/7/pin', body: { pinned: true } })
     await mgr.pinnedStories(42)
     expect(calls[1]).toEqual({ method: 'GET', path: '/stories/pinned?peer=42' })
   })
 
-  it('editStory PATCHes /stories/:id with only provided fields', async () => {
-    const { rest, calls } = fakeRest({}, { ok: true })
+  it('editStory PATCHes /stories/:id with only provided fields и отдаёт историю из updates', async () => {
+    const edited = story(7, { caption: 'x', pFlags: { edited: true } })
+    const { rest, calls } = fakeRest({}, { _: 'updates', updates: [{ _: 'updateStory', peer: { _: 'peerUser', user_id: 2 }, story: edited }], users: [], chats: [], date: 1, seq: 0 })
     const mgr = newStoriesManager({ rest })
-    await mgr.editStory(2, 7, { caption: 'x', privacy: 'selected', allowIds: [2] })
+    expect(await mgr.editStory(2, 7, { caption: 'x', privacy: 'selected', allowIds: [2] })).toEqual(edited)
     expect(calls[0]).toEqual({ method: 'PATCH', path: '/stories/2/7', body: { caption: 'x', privacy: 'selected', allow_user_ids: [2] } })
     // omitted fields absent from body
     await mgr.editStory(2, 7, { caption: 'only' })

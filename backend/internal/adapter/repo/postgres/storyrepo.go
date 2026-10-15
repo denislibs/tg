@@ -112,16 +112,30 @@ func (r *StoryRepo) IDBySeq(ctx context.Context, authorID, seq int64) (int64, er
 }
 
 // SetRead двигает ГОРИЗОНТ прочтения зрителя у автора: только вперёд, как
-// `read_inbox_max_id` у диалога. Возвращает горизонт ПОСЛЕ применения — кадру
-// нужно ровно это число, а не то, что прислал клиент.
-func (r *StoryRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error) {
+// `read_inbox_max_id` у диалога. Возвращает горизонт ПОСЛЕ применения и признак
+// «сдвинулся»: кадру нужно ровно это число, а не то, что прислал клиент, а
+// повторный просмотр уже прочитанной истории апдейта не рождает.
+//
+// Условие в DO UPDATE ... WHERE не даёт строке переписаться без сдвига: тогда
+// RETURNING пуст, и горизонт читается отдельно.
+func (r *StoryRepo) SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, bool, error) {
+	q := querier(ctx, r.pool)
 	var out int64
-	err := querier(ctx, r.pool).QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`INSERT INTO story_read (viewer_id, author_id, max_read_id) VALUES ($1,$2,$3)
 		 ON CONFLICT (viewer_id, author_id)
-		 DO UPDATE SET max_read_id = GREATEST(story_read.max_read_id, EXCLUDED.max_read_id)
+		 DO UPDATE SET max_read_id = EXCLUDED.max_read_id
+		 WHERE story_read.max_read_id < EXCLUDED.max_read_id
 		 RETURNING max_read_id`, viewerID, authorID, maxID).Scan(&out)
-	return out, err
+	if err == nil {
+		return out, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, err
+	}
+	err = q.QueryRow(ctx,
+		`SELECT max_read_id FROM story_read WHERE viewer_id=$1 AND author_id=$2`, viewerID, authorID).Scan(&out)
+	return out, false, err
 }
 
 // ReadHorizons — горизонты зрителя у перечисленных авторов. Отсутствие строки
@@ -159,6 +173,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		        `+userSeenCols("u.", "$1")+`,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
 		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction,
+		        `+viewsCountCol+`,
 		        COALESCE((SELECT rd.max_read_id FROM story_read rd WHERE rd.viewer_id = $1 AND rd.author_id = s.author_id), 0) AS max_read_id
 		   FROM stories s
 		   JOIN users u ON u.id = s.author_id
@@ -196,7 +211,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		dest := []any{&item.ID, &item.Seq, &discard, &item.MediaID, &item.Caption, &item.Privacy, &item.Pinned, &item.Edited,
 			&areasRaw, &fwdAuthor, &fwdStory, &item.CreatedAt, &item.ExpiresAt}
 		dest = append(dest, au.dest()...)
-		dest = append(dest, &item.ReactionsCount, &item.MyReaction, &maxRead)
+		dest = append(dest, &item.ReactionsCount, &item.MyReaction, &item.ViewsCount, &maxRead)
 		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
@@ -382,6 +397,27 @@ func (r *StoryRepo) RemoveReaction(ctx context.Context, storyID, userID int64) e
 	return err
 }
 
+// Reactors — реакции среди userIDs (PK story_reactions (story_id, user_id)):
+// память O(реагировавшие ∩ аудитория), а не O(все реакции истории).
+func (r *StoryRepo) Reactors(ctx context.Context, storyID int64, userIDs []int64) (map[int64]string, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id, reaction FROM story_reactions WHERE story_id=$1 AND user_id = ANY($2)`, storyID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var uid int64
+		var reaction string
+		if err := rows.Scan(&uid, &reaction); err != nil {
+			return nil, err
+		}
+		out[uid] = reaction
+	}
+	return out, rows.Err()
+}
+
 // ReactionsCount — всего реакций на историю.
 func (r *StoryRepo) ReactionsCount(ctx context.Context, storyID int64) (int, error) {
 	var n int
@@ -467,7 +503,15 @@ func (r *StoryRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs [
 const storyItemCols = `s.id, s.seq, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 	s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id, s.created_at, s.expires_at,
 	(SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
-	COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction`
+	COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction,
+	` + viewsCountCol
+
+// viewsCountCol — число просмотров истории (`storyViews.views_count`), только
+// когда зритель ($1) — её автор: у оригинала счёт видит один автор. У чужого
+// зрителя CASE не вычисляет подзапрос (NULL → 0). Подзапрос стоит в списке
+// столбцов, поэтому считается для строк, прошедших LIMIT страницы, а не для всей
+// выборки; идёт по префиксу PK story_views(story_id, viewer_id) (Bitmap/Index Scan).
+const viewsCountCol = `COALESCE(CASE WHEN s.author_id = $1 THEN (SELECT count(*) FROM story_views v WHERE v.story_id = s.id) END, 0) AS views_count`
 
 // scanStoryItems reads a flat story-item list (Archive/Pinned) and attaches the
 // per-emoji reaction breakdown for viewerID in one extra batched query.
@@ -482,7 +526,7 @@ func (r *StoryRepo) scanStoryItems(ctx context.Context, rows pgx.Rows, viewerID 
 		)
 		if err := rows.Scan(&it.ID, &it.Seq, &it.MediaID, &it.Caption, &it.Privacy, &it.Pinned, &it.Edited,
 			&areasRaw, &fwdAuthor, &fwdStory, &it.CreatedAt, &it.ExpiresAt,
-			&it.ReactionsCount, &it.MyReaction); err != nil {
+			&it.ReactionsCount, &it.MyReaction, &it.ViewsCount); err != nil {
 			return nil, err
 		}
 		areas, err := unmarshalMediaAreas(areasRaw)
@@ -623,6 +667,15 @@ func (r *StoryRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64)
 		return nil, err
 	}
 	return r.scanStoryItems(ctx, rows, ownerID)
+}
+
+// ArchiveCount — ВСЕГО историй в архиве владельца (та же выборка, что Archive,
+// без limit и offset): `stories.stories.count`.
+func (r *StoryRepo) ArchiveCount(ctx context.Context, ownerID int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT count(*) FROM stories WHERE author_id = $1 AND expires_at <= now()`, ownerID).Scan(&n)
+	return n, err
 }
 
 func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error) {

@@ -467,3 +467,46 @@ func TestPaidChecklistAndScheduledPoll_RetryOfAcceptedSendIsIdempotent(t *testin
 		t.Fatalf("повтор отложенного опроса: seq %d/%d err=%v опросов %d строк очереди %d", s2.Seq, s1.Seq, err, len(f.polls.polls), f.sched.count())
 	}
 }
+
+// raiseOnBalance поднимает цену группы в момент проверки баланса (precheckPaid): цена
+// выросла между ранним отказом и транзакцией Send — Send откажет, а строка опроса/чек-листа,
+// созданная между ними, не должна остаться сиротой.
+type raiseOnBalance struct {
+	StarsRepo
+	once  sync.Once
+	raise func()
+}
+
+func (r *raiseOnBalance) Balance(ctx context.Context, userID int64) (int64, error) {
+	r.once.Do(r.raise)
+	return r.StarsRepo.Balance(ctx, userID)
+}
+
+// Ф7-Г2: гонка «precheck → Send» не оставляет сиротской строки опроса и чек-листа:
+// отказ Send убирает созданную строку.
+func TestPaidPollChecklist_PriceRaceLeavesNoOrphan(t *testing.T) {
+	for name, run := range map[string]func(f paidFixture) error{
+		"poll": func(f paidFixture) error {
+			_, err := f.in.SendPoll(context.Background(), SendPollInput{ChatID: f.cid, SenderID: 2, Question: "q", Options: []string{"a", "b"}, AllowPaidStars: 5})
+			return err
+		},
+		"checklist": func(f paidFixture) error {
+			_, err := f.in.SendChecklist(context.Background(), SendChecklistInput{ChatID: f.cid, SenderID: 2, Title: "t", Items: []string{"a"}, AllowPaidStars: 5})
+			return err
+		},
+	} {
+		f := newPaidFixture(t)
+		f.topUp(t, 2, 20)
+		f.in.SetStars(&raiseOnBalance{StarsRepo: f.stars, raise: func() {
+			if err := f.in.SetChatChargeStars(context.Background(), f.cid, 1, 6); err != nil {
+				t.Error(err)
+			}
+		}})
+		if got := needStars(run(f)); got != 6 {
+			t.Errorf("%s: цена выросла до 6, согласие 5: need=%d, want 6", name, got)
+		}
+		if len(f.polls.polls) != 0 || len(f.lists.lists) != 0 {
+			t.Errorf("%s: сиротские строки: опросов %d, чек-листов %d", name, len(f.polls.polls), len(f.lists.lists))
+		}
+	}
+}

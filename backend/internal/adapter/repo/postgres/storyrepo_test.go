@@ -69,13 +69,16 @@ func TestStoryRepo_FeedViewViewersDelete(t *testing.T) {
 	if err := repo.MarkViewed(ctx, storyID, u2); err != nil {
 		t.Fatalf("MarkViewed (idempotent): %v", err)
 	}
-	if got, err := repo.SetRead(ctx, u2, u1, seq); err != nil || got != seq {
-		t.Fatalf("SetRead = %d, %v; want %d", got, err, seq)
+	if got, moved, err := repo.SetRead(ctx, u2, u1, seq); err != nil || got != seq || !moved {
+		t.Fatalf("SetRead = %d, moved=%v, %v; want %d, moved", got, moved, err, seq)
 	}
 	// Горизонт двигается только вперёд: повторное чтение старой истории его не
-	// откатывает.
-	if got, _ := repo.SetRead(ctx, u2, u1, seq-1); got != seq {
-		t.Fatalf("горизонт откатился назад: %d", got)
+	// откатывает и «сдвига» не объявляет (апдейт прочтения не нужен).
+	if got, moved, _ := repo.SetRead(ctx, u2, u1, seq-1); got != seq || moved {
+		t.Fatalf("горизонт откатился или сдвинулся: %d moved=%v", got, moved)
+	}
+	if got, moved, _ := repo.SetRead(ctx, u2, u1, seq); got != seq || moved {
+		t.Fatalf("повтор того же номера: %d moved=%v; want %d, не сдвинулся", got, moved, seq)
 	}
 	groups, _ = repo.ActiveFeed(ctx, u2, []int64{u1})
 	if len(groups) != 1 || groups[0].MaxReadID != seq {
@@ -563,5 +566,110 @@ func TestStoryRepo_MediaAreasAndRepost(t *testing.T) {
 	// Archive/Pinned scan path also carries the new columns.
 	if _, err := repo.Pinned(ctx, author, author); err != nil {
 		t.Fatalf("Pinned scan: %v", err)
+	}
+}
+
+// Счёт просмотров виден только автору: views_count = число строк story_views,
+// у чужого зрителя 0. Одна выборка отдаёт его в ленте, архиве, закреплённых и
+// ByID.
+func TestStoryRepo_ViewsCountOnlyForAuthor(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+980")
+	v1 := seedUser(t, pool, "+981")
+	v2 := seedUser(t, pool, "+982")
+
+	active := createStory(t, pool, author, "everyone", time.Now().Add(time.Hour), nil)
+	archived := createStory(t, pool, author, "everyone", time.Now().Add(-time.Hour), nil)
+	if err := repo.SetPinned(ctx, archived, author, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []int64{v1, v2} {
+		for _, id := range []int64{active, archived} {
+			if err := repo.MarkViewed(ctx, id, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	feed, err := repo.ActiveFeed(ctx, author, []int64{author})
+	if err != nil || len(feed) != 1 || feed[0].Stories[0].ViewsCount != 2 {
+		t.Fatalf("лента автора: %+v, %v; want views_count 2", feed, err)
+	}
+	feed, _ = repo.ActiveFeed(ctx, v1, []int64{author})
+	if len(feed) != 1 || feed[0].Stories[0].ViewsCount != 0 {
+		t.Fatalf("лента зрителя несёт счёт: %+v", feed)
+	}
+	arch, _ := repo.Archive(ctx, author, 50, 0)
+	if len(arch) != 1 || arch[0].ViewsCount != 2 {
+		t.Fatalf("архив автора: %+v; want views_count 2", arch)
+	}
+	pinned, _ := repo.Pinned(ctx, author, author)
+	if len(pinned) != 1 || pinned[0].ViewsCount != 2 {
+		t.Fatalf("закреплённые у автора: %+v; want views_count 2", pinned)
+	}
+	pinned, _ = repo.Pinned(ctx, author, v1)
+	if len(pinned) != 1 || pinned[0].ViewsCount != 0 {
+		t.Fatalf("закреплённые у зрителя несут счёт: %+v", pinned)
+	}
+	byID, err := repo.ByID(ctx, active, author)
+	if err != nil || byID.ViewsCount != 2 {
+		t.Fatalf("ByID автору: %+v, %v; want views_count 2", byID, err)
+	}
+	byID, _ = repo.ByID(ctx, active, v2)
+	if byID.ViewsCount != 0 {
+		t.Fatalf("ByID зрителю несёт счёт: %+v", byID)
+	}
+}
+
+// ArchiveCount — ВСЕГО историй в архиве, независимо от limit страницы: по нему
+// клиент решает, что выгрузка закончена (tweb appStoriesManager.ts:985-1000).
+func TestStoryRepo_ArchiveCountIsTotal(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+990")
+	other := seedUser(t, pool, "+991")
+
+	past := time.Now().Add(-time.Hour)
+	for i := 0; i < 3; i++ {
+		createStory(t, pool, author, "everyone", past, nil)
+	}
+	createStory(t, pool, author, "everyone", time.Now().Add(time.Hour), nil) // живая — не архив
+	createStory(t, pool, other, "everyone", past, nil)                       // чужая
+
+	page, err := repo.Archive(ctx, author, 2, 0)
+	if err != nil || len(page) != 2 {
+		t.Fatalf("страница архива: %d, %v", len(page), err)
+	}
+	if n, err := repo.ArchiveCount(ctx, author); err != nil || n != 3 {
+		t.Fatalf("ArchiveCount = %d, %v; want 3 при limit 2", n, err)
+	}
+}
+
+// Reactors — кто и какой эмодзи поставил: под каждого реагировавшего собирается
+// своё тело `updateStory`.
+func TestStoryRepo_Reactors(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+985")
+	v1 := seedUser(t, pool, "+986")
+	v2 := seedUser(t, pool, "+987")
+	id := createStory(t, pool, author, "everyone", time.Now().Add(time.Hour), nil)
+	if err := repo.SetReaction(ctx, id, v1, "👍"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetReaction(ctx, id, v2, "❤"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Reactors(ctx, id, []int64{v1, v2, author})
+	if err != nil || len(got) != 2 || got[v1] != "👍" || got[v2] != "❤" {
+		t.Fatalf("Reactors = %v, %v", got, err)
+	}
+	// Только запрошенные: чужие реакции в карту не попадают.
+	if got, _ := repo.Reactors(ctx, id, []int64{v2}); len(got) != 1 || got[v2] != "❤" {
+		t.Fatalf("Reactors с фильтром = %v", got)
 	}
 }
