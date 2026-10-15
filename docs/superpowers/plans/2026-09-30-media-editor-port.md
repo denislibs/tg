@@ -785,7 +785,7 @@ export async function openAvatarEditorWithFile(file: File | Blob, o: {isForum?: 
   `serviceMessage.ts` (+ тесты), `settings/EditProfile.tsx` (удалить `onVideoPick` `:123-176` и второй
   `input` `:233-241`: видео теперь идёт через `AvatarEdit`), вызовы менеджеров с `video`/`videoStartTs`
   (МР-Б1)
-- Удалить (при «А» на В-3): `contactsManager.acceptPhotoSuggestion` (`:327-330`) и ручку
+- Удалить (при «А» на В-3; **сделано в Ф7-А2**): `contactsManager.acceptPhotoSuggestion` (`:327-330`) и ручку
   `POST /photo_suggestions/{id}/accept` — отдельным коммитом в `backend/`, если она больше ни для чего не
   нужна (сверить `git grep`)
 

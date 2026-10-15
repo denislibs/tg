@@ -59,5 +59,15 @@ type CloseFriendsRepo interface {
 // owner по номеру. Опционален: без него фильтры/ограничения не применяются.
 type PrivacyChecker interface {
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+	// VisibleMaps — VisibleMap по нескольким ключам ОДНИМ запросом.
+	VisibleMaps(ctx context.Context, viewerID int64, ownerIDs []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error)
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+}
+
+// SnapshotEmitter — запись карточки контакта в журнал СВОИХ устройств владельца
+// книги (реализация: usecase/ownsync.Emitter). build перечитывает карточку под
+// замком курсора, поэтому у большего pts состояние не старее.
+type SnapshotEmitter interface {
+	EmitSnapshot(ctx context.Context, userID int64, typ string,
+		build func(ctx context.Context) (map[string]any, error)) error
 }

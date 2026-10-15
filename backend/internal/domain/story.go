@@ -34,6 +34,9 @@ type StoryOrigin struct {
 	AuthorID   int64
 	AuthorName string
 	MediaID    int64
+	// Privacy — правило приватности исходной истории (everyone/contacts/close/
+	// selected): репост и «Поделиться» разрешены только при everyone.
+	Privacy string
 }
 
 // StoryRecord — ПЛОСКАЯ строка выборки историй: то, что отдаёт SQL, вместе с

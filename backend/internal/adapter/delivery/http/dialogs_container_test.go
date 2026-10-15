@@ -199,14 +199,16 @@ func TestListDialogs_MuteCarriesDeadline_HTTP(t *testing.T) {
 		t.Fatalf("«навсегда» = %v; want %d", ns["mute_until"], domain.MuteUntilForever)
 	}
 
-	// Снятие — отсутствие переопределения, а не «замьючен=false».
+	// Снятие — ЯВНОЕ «уведомлять» (mute_until: 0), а не «замьючен=false» и не
+	// отсутствие ключа: отсутствие значит «наследовать тип чатов», и включённый
+	// вручную чат не перекрыл бы выключенный тип (tweb togglePeerMute).
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+peer+"/mute", tokenA, map[string]any{"muted": false})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unmute: %d %s", rec.Code, rec.Body.String())
 	}
 	ns = getChats(t, h, tokenA, "").Dialogs[0].NotifySettings
-	if _, ok := ns["mute_until"]; ok {
-		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", ns["mute_until"])
+	if got, ok := ns["mute_until"].(float64); !ok || got != 0 {
+		t.Fatalf("после снятия mute_until = %v; want явный 0", ns["mute_until"])
 	}
 }
 

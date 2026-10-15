@@ -219,9 +219,10 @@ export function dialogToChat(
     preview,
     draftPreview: hasDraft ? draftText(d.draft) : undefined,
     type,
-    // Мьют это СРОК: «замьючен» ВЫЧИСЛЯЕТСЯ, а не приезжает признаком (порт
-    // `appNotificationsManager.isMuted`). Глобально выключенный ТИП чатов
-    // накладывается витриной поверх — `stores/notifyStore.ts::isDialogMuted`.
+    // Мьют это СРОК: «замьючен» ВЫЧИСЛЯЕТСЯ, а не приезжает признаком. Здесь —
+    // только СВОЙ мьют диалога (`respectType: false`); эффективный, с типом чатов
+    // (свой срок решает сам, тип — когда он не задан), — `stores/notifyStore.ts::isDialogMuted`,
+    // его витрина применяет поверх.
     muted: isPeerMuted(d.notify_settings, now) || undefined,
     pinned: d.pFlags?.pinned || undefined,
     archived: isDialogArchived(d) || undefined,

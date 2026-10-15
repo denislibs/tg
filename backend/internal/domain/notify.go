@@ -101,3 +101,14 @@ type InputPeerNotifySettings struct {
 	ShowPreviews *bool  `json:"show_previews,omitempty"`
 	MuteUntil    *int64 `json:"mute_until,omitempty"`
 }
+
+// ChatMuted — заглушён ли чат В ЭТОТ МОМЕНТ с учётом типа. Три состояния
+// мьюта чата, как у темы (TopicMuted): until == nil — мьют не задан, чат
+// наследует тип (typeMuted); иначе решает сам срок — 0 («уведомлять») или
+// истёкший срок перекрывают заглушённый тип. tweb appNotificationsManager.ts:
+// 342-384: настройки типа подставляются только в неопределённые поля пира;
+// togglePeerMute (appMessagesManager.ts:11985-11991) снимает мьют явным
+// mute_until: 0, и на истечении срока checkMuteUntil пишет тот же 0 (:232-235).
+func ChatMuted(until *time.Time, typeMuted bool, now time.Time) bool {
+	return TopicMuted(until, typeMuted, now)
+}

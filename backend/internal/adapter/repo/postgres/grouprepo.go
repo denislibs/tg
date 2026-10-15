@@ -116,8 +116,8 @@ func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role stri
 	return nil
 }
 
-// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
-// «навсегда». Булева аргумента здесь больше нет — второй способ сказать то же
+// SetMuted записывает СРОК мьюта чата: nil — не задан (наследует тип чата),
+// time.Unix(0) — явное «уведомлять», domain.MuteUntilForever — «навсегда». Булева аргумента здесь больше нет — второй способ сказать то же
 // самое и был тем, из-за чего «заглушить на час» работало как «навсегда»
 // (решение Р4).
 func (r *GroupRepo) SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error {
