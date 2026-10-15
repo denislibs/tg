@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -339,4 +340,175 @@ func (p callPrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, _ domai
 
 func (p callPrivacy) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
 	viewUsersVia(ctx, p, viewerID, users)
+}
+
+// p2pPrivacy — правило «кто может звонить напрямую» (phone_p2p) по владельцам:
+// у тех, кто в nobodyP2P, прямое соединение запрещено всем.
+type p2pPrivacy struct {
+	callPrivacy
+	nobodyP2P map[int64]bool
+	err       error
+}
+
+func (p p2pPrivacy) Check(ctx context.Context, owner, viewer int64, key domain.PrivacyKey) (bool, error) {
+	if key == domain.PrivacyPhoneP2P {
+		if p.err != nil {
+			return false, p.err
+		}
+		return !p.nobodyP2P[owner], nil
+	}
+	return p.callPrivacy.Check(ctx, owner, viewer, key)
+}
+
+// lastFrameData — тело `d` последнего кадра типа typ, ушедшего пользователю.
+func lastFrameData(t *testing.T, pub *fakePublisher, userID int64, typ string) map[string]any {
+	t.Helper()
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i := len(pub.frames) - 1; i >= 0; i-- {
+		f := pub.frames[i]
+		var env struct {
+			T string         `json:"t"`
+			D map[string]any `json:"d"`
+		}
+		if f.userID == userID && json.Unmarshal(f.frame, &env) == nil && env.T == typ {
+			return env.D
+		}
+	}
+	t.Fatalf("кадра %s для %d нет", typ, userID)
+	return nil
+}
+
+// Правила по умолчанию: адресат получает call_request с p2p_allowed=true,
+// запись звонка хранит то же значение.
+func TestRelayCall_Request_StampsP2PAllowed(t *testing.T) {
+	in, _, calls, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{})
+
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p1"}`)
+
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != true {
+		t.Fatalf("p2p_allowed = %v; want true", got)
+	}
+	c, err := calls.Get(context.Background(), "p1")
+	if err != nil || !c.P2PAllowed {
+		t.Fatalf("запись звонка: %+v err=%v; want P2PAllowed", c, err)
+	}
+}
+
+// Адресат запретил прямое соединение.
+func TestRelayCall_Request_CalleeForbidsP2P(t *testing.T) {
+	in, _, calls, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{calleeID: true}})
+
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p2"}`)
+
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != false {
+		t.Fatalf("p2p_allowed = %v; want false", got)
+	}
+	if c, _ := calls.Get(context.Background(), "p2"); c.P2PAllowed {
+		t.Fatal("запись звонка хранит P2PAllowed=true при запрете адресата")
+	}
+}
+
+// Звонящий запретил прямое соединение: IP звонящего тоже защищён, второе направление.
+func TestRelayCall_Request_CallerForbidsP2P(t *testing.T) {
+	in, _, _, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{callerID: true}})
+
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p3"}`)
+
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != false {
+		t.Fatalf("p2p_allowed = %v; want false", got)
+	}
+}
+
+// call_accept несёт звонящему значение из записи звонка: смена правила между
+// call_request и call_accept флаг не меняет (один флаг на звонок, обе стороны
+// читают одно).
+func TestRelayCall_Accept_CarriesStoredValue(t *testing.T) {
+	in, _, _, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{calleeID: true}})
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p4"}`)
+
+	in.SetPrivacy(p2pPrivacy{}) // адресат передумал, пока звонок шёл
+	relay(t, in, "call_accept", calleeID, callerID, `{"call_id":"p4"}`)
+
+	if got := lastFrameData(t, pub, callerID, "call_accept")["p2p_allowed"]; got != false {
+		t.Fatalf("p2p_allowed в call_accept = %v; want false (из записи звонка)", got)
+	}
+}
+
+// Присланное клиентом p2p_allowed затирается; в прочих кадрах поля нет.
+func TestRelayCall_ClientValueOverwritten(t *testing.T) {
+	in, _, _, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{calleeID: true}})
+
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p5","p2p_allowed":true}`)
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != false {
+		t.Fatalf("call_request: p2p_allowed = %v; want false (клиентское затёрто)", got)
+	}
+	relay(t, in, "call_accept", calleeID, callerID, `{"call_id":"p5","p2p_allowed":true}`)
+	if got := lastFrameData(t, pub, callerID, "call_accept")["p2p_allowed"]; got != false {
+		t.Fatalf("call_accept: p2p_allowed = %v; want false (клиентское затёрто)", got)
+	}
+	relay(t, in, "call_signal", callerID, calleeID, `{"call_id":"p5","p2p_allowed":true,"dh_reveal":"x"}`)
+	if _, has := lastFrameData(t, pub, calleeID, "call_signal")["p2p_allowed"]; has {
+		t.Fatal("call_signal несёт p2p_allowed")
+	}
+	relay(t, in, "call_end", calleeID, callerID, `{"call_id":"p5","p2p_allowed":true}`)
+	if _, has := lastFrameData(t, pub, callerID, "call_end")["p2p_allowed"]; has {
+		t.Fatal("call_end несёт p2p_allowed")
+	}
+}
+
+// Повтор call_request с тем же call_id берёт значение из записи, а не пересчитывает.
+func TestRelayCall_RepeatedRequestKeepsP2PAllowed(t *testing.T) {
+	in, _, _, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{calleeID: true}})
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p6"}`)
+
+	in.SetPrivacy(p2pPrivacy{})
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"p6"}`)
+
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != false {
+		t.Fatalf("повтор call_request: p2p_allowed = %v; want false (из записи)", got)
+	}
+}
+
+// Без хранилища звонков значение считается заново на каждом кадре; без движка
+// приватности — true.
+func TestRelayCall_P2PAllowed_WithoutStoreAndPrivacy(t *testing.T) {
+	in, _ := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+
+	relay(t, in, "call_request", callerID, calleeID, `{"call_id":"n1"}`)
+	if got := lastFrameData(t, pub, calleeID, "call_request")["p2p_allowed"]; got != true {
+		t.Fatalf("без privacy: p2p_allowed = %v; want true", got)
+	}
+
+	in.SetPrivacy(p2pPrivacy{nobodyP2P: map[int64]bool{callerID: true}})
+	relay(t, in, "call_accept", calleeID, callerID, `{"call_id":"n1"}`)
+	if got := lastFrameData(t, pub, callerID, "call_accept")["p2p_allowed"]; got != false {
+		t.Fatalf("call_accept без стора: p2p_allowed = %v; want false (пересчёт)", got)
+	}
+}
+
+// Сбой чтения правила не пропускает звонок с p2p_allowed=true: ошибка наружу,
+// звонок не заводится.
+func TestRelayCall_P2PCheckError(t *testing.T) {
+	in, _, calls, pub := newCallInteractor()
+	in.SetPrivacy(p2pPrivacy{err: errors.New("boom")})
+
+	err := in.RelayCall(context.Background(), "call_request", callerID, calleeID, map[string]any{"call_id": "e1"})
+	if err == nil {
+		t.Fatal("ошибка правила проглочена")
+	}
+	if _, gerr := calls.Get(context.Background(), "e1"); gerr == nil {
+		t.Fatal("звонок заведён при сбое правила")
+	}
+	if framesOfType(pub, calleeID, "call_request") != 0 {
+		t.Fatal("адресату ушёл call_request при сбое правила")
+	}
 }
