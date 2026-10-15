@@ -49,8 +49,8 @@ func (r *StatsRepo) MemberRole(ctx context.Context, chatID, userID int64) (strin
 // длительность транзакции отправки, для окон в сутки пренебрежимо).
 // Обратный скан уникального индекса (chat_id, seq) идёт от maxSeq вниз и
 // проходит только сообщения новее t, то есть окно; deleted_at и created_at
-// проверяются по строке кучи, так что цена линейна по размеру окна (EXPLAIN —
-// в описании PR).
+// проверяются по строке кучи, так что цена линейна по размеру окна
+// (EXPLAIN — handoff-2026-10-11/scratchpad/f6-stats-explain2.txt).
 func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.Time) (int64, error) {
 	var seq int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `
@@ -63,21 +63,23 @@ func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.
 	return seq, err
 }
 
-// summarySQL — обзор окна: $1 чат, $2 и $3 — границы seq, $4 — конец окна.
-// Реакции берутся пробами по idx_reactions_message по id постов окна
-// (= ANY(ARRAY(…))): планировщик иначе читает всю таблицу reactions
-// хеш-соединением, и цена растёт с числом реакций во всей БД, а не окна.
+// summarySQL — обзор окна: $1 чат, $2 и $3 — границы seq постов (fromSeq, toSeq],
+// $4 — конец окна только для участников (joined_at < $4); сверху посты
+// ограничены лишь $3. Предикат окна записан один раз: id постов собираются в
+// массив, реакции считаются пробами по idx_reactions_message (= ANY(ids)).
+// Обычное соединение с reactions планировщик вправе выполнить хеш-соединением
+// с полным проходом по таблице; EXPLAIN на 600k реакций — в
+// handoff-2026-10-11/scratchpad/f6-stats-explain2.txt.
 const summarySQL = `
 	SELECT
 		(SELECT count(*) FROM chat_members WHERE chat_id=$1 AND joined_at < $4),
 		w.views, w.forwards,
-		(SELECT count(*) FROM reactions WHERE message_id = ANY(ARRAY(
-			SELECT id FROM messages
-			WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3))),
+		(SELECT count(*) FROM reactions WHERE message_id = ANY(w.ids)),
 		w.posts, w.posters
 	FROM (
 		SELECT coalesce(sum(views),0) AS views, coalesce(sum(forwards),0) AS forwards,
-		       count(*) AS posts, count(DISTINCT sender_id) AS posters
+		       count(*) AS posts, count(DISTINCT sender_id) AS posters,
+		       coalesce(array_agg(id), '{}'::bigint[]) AS ids
 		FROM messages
 		WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3
 	) w`
@@ -109,8 +111,7 @@ func (r *StatsRepo) NotificationsOn(ctx context.Context, chatID int64, at time.T
 	var n int64
 	err := querier(ctx, r.pool).QueryRow(ctx, `
 		SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
-		LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
-		WHERE m.chat_id=$1 AND m.joined_at < $2 AND NOT `+chatMutedSQL(joinedNotify), chatID, at).Scan(&n)
+		WHERE m.chat_id=$1 AND m.joined_at < $2 AND NOT `+chatMutedSQL(memberNotify), chatID, at).Scan(&n)
 	return n, err
 }
 

@@ -50,7 +50,7 @@ func seedStatsWindows(t *testing.T) (*StatsRepo, statsWindowFixture) {
 	}
 	post(1, author, "20 days", 100, 9, 3, "text", false)  // до обоих окон
 	post(2, author, "12 days", 10, 2, 1, "text", false)   // предыдущее окно
-	post(3, other, "9 days", 20, 0, 0, "text", false)     // предыдущее окно
+	post(3, other, "9 days", 20, 0, 1, "text", false)     // предыдущее окно, на верхней границе
 	post(4, author, "8 days", 500, 50, 1, "text", true)   // удалён (с реакцией) — не считается
 	post(5, author, "6 days", 70, 7, 1, "service", false) // служебное (с просмотрами) — не пост
 	post(6, late, "3 days", 8, 4, 2, "text", false)       // последнее окно
@@ -99,7 +99,7 @@ func TestStatsRepo_SeqBeforeMaxSeqIsInclusiveUpperBound(t *testing.T) {
 		{"maxSeq не задан", math.MaxInt64, 2 * day, 6},
 		{"maxSeq включителен", 3, 7 * day, 3},
 		{"maxSeq отсекает новее", 2, 7 * day, 2},
-		{"пустое окно: граница не выше maxSeq", 1, 7 * day, 1},
+		{"пустое прошлое окно: seqStart не выше seqMid", 1, 14 * day, 1},
 	}
 	for _, tc := range cases {
 		got, err := r.SeqBefore(ctx, f.chat, tc.maxSeq, f.now.Add(-tc.age))
@@ -137,7 +137,7 @@ func TestStatsRepo_SummaryWindowsCurrentAndPrevious(t *testing.T) {
 	}
 
 	wantCur := domain.ChannelStatsSummary{Members: 3, TotalViews: 20, TotalForwards: 6, TotalReactions: 3, PostsCount: 2, PostersCount: 1}
-	wantPrev := domain.ChannelStatsSummary{Members: 2, TotalViews: 30, TotalForwards: 2, TotalReactions: 1, PostsCount: 2, PostersCount: 2}
+	wantPrev := domain.ChannelStatsSummary{Members: 2, TotalViews: 30, TotalForwards: 2, TotalReactions: 2, PostsCount: 2, PostersCount: 2}
 	if cur != wantCur {
 		t.Errorf("current = %+v, want %+v", cur, wantCur)
 	}
@@ -153,7 +153,7 @@ func TestStatsRepo_SummaryEmptyWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.PostsCount != 0 || s.TotalViews != 0 || s.PostersCount != 0 {
+	if s.PostsCount != 0 || s.TotalViews != 0 || s.PostersCount != 0 || s.TotalReactions != 0 {
 		t.Errorf("пустое окно: %+v", s)
 	}
 }
