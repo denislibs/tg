@@ -15,6 +15,7 @@
 // видео-стикер, image/webp|png — статичный. URL клиент строит сам (core/mediaUrl).
 import type { RestClient } from '../net/restClient'
 import { saveDocument, type MyDocument } from '../media/messageMedia'
+import type { NewStickerSetEvt } from '../realtime/events'
 
 /**
  * Набор — конструктор `stickerSet` схемы.
@@ -101,8 +102,17 @@ function splitCovered(sets: StickerSetCovered[] | undefined): { sets: StickerSet
   return { sets: out, covers }
 }
 
-export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
-  return {
+export function newStickersManager({ rest, dispatch }: {
+  rest: Pick<RestClient, 'get' | 'post' | 'del'>
+  /** Объявить событие rootScope вкладкам (`stickers_installed` и т. п.). */
+  dispatch: (event: 'stickers_installed' | 'stickers_updated' | 'gifs_updated', payload: unknown) => void
+}) {
+  // Номер последнего перечитывания по списку: ответ, обогнанный более новым
+  // кадром, устарел и вкладкам не объявляется (без этого старый список мог бы
+  // затереть свежий).
+  const reads = { recent: 0, faved: 0, gifs: 0 }
+
+  const manager = {
     /** messages.allStickers — установленные наборы. */
     async mySets(): Promise<StickerSet[]> {
       const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets')
@@ -185,6 +195,31 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ gifs: RawTenorGif[]; next: string }>('/gifs/search', { q, pos })
       return { gifs: (r.gifs ?? []).map(mapTenorGif), next: r.next ?? '' }
     },
+
+    // ── Кадры своих устройств (журнал f6-stickers) ──
+    /** tweb `updateNewStickerSet` (appStickersManager.ts:80-84): документы набора
+     * сохраняются, вкладкам объявляется `stickers_installed` с самим набором
+     * (`stickerset.set`). Кэша наборов у менеджера нет — открытый набор панели
+     * перечитывается по событию. */
+    onNewStickerSet(update: NewStickerSetEvt): void {
+      saveAll(update.stickerset.documents)
+      dispatch('stickers_installed', update.stickerset.set)
+    },
+    /** tweb `onStickersUpdated(type, true)` (:126-132): перечитать и объявить. */
+    async onStickersUpdated(type: 'recent' | 'faved'): Promise<void> {
+      const n = ++reads[type]
+      const stickers = await (type === 'recent' ? manager.recent() : manager.faved())
+      if (n !== reads[type]) return
+      dispatch('stickers_updated', { type, stickers })
+    },
+    /** tweb `onGifsUpdated` (appGifsManager.ts:26-29). */
+    async onGifsUpdated(): Promise<void> {
+      const n = ++reads.gifs
+      const gifs = await manager.savedGifs()
+      if (n !== reads.gifs) return
+      dispatch('gifs_updated', gifs)
+    },
   }
+  return manager
 }
 export type StickersManager = ReturnType<typeof newStickersManager>
