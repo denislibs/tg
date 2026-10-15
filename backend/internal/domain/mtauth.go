@@ -192,7 +192,7 @@ func NewAuthLoginTokenSuccess(a AuthAuthorization) AuthLoginTokenSuccess {
 // auth.passwordRecovery#137948a5 email_pattern:string = auth.PasswordRecovery;
 //
 // Маска почты, на которую ушёл код. Соседний `resend_after` убран: паузу
-// повторной отправки держит сервер (отказ `RESEND_TOO_SOON_<N>`), своего
+// повторной отправки держит сервер (отказ 420 `FLOOD_WAIT_<N>`), своего
 // таймера клиент не заводит и это число не читал.
 type AuthPasswordRecovery struct {
 	Underscore   string `json:"_"`

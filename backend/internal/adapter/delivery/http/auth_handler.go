@@ -265,7 +265,7 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		// Пауза повторной отправки — ожидание оригинала: 420 FLOOD_WAIT_<N>
 		// (остаток секунд едет внутри кода: у конструктора `error` параметров
 		// ровно два). tweb выражает паузу только так (apiManager.ts:759-791 —
-		// ждёт N секунд и повторяет сам), а `RESEND_TOO_SOON_*` не разбирает.
+		// ждёт N секунд и повторяет сам), а прежний `RESEND_TOO_SOON_*` не разбирает.
 		writeFloodWait(w, max(res.ResendAfter, 1))
 		return
 	case errors.Is(err, domain.ErrNotFound):
