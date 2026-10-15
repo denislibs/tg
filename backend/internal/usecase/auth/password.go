@@ -136,12 +136,12 @@ func (i *Interactor) PasskeySignIn(ctx context.Context, userID int64, deviceName
 	if err != nil {
 		return SignInResult{}, err
 	}
-	if res, needed, err := i.startPasswordStep(ctx, userID); err != nil {
+	if res, needed, err := i.startPasswordStep(ctx, userID, false); err != nil {
 		return SignInResult{}, err
 	} else if needed {
 		return res, nil
 	}
-	return i.mintSession(ctx, user, deviceName, platform)
+	return i.mintSession(ctx, user, deviceName, platform, false)
 }
 
 // CheckPassword — второй шаг входа: одноразовый password_token из SignIn +
@@ -149,7 +149,7 @@ func (i *Interactor) PasskeySignIn(ctx context.Context, userID int64, deviceName
 // чтобы опечатка не заставляла проходить OTP заново.
 func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, deviceName, platform string) (SignInResult, error) {
 	tokenHash := domain.HashToken(rawToken)
-	userID, err := i.pw.PasswordTokenUser(ctx, tokenHash)
+	userID, approved, err := i.pw.PasswordTokenUser(ctx, tokenHash)
 	if err != nil {
 		return SignInResult{}, err // ErrNotFound → токен истёк
 	}
@@ -172,7 +172,7 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 	if err != nil {
 		return SignInResult{}, err
 	}
-	res, err := i.mintSession(ctx, user, deviceName, platform)
+	res, err := i.mintSession(ctx, user, deviceName, platform, approved)
 	if err != nil {
 		return SignInResult{}, err
 	}

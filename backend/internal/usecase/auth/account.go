@@ -114,7 +114,7 @@ func (i *Interactor) ResetAccount(ctx context.Context, rawPasswordToken string) 
 		return 0, ErrLoginStepsUnavailable
 	}
 	tokenHash := domain.HashToken(rawPasswordToken)
-	userID, err := i.pw.PasswordTokenUser(ctx, tokenHash)
+	userID, _, err := i.pw.PasswordTokenUser(ctx, tokenHash)
 	if err != nil {
 		return 0, err // ErrNotFound → токен истёк/использован/неизвестен
 	}

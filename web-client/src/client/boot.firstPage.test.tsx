@@ -177,7 +177,10 @@ function sidebarManagers(dialogs: unknown): Managers {
     get: (_t, method: string | symbol) => (
       ns === 'realtime' && method === 'getStatus'
         ? async () => ({ state: 'ready', retryAt: undefined, syncing: false })
-        : async () => undefined
+        // плашка «новый вход» читает список запросов: у владельца сессий он всегда массив
+        : ns === 'sessions' && method === 'getUnconfirmedAuthorizations'
+          ? async () => []
+          : async () => undefined
     ),
   })
   return new Proxy({}, {

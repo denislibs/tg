@@ -10,7 +10,8 @@
  * Состав — как у оригинала (`:353-398`): текущая сессия (+ «завершить все
  * прочие» и подпись `ClearOtherSessionsHelp`, только если прочие есть),
  * незавершённые входы (`password_pending`), прочие сессии. Список
- * перечитывается раз в минуту (`:99-112`, событий о новом входе нет).
+ * перечитывается раз в минуту и по событию `unconfirmed_authorizations_update`
+ * (`:99-112`).
  *
  * Расхождения с оригиналом:
  *  1. (О-7) Секции TTL «Automatically Terminate Old Sessions» (`TTLRow`,
@@ -28,9 +29,9 @@
  *  3. Бизнес-бота (`connectedBot`, `ConnectedBotRow`, `terminateConnectedBot`,
  *     событие `chat_automation_update`, флажок попапа «завершить все» —
  *     `:95-97`, `:148-159`, `:162-205`, `:325-351`) нет: бизнес-ботов у нас нет.
- *  4. Подписки на `unconfirmed_authorizations_update` (`:101-103`) нет: попапа
- *     неподтверждённого входа (`newAuthorization.tsx`) и флага `unconfirmed`
- *     на проводе у нас нет — остаётся минутный опрос.
+ *  4. (снято М1-3: подписка на `unconfirmed_authorizations_update` (`:101-103`)
+ *     перечитывает список, как у оригинала; плашка «новый вход» —
+ *     `sidebarLeft/newAuthorization.solid.tsx`.)
  *  5. Секция незавершённых входов портирована, но сейчас пустует: бэкенд не
  *     ставит `password_pending` (сессия заводится только после полного входа).
  *  6. `appAccountManager.getAuthorizations()/resetAuthorization(hash)/
@@ -43,6 +44,7 @@
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Component } from 'solid-js'
 import type { Authorization } from '@layer'
+import rootScope from '@lib/rootScope'
 import noop from '@helpers/noop'
 import { formatDateAccordingToTodayNew } from '@helpers/date'
 import getAuthorizationErrorLangKey from '@helpers/getAuthorizationErrorLangKey'
@@ -86,7 +88,14 @@ const ActiveSessions: Component = () => {
     return tab.managers!.sessions.list().then(setAuthorizations, noop)
   }
 
-  // tweb :95-103 — события бизнес-бота и неподтверждённого входа: расхождения 3, 4
+  // tweb :95-97 — событие бизнес-бота: расхождение 3
+
+  // A new login neither dispatches a sessions event nor arrives as an update we
+  // could apply, so poll like tdesktop and refresh eagerly on what we do hear
+  // (tweb :99-103).
+  tab.listenerSetter.add(rootScope)('unconfirmed_authorizations_update', () => {
+    void refresh()
+  })
 
   onMount(() => {
     // tweb :106-108 — перечитывание на открытии ради TTL: расхождение 1

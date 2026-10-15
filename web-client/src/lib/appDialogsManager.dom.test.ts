@@ -51,15 +51,18 @@ describe('appDialogsManager: разметка после start()', () => {
     expect(host.lastElementChild!.id).toBe('folders-container')
   })
 
-  it('в оверлее — плашка, градиент, ряд (дамп :30-48); одна папка — hide и у ряда, и у градиента', async () => {
+  it('в оверлее — плашка «новый вход», плашка-подсказка, градиент, ряд (дамп :30-48); одна папка — hide и у ряда, и у градиента', async () => {
     mounted = mountOwner()
     await settle()
     const overlay = mounted.host.querySelector('.chatlist-overlay')!
-    const [suggestion, gradient, scrollable] = Array.from(overlay.children) as HTMLElement[]
+    const [authorization, suggestion, gradient, scrollable] = Array.from(overlay.children) as HTMLElement[]
 
-    expect(overlay.children).toHaveLength(3)
-    // контейнер плашки — голый `div` владельца (`:1384-1386`); что в нём, пинит
-    // `components/sidebarLeft/pendingSuggestion.solid.test.tsx`
+    expect(overlay.children).toHaveLength(4)
+    // контейнеры плашек — голые `div` владельца (`:1384-1394`, «новый вход» препендится
+    // следом за подсказкой и потому стоит первым); что в них, пинят
+    // `components/sidebarLeft/pendingSuggestion.solid.test.tsx` и `newAuthorization.solid.test.tsx`
+    expect(authorization.tagName).toBe('DIV')
+    expect(authorization.className).toContain('container')
     expect(suggestion.tagName).toBe('DIV')
     expect(suggestion.className).toBe('')
     expect(scrollable.className).toBe('menu-horizontal-scrollable folders-tabs-scrollable hide')

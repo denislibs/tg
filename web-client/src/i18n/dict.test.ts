@@ -663,7 +663,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `LinksCreatedByOtherAdmins`, `LinksCreatedByThisAdmin`, `ManageLinks.Admin.Permanent.Desc`
 // и плюральный `InviteLinkCount` (`plural` 65 → 66).
 const COMPOSITION = {
-  ru: { keys: 1821, plural: 66 },
+  ru: { keys: 1831, plural: 67 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -874,8 +874,9 @@ const COMPOSITION = {
 // Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
 // Ф-5 C2 — у ru +6 ключей превью ссылки (разбор — там же).
 // М2-1 — у ru +4 ключа ссылок других админов (разбор — там же).
+// М1-3 — у ru +10 ключей `UnconfirmedAuth*` плашки «новый вход» (tweb lang.ts:324-336).
 const FINGERPRINT = {
-  ru: 'ba330173',
+  ru: 'db12b907',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',
