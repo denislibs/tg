@@ -22,11 +22,14 @@ import (
 //     языка, реакций по времени у нас не пишутся;
 //   - у followers_graph одна линия «Joined»: выходы из канала не датируются;
 //   - у interactions_graph одна линия «Views»: пересылки по дням не датируются;
-//   - previous у `statsAbsValueAndPrev` — 0: снимков прошлого периода нет,
-//     клиент при нуле разницу не рисует;
+//   - `statsAbsValueAndPrev`: `current` — окно [now−7д, now), `previous` —
+//     окно перед ним [now−14д, now−7д) (`StatsWindow`); ряды графиков при этом
+//     идут за всю историю. Участники окна — по `joined_at`, вышедшие строк не
+//     имеют (приближение); посты окна — по времени создания;
 //   - views/shares/reactions_per_story — 0 (клиент нули не показывает): историй
 //     у каналов в этой статистике нет;
-//   - у группы viewers/posters — 0, actions_graph, new_members_by_source_graph,
+//   - у группы viewers — 0 (просмотры сообщений группы не пишутся), posters —
+//     авторы сообщений окна, actions_graph, new_members_by_source_graph,
 //     languages_graph, top_hours_graph, weekdays_graph — statsGraphError,
 //     top_posters/top_admins/top_inviters и users — пустые векторы;
 //   - имена линий — по-английски, как у Telegram без lang_code: языка
@@ -63,8 +66,8 @@ type StatsAbsValueAndPrev struct {
 	Previous   float64 `json:"previous"`
 }
 
-func newStatsAbs(current float64) StatsAbsValueAndPrev {
-	return StatsAbsValueAndPrev{Underscore: StatsAbsValueAndPrevTag, Current: current}
+func newStatsAbs(current, previous float64) StatsAbsValueAndPrev {
+	return StatsAbsValueAndPrev{Underscore: StatsAbsValueAndPrevTag, Current: current, Previous: previous}
 }
 
 // statsPercentValue#cbce2fe0 part:double total:double = StatsPercentValue;
@@ -263,15 +266,9 @@ func statsDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// statsPeriod — период обзора: от первых суток рядов до сейчас.
-func statsPeriod(now time.Time, series ...[]StatPoint) StatsDateRangeDays {
-	minDate := now
-	for _, s := range series {
-		if len(s) > 0 && s[0].Day.Before(minDate) {
-			minDate = s[0].Day
-		}
-	}
-	return StatsDateRangeDays{Underscore: StatsDateRangeDaysTag, MinDate: statsDay(minDate).Unix(), MaxDate: now.Unix()}
+// statsPeriod — период обзора: те же 7 дней, что и текущее окно `current`.
+func statsPeriod(now time.Time) StatsDateRangeDays {
+	return StatsDateRangeDays{Underscore: StatsDateRangeDaysTag, MinDate: now.Add(-StatsWindow).Unix(), MaxDate: now.Unix()}
 }
 
 func perPost(total, posts int64) float64 {
@@ -290,20 +287,20 @@ func (s ChannelStats) ToBroadcastWire(now time.Time) StatsBroadcastStats {
 			MsgID:      p.Seq, Views: p.Views, Forwards: p.Forwards, Reactions: p.Reactions,
 		})
 	}
-	sum := s.Summary
+	sum, prev := s.Summary, s.Previous
 	return StatsBroadcastStats{
 		Underscore:        StatsBroadcastStatsTag,
-		Period:            statsPeriod(now, s.MembersGrowth, s.ViewsByDay),
-		Followers:         newStatsAbs(float64(sum.Members)),
-		ViewsPerPost:      newStatsAbs(perPost(sum.TotalViews, sum.PostsCount)),
-		SharesPerPost:     newStatsAbs(perPost(sum.TotalForwards, sum.PostsCount)),
-		ReactionsPerPost:  newStatsAbs(perPost(sum.TotalReactions, sum.PostsCount)),
-		ViewsPerStory:     newStatsAbs(0),
-		SharesPerStory:    newStatsAbs(0),
-		ReactionsPerStory: newStatsAbs(0),
+		Period:            statsPeriod(now),
+		Followers:         newStatsAbs(float64(sum.Members), float64(prev.Members)),
+		ViewsPerPost:      newStatsAbs(perPost(sum.TotalViews, sum.PostsCount), perPost(prev.TotalViews, prev.PostsCount)),
+		SharesPerPost:     newStatsAbs(perPost(sum.TotalForwards, sum.PostsCount), perPost(prev.TotalForwards, prev.PostsCount)),
+		ReactionsPerPost:  newStatsAbs(perPost(sum.TotalReactions, sum.PostsCount), perPost(prev.TotalReactions, prev.PostsCount)),
+		ViewsPerStory:     newStatsAbs(0, 0),
+		SharesPerStory:    newStatsAbs(0, 0),
+		ReactionsPerStory: newStatsAbs(0, 0),
 		EnabledNotifications: StatsPercentValue{
 			Underscore: StatsPercentValueTag,
-			Part:       float64(sum.NotificationsOn),
+			Part:       float64(s.NotificationsOn),
 			Total:      float64(sum.Members),
 		},
 		GrowthGraph:                  newStatsLineGraph(now, statsLine{name: "Total followers", color: statsColorBlue, points: s.MembersGrowth, cumulative: true}),
@@ -326,11 +323,11 @@ func (s ChannelStats) ToBroadcastWire(now time.Time) StatsBroadcastStats {
 func (s ChannelStats) ToMegagroupWire(now time.Time) StatsMegagroupStats {
 	return StatsMegagroupStats{
 		Underscore:              StatsMegagroupStatsTag,
-		Period:                  statsPeriod(now, s.MembersGrowth, s.PostsByDay),
-		Members:                 newStatsAbs(float64(s.Summary.Members)),
-		Messages:                newStatsAbs(float64(s.Summary.PostsCount)),
-		Viewers:                 newStatsAbs(0),
-		Posters:                 newStatsAbs(0),
+		Period:                  statsPeriod(now),
+		Members:                 newStatsAbs(float64(s.Summary.Members), float64(s.Previous.Members)),
+		Messages:                newStatsAbs(float64(s.Summary.PostsCount), float64(s.Previous.PostsCount)),
+		Viewers:                 newStatsAbs(0, 0),
+		Posters:                 newStatsAbs(float64(s.Summary.PostersCount), float64(s.Previous.PostersCount)),
 		GrowthGraph:             newStatsLineGraph(now, statsLine{name: "Total members", color: statsColorBlue, points: s.MembersGrowth, cumulative: true}),
 		MembersGraph:            newStatsLineGraph(now, statsLine{name: "Joined", color: statsColorGreen, points: s.JoinedByDay}),
 		NewMembersBySourceGraph: newStatsGraphError(),

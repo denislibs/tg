@@ -21,27 +21,39 @@ type RecentPost struct {
 	Reactions int64
 }
 
-// ChannelStatsSummary — числовой обзор статистики канала/группы.
+// StatsWindow — длина окна обзора статистики: `current` — последние 7 дней,
+// `previous` — 7 дней перед ними (решение пользователя 2026-10-13).
+const StatsWindow = 7 * 24 * time.Hour
+
+// ChannelStatsSummary — числовой обзор канала/группы за одно окно.
 type ChannelStatsSummary struct {
-	Members         int64 // текущее число подписчиков/участников
-	TotalViews      int64 // суммарные просмотры всех постов
-	TotalForwards   int64 // суммарные пересылки всех постов
-	TotalReactions  int64 // суммарные реакции на все посты
-	PostsCount      int64 // число постов (не удалённых)
-	NotificationsOn int64 // участников с включёнными уведомлениями (не muted)
+	Members        int64 // участников, вступивших до конца окна
+	TotalViews     int64 // суммарные просмотры постов, опубликованных в окне
+	TotalForwards  int64 // суммарные пересылки этих постов
+	TotalReactions int64 // суммарные реакции на эти посты
+	PostsCount     int64 // постов в окне (не удалённых, не служебных)
+	PostersCount   int64 // разных авторов постов в окне
 }
 
-// ChannelStats — статистика канала/группы: обзор, временные ряды и недавние
-// посты. Форму схемы собирают ToBroadcastWire/ToMegagroupWire (mtstats.go).
+// ChannelStats — статистика канала/группы: обзор за два окна, временные ряды и
+// недавние посты. Форму схемы собирают ToBroadcastWire/ToMegagroupWire
+// (mtstats.go).
 type ChannelStats struct {
 	// Broadcast — канал (stats.broadcastStats); иначе группа (stats.megagroupStats).
-	Broadcast     bool
-	Summary       ChannelStatsSummary
-	MembersGrowth []StatPoint // кумулятивный рост участников по дням
-	JoinedByDay   []StatPoint // присоединившиеся по дням
-	ViewsByDay    []StatPoint // просмотры по дням
-	PostsByDay    []StatPoint // посты по дням
-	RecentPosts   []RecentPost
+	Broadcast bool
+	// At — момент сбора: конец текущего окна, середина двух окон — At−StatsWindow.
+	At time.Time
+	// Summary — окно [At−7д, At), Previous — окно [At−14д, At−7д).
+	Summary  ChannelStatsSummary
+	Previous ChannelStatsSummary
+	// NotificationsOn — участников с включёнными уведомлениями сейчас: у
+	// `statsPercentValue` предыдущего значения нет.
+	NotificationsOn int64
+	MembersGrowth   []StatPoint // кумулятивный рост участников по дням
+	JoinedByDay     []StatPoint // присоединившиеся по дням
+	ViewsByDay      []StatPoint // просмотры по дням
+	PostsByDay      []StatPoint // посты по дням
+	RecentPosts     []RecentPost
 }
 
 // PostStats — статистика одного поста канала (stats.getMessageStats): динамика

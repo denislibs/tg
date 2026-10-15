@@ -30,12 +30,12 @@ func TestStatsRepo_NotificationsOnRespectsTypeAndExplicitChoice(t *testing.T) {
 	mustExec(t, pool, `UPDATE chat_members SET muted_until = to_timestamp(0) WHERE chat_id=$1 AND user_id=$2`, ch, explicit)
 	mustExec(t, pool, `UPDATE chat_members SET muted_until = now() + interval '1 hour' WHERE chat_id=$1 AND user_id=$2`, ch, timed)
 
-	s, err := NewStatsRepo(pool).Summary(ctx, ch)
+	on, err := NewStatsRepo(pool).NotificationsOn(ctx, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// автор (тип по умолчанию, чат не тронут), explicit, plain
-	if s.NotificationsOn != 3 {
-		t.Fatalf("NotificationsOn = %d, want 3", s.NotificationsOn)
+	if on != 3 {
+		t.Fatalf("NotificationsOn = %d, want 3", on)
 	}
 }
