@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyChatTheme,
   applyPeerBlocked,
+  applyTtlPeriod,
   beginPeerFullFetch,
   cachedPeerFull,
   cachedPeerTheme,
@@ -79,6 +80,26 @@ describe('chatFullCache: зеркало полных карточек', () => {
   it('карточки ещё нет — патчить нечего, тема приедет вместе с ней', () => {
     applyChatTheme(-9, 'night')
     expect(cachedPeerFull(-9)).toBeUndefined()
+  })
+
+  it('срок автоудаления: событие патчит ту же карточку, нуль снимает ключ', () => {
+    saveChatFull(-9, channelFull(9))
+    let woken = 0
+    const stop = subscribeChatFullMirror(() => { woken++ })
+
+    applyTtlPeriod(-9, 86400)
+    expect(cachedPeerFull(-9)).toMatchObject({ _: 'channelFull', id: 9, ttl_period: 86400 })
+
+    applyTtlPeriod(-9, 86400) // тот же срок — не будит
+    applyTtlPeriod(-9, 0)
+    expect(cachedPeerFull(-9)).not.toHaveProperty('ttl_period')
+    expect(woken).toBe(2)
+    stop()
+  })
+
+  it('срок автоудаления без карточки — патчить нечего', () => {
+    applyTtlPeriod(7, 86400)
+    expect(cachedPeerFull(7)).toBeUndefined()
   })
 
   it('смена аккаунта очищает зеркало — карточки прошлой сессии чужие', () => {

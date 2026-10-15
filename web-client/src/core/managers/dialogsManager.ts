@@ -1928,6 +1928,17 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     },
 
     /**
+     * Срок автоудаления чата сменился (`updatePeerHistoryTTL`, а у
+     * broadcast-канала — снимок карточки): tweb кладёт `ttl_period` в диалог
+     * (`dialog.ttl_period = update.ttl_period`, appProfileManager.ts:1550-1554).
+     * Нуль — «выключено»: ключ снимается, а не обнуляется. Диалога нет в памяти
+     * — нечего патчить (`patchDialog` молчит).
+     */
+    applyTtlPeriod(peerId: number, period: number): void {
+      patchDialog(peerId, { ttl_period: period || undefined })
+    },
+
+    /**
      * Переезд диалога В ПАПКУ (`updateFolderPeers`): архив это папка №1, общий
      * список — ноль. Прежняя сигнатура принимала `archived: boolean` и тем
      * подделывала значение признаком — на проводе номер папки был всегда, а до
