@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -402,5 +403,83 @@ func TestCallSnapshot_DeletedChatLeavesTheQueue(t *testing.T) {
 	}
 	if e.calls.pendingDirty() != 0 {
 		t.Fatal("запись удалённого чата осталась в очереди")
+	}
+}
+
+// Снимок, собранный по старому состоянию, не должен остаться последним: пока он
+// писался, вышел последний участник (публикации одного чата ничем не упорядочены).
+// После публикации состояние читается заново, и исправляющий снимок отложен.
+func TestCallSnapshot_StaleSnapshotIsCorrected(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.calls.afterActiveAmong = func() { _, _ = e.calls.Leave(ctx, e.chatID, callOwner) }
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	ups := e.chatUpdates(t, callMember)
+	if len(ups) != 1 || channelFlags(t, ups[0])["call_active"] != true {
+		t.Fatalf("первый снимок собран по состоянию «идёт»: %d, %v", len(ups), ups)
+	}
+	if e.calls.pendingDirty() != 1 {
+		t.Fatal("расхождение с текущим состоянием не откладывает исправляющий снимок")
+	}
+	e.clock.advance(6 * time.Second)
+	if n, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil || n != 1 {
+		t.Fatalf("тик: n=%d err=%v", n, err)
+	}
+	ups = e.chatUpdates(t, callMember)
+	if len(ups) != 2 {
+		t.Fatalf("снимков = %d, want 2", len(ups))
+	}
+	if f := channelFlags(t, ups[1]); f["call_active"] == true {
+		t.Fatalf("последний снимок несёт устаревший call_active: %v", f)
+	}
+}
+
+// Источник звонков недоступен: снимок «без флагов» в журнал не пишется (он погасил
+// бы иконку идущего звонка при догонке), переход не теряется — повтор тиком.
+func TestCallSnapshot_SourceFailureDoesNotPublishWithoutFlags(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.calls.activeAmongErr = errors.New("redis down")
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(e.chatUpdates(t, callMember)); n != 0 {
+		t.Fatalf("при сбое источника опубликовано %d снимков, want 0", n)
+	}
+	if e.calls.pendingDirty() != 1 {
+		t.Fatal("переход потерян: повтора в очереди нет")
+	}
+	e.calls.activeAmongErr = nil
+	e.clock.advance(6 * time.Second)
+	if n, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil || n != 1 {
+		t.Fatalf("повтор: n=%d err=%v", n, err)
+	}
+	ups := e.chatUpdates(t, callMember)
+	if len(ups) != 1 || channelFlags(t, ups[0])["call_active"] != true {
+		t.Fatalf("повтор не опубликовал снимок с флагами: %v", ups)
+	}
+}
+
+// Личный снимок (вступил по ссылке, назначен админом, ограничен) — полный channel
+// зрителя, а клиент заменяет им лежащий целиком: флаги звонка обязаны ехать и в нём.
+func TestCallFlags_ViewerSnapshotCarriesTheCall(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	e.in.bg.Wait()
+	if err := e.in.publishViewerChatErr(ctx, e.chatID, callMember); err != nil {
+		t.Fatal(err)
+	}
+	ups := e.chatUpdates(t, callMember)
+	last := channelFlags(t, ups[len(ups)-1])
+	if last["min"] == true {
+		t.Fatalf("личный снимок оказался min: %v", last)
+	}
+	if last["call_active"] != true || last["call_not_empty"] != true {
+		t.Fatalf("личный снимок без флагов звонка: %v", last)
 	}
 }

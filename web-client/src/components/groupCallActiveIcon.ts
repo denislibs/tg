@@ -33,6 +33,9 @@ export default function groupCallActiveIcon(isActive = false) {
   const START_X = (SIZE - TOTAL_WIDTH) / 2
 
   const startTime = Date.now()
+  // читается не на каждом кадре (getComputedStyle — пересчёт стилей), а при смене активности:
+  // у tweb значение кешировано (`customProperties`)
+  let activeColor = isActive ? primaryColor() : ''
   let wasMounted = false
   const renderFrame = () => {
     if(!canvas.isConnected) {
@@ -47,7 +50,7 @@ export default function groupCallActiveIcon(isActive = false) {
     const progress = easeInOutSine((time - startTime) % DURATION, 0, 1, DURATION)
 
     context.clearRect(0, 0, SIZE, SIZE)
-    context.fillStyle = isActive && !mediaSizes.isMobile ? primaryColor() : '#fff'
+    context.fillStyle = isActive && !mediaSizes.isMobile ? activeColor : '#fff'
 
     for(let i = 0; i < LENGTH; ++i) {
       const x = START_X + (i * WIDTH) + (i * MARGIN)
@@ -77,6 +80,7 @@ export default function groupCallActiveIcon(isActive = false) {
     },
     setActive: (active: boolean) => {
       isActive = active
+      if(active) activeColor = primaryColor()
       renderFrame()
     },
   }

@@ -42,6 +42,11 @@ type fakeCallStore struct {
 	dirty map[int64]time.Time
 
 	activeAmongCalls int
+	// activeAmongErr — сбой источника звонков (Redis недоступен).
+	activeAmongErr error
+	// afterActiveAmong срабатывает один раз ПОСЛЕ расчёта ответа, до возврата:
+	// так тест меняет состояние звонка, пока снимок собирается по старому.
+	afterActiveAmong func()
 }
 
 func newFakeCallStore(clock *fakeClock) *fakeCallStore {
@@ -77,13 +82,23 @@ func (f *fakeCallStore) Participants(_ context.Context, chatID int64) ([]int64, 
 
 func (f *fakeCallStore) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.activeAmongCalls++
+	if f.activeAmongErr != nil {
+		err := f.activeAmongErr
+		f.mu.Unlock()
+		return nil, err
+	}
 	out := map[int64]bool{}
 	for _, id := range chatIDs {
 		if len(f.parts[id]) > 0 {
 			out[id] = true
 		}
+	}
+	hook := f.afterActiveAmong
+	f.afterActiveAmong = nil
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
 	}
 	return out, nil
 }

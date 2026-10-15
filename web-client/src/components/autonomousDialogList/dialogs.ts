@@ -75,6 +75,13 @@ import { useFoldersStore } from '@stores/foldersStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
 
+/**
+ * Показана ли иконка звонка у строки — чтобы пересчёт по зеркалу не гонял переход зря.
+ * Общая на модуль: строку может создать один список (`initDialog` зовёт активный `xd`),
+ * а пересчитывать будет другой (владелец строки), и состояние не должно быть чьим-то.
+ */
+const callStatus = new WeakMap<DialogDom, boolean>()
+
 type ConstructorArgs = BaseConstructorArgs & {
   filterId: number,
 }
@@ -84,8 +91,6 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
   private archiveDialogState?: DisposableArchiveDialogState
   private customPinnedDialog?: CustomPinnedDialog
   private unsubscribers: (() => void)[] = []
-  /** показана ли иконка звонка у строки — чтобы пересчёт по зеркалу не гонял переход зря */
-  private callStatus = new WeakMap<DialogDom, boolean>()
 
   constructor({ filterId, ...args }: ConstructorArgs) {
     super(args)
@@ -293,11 +298,11 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
   public setCallStatus(dom: DialogDom, visible: boolean) {
     // повторный вызов с тем же значением (пересчёт по зеркалу идёт на каждое его движение)
     // ничего не меняет — у tweb он один на `chat_update`
-    if(!!this.callStatus.get(dom) === visible) {
+    if(!!callStatus.get(dom) === visible) {
       return
     }
 
-    this.callStatus.set(dom, visible)
+    callStatus.set(dom, visible)
     let { callIcon } = dom
     const { listEl } = dom
     if(!callIcon && visible) {
@@ -321,7 +326,7 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
       duration: BADGE_TRANSITION_TIME,
       onTransitionEnd: visible ? undefined : () => {
         // иконка успела вернуться, пока гасла, — её уже не снимать
-        if(this.callStatus.get(dom) || dom.callIcon?.canvas !== canvas) return
+        if(callStatus.get(dom) || dom.callIcon?.canvas !== canvas) return
         canvas.remove()
         dom.callIcon = undefined
         listEl.classList.remove('has-group-call-icon')

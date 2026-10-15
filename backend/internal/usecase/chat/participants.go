@@ -166,7 +166,24 @@ func (i *Interactor) viewerCounters(ctx context.Context, c domain.ChatRecord) *d
 
 // viewerCard — карточка чата глазами зрителя со счётчиками: то же, что отдаёт
 // ручка карточки, и то, что уходит затронутому пер-зрительским снимком.
+//
+// Это полный channel зрителя, и клиент заменяет им лежащий целиком, поэтому
+// состояние звонка (call_active/call_not_empty) заполняется здесь: карточка
+// без него гасила бы иконку звонка вступившему или назначенному админом
+// посреди видеочата. Сбой источника звонков отдаёт карточку без флагов (чтение).
 func (i *Interactor) viewerCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
+	c, err := i.viewerCardRaw(ctx, chatID, viewerID)
+	if err != nil {
+		return c, err
+	}
+	recs := []domain.ChatRecord{c}
+	i.FillCallState(ctx, recs)
+	return recs[0], nil
+}
+
+// viewerCardRaw — viewerCard без состояния звонка: вызывающий, чей результат
+// уходит в журнал, заполняет его сам и строго (fillCallStateStrict).
+func (i *Interactor) viewerCardRaw(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	c, err := i.groups.Card(ctx, chatID, viewerID)
 	if err != nil {
 		return c, err
@@ -190,10 +207,17 @@ func (i *Interactor) publishViewerChatErr(ctx context.Context, chatID, userID in
 	if i.groups == nil {
 		return nil
 	}
-	c, err := i.viewerCard(ctx, chatID, userID)
+	c, err := i.viewerCardRaw(ctx, chatID, userID)
 	if err != nil {
 		return err
 	}
+	// В журнал уходит абсолютный снимок: при сбое источника звонков лучше не
+	// записать его вовсе, чем записать «звонка нет» и погасить иконку при догонке.
+	recs := []domain.ChatRecord{c}
+	if err := i.fillCallStateStrict(ctx, recs); err != nil {
+		return err
+	}
+	c = recs[0]
 	return i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "chat_update",
 		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, c) })
 }

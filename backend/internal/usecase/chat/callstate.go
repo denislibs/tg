@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -44,17 +45,18 @@ func (i *Interactor) callClock() time.Time {
 }
 
 // callsAmong — множество чатов среди ids, где идёт звонок или эфир. Один
-// Redis-pipeline и один SQL на пачку. Сбой источника не роняет выдачу: чат
-// отдаётся без флагов и поправится при следующей выдаче.
-func (i *Interactor) callsAmong(ctx context.Context, ids []int64) map[int64]bool {
+// Redis-pipeline и один SQL на пачку. При сбое источника ошибка возвращается
+// вместе с тем, что удалось узнать: «не знаем» и «звонка нет» — разные ответы.
+func (i *Interactor) callsAmong(ctx context.Context, ids []int64) (map[int64]bool, error) {
 	out := map[int64]bool{}
 	if len(ids) == 0 {
-		return out
+		return out, nil
 	}
+	var firstErr error
 	if i.groupCalls != nil {
 		active, err := i.groupCalls.ActiveAmong(ctx, ids)
-		if err != nil {
-			log.Printf("chat: состояние видеочатов: %v", err)
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("состояние видеочатов: %w", err)
 		}
 		for id := range active {
 			out[id] = true
@@ -62,12 +64,23 @@ func (i *Interactor) callsAmong(ctx context.Context, ids []int64) map[int64]bool
 	}
 	if i.livestreams != nil {
 		active, err := i.livestreams.ActiveAmong(ctx, ids)
-		if err != nil {
-			log.Printf("chat: состояние эфиров: %v", err)
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("состояние эфиров: %w", err)
 		}
 		for id := range active {
 			out[id] = true
 		}
+	}
+	return out, firstErr
+}
+
+// callsAmongSoft — callsAmong для выдачи (список, история, карточка): сбой
+// источника не роняет ответ, чат отдаётся без флагов и поправится со следующей
+// выдачей. В журнал так писать нельзя — см. fillCallStateStrict.
+func (i *Interactor) callsAmongSoft(ctx context.Context, ids []int64) map[int64]bool {
+	out, err := i.callsAmong(ctx, ids)
+	if err != nil {
+		log.Printf("chat: %v", err)
 	}
 	return out
 }
@@ -83,8 +96,17 @@ func hasChannelBody(chatType string) bool {
 // нечитаемый зрителю (Hidden), уходит честным min без состояния звонка — его не
 // спрашиваем.
 func (i *Interactor) FillCallState(ctx context.Context, recs []domain.ChatRecord) {
+	if err := i.fillCallStateStrict(ctx, recs); err != nil {
+		log.Printf("chat: %v", err)
+	}
+}
+
+// fillCallStateStrict — FillCallState с ошибкой, для снимков, которые уйдут в
+// журнал: сбой источника звонков — ошибка, а не «звонка нет». Абсолютный снимок
+// без флагов лёг бы всем участникам и при догонке погасил бы иконку идущего звонка.
+func (i *Interactor) fillCallStateStrict(ctx context.Context, recs []domain.ChatRecord) error {
 	if i.groupCalls == nil && i.livestreams == nil {
-		return
+		return nil
 	}
 	ids := make([]int64, 0, len(recs))
 	for _, c := range recs {
@@ -93,12 +115,13 @@ func (i *Interactor) FillCallState(ctx context.Context, recs []domain.ChatRecord
 		}
 	}
 	if len(ids) == 0 {
-		return
+		return nil
 	}
-	active := i.callsAmong(ctx, ids)
+	active, err := i.callsAmong(ctx, ids)
 	for k := range recs {
 		recs[k].Call = domain.ActiveCall(active[recs[k].ID])
 	}
+	return err
 }
 
 // callsOfDialogs — состояние звонков для строк списка одной пачкой.
@@ -109,7 +132,7 @@ func (i *Interactor) callsOfDialogs(ctx context.Context, recs []domain.DialogRec
 			ids = append(ids, d.ChatID)
 		}
 	}
-	return i.callsAmong(ctx, ids)
+	return i.callsAmongSoft(ctx, ids)
 }
 
 // announceCallChange — состояние звонка чата сменилось (вошёл первый участник,
@@ -124,7 +147,11 @@ func (i *Interactor) callsOfDialogs(ctx context.Context, recs []domain.DialogRec
 // «вошёл/вышел» даёт не больше двух снимков, и последний верен.
 func (i *Interactor) announceCallChange(ctx context.Context, chatID int64) {
 	publish := func() {
-		i.goBG("chat.callSnapshot", func(bg context.Context) { i.publishChatUpdate(bg, chatID) })
+		i.goBG("chat.callSnapshot", func(bg context.Context) {
+			if err := i.publishCallSnapshot(bg, chatID); err != nil {
+				log.Printf("chat %d: снимок звонка: %v", chatID, err)
+			}
+		})
 	}
 	if i.groupCalls == nil {
 		publish() // звонков нет, эфир без ограничителя
@@ -141,6 +168,38 @@ func (i *Interactor) announceCallChange(ctx context.Context, chatID int64) {
 		return
 	}
 	if err := i.groupCalls.MarkSnapshotDirty(bg, chatID, i.callClock().Add(callSnapshotWindow)); err != nil {
+		log.Printf("chat %d: отложенный снимок звонка: %v", chatID, err)
+	}
+}
+
+// publishCallSnapshot — снимок по переходу звонка с проверкой результата.
+// Публикации одного чата ничем не упорядочены (долгий снимок мегагруппы может
+// лечь в журнал ПОСЛЕ более свежего), поэтому после публикации состояние
+// читается заново: разошлось с опубликованным или публикация не удалась —
+// исправляющий снимок откладывается (resnapshotLater), и последним в журнале
+// остаётся верный. Снимок при неизвестном состоянии не публикуется (strict).
+func (i *Interactor) publishCallSnapshot(ctx context.Context, chatID int64) error {
+	published, _, err := i.publishChatSnapshot(ctx, chatID, true)
+	if err != nil {
+		if !errors.Is(err, domain.ErrNotFound) { // удалённый чат снимка не ждёт
+			i.resnapshotLater(ctx, chatID)
+		}
+		return err
+	}
+	now, err := i.callsAmong(ctx, []int64{chatID})
+	if err != nil || now[chatID] != published {
+		i.resnapshotLater(ctx, chatID)
+	}
+	return nil
+}
+
+// resnapshotLater откладывает ещё один снимок чата на окно вперёд (тик любой
+// реплики его подхватит). Без Redis очереди нет.
+func (i *Interactor) resnapshotLater(ctx context.Context, chatID int64) {
+	if i.groupCalls == nil {
+		return
+	}
+	if err := i.groupCalls.MarkSnapshotDirty(context.WithoutCancel(ctx), chatID, i.callClock().Add(callSnapshotWindow)); err != nil {
 		log.Printf("chat %d: отложенный снимок звонка: %v", chatID, err)
 	}
 }
@@ -162,7 +221,7 @@ func (i *Interactor) FlushDirtyCallSnapshots(ctx context.Context) (int, error) {
 	}
 	published := 0
 	for _, chatID := range ids {
-		pubErr := i.publishChatSnapshot(ctx, chatID)
+		pubErr := i.publishCallSnapshot(ctx, chatID)
 		if pubErr != nil && !errors.Is(pubErr, domain.ErrNotFound) { // удалённый чат снимка не ждёт
 			log.Printf("chat %d: отложенный снимок звонка: %v", chatID, pubErr)
 			continue // аренда истечёт — запись подберёт следующий тик

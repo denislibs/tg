@@ -821,6 +821,20 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     expect(chat.updatePinnedFloatingHeight).toHaveBeenLastCalledWith(0)
   })
 
+  it('флаги карточки без участников в сторе (снимок звонка доехал раньше списка) — плашки нет; ушли флаги — плашка гаснет', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    setCall(GROUP, true)
+    await Promise.resolve()
+    expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(true)
+
+    useGroupCallStore.getState().setActive(GROUP, [ALICE])
+    await vi.waitFor(() => expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(false))
+
+    // звонок кончился (снимок chat_update без флагов), а участники в сторе ещё не обновились
+    setCall(GROUP, false)
+    await vi.waitFor(() => expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(true))
+  })
+
   it('эфир канала: плашка по livestreamStore, в личке — никогда', async() => {
     const channel = makeChat({ peerId: CHANNEL, isBroadcast: true })
     const topbar = await open(channel)
