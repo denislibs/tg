@@ -607,35 +607,36 @@ func TestSearchUsers_OwnByContactBookName(t *testing.T) {
 // него остаётся «Deleted Account», domain.UserReal.SeenBy); пустое имя в книге
 // — поиск по профилю; совпавший и по книге, и по профилю — одна строка;
 // порядок и отсечка по limit идут по ВИДИМОМУ зрителю имени (Кира, Костя,
-// Ксения — при профильных Юля, Ян, Яна).
+// Ксения — при профильных Яна, Юля, Ян: по профилю порядок другой).
 func TestSearchUsers_ContactBookEdges(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	ctx := context.Background()
 	viewer := seedUser(t, pool, "+7630")
 	hiddenContact := seedUser(t, pool, "+7631") // профиль «Зинаида», в книге «Тёща», личка скрыта
 	hiddenPeer := seedUser(t, pool, "+7632")    // профиль «Зоя», не контакт, личка скрыта
-	deleted := seedUser(t, pool, "+7633")       // профиль «Даша», в книге «Дашка», аккаунт удалён
+	deleted := seedUser(t, pool, "+7633")       // в книге «Яша», аккаунт удалён (SoftDelete → «Deleted Account»)
+	dex := seedUser(t, pool, "+7639")           // профиль «Delta», в книге «Яков»
 	emptyBook := seedUser(t, pool, "+7634")     // профиль «Эмилия», в книге пусто
 	both := seedUser(t, pool, "+7635")          // профиль «Леся», в книге «Лена»
-	a := seedUser(t, pool, "+7636")             // профиль «Яна», в книге «Ксения»
-	b := seedUser(t, pool, "+7637")             // профиль «Юля», в книге «Кира»
-	c := seedUser(t, pool, "+7638")             // профиль «Ян», в книге «Костя»
+	a := seedUser(t, pool, "+7636")             // профиль «Ян», в книге «Ксения»
+	b := seedUser(t, pool, "+7637")             // профиль «Яна», в книге «Кира»
+	c := seedUser(t, pool, "+7638")             // профиль «Юля», в книге «Костя»
 
-	profile := map[int64]string{hiddenContact: "Зинаида", hiddenPeer: "Зоя", deleted: "Даша", emptyBook: "Эмилия",
-		both: "Леся", a: "Яна", b: "Юля", c: "Ян"}
+	profile := map[int64]string{hiddenContact: "Зинаида", hiddenPeer: "Зоя", dex: "Delta", emptyBook: "Эмилия",
+		both: "Леся", a: "Ян", b: "Яна", c: "Юля"}
 	for id, name := range profile {
 		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=$1`, id, name); err != nil {
 			t.Fatalf("display_name: %v", err)
 		}
 	}
-	for id, first := range map[int64]string{hiddenContact: "Тёща", deleted: "Дашка", emptyBook: "", both: "Лена",
+	for id, first := range map[int64]string{hiddenContact: "Тёща", deleted: "Яша", dex: "Яков", emptyBook: "", both: "Лена",
 		a: "Ксения", b: "Кира", c: "Костя"} {
 		if _, err := pool.Exec(ctx,
 			`INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1, $2, $3)`, viewer, id, first); err != nil {
 			t.Fatalf("contact: %v", err)
 		}
 	}
-	if _, err := pool.Exec(ctx, `UPDATE users SET deleted_at = now() WHERE id=$1`, deleted); err != nil {
+	if err := NewAuthRepo(pool).SoftDelete(ctx, deleted); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	hide := func(chatID int64) {
@@ -696,9 +697,14 @@ func TestSearchUsers_ContactBookEdges(t *testing.T) {
 	if got := find("Зо", 20); !eq(got, hiddenPeer) {
 		t.Fatalf("«Зо» после показа = %v; want %d", got, hiddenPeer)
 	}
-	// Удалённый аккаунт: по имени из книги не находится (по профилю — как раньше).
-	if got := find("Дашк", 20); len(got) != 0 {
-		t.Fatalf("«Дашк» = %v; want пусто: удалённый аккаунт без имени из книги", got)
+	// Удалённый аккаунт (настоящий SoftDelete): по имени из книги не находится,
+	// по «Deleted Account» — да; в порядке он стоит по видимому имени «Deleted
+	// Account», а не по «Яша» из книги (до «Delta» в книге «Яков»).
+	if got := find("Яш", 20); len(got) != 0 {
+		t.Fatalf("«Яш» = %v; want пусто: удалённый аккаунт без имени из книги", got)
+	}
+	if got := find("Del", 20); !eq(got, deleted, dex) {
+		t.Fatalf("«Del» = %v; want [удалённый %d, Delta %d]", got, deleted, dex)
 	}
 	// Пустое имя в книге — ищется по профилю.
 	if got := find("Эми", 20); !eq(got, emptyBook) {

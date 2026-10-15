@@ -65,7 +65,7 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, 
 	own, err := r.queryUsers(ctx,
 		`SELECT `+userSeenCols("u.", "$3")+`
 		   FROM users u
-		   LEFT JOIN contacts vc ON vc.owner_id = $3 AND vc.user_id = u.id
+		   LEFT JOIN contacts bk ON bk.owner_id = $3 AND bk.user_id = u.id AND u.deleted_at IS NULL
 		  WHERE u.id = ANY(ARRAY(
 		        SELECT ct.user_id FROM contacts ct JOIN users cu ON cu.id = ct.user_id AND cu.deleted_at IS NULL
 		         WHERE ct.owner_id = $3
@@ -81,7 +81,7 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, 
 		                      WHERE me.user_id = $3 AND NOT me.dialog_hidden AND c.type = 'private'))
 		        ) o JOIN users ou ON ou.id = o.user_id
 		         WHERE ou.display_name ILIKE $1))
-		  ORDER BY COALESCE(NULLIF(btrim(vc.first_name || ' ' || vc.last_name), ''), u.display_name), u.id LIMIT $2`,
+		  ORDER BY COALESCE(NULLIF(btrim(bk.first_name || ' ' || bk.last_name), ''), u.display_name), u.id LIMIT $2`,
 		like, limit, viewerID)
 	if err != nil {
 		return nil, err
