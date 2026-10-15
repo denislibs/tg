@@ -24,6 +24,10 @@ var (
 	// ErrFreshAuthorization: текущая сессия моложе FreshAuthorizationPeriod и
 	// не вправе распоряжаться другими (tweb FRESH_RESET_AUTHORISATION_FORBIDDEN).
 	ErrFreshAuthorization = errors.New("fresh authorization")
+	// ErrNoCurrentSession: строки ТЕКУЩЕЙ сессии запроса уже нет (отозвана, а кэш
+	// сессий ещё пропускает токен). Отличается от ErrNotFound, которым могут
+	// отвечать выборки по цели: ручки отвечают на неё 401, а не 404.
+	ErrNoCurrentSession = errors.New("no current session")
 	// ErrBalanceTooLow: у отправителя не хватает звёзд (платное сообщение,
 	// звёздная реакция, платное медиа, подарок) — tweb BALANCE_TOO_LOW.
 	ErrBalanceTooLow = errors.New("balance too low")

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -24,10 +26,10 @@ func (i *Interactor) RevokeSession(ctx context.Context, userID, deviceID int64) 
 	return true, nil
 }
 
-// RevokeOtherSessions terminates every session of the user except the current
+// revokeOtherSessions terminates every session of the user except the current
 // one ("Terminate All Other Sessions"): rows are deleted, cached sessions
 // evicted and each device's sockets closed. Returns how many were revoked.
-func (i *Interactor) RevokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
+func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
 	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
 	if err != nil {
 		return 0, err
@@ -44,14 +46,18 @@ func (i *Interactor) RevokeOtherSessions(ctx context.Context, userID, currentDev
 }
 
 // IsFreshSession — текущая сессия моложе FreshAuthorizationPeriod (строго
-// «больше», tweb appAccountManager.ts:220-223: date + PERIOD > now). Нет строки
-// сессии — domain.ErrNotFound.
+// «больше», tweb appAccountManager.ts:220-223: date + PERIOD > now). Сравнение
+// в целых секундах, как у tweb (date_created и tsNow(true) — секунды). Нет строки
+// текущей сессии — domain.ErrNoCurrentSession.
 func (i *Interactor) IsFreshSession(ctx context.Context, userID, currentDeviceID int64) (bool, error) {
 	d, err := i.devices.Get(ctx, userID, currentDeviceID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, domain.ErrNoCurrentSession
+	}
 	if err != nil {
 		return false, err
 	}
-	return d.CreatedAt.Add(domain.FreshAuthorizationPeriod).After(i.now()), nil
+	return d.CreatedAt.Unix()+int64(domain.FreshAuthorizationPeriod/time.Second) > i.now().Unix(), nil
 }
 
 // TerminateSession — завершение ЧУЖОЙ сессии из списка устройств
@@ -81,7 +87,7 @@ func (i *Interactor) TerminateSession(ctx context.Context, userID, currentDevice
 
 // TerminateOtherSessions — «завершить все прочие» (auth.resetAuthorizations):
 // то же правило свежести, без особых случаев (прочих сессий нет — всё равно
-// отказ), затем RevokeOtherSessions.
+// отказ), затем revokeOtherSessions.
 func (i *Interactor) TerminateOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
 	fresh, err := i.IsFreshSession(ctx, userID, currentDeviceID)
 	if err != nil {
@@ -90,5 +96,5 @@ func (i *Interactor) TerminateOtherSessions(ctx context.Context, userID, current
 	if fresh {
 		return 0, domain.ErrFreshAuthorization
 	}
-	return i.RevokeOtherSessions(ctx, userID, currentDeviceID)
+	return i.revokeOtherSessions(ctx, userID, currentDeviceID)
 }

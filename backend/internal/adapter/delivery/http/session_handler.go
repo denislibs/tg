@@ -66,13 +66,14 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 // 406 FRESH_RESET_AUTHORISATION_FORBIDDEN: первые сутки сессия не завершает
 // другие (tweb appAccountManager.ts:71-77). Код 406 tweb не определяет — вывод
 // из клиента: текст отказа он разбирает по `error.type` (getAuthorizationErrorLangKey).
-// ErrNotFound от usecase — строки ТЕКУЩЕЙ сессии уже нет, хотя кэш сессий ещё
-// пропускает токен: тот же ответ, что у currentDeviceID.
+// ErrNoCurrentSession — строки ТЕКУЩЕЙ сессии уже нет, хотя кэш сессий ещё
+// пропускает токен: тот же ответ, что у currentDeviceID. Прочий ErrNotFound
+// (например, цели) сюда не попадает.
 func writeTerminateError(w http.ResponseWriter, err error, msg string) {
 	switch {
 	case errors.Is(err, domain.ErrFreshAuthorization):
 		writeError(w, http.StatusNotAcceptable, "FRESH_RESET_AUTHORISATION_FORBIDDEN")
-	case errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, domain.ErrNoCurrentSession):
 		writeError(w, http.StatusUnauthorized, "no session")
 	default:
 		writeError(w, http.StatusInternalServerError, msg)

@@ -85,6 +85,19 @@ func TestTerminateSession_FreshnessCheckedBeforeOwnSession(t *testing.T) {
 	}
 }
 
+// Граница в целых секундах (tweb: date + PERIOD > now в секундах): дробная
+// часть created_at не продлевает свежесть.
+func TestIsFreshSession_WholeSeconds(t *testing.T) {
+	i, devices, u, cur, _ := sessionsFixture(t, domain.FreshAuthorizationPeriod)
+	d := devices.byID[cur]
+	d.CreatedAt = sessionsNow.Add(-domain.FreshAuthorizationPeriod).Add(500 * time.Millisecond)
+	devices.byID[cur] = d
+	fresh, err := i.IsFreshSession(context.Background(), u, cur)
+	if err != nil || fresh {
+		t.Fatalf("fresh=%v err=%v, want false,nil (секундное сравнение, как у tweb)", fresh, err)
+	}
+}
+
 func TestTerminateSession_MissingTarget_NotRevoked(t *testing.T) {
 	i, _, u, cur, _ := sessionsFixture(t, 48*time.Hour)
 	ok, err := i.TerminateSession(context.Background(), u, cur, 99999)
@@ -96,7 +109,7 @@ func TestTerminateSession_MissingTarget_NotRevoked(t *testing.T) {
 func TestTerminateSession_MissingCurrent_NotFound(t *testing.T) {
 	i, _, u, _, other := sessionsFixture(t, 48*time.Hour)
 	_, err := i.TerminateSession(context.Background(), u, 99999, other)
-	if !errors.Is(err, domain.ErrNotFound) {
+	if !errors.Is(err, domain.ErrNoCurrentSession) {
 		t.Fatalf("err = %v, want ErrNotFound (нет строки текущей сессии)", err)
 	}
 }
@@ -136,7 +149,7 @@ func TestTerminateOtherSessions_OldCurrent_Allowed(t *testing.T) {
 
 func TestTerminateOtherSessions_MissingCurrent_NotFound(t *testing.T) {
 	i, _, u, _, _ := sessionsFixture(t, 48*time.Hour)
-	if _, err := i.TerminateOtherSessions(context.Background(), u, 99999); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.TerminateOtherSessions(context.Background(), u, 99999); !errors.Is(err, domain.ErrNoCurrentSession) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
@@ -162,7 +175,7 @@ func TestIsFreshSession(t *testing.T) {
 	if fresh, err := i.IsFreshSession(ctx, u, other); err != nil || fresh {
 		t.Fatalf("other: fresh=%v err=%v, want false,nil", fresh, err)
 	}
-	if _, err := i.IsFreshSession(ctx, u, 99999); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.IsFreshSession(ctx, u, 99999); !errors.Is(err, domain.ErrNoCurrentSession) {
 		t.Fatalf("missing: err = %v, want ErrNotFound", err)
 	}
 }

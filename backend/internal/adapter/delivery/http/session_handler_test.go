@@ -131,6 +131,9 @@ func TestSessions_FreshCurrent_LogoutAllowed(t *testing.T) {
 	if rec := authedReq(t, h, http.MethodPost, "/auth/logout", token, nil); rec.Code != http.StatusOK {
 		t.Fatalf("logout свежей сессии = %d %s", rec.Code, rec.Body.String())
 	}
+	if rec := authedReq(t, h, http.MethodGet, "/me", token, nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("после logout /me = %d; ожидался 401", rec.Code)
+	}
 }
 
 // Строки текущей сессии в БД уже нет, а контекст запроса её ещё несёт (кэш
@@ -151,8 +154,8 @@ func TestSessions_CurrentRowGone_Unauthorized(t *testing.T) {
 		req = req.WithContext(WithUser(req.Context(), domain.UserRecord{ID: userID}, goneDevice))
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("%s %s = %d %s; ожидался 401", c.method, c.path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"text":"no session"`) {
+			t.Fatalf("%s %s = %d %s; ожидался 401 no session", c.method, c.path, rec.Code, rec.Body.String())
 		}
 	}
 	for _, tok := range []string{tokenA, tokenB} {
@@ -295,6 +298,7 @@ func TestSessions_CurrentSessionHashIsZero(t *testing.T) {
 		t.Fatalf("текущих=%d, прочих=%d; ожидалось по одной", current, other)
 	}
 
+	ageSession(t, pool, tokenA, 48*time.Hour) // свежесть (406) проверяется раньше «своей сессии»
 	// Ноль по этому пути не проходит: текущую авторизацию не отзывают, из неё
 	// выходят. Иначе клиент завершил бы свою сессию, попросив «сессию 0».
 	rec = authedReq(t, h, http.MethodDelete, "/sessions/0", tokenA, nil)
