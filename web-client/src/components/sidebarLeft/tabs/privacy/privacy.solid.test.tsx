@@ -24,8 +24,8 @@ import type { Managers } from '@/client/bootstrap'
 import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import { i18n } from '@lib/langPack'
-import type { PrivacyKey, PrivacyRule } from '@core/managers/privacyManager'
-import { usePrivacyStore } from '@stores/privacyStore'
+import { privacyKeyTag, toPrivacyRules, type PrivacyKey, type PrivacyRule } from '@core/managers/privacyManager'
+import { applyPrivacyUpdate, usePrivacyStore } from '@stores/privacyStore'
 import {
   AppAddMembersTab,
   AppPrivacyLastSeenTab,
@@ -53,7 +53,12 @@ beforeEach(() => {
     rule('added_by_phone', { value: 'contacts' }),
     rule('read_time'),
   ])
-  setRule = vi.fn(async(r: PrivacyRule) => r)
+  // Менеджер воркера после ответа сервера шлёт местный `updatePrivacy`, а проектор
+  // кладёт его в стор (`privacy_update`) — здесь тот же путь без воркера.
+  setRule = vi.fn(async(r: PrivacyRule) => {
+    applyPrivacyUpdate({ _: 'updatePrivacy', key: { _: privacyKeyTag(r.key) }, rules: toPrivacyRules(r) })
+    return r
+  })
 
   const managers = { privacy: { setRule, rule: vi.fn() } } as unknown as Managers
   const columnEl = document.createElement('div')

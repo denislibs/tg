@@ -19,30 +19,31 @@ var ErrQRUnavailable = errors.New("qr login unavailable")
 const codeTTL = 5 * time.Minute
 
 type Interactor struct {
-	users    UserRepo
-	devices  DeviceRepo
-	codes    CodeRepo
-	pw       PasswordRepo
-	steps    LoginStepRepo // одноразовые токены шагов входа (регистрация/восстановление/веб-токен)
-	devCode  string
-	logf     func(string, ...any)
-	cache    SessionCache       // optional
-	revoker  RevocationNotifier // optional
-	qr       QRStore            // optional
-	svc      ServiceNotifier    // optional
-	geo      GeoResolver        // optional
-	premium  PremiumRepo        // optional
-	mail     Mailer             // optional: доставка кода восстановления на почту
-	pub      EventPublisher     // optional: realtime user_update fan-out
-	partners PartnersFunc       // optional: user_update recipient set (shared-chat peers)
-	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
-	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
-	squarer  AvatarSquarer      // optional: квадрат неквадратной аватарки
-	media    MediaReader        // обязателен для фото профиля: проверка «файл свой»
-	privacy  PrivacyChecker     // optional: видимость фото профиля в кадре user_update
-	contacts ContactViewer      // optional: имя из книги получателя в кадре user_update
-	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
-	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
+	users      UserRepo
+	devices    DeviceRepo
+	codes      CodeRepo
+	pw         PasswordRepo
+	steps      LoginStepRepo // одноразовые токены шагов входа (регистрация/восстановление/веб-токен)
+	devCode    string
+	logf       func(string, ...any)
+	cache      SessionCache       // optional
+	revoker    RevocationNotifier // optional
+	qr         QRStore            // optional
+	svc        ServiceNotifier    // optional
+	geo        GeoResolver        // optional
+	premium    PremiumRepo        // optional
+	mail       Mailer             // optional: доставка кода восстановления на почту
+	pub        EventPublisher     // optional: realtime user_update fan-out
+	partners   PartnersFunc       // optional: user_update recipient set (shared-chat peers)
+	partnersIn PartnersAmongFunc  // optional: «кто из этих — партнёр» одним запросом (AnnounceUserTo)
+	updates    UpdateLog          // optional: per-user update log for user_update (dense pts)
+	previews   AvatarPreviewer    // optional: stripped-превью аватарки при её установке
+	squarer    AvatarSquarer      // optional: квадрат неквадратной аватарки
+	media      MediaReader        // обязателен для фото профиля: проверка «файл свой»
+	privacy    PrivacyChecker     // optional: видимость фото профиля в кадре user_update
+	contacts   ContactViewer      // optional: имя из книги получателя в кадре user_update
+	pwFails    *failCounter       // счётчик неудачных попыток пароля на password_token
+	recFails   *failCounter       // счётчик неудачных кодов восстановления на password_token
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
 	resetWait time.Duration
 }
@@ -58,6 +59,11 @@ type EventPublisher interface {
 // given user — the user_update fan-out set. Wired to the chat usecase's
 // ChatPartners, the same source presence fan-out uses.
 type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
+
+// PartnersAmongFunc отвечает, какие из candidates — партнёры userID (то же
+// отношение, что у PartnersFunc), одним точечным запросом на кандидатов, без
+// выборки всех партнёров.
+type PartnersAmongFunc func(ctx context.Context, userID int64, candidates []int64) ([]int64, error)
 
 // PrivacyChecker отвечает, видит ли viewer аспект key владельца ownerID
 // (usecase/privacy) — тот же шов, что у presence. Здесь нужен ровно для
@@ -189,6 +195,7 @@ func (i *Interactor) SetPremiumRepo(p PremiumRepo)               { i.premium = p
 func (i *Interactor) SetMailer(m Mailer)                         { i.mail = m }
 func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
+func (i *Interactor) SetPartnersAmong(f PartnersAmongFunc)       { i.partnersIn = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
 func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s }

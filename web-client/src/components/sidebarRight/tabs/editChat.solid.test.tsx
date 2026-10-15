@@ -98,7 +98,8 @@ beforeEach(() => {
       const card = cards.get(peerId)
       return card ? { peerId, ...card } : null
     }),
-    editInfo: vi.fn(async() => {}),
+    editTitle: vi.fn(async() => {}),
+    editAbout: vi.fn(async() => {}),
     setPhoto: vi.fn(async() => {}),
     setForum: vi.fn(async() => {}),
     setHistory: vi.fn(async() => {}),
@@ -179,7 +180,8 @@ describe('вкладка «Изменить» — сохранение как у
     type(about, 'New about')
     await settle()
 
-    expect(groups.editInfo).not.toHaveBeenCalled()
+    expect(groups.editTitle).not.toHaveBeenCalled()
+    expect(groups.editAbout).not.toHaveBeenCalled()
     const btn = corner(tab)!
     expect(btn.classList.contains('is-visible')).toBe(true)
     expect(btn.hasAttribute('disabled')).toBe(false)
@@ -187,10 +189,42 @@ describe('вкладка «Изменить» — сохранение как у
     click(btn)
     await settle()
 
-    expect(groups.editInfo).toHaveBeenCalledTimes(1)
-    expect(groups.editInfo).toHaveBeenCalledWith(-GROUP_ID, { title: 'Renamed', about: 'New about', username: '' })
+    // tweb `editChat.tsx:414-420`: название и описание — два вызова, каждый
+    // только при своей правке; публичное имя не едет ни с одним из них.
+    expect(groups.editTitle).toHaveBeenCalledTimes(1)
+    expect(groups.editTitle).toHaveBeenCalledWith(-GROUP_ID, 'Renamed')
+    expect(groups.editAbout).toHaveBeenCalledTimes(1)
+    expect(groups.editAbout).toHaveBeenCalledWith(-GROUP_ID, 'New about')
     await pause(400)
     expect(tab.container.isConnected).toBe(false)
+  })
+
+  it('правка только описания зовёт только editAbout (публичное имя группы не трогается)', async() => {
+    const tab = await open(group({ pFlags: { megagroup: true, creator: true }, username: 'pub_grp' }))
+    const [, about] = fields(tab)
+    type(about, 'Только описание')
+    await settle()
+
+    click(corner(tab)!)
+    await settle()
+
+    expect(groups.editAbout).toHaveBeenCalledWith(-GROUP_ID, 'Только описание')
+    expect(groups.editTitle).not.toHaveBeenCalled()
+    for (const call of [...groups.editAbout.mock.calls, ...groups.editTitle.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain('pub_grp')
+    }
+  })
+
+  it('правка только названия зовёт только editTitle', async() => {
+    const tab = await open(group({ pFlags: { megagroup: true, creator: true } }))
+    type(fields(tab)[0], 'Только название')
+    await settle()
+
+    click(corner(tab)!)
+    await settle()
+
+    expect(groups.editTitle).toHaveBeenCalledWith(-GROUP_ID, 'Только название')
+    expect(groups.editAbout).not.toHaveBeenCalled()
   })
 
   it('пустое название — галочка видна, но выключена; возврат к исходному прячет её', async() => {
@@ -214,7 +248,8 @@ describe('вкладка «Изменить» — сохранение как у
     slider.onCloseBtnClick()
     await pause(400)
 
-    expect(groups.editInfo).not.toHaveBeenCalled()
+    expect(groups.editTitle).not.toHaveBeenCalled()
+    expect(groups.editAbout).not.toHaveBeenCalled()
     expect(groups.setPhoto).not.toHaveBeenCalled()
     expect(tab.container.isConnected).toBe(false)
     expect(tab.scrollable.container.querySelector('.input-wrapper')).toBeNull()
@@ -437,7 +472,8 @@ describe('вкладка «Изменить» — переходы и тумбл
     click(row(tab, 'ChatHistory')!.querySelector('input')!)
     await settle()
     expect(groups.setHistory).toHaveBeenCalledWith(-GROUP_ID, false)
-    expect(groups.editInfo).not.toHaveBeenCalled()
+    expect(groups.editTitle).not.toHaveBeenCalled()
+    expect(groups.editAbout).not.toHaveBeenCalled()
   })
 
   it('темы у группы с обсуждением не включаются — тост, тумблер на месте', async() => {

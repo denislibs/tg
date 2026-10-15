@@ -29,8 +29,10 @@ let started = false
 // (`lib/langPack.ts::applyLangPack`, порт tweb :325), воркер только ретранслирует.
 // `contacts_update` — не `RT.*` по той же причине, что у tweb: это событие менеджера
 // книги (`contactsManager::onContactUpdated`), а не кадр провода.
-// `peer_block` — то же: его шлёт менеджер приватности после ответа сервера
-// (`privacyManager.toggleBlock`, tweb `appProfileManager.ts:1528`).
+// `peer_block`/`privacy_update` — то же: воркер выводит их из кадров журнала
+// `updatePeerBlocked`/`updatePrivacy` и местного апдейта после своего ответа
+// (`privacyManager.toggleBlock`/`setRule`, tweb `appProfileManager.ts:1528`,
+// `appPrivacyManager.ts:12-19`).
 // `scheduled_new`/`scheduled_delete` — владелец хранилища отложенных (менеджер
 // сообщений) по кадрам ленты отложенных и своей постановке (tweb
 // `appMessagesManager.ts:4383-4388`, `:11799`, `:11813`).
@@ -43,7 +45,7 @@ let started = false
 // местный апдейт своего PUT (`notifyManager.updateNotifySettings`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'peer_pinned_deleted']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'peer_pinned_deleted']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

@@ -62,11 +62,12 @@ function cardResponse() {
   }
 }
 
-function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn?: unknown }) {
+function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn?: unknown; putReturn?: unknown }) {
   const posts: PostCall[] = []
   const gets: string[] = []
   const dels: string[] = []
   const patches: PostCall[] = []
+  const puts: PostCall[] = []
   const rest = {
     async post<R>(path: string, body: unknown): Promise<R> {
       posts.push({ path, body })
@@ -80,12 +81,16 @@ function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn
       patches.push({ path, body })
       return (opts.patchReturn ?? {}) as R
     },
+    async put<R>(path: string, body: unknown): Promise<R> {
+      puts.push({ path, body })
+      return (opts.putReturn ?? {}) as R
+    },
     async del<R>(path: string): Promise<R> {
       dels.push(path)
       return {} as R
     },
   } as unknown as RestClient
-  return { rest, posts, gets, dels, patches }
+  return { rest, posts, gets, dels, patches, puts }
 }
 
 describe('GroupsManager', () => {
@@ -325,6 +330,23 @@ describe('GroupsManager', () => {
     expect(posts[0].path).toBe('/join/tok123')
     expect(posts[0].body).toEqual({})
     expect(peerId).toBe(-77)
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
+  })
+
+  // MC-11: название и описание — разные методы, как в tweb (`appChatsManager.ts:922-950`);
+  // ни один не несёт публичное имя (его пишет только `setType`).
+  it('editTitle: PUT /chats/{id}/title, чат из Updates — в зеркало; editAbout: PUT /chats/{id}/about', async () => {
+    const chat = { _: 'channel', id: 5, title: 'Новое', pFlags: { megagroup: true } }
+    const { rest, puts, patches } = fakeRest({ putReturn: { _: 'updates', updates: [], users: [], chats: [chat], date: 1, seq: 0 } })
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+    await mgr.editTitle(-5, 'Новое')
+    await mgr.editAbout(-5, 'описание')
+    expect(puts).toEqual([
+      { path: '/chats/-5/title', body: { title: 'Новое' } },
+      { path: '/chats/-5/about', body: { about: 'описание' } },
+    ])
+    expect(patches).toHaveLength(0)
     expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
   })
 

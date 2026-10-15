@@ -461,6 +461,49 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
   })
 })
 
+// Своя карточка (VA2-02): второе устройство получает `user_update` о самом себе —
+// смену эмодзи-статуса, Premium, — а в кэше пиров своей карточки может не быть
+// (в списках чатов «я» бывает только в «Избранном»). `me` воркера обновляется
+// отдельным приёмником независимо от кэша пиров.
+describe('PeersManager — своя карточка из user_update (onSelfUser)', () => {
+  const me = (over: Partial<UserReal> = {}) => user(7, { pFlags: { self: true }, phone: '+79990000007', ...over })
+
+  it('своей карточки нет в кэше → onSelfUser зовётся, карточка сохраняется и объявляется как любая неизвестная', () => {
+    const selfs: UserReal[] = []
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onPeerOps: (o) => ops.push(...o), onSelfUser: (u) => selfs.push(u) })
+
+    const card = me({ pFlags: { self: true, premium: true } })
+    mgr.applyUserUpdate(card)
+
+    expect(selfs).toEqual([card])
+    expect(ops).toEqual([{ op: 'upsert', peers: [card] }])
+  })
+
+  it('своя карточка в кэше → и приёмник, и публикация', async () => {
+    const selfs: UserReal[] = []
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest: fakeRest([me()]).rest, onPeerOps: (o) => ops.push(...o), onSelfUser: (u) => selfs.push(u) })
+    await mgr.getUsers([7])
+    ops.length = 0
+
+    const fresh = me({ emoji_status_emoticon: '🔥' })
+    mgr.applyUserUpdate(fresh)
+
+    expect(selfs).toEqual([fresh])
+    expect(ops).toEqual([{ op: 'upsert', peers: [fresh] }])
+  })
+
+  it('чужая карточка приёмник не будит', () => {
+    const selfs: UserReal[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onSelfUser: (u) => selfs.push(u) })
+
+    mgr.applyUserUpdate(user(404))
+
+    expect(selfs).toEqual([])
+  })
+})
+
 // Смена `pFlags.contact` на карточке — повод двигать книгу контактов (tweb
 // saveApiUser :738-754 → onContactUpdated(userId, newContact, wasContact)).
 // Через `onContactToggle` менеджер сообщает об этом владельцу книги, не зная о нём.

@@ -44,6 +44,14 @@ func (r *GroupRepo) CreateMultiMember(ctx context.Context, typ, title, about, us
 }
 
 func (r *GroupRepo) AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error {
+	_, err := r.InsertMember(ctx, chatID, userID, role, rights)
+	return err
+}
+
+// InsertMember — AddMember, сообщающий, вставлена ли строка: false, если
+// участник уже был (ON CONFLICT DO NOTHING), то есть параллельный вход успел
+// раньше и служебку с кадрами пишет он.
+func (r *GroupRepo) InsertMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) (bool, error) {
 	q := querier(ctx, r.pool)
 	// Вступивший в broadcast-канал начинает с прочитанной историей: горизонт
 	// чтения — последний пост на момент вступления. Непрочитанное канала
@@ -58,12 +66,13 @@ func (r *GroupRepo) AddMember(ctx context.Context, chatID, userID int64, role st
 		 ON CONFLICT (chat_id,user_id) DO NOTHING`,
 		chatID, userID, role, int(rights))
 	if err != nil {
-		return err
+		return false, err
 	}
-	if ct.RowsAffected() == 1 {
-		_, err = q.Exec(ctx, `UPDATE chats SET member_count = member_count + 1 WHERE id=$1`, chatID)
+	if ct.RowsAffected() != 1 {
+		return false, nil
 	}
-	return err
+	_, err = q.Exec(ctx, `UPDATE chats SET member_count = member_count + 1 WHERE id=$1`, chatID)
+	return err == nil, err
 }
 
 func (r *GroupRepo) RemoveMember(ctx context.Context, chatID, userID int64) error {
@@ -170,11 +179,12 @@ func (r *GroupRepo) SetPinned(ctx context.Context, chatID, userID int64, pinned 
 }
 
 // CountPinned — сколько диалогов пользователь закрепил в основном списке
-// (архив не считается: у него свой набор пинов, как папки tweb).
+// (архив не считается: у него свой набор пинов, как папки tweb; скрытая
+// «удалить чат» строка — тоже: её закреп не виден и лимит не ест).
 func (r *GroupRepo) CountPinned(ctx context.Context, userID int64) (int, error) {
 	var n int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT count(*) FROM chat_members WHERE user_id=$1 AND pinned_at IS NOT NULL AND NOT archived`,
+		`SELECT count(*) FROM chat_members WHERE user_id=$1 AND pinned_at IS NOT NULL AND NOT archived AND NOT dialog_hidden`,
 		userID).Scan(&n)
 	return n, err
 }
@@ -194,14 +204,19 @@ func (r *GroupRepo) SetArchived(ctx context.Context, chatID, userID int64, archi
 	return err
 }
 
-func (r *GroupRepo) EditInfo(ctx context.Context, chatID int64, title, about, username string) error {
-	var u any
-	if username != "" {
-		u = username
-	}
-	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chats SET title=$2, about=$3, username=$4 WHERE id=$1`, chatID, title, about, u)
-	return err
+// EditTitle пишет название; changed=false, если оно уже такое (служебка и
+// рассылка снимка тогда не нужны).
+func (r *GroupRepo) EditTitle(ctx context.Context, chatID int64, title string) (bool, error) {
+	ct, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET title=$2 WHERE id=$1 AND title IS DISTINCT FROM $2`, chatID, title)
+	return ct.RowsAffected() == 1, err
+}
+
+// EditAbout — то же для описания.
+func (r *GroupRepo) EditAbout(ctx context.Context, chatID int64, about string) (bool, error) {
+	ct, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chats SET about=$2 WHERE id=$1 AND about IS DISTINCT FROM $2`, chatID, about)
+	return ct.RowsAffected() == 1, err
 }
 
 func (r *GroupRepo) SetPhoto(ctx context.Context, chatID, mediaID int64) error {

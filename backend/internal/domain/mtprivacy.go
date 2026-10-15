@@ -79,6 +79,22 @@ func PrivacyKeyTag(key PrivacyKey) (string, bool) {
 	return tag, ok
 }
 
+// PrivacyKeyCtor — конструктор объединения `PrivacyKey` схемы
+// (`privacyKeyStatusTimestamp` и другие): ключ настройки без параметров, на
+// проводе только дискриминатор.
+type PrivacyKeyCtor struct {
+	Underscore string `json:"_"`
+}
+
+// NewPrivacyKeyCtor — конструктор для нашего ключа; ложь — такого ключа нет.
+func NewPrivacyKeyCtor(key PrivacyKey) (PrivacyKeyCtor, bool) {
+	tag, ok := PrivacyKeyTag(key)
+	if !ok {
+		return PrivacyKeyCtor{}, false
+	}
+	return PrivacyKeyCtor{Underscore: tag}, true
+}
+
 // PrivacyKeyOf — обратный перевод: конструктор схемы → наш ключ. Обе половины
 // соответствия стоят рядом: врозь они расходятся.
 func PrivacyKeyOf(tag string) (PrivacyKey, bool) {
