@@ -52,12 +52,14 @@ export default function SignImportCard(props: { spec: Spec }): JSX.Element {
         } else if (res.passwordNeeded) {
           navigate({ name: 'password', payload: { token: res.passwordToken, hint: res.hint } })
         } else {
+          void managers.auth.cancelWebToken(props.spec.payload.webAuthToken)
           navigate({ name: 'signIn' })
         }
       } catch {
         // Сеть/воркер — тот же дефолтный экран, что и любой дискриминированный
         // отказ (см. докблок «НАХОДКА 1»); зачистка хеша та же самая.
         if (location.hash) appNavigationController.overrideHash('')
+        void managers.auth.cancelWebToken(props.spec.payload.webAuthToken)
         navigate({ name: 'signIn' })
       }
     })()
