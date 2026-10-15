@@ -317,6 +317,11 @@ export type BroadcastEvents = {
   // воркер знает закреплёнными. Шлётся на каждое удаление; подписчик
   // (`client/realtime/refetchSubscriber.ts`) решает по кэшу закрепов вкладки.
   'peer_pinned_deleted': [{ peerId: PeerId; mids: number[]; pinned: number[] }]
+  // «Открепить все» выполнено воркером (`chats.unpinAllMessages`): каждая вкладка сбрасывает
+  // кэш закрепов пира и объявляет `peer_pinned_messages {unpinAll}` (`refetchSubscriber.ts`).
+  // Воркер шлёт его всем вкладкам, потому что ответ запроса сдвигает общий курсор раньше
+  // живого кадра, и тот отбрасывается воронкой как дубль — другая вкладка не узнала бы.
+  'peer_unpinned_all': [{ peerId: PeerId; threadId?: number }]
 
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).
@@ -339,6 +344,11 @@ export type BroadcastEvents = {
   // Подписчики: проектор зеркала окна (`storeProjection.ts`) и лента открытого чата
   // (`chat/bubbles.ts`); строку диалога никто из `dialog` не берёт.
   'dialog_flush': [{ peerId: PeerId; dialog: Dialog | undefined }]
+  // tweb rootScope.ts:271 — срок автоудаления чата сменился (`updatePeerHistoryTTL`,
+  // appProfileManager.ts:1557; у broadcast-канала событие выводит воркер из снимка
+  // карточки, В-3 Ф-6). `period` 0 — выключено. Подписчик на главном потоке —
+  // `chatFullCache.applyTtlPeriod` (`storeProjection.ts`).
+  'auto_delete_period_update': [{ peerId: PeerId; period: number }]
   // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
   // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).
   'draft_updated': [DraftUpdatedEvt]

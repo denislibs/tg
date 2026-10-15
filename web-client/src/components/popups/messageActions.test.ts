@@ -22,8 +22,10 @@ const managers = vi.hoisted(() => ({
     deleteScheduledMessages: vi.fn(async() => {}),
     pin: vi.fn(async() => {}),
     unpin: vi.fn(async() => {}),
+    listPins: vi.fn(async() => []),
     forwardMessages: vi.fn(async() => []),
   },
+  chats: { unpinAllMessages: vi.fn(async() => true) },
 }))
 vi.mock('@/client/bootstrap', () => ({ startClient: () => ({ managers }), getProxiedManagers: () => managers }))
 
@@ -95,6 +97,7 @@ beforeEach(() => {
     { _: 'channel', id: 9, title: 'gr', pFlags: { megagroup: true }, date: 0 } as never,
   ] }])
   Object.values(managers.messages).forEach((fn) => fn.mockClear())
+  managers.chats.unpinAllMessages.mockClear()
   im.setInnerPeer.mockClear()
   im.chat.input.initMessagesForward.mockClear()
   toasts.toastNew.mockClear()
@@ -180,7 +183,7 @@ describe('showDeleteMessagesPopup (tweb popups/deleteMessages.ts)', () => {
 })
 
 describe('showPinMessagePopup (tweb popups/unpinMessage.ts)', () => {
-  it('закрепить в личке: «Pin message», кнопка «Pin» шлёт ОДИН pin через 300 мс (:24)', async() => {
+  it('закрепить в личке: «Pin message», кнопка «Pin» шлёт ОДИН pin через 300 мс (:24); чекбокс «и для…» отмечен — oneSide выкл.', async() => {
     vi.useFakeTimers()
     await showPinMessagePopup(USER, 11)
     expect(document.querySelector('.popup-title')!.textContent).toBe('Pin message')
@@ -191,16 +194,73 @@ describe('showPinMessagePopup (tweb popups/unpinMessage.ts)', () => {
     vi.advanceTimersByTime(300)
 
     expect(managers.messages.pin).toHaveBeenCalledTimes(1)
-    expect(managers.messages.pin).toHaveBeenCalledWith(USER, 11)
+    expect(managers.messages.pin).toHaveBeenCalledWith(USER, 11, { silent: undefined, pm_oneside: false })
     expect(managers.messages.unpin).not.toHaveBeenCalled()
   })
 
-  it('закрепить в канале — описание канала (:84)', async() => {
-    await showPinMessagePopup(CHANNEL, 2)
-    expect(document.querySelector('.popup-description')!.textContent).toBe('Do you want to pin this message in this channel?')
+  // tweb :94 — `callback(e, checked, !checked.size)`: снят чекбокс «Pin also for Bob» — закрепить только у себя.
+  it('личка: снят чекбокс «и для собеседника» — pm_oneside (:94)', async() => {
+    vi.useFakeTimers()
+    await showPinMessagePopup(USER, 11)
+    document.querySelector<HTMLElement>('.checkbox-field-input')!.click()
+    click('.popup-buttons > button.primary')
+    vi.advanceTimersByTime(300)
+
+    expect(managers.messages.pin).toHaveBeenCalledWith(USER, 11, { silent: undefined, pm_oneside: true })
   })
 
-  it('открепить: danger-кнопка «Unpin» шлёт ОДИН unpin', async() => {
+  it('«Избранное»: чекбокса нет, флагов нет (:86-89)', async() => {
+    vi.useFakeTimers()
+    await showPinMessagePopup(rootScope.myId, 11)
+    expect(document.querySelector('.checkbox-field-input')).toBeNull()
+    click('.popup-buttons > button.primary')
+    vi.advanceTimersByTime(300)
+
+    expect(managers.messages.pin).toHaveBeenCalledWith(rootScope.myId, 11, { silent: undefined, pm_oneside: undefined })
+  })
+
+  // tweb :70 — `callback(e, checked, false, !checked.size)`: «Notify all members» снят — silent.
+  it('группа: чекбокс «Notify all members» отмечен — silent выкл.; снят — silent (:70)', async() => {
+    vi.useFakeTimers()
+    await showPinMessagePopup(MEGAGROUP, 8)
+    click('.popup-buttons > button.primary')
+    vi.advanceTimersByTime(300)
+    expect(managers.messages.pin).toHaveBeenLastCalledWith(MEGAGROUP, 8, { silent: false, pm_oneside: false })
+
+    document.body.replaceChildren()
+    await showPinMessagePopup(MEGAGROUP, 8)
+    document.querySelector<HTMLElement>('.checkbox-field-input')!.click()
+    click('.popup-buttons > button.primary')
+    vi.advanceTimersByTime(300)
+    expect(managers.messages.pin).toHaveBeenLastCalledWith(MEGAGROUP, 8, { silent: true, pm_oneside: false })
+  })
+
+  it('закрепить в канале — описание канала (:84); чекбокса нет, закреп без звука (silent, :70)', async() => {
+    vi.useFakeTimers()
+    await showPinMessagePopup(CHANNEL, 2)
+    expect(document.querySelector('.popup-description')!.textContent).toBe('Do you want to pin this message in this channel?')
+    expect(document.querySelector('.checkbox-field-input')).toBeNull()
+
+    click('.popup-buttons > button.primary')
+    vi.advanceTimersByTime(300)
+    expect(managers.messages.pin).toHaveBeenCalledWith(CHANNEL, 2, { silent: true, pm_oneside: false })
+  })
+
+  it('«Открепить все» (mid 0): ОДИН запрос chats.unpinAllMessages, не unpin по одному (:27)', async() => {
+    vi.useFakeTimers()
+    const onConfirm = vi.fn()
+    await showPinMessagePopup(USER, 0, true, onConfirm, 77)
+    click('.popup-buttons > button.danger')
+    vi.advanceTimersByTime(300)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(managers.chats.unpinAllMessages).toHaveBeenCalledTimes(1)
+    expect(managers.chats.unpinAllMessages).toHaveBeenCalledWith(USER, 77)
+    expect(managers.messages.unpin).not.toHaveBeenCalled()
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('открепить: danger-кнопка «Unpin» шлёт ОДИН unpin без флагов', async() => {
     vi.useFakeTimers()
     await showPinMessagePopup(MEGAGROUP, 8, true)
     expect(document.querySelector('.popup-title')!.textContent).toBe('Unpin message')

@@ -420,12 +420,17 @@ func chatCardQuery(full bool) string {
         c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0), c.join_to_send,
         -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
         -- chatFull.pinned_msg_id адресует сообщение в его пире), а
-        -- pinned_messages.msg_id — внутренний ключ строки. Удалённый
+        -- pinned_messages.msg_id — внутренний ключ строки. К общим закрепам
+        -- добавлены закрепы «только у себя» ЗРИТЕЛЯ (личка). Удалённый
         -- закреп (и невидимый зрителю) не в счёт: закрепом становится
         -- предыдущий живой, как у списка /pins (Telegram сдвигает
         -- pinned_msg_id при удалении закреплённого, A3-23).
-        ` + fullOnly(`COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
-                   WHERE p.chat_id=c.id AND `+messageVisibleTo("pinm", "$2")+`
+        ` + fullOnly(`COALESCE((SELECT pinm.seq FROM (
+                     SELECT msg_id, pinned_at FROM pinned_messages WHERE chat_id=c.id
+                     UNION ALL
+                     SELECT msg_id, pinned_at FROM pinned_messages_oneside WHERE chat_id=c.id AND user_id=$2
+                   ) p JOIN messages pinm ON pinm.id=p.msg_id
+                   WHERE `+messageVisibleTo("pinm", "$2")+`
                    ORDER BY p.pinned_at DESC LIMIT 1),0)`, `0`) + `,
         COALESCE(m.last_read_seq,0), ` + fullOnly("COALESCE("+dialogUnreadCount("m", "c")+",0)", `0`) + `,
         -- ✓✓ в группе — когда прочитал ХОТЯ БЫ ОДИН (Telegram

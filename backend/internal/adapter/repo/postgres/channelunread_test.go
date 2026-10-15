@@ -47,7 +47,7 @@ func dialogUnread(t *testing.T, repo *ChatsRepo, userID, chatID int64) (unread i
 // в его строку членства; своё и удалённое не считаются.
 func TestChannelUnread_ComputedOnRead(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
-	chats, groups, msgs, push := NewChatsRepo(pool), NewGroupRepo(pool), NewMessagesRepo(pool), NewPushRepo(pool)
+	chats, groups, msgs := NewChatsRepo(pool), NewGroupRepo(pool), NewMessagesRepo(pool)
 	ctx := context.Background()
 	author := seedUser(t, pool, "+79101")
 	sub := seedUser(t, pool, "+79102")
@@ -74,9 +74,6 @@ func TestChannelUnread_ComputedOnRead(t *testing.T) {
 	}
 	if card.UnreadCount != 2 {
 		t.Fatalf("карточка канала: unread = %d, want 2", card.UnreadCount)
-	}
-	if badge, _ := push.UnreadBadge(ctx, sub); badge != 2 {
-		t.Fatalf("бейдж пуша = %d, want 2", badge)
 	}
 	// Прочитал до первого — осталось 1.
 	if err := chats.SetRead(ctx, ch, sub, 1, 0); err != nil {

@@ -19,12 +19,12 @@ func NewNotifier(online OnlineChecker, notify NotifyChecker, queue Queue) *Notif
 }
 
 // NotifyNewMessage gates on presence + notify settings, then enqueues a push job.
-func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64) {
+func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64, title string) {
 	// Online (has an active socket)? The WS layer already delivered it live.
 	if online, _ := n.online.IsOnline(ctx, recipientID); online {
 		return
 	}
-	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, mentioned, topicRootID)
+	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, mentioned, topicRootID, title)
 }
 
 // NotifyGuest — пуш гостю обсуждения (комментирует, не вступая) об ответе на
@@ -33,12 +33,12 @@ func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, se
 // такое сообщение приходит в чат «Ответы» (tweb REPLIES_PEER_ID,
 // bubbles.ts:3757-3766) и уведомляет и онлайн; этого чата у нас нет, пуш —
 // замена (решение пользователя к В-2). Мьюты — как у упоминания.
-func (n *Notifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64) {
-	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID)
+func (n *Notifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64, title string) {
+	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID, title)
 }
 
 // enqueue — гейт настроек уведомлений и постановка пуша в очередь.
-func (n *Notifier) enqueue(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64) {
+func (n *Notifier) enqueue(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64, title string) {
 	// Muted per-chat, by the chat-type settings or per-topic (or lookup error)?
 	// Don't push — unless the recipient is mentioned / replied to.
 	notify, preview, err := n.notify.ShouldNotify(ctx, chatID, recipientID, topicRootID, mentioned)
@@ -47,7 +47,7 @@ func (n *Notifier) enqueue(ctx context.Context, recipientID, chatID, seq, sender
 	}
 	_ = n.queue.Enqueue(ctx, Job{
 		RecipientID: recipientID, ChatID: chatID, PeerID: peer,
-		Seq: seq, SenderID: senderID, Text: text, Preview: preview,
+		Seq: seq, SenderID: senderID, Title: title, Text: text, Preview: preview,
 	})
 }
 

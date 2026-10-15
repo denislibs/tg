@@ -170,10 +170,25 @@ type ChatRepo interface {
 	UserAutoDelete(ctx context.Context, userID int64) (int, error)
 	SetUserAutoDelete(ctx context.Context, userID int64, seconds int) error
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
-	UnpinMessage(ctx context.Context, chatID, msgID int64) error
-	ListPins(ctx context.Context, chatID int64) ([]domain.Message, error)
-	// PinnedIDs — какие из msgIDs закреплены в своих чатах (message.pFlags.pinned).
-	PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error)
+	// PinMessageOneSide — закреп «только у себя» в личке (pm_oneside): строка
+	// видна одному userID, собеседнику закрепа нет.
+	PinMessageOneSide(ctx context.Context, chatID, msgID, userID int64) error
+	// UnpinMessage снимает общий закреп и закреп «только у себя» userID;
+	// shared — общий закреп был (по нему решается, кому слать кадр), keptFor —
+	// другие пользователи, у которых сообщение осталось закреплённым «только у
+	// себя» (им снятие общего закрепа ничего не меняет).
+	UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (shared bool, keptFor []int64, err error)
+	// UnpinAll снимает все общие закрепы чата (с threadRootID — только в треде)
+	// и закрепы «только у себя» userID; возвращает номера сообщений в чате.
+	UnpinAll(ctx context.Context, chatID, userID int64, threadRootID *int64) (UnpinnedAll, error)
+	// ListPins — закрепы чата (с threadRootID — только треда) глазами viewerID:
+	// общие плюс его «только у себя», только видимые ему сообщения (удалённое,
+	// скрытое у себя, очищенное и скрытая предыстория не в счёт), новый закреп
+	// первым.
+	ListPins(ctx context.Context, chatID, viewerID int64, threadRootID *int64) ([]domain.Message, error)
+	// PinnedIDs — какие из msgIDs закреплены глазами viewerID (общий закреп или
+	// его «только у себя»; message.pFlags.pinned).
+	PinnedIDs(ctx context.Context, viewerID int64, msgIDs []int64) (map[int64]bool, error)
 	Viewers(ctx context.Context, chatID, seq, excludeUser int64) ([]int64, error)
 }
 
@@ -562,6 +577,15 @@ type BotHTTP interface {
 	FetchPrefix(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
 }
 
+// UnpinnedAll — итог «Открепить все»: номера (в чате, по возрастанию) снятых
+// общих закрепов и закрепов «только у себя» актора; OthersKept — для каждого
+// другого пользователя номера из Shared, которые у него остались закреплёнными
+// «только у себя» (его кадр их не называет).
+type UnpinnedAll struct {
+	Shared, OneSide []int64
+	OthersKept      map[int64][]int64
+}
+
 type UpdateRepo interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
 	// AppendUpdateBulk — batched AppendUpdate for a set of users sharing one payload
@@ -770,11 +794,11 @@ type PushNotifier interface {
 	// mentioned — получатель упомянут или ему ответили (pFlags.mentioned):
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64, title string)
 	// NotifyGuest — пуш гостю обсуждения (не участнику) об ответе на его
 	// комментарий или упоминании: без гейта присутствия — живого кадра у
 	// гостя нет (группы у него нет, чата «Ответы» тоже).
-	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64)
+	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64, title string)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста

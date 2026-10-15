@@ -494,6 +494,15 @@ func (r *fakeGroupRepo) SetArchived(_ context.Context, chatID, userID int64, arc
 	return nil
 }
 
+// setAutoDelete — chats.auto_delete_period: карточка читает его обратно.
+func (r *fakeGroupRepo) setAutoDelete(chatID int64, seconds int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.AutoDeletePeriod = seconds
+	r.cards[chatID] = c
+}
+
 func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1019,7 +1028,11 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ChatTitle(context.Context, int64) (string, error) { return "", nil }
+func (c groupChats) ChatTitle(_ context.Context, chatID int64) (string, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	return c.fg.cards[chatID].Title, nil
+}
 func (c groupChats) ChannelCursors(context.Context, int64, int) ([]domain.ChannelCursor, error) {
 	return nil, nil
 }
@@ -1030,9 +1043,12 @@ func (c groupChats) UnreadTotal(context.Context, int64) (int, error) { return 0,
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
-func (c groupChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupChats) StoryPartners(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)  { return nil, nil }
+func (c groupChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
+	c.fg.setAutoDelete(chatID, seconds)
+	return nil
+}
 func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
 func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }
@@ -1066,7 +1082,7 @@ func (c groupChats) LockDialogDelete(context.Context, int64) error             {
 func (c groupChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
 func (c groupChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
 func (c groupChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
-func (c groupChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
+func (c groupChats) PinnedIDs(context.Context, int64, []int64) (map[int64]bool, error) {
 	return nil, nil
 }
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
@@ -1111,9 +1127,19 @@ func (c groupChats) ChatType(_ context.Context, chatID int64) (string, error) {
 	}
 	return "group", nil
 }
-func (c groupChats) PinMessage(context.Context, int64, int64, int64) error     { return nil }
-func (c groupChats) UnpinMessage(context.Context, int64, int64) error          { return nil }
-func (c groupChats) ListPins(context.Context, int64) ([]domain.Message, error) { return nil, nil }
+func (c groupChats) PinMessage(context.Context, int64, int64, int64) error { return nil }
+func (c groupChats) PinMessageOneSide(context.Context, int64, int64, int64) error {
+	return nil
+}
+func (c groupChats) UnpinMessage(context.Context, int64, int64, int64) (bool, []int64, error) {
+	return false, nil, nil
+}
+func (c groupChats) UnpinAll(context.Context, int64, int64, *int64) (UnpinnedAll, error) {
+	return UnpinnedAll{}, nil
+}
+func (c groupChats) ListPins(context.Context, int64, int64, *int64) ([]domain.Message, error) {
+	return nil, nil
+}
 func (c groupChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil
 }

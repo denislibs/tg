@@ -7,18 +7,18 @@
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Живёт на главном потоке, а не в менеджере воркера: у нашего бэкенда нет поиска с
 //     фильтром `inputMessagesFilterPinned` (`offsetId`/`backLimit`/`offsetIdOffset`), есть
-//     только весь список закрепов чата — `GET /chats/{id}/pins` (`managers.messages.listPins`).
+//     только весь список закрепов чата или темы — `GET /chats/{id}/pins` (`managers.messages.listPins`).
 //     Список кэшируется здесь целиком; страница «вокруг номера» (`getPinnedHistory`) режется
 //     из него, поэтому её `count`/`offsetIdOffset` точные, а `loadedTop`/`loadedBottom`
 //     плашки сводятся с первой же загрузки.
 //  2. Сами сообщения закрепов лежат в этом кэше (`getPinnedMessageByMid`): закреп может быть
 //     вне окна ленты, а хранилища сообщений пира, как `messagesStorage` tweb, на главном
 //     потоке нет — окно (`messagesMirror`) держит только загруженную страницу.
-//  3. Закрепы — на весь чат: `listPins` не знает темы форума, ключ с `threadId` различает
-//     только скрытие плашки (`hiddenPinnedMessages`).
-//  4. `unpinAllMessages` — открепление по одному (`DELETE …/pin` на каждый закреп):
-//     ручки `messages.unpinAllMessages` у бэкенда нет. `silent`/`pm_oneside` закрепления
-//     сервер не принимает — у `updatePinnedMessage` они без предмета.
+//  3. Закрепы темы/треда — `GET /chats/{id}/pins?top_msg_id=` (`listPins(peerId, threadId)`), как
+//     у tweb список потемный (ключ с `threadId`).
+//  4. Закрепное локальное состояние (кэш списка) живёт здесь, а сам запрос и локальный
+//     итог окон чата — в воркере: `managers.messages.pin/unpin` (ответ `Updates`) и
+//     `managers.chats.unpinAllMessages` (`affectedHistory` → местный `updatePts`).
 //  5. Кадр `updatePinnedMessages` (`rt:pin_message`) переводится в `peer_pinned_messages`
 //     здесь (`onPinnedMessagesUpdate`, зовёт `client/realtime/refetchSubscriber.ts`), а не в
 //     воркере: кэш, который сбрасывает кадр, живёт на главном потоке (расхождение 1).
@@ -30,10 +30,15 @@ import type { MyMessage } from './models'
 
 export type PinnedMessagesManagers = {
   messages: {
-    listPins(peerId: number): Promise<MyMessage[]>
-    pin(peerId: number, msgId: number): Promise<void>
+    listPins(peerId: number, threadId?: number): Promise<MyMessage[]>
+    pin(peerId: number, msgId: number, flags?: { silent?: boolean, pm_oneside?: boolean }): Promise<void>
     unpin(peerId: number, msgId: number): Promise<void>
   }
+}
+
+/** Менеджеры «Открепить все»: запрос и локальный итог окон — в воркере (`chats`). */
+export type UnpinAllManagers = PinnedMessagesManagers & {
+  chats: { unpinAllMessages(peerId: number, threadId?: number): Promise<boolean> }
 }
 
 /** tweb `appPeersManager.canPinMessage` (`appPeersManager.ts:38-40`) */
@@ -61,7 +66,7 @@ function loadPinned(managers: PinnedMessagesManagers, peerId: PeerId, threadId?:
   if(p.promise) return p.promise
   else if(p.messages) return Promise.resolve(p)
 
-  const promise = p.promise = managers.messages.listPins(peerId).then((messages) => {
+  const promise = p.promise = managers.messages.listPins(peerId, threadId).then((messages) => {
     // сброшен кадром, пока шёл запрос, — ответ устарел, его место займёт новый запрос
     if(pinnedMessages[getPinnedMessagesKey(peerId, threadId)] !== p) {
       return loadPinned(managers, peerId, threadId)
@@ -164,16 +169,17 @@ export function getPinnedMessages(managers: PinnedMessagesManagers, peerId: Peer
   return loadPinned(managers, peerId, threadId).then((p) => p.messages!)
 }
 
-/** tweb `:6838-6856` — расхождение 4. */
-export function updatePinnedMessage(managers: PinnedMessagesManagers, peerId: PeerId, mid: number, unpin?: boolean) {
-  return unpin ? managers.messages.unpin(peerId, mid) : managers.messages.pin(peerId, mid)
+/** tweb `:6838-6856`: `silent` — без звука (группа, канал), `pmOneside` — только у себя (личка). */
+export function updatePinnedMessage(managers: PinnedMessagesManagers, peerId: PeerId, mid: number, unpin?: boolean, silent?: boolean, pmOneside?: boolean) {
+  return unpin ? managers.messages.unpin(peerId, mid) : managers.messages.pin(peerId, mid, { silent, pm_oneside: pmOneside })
 }
 
-/** tweb `:6858-6890` — расхождение 4. */
-export async function unpinAllMessages(managers: PinnedMessagesManagers, peerId: PeerId, threadId?: number): Promise<boolean> {
-  const messages = await getPinnedMessages(managers, peerId, threadId)
-  await Promise.all(messages.map((message) => managers.messages.unpin(peerId, message.id).catch(() => {})))
-  return true
+/**
+ * tweb `:6858-6893`: запрос, `pFlags.pinned` окон и объявление вкладкам (`peer_unpinned_all` →
+ * сброс кэша закрепов и `peer_pinned_messages {unpinAll}`, `refetchSubscriber.ts`) — в воркере.
+ */
+export async function unpinAllMessages(managers: UnpinAllManagers, peerId: PeerId, threadId?: number): Promise<boolean> {
+  return managers.chats.unpinAllMessages(peerId, threadId)
 }
 
 /** tweb `:6784-6794` */

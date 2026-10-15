@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -1018,6 +1019,10 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) Pin(w http.ResponseWriter, r *http.Request)   { h.setPin(w, r, true) }
 func (h *ChatHandler) Unpin(w http.ResponseWriter, r *http.Request) { h.setPin(w, r, false) }
 
+// setPin — messages.updatePinnedMessage (POST/DELETE
+// /chats/{peerID}/messages/{msgSeq}/pin; tweb appMessagesManager.ts:6838-6856).
+// Тело необязательно: {"silent"?, "pm_oneside"?} (флаги TL). Ответ — Updates с
+// updatePinnedMessages / updatePinnedChannelMessages.
 func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -1027,7 +1032,16 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 	if !ok {
 		return
 	}
-	err := h.svc.SetPin(r.Context(), chatID, msgID, h.meID(r), pin)
+	var body struct {
+		Silent    bool `json:"silent"`
+		PmOneside bool `json:"pm_oneside"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	res, err := h.svc.SetPin(r.Context(), chatID, msgID, h.meID(r), pin,
+		usecasechat.PinOpts{Silent: body.Silent, OneSide: body.PmOneside})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
@@ -1041,7 +1055,47 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 		writeError(w, http.StatusInternalServerError, "pin failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeJSON(w, http.StatusOK, res)
+}
+
+// topMsgIDQuery — необязательный `?top_msg_id=<номер корня треда>`: закрепы одной
+// темы/треда. Не число или не положительное — 400 (иначе «весь чат»).
+func topMsgIDQuery(w http.ResponseWriter, r *http.Request) (*int64, bool) {
+	raw := r.URL.Query().Get("top_msg_id")
+	if raw == "" {
+		return nil, true
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid top_msg_id")
+		return nil, false
+	}
+	return &v, true
+}
+
+// UnpinAll — messages.unpinAllMessages (DELETE
+// /chats/{peerID}/pins?top_msg_id=<номер корня треда>; tweb
+// appMessagesManager.ts:6858-6893). Ответ — messages.affectedHistory.
+func (h *ChatHandler) UnpinAll(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	top, ok := topMsgIDQuery(w, r)
+	if !ok {
+		return
+	}
+	res, err := h.svc.UnpinAll(r.Context(), chatID, h.meID(r), top)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusForbidden, "not a member of this chat")
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "unpin all failed")
+	default:
+		writeJSON(w, http.StatusOK, res)
+	}
 }
 
 func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
@@ -1049,7 +1103,11 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgs, err := h.svc.ListPins(r.Context(), chatID, h.meID(r))
+	top, ok := topMsgIDQuery(w, r)
+	if !ok {
+		return
+	}
+	msgs, err := h.svc.ListPins(r.Context(), chatID, h.meID(r), top)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return

@@ -78,5 +78,4 @@ type NotifyChecker interface {
 
 type Enricher interface {
 	SenderName(ctx context.Context, userID int64) (string, error)
-	UnreadBadge(ctx context.Context, userID int64) (int, error)
 }

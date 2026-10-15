@@ -293,9 +293,12 @@ func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) 
 func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
-func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
-func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
-func (c groupMembershipChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)  { return nil, nil }
+func (c groupMembershipChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
+	c.fg.setAutoDelete(chatID, seconds)
+	return nil
+}
 func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
 func (c groupMembershipChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupMembershipChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }
@@ -338,8 +341,11 @@ func (c groupMembershipChats) LockDialogDelete(context.Context, int64) error    
 func (c groupMembershipChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
 func (c groupMembershipChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
 func (c groupMembershipChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
-func (c groupMembershipChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
-	return nil, nil
+func (c groupMembershipChats) PinnedIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error) {
+	if c.s == nil {
+		return nil, nil
+	}
+	return fakeChats{c.s}.PinnedIDs(ctx, viewerID, ids)
 }
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
@@ -401,10 +407,33 @@ func (c groupMembershipChats) ChatType(_ context.Context, chatID int64) (string,
 	return domain.ChatTypeChannel, nil
 }
 
-func (c groupMembershipChats) PinMessage(context.Context, int64, int64, int64) error { return nil }
-func (c groupMembershipChats) UnpinMessage(context.Context, int64, int64) error      { return nil }
-func (c groupMembershipChats) ListPins(context.Context, int64) ([]domain.Message, error) {
-	return nil, nil
+// Закрепы каналов живут в общем сторе — тем же фейком, что у личек.
+func (c groupMembershipChats) PinMessage(ctx context.Context, chatID, msgID, by int64) error {
+	if c.s == nil {
+		return nil
+	}
+	return fakeChats{c.s}.PinMessage(ctx, chatID, msgID, by)
+}
+func (c groupMembershipChats) PinMessageOneSide(context.Context, int64, int64, int64) error {
+	return nil
+}
+func (c groupMembershipChats) UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (bool, []int64, error) {
+	if c.s == nil {
+		return false, nil, nil
+	}
+	return fakeChats{c.s}.UnpinMessage(ctx, chatID, msgID, userID)
+}
+func (c groupMembershipChats) UnpinAll(ctx context.Context, chatID, userID int64, root *int64) (UnpinnedAll, error) {
+	if c.s == nil {
+		return UnpinnedAll{}, nil
+	}
+	return fakeChats{c.s}.UnpinAll(ctx, chatID, userID, root)
+}
+func (c groupMembershipChats) ListPins(ctx context.Context, chatID, viewerID int64, root *int64) ([]domain.Message, error) {
+	if c.s == nil {
+		return nil, nil
+	}
+	return fakeChats{c.s}.ListPins(ctx, chatID, viewerID, root)
 }
 func (c groupMembershipChats) Viewers(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil
