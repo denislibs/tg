@@ -606,6 +606,14 @@ func (c ChatRecord) ToChannelFull() ChannelFull {
 	return out
 }
 
+// AdminInvites — сколько ссылок-приглашений чата создал один админ
+// (tweb `chatAdminWithInvites`): неотозванных и отозванных.
+type AdminInvites struct {
+	AdminID int64
+	Active  int
+	Revoked int
+}
+
 // InviteLink is a join token for a chat.
 type InviteLink struct {
 	ID               int64

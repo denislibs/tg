@@ -226,32 +226,6 @@ describe('GroupsManager', () => {
     expect(r.expiresAt).toBe(new Date(1785542400 * 1000).toISOString())
   })
 
-  it('listInvites GETs /chats/{id}/invite_links and maps requires_approval', async () => {
-    const { rest, gets } = fakeRest({
-      getReturn: {
-        _: 'messages.exportedChatInvites', count: 1,
-        invites: [invite({ link: '/join/t', usage: 3, pFlags: { request_needed: true } })],
-      },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const links = await mgr.listInvites(5)
-    expect(gets[0]).toBe('/chats/5/invite_links')
-    expect(links).toEqual([{ token: 't', uses: 3, url: '/join/t', requiresApproval: true, title: '', usageLimit: null, revoked: false }])
-  })
-
-  it('listInvites appends ?revoked=true when requesting revoked links', async () => {
-    const { rest, gets } = fakeRest({
-      getReturn: {
-        _: 'messages.exportedChatInvites', count: 1,
-        invites: [invite({ pFlags: { revoked: true } })],
-      },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const links = await mgr.listInvites(5, true)
-    expect(gets[0]).toBe('/chats/5/invite_links?revoked=true')
-    expect(links[0].revoked).toBe(true)
-  })
-
   // ── Форма оригинала (`appChatInvitesManager`, вкладки ссылок 0б-3) ──────────
   // Ключ — `chatId` (ключ пира собирается внутри), ссылка — ПОЛНЫЙ публичный
   // адрес `t.me/+<хеш>` на нашем хосте (`core/publicLink.ts`), а не путь диплинка.
@@ -265,6 +239,36 @@ describe('GroupsManager', () => {
     const r = await mgr.getExportedChatInvites({ chatId: 5, revoked: true })
     expect(gets[0]).toBe('/chats/-5/invite_links?revoked=true')
     expect(r).toEqual({ _: 'messages.exportedChatInvites', count: 1, invites: [invite({ link: `${DEFAULT_TME_ORIGIN}/+t1`, usage: 2 })] })
+    expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
+  })
+
+  // Б-6: `admin_id` — чьи ссылки (без него сервер отдаёт ссылки самого актора).
+  it('getExportedChatInvites: adminId → ?admin_id, вместе с revoked; без adminId параметра нет', async () => {
+    const { rest, gets } = fakeRest({ getReturn: { _: 'messages.exportedChatInvites', count: 0, invites: [] } })
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    await mgr.getExportedChatInvites({ chatId: 5, adminId: 7 })
+    await mgr.getExportedChatInvites({ chatId: 5, adminId: 7, revoked: true })
+    await mgr.getExportedChatInvites({ chatId: 5 })
+    expect(gets).toEqual([
+      '/chats/-5/invite_links?admin_id=7',
+      '/chats/-5/invite_links?revoked=true&admin_id=7',
+      '/chats/-5/invite_links',
+    ])
+  })
+
+  it('getAdminsWithInvites: GET admins_with_invites, карточки users — в зеркало', async () => {
+    const users = [{ _: 'user', id: 7, first_name: 'Adm' }]
+    const container = {
+      _: 'messages.chatAdminsWithInvites',
+      admins: [{ _: 'chatAdminWithInvites', admin_id: 7, invites_count: 2, revoked_invites_count: 1 }],
+      users,
+    }
+    const { rest, gets } = fakeRest({ getReturn: container })
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+    const r = await mgr.getAdminsWithInvites(5)
+    expect(gets[0]).toBe('/chats/-5/admins_with_invites')
+    expect(r).toEqual(container)
     expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
   })
 
@@ -298,7 +302,8 @@ describe('GroupsManager', () => {
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     await mgr.deleteExportedChatInvite(5, `${DEFAULT_TME_ORIGIN}/+tok`)
     await mgr.deleteRevokedExportedChatInvites(5)
-    expect(dels).toEqual(['/chats/-5/invite_links/tok', '/chats/-5/revoked_invite_links'])
+    await mgr.deleteRevokedExportedChatInvites(5, 7)
+    expect(dels).toEqual(['/chats/-5/invite_links/tok', '/chats/-5/revoked_invite_links', '/chats/-5/revoked_invite_links?admin_id=7'])
   })
 
   // Импортёр — конструктор `chatInviteImporter`; карточки вектора `users` — в зеркало.

@@ -666,28 +666,61 @@ func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, ti
 	return i.invites.Create(ctx, chatID, actorID, tokenGen(), title, usageLimit, requiresApproval, expiresAt)
 }
 
-// ListInvites returns the chat's invite links: active ones by default, or the
-// revoked ones when revoked is true (Telegram getExportedChatInvites revoked flag).
-func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID int64, revoked bool) ([]domain.InviteLink, error) {
+// requireInviteOwner — доступ к ссылкам, созданным ownerID (tweb: клиент без
+// выбранного админа шлёт inputUserSelf, чужие ссылки открывает только создатель —
+// `chatInviteLinkShared.ts:145-153`). Свои — по праву invite_users; чужие — только
+// создатель чата (Б-6: прежде любой админ с правом видел и правил все ссылки).
+func (i *Interactor) requireInviteOwner(ctx context.Context, chatID, actorID, ownerID int64) error {
+	if ownerID == actorID {
+		return i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers)
+	}
+	return i.requireCreator(ctx, chatID, actorID)
+}
+
+// requireLinkOwner — то же по токену: владелец берётся из самой ссылки (в том
+// числе отозванной). Ссылки в этом чате нет — не отказ: прежнее поведение
+// операций репозитория (они ограничены чатом, чужого не заденут), права
+// invite_users при этом всё равно проверены.
+func (i *Interactor) requireLinkOwner(ctx context.Context, chatID, actorID int64, token string) error {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+		return err
+	}
+	link, err := i.invites.GetInChat(ctx, chatID, token)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return i.requireInviteOwner(ctx, chatID, actorID, link.CreatedBy)
+}
+
+// ListInvites returns invite links created by adminID (0 — актор): active ones
+// by default, or the revoked ones when revoked is true (Telegram
+// getExportedChatInvites admin_id + revoked). Чужие ссылки — только создателю.
+func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID, adminID int64, revoked bool) ([]domain.InviteLink, error) {
+	if adminID == 0 {
+		adminID = actorID
+	}
+	if err := i.requireInviteOwner(ctx, chatID, actorID, adminID); err != nil {
 		return nil, err
 	}
-	return i.invites.List(ctx, chatID, revoked)
+	return i.invites.ListBy(ctx, chatID, adminID, revoked)
 }
 
 // EditInvite updates an invite link's editable fields (Telegram
-// messages.editExportedChatInvite). Same right as revoke/list (INVITE_USERS).
+// messages.editExportedChatInvite). Своя ссылка — по invite_users, чужая — создателю.
 func (i *Interactor) EditInvite(ctx context.Context, chatID, actorID int64, token string, edit domain.InviteEdit) (domain.InviteLink, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+	if err := i.requireLinkOwner(ctx, chatID, actorID, token); err != nil {
 		return domain.InviteLink{}, err
 	}
 	return i.invites.Update(ctx, chatID, token, edit)
 }
 
 // InviteImporters lists the users who joined via a specific link (newest first,
-// capped) plus the total count. Same right as ListInvites.
+// capped) plus the total count. Same access as EditInvite.
 func (i *Interactor) InviteImporters(ctx context.Context, chatID, actorID int64, token string) ([]domain.InviteImporter, int, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+	if err := i.requireLinkOwner(ctx, chatID, actorID, token); err != nil {
 		return nil, 0, err
 	}
 	return i.invites.Importers(ctx, chatID, token, 50)
@@ -695,21 +728,35 @@ func (i *Interactor) InviteImporters(ctx context.Context, chatID, actorID int64,
 
 // DeleteInvite hard-deletes a single link (Telegram deleteExportedChatInvite).
 // The token is scoped to chatID by the repo, so an actor can't delete another
-// chat's link through this chat's endpoint. Same right as revoke/list.
+// chat's link through this chat's endpoint. Same access as EditInvite.
 func (i *Interactor) DeleteInvite(ctx context.Context, chatID, actorID int64, token string) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+	if err := i.requireLinkOwner(ctx, chatID, actorID, token); err != nil {
 		return err
 	}
 	return i.invites.Delete(ctx, chatID, token)
 }
 
-// DeleteAllRevoked hard-deletes every revoked link of the chat (Telegram
-// deleteRevokedExportedChatInvites). Same right as revoke/list.
-func (i *Interactor) DeleteAllRevoked(ctx context.Context, chatID, actorID int64) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
+// DeleteAllRevoked hard-deletes the revoked links created by adminID (0 — актор)
+// (Telegram deleteRevokedExportedChatInvites admin_id). Чужие — только создателю.
+func (i *Interactor) DeleteAllRevoked(ctx context.Context, chatID, actorID, adminID int64) error {
+	if adminID == 0 {
+		adminID = actorID
+	}
+	if err := i.requireInviteOwner(ctx, chatID, actorID, adminID); err != nil {
 		return err
 	}
-	return i.invites.DeleteAllRevoked(ctx, chatID)
+	return i.invites.DeleteRevokedBy(ctx, chatID, adminID)
+}
+
+// AdminsWithInvites — создатели ссылок чата со счётчиками (Telegram
+// messages.getAdminsWithInvites). Только создатель чата: tweb строит раздел
+// «ссылки других админов» лишь при hasRights(chat, 'change_type')
+// (`chatInviteLinkShared.ts:150`).
+func (i *Interactor) AdminsWithInvites(ctx context.Context, chatID, actorID int64) ([]domain.AdminInvites, error) {
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
+		return nil, err
+	}
+	return i.invites.CountsByAdmin(ctx, chatID)
 }
 
 // JoinByToken resolves an invite link and either joins the user immediately or,

@@ -3152,6 +3152,13 @@
           "value": "expires in %@"
         },
         {
+          "key": "InviteLinkCount",
+          "forms": {
+            "one_value": "%1$d invite link",
+            "other_value": "%1$d invite links"
+          }
+        },
+        {
           "key": "InviteLinks",
           "value": "Invite Links"
         },
@@ -3454,6 +3461,14 @@
           }
         },
         {
+          "key": "LinksCreatedByOtherAdmins",
+          "value": "Links created by other admins"
+        },
+        {
+          "key": "LinksCreatedByThisAdmin",
+          "value": "Invite links created by this admin"
+        },
+        {
           "key": "LiteMode.DisableAlert",
           "value": "Disable Power Saving Mode"
         },
@@ -3716,6 +3731,10 @@
         {
           "key": "LoopAnimatedStickersInfo",
           "value": "Animated stickers will play continuously in chats."
+        },
+        {
+          "key": "ManageLinks.Admin.Permanent.Desc",
+          "value": "**%1$@** can see this link and use it to invite new members to **%2$@**."
         },
         {
           "key": "ManageLinks.DeleteAll.Confirm",
@@ -13426,6 +13445,27 @@
         {
           "key": "ManageLinks.DeleteAll.Confirm",
           "value": "Удалить все отозванные ссылки?"
+        },
+        {
+          "key": "ManageLinks.Admin.Permanent.Desc",
+          "value": "**%1$@** видит эту ссылку и может приглашать по ней новых участников в **%2$@**."
+        },
+        {
+          "key": "LinksCreatedByOtherAdmins",
+          "value": "Ссылки, созданные другими админами"
+        },
+        {
+          "key": "LinksCreatedByThisAdmin",
+          "value": "Ссылки-приглашения этого админа"
+        },
+        {
+          "key": "InviteLinkCount",
+          "forms": {
+            "one_value": "%1$d ссылка-приглашение",
+            "few_value": "%1$d ссылки-приглашения",
+            "many_value": "%1$d ссылок-приглашений",
+            "other_value": "%1$d ссылок-приглашений"
+          }
         },
         {
           "key": "MediaEditor.Adjustments.Fade",

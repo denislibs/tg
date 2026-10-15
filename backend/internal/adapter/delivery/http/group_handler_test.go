@@ -754,3 +754,131 @@ func TestMemberWithChangeInfo_CannotTouchPublicUsername_HTTP(t *testing.T) {
 		t.Fatalf("публичное имя после негодного = %q", got)
 	}
 }
+
+// Б-6: ссылки-приглашения — только свои; чужие видит и правит создатель.
+func TestInviteLinks_OwnerScope_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990006101") // создатель
+	tokenB, idB := signUp(t, h, pool, "+79990006102") // админ с invite_users
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
+	cid := itoa(createdPeerID(t, rec))
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/members", tokenA, map[string]int64{"user_id": idB}); rec.Code != http.StatusOK {
+		t.Fatalf("add member: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idB, "rights": int(domain.RightInviteUsers)}); rec.Code != http.StatusOK {
+		t.Fatalf("promote: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenA, map[string]any{"title": "creator-link"})
+	cTok := inviteToken(t, rec)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/invite_links", tokenB, map[string]any{"title": "admin-link"})
+	bTok := inviteToken(t, rec)
+
+	tokens := func(rec *httptest.ResponseRecorder) []string {
+		t.Helper()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Invites []struct {
+				Link string `json:"link"`
+			} `json:"invites"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		var toks []string
+		for _, l := range out.Invites {
+			toks = append(toks, l.Link[strings.LastIndexByte(l.Link, '/')+1:])
+		}
+		return toks
+	}
+	base := "/chats/" + cid + "/invite_links"
+
+	// Админ без admin_id видит только свою.
+	got := tokens(authedReq(t, h, http.MethodGet, base, tokenB, nil))
+	if !contains(got, bTok) || contains(got, cTok) {
+		t.Fatalf("admin list = %v; want only own %s", got, bTok)
+	}
+	// Чужие через admin_id — 403 админу, ок создателю.
+	if rec = authedReq(t, h, http.MethodGet, base+"?admin_id="+itoa(idA), tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin lists creator's: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	got = tokens(authedReq(t, h, http.MethodGet, base+"?admin_id="+itoa(idB), tokenA, nil))
+	if !contains(got, bTok) || contains(got, cTok) {
+		t.Fatalf("creator lists admin's = %v", got)
+	}
+	if rec = authedReq(t, h, http.MethodGet, base+"?admin_id=oops", tokenA, nil); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad admin_id: want 400, got %d", rec.Code)
+	}
+
+	// Правка, импортёры и удаление чужой ссылки — 403 админу.
+	if rec = authedReq(t, h, http.MethodPatch, base+"/"+cTok, tokenB, map[string]any{"revoked": true}); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin revokes creator's: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodGet, base+"/"+cTok+"/importers", tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin importers of creator's: want 403, got %d", rec.Code)
+	}
+	if rec = authedReq(t, h, http.MethodDelete, base+"/"+cTok, tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin deletes creator's: want 403, got %d", rec.Code)
+	}
+	// Создатель отзывает ссылку админа; админ свою отозванную чистит сам, чужую — нет.
+	if rec = authedReq(t, h, http.MethodPatch, base+"/"+bTok, tokenA, map[string]any{"revoked": true}); rec.Code != http.StatusOK {
+		t.Fatalf("creator revokes admin's: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/revoked_invite_links?admin_id="+itoa(idA), tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin clears creator's revoked: want 403, got %d", rec.Code)
+	}
+	if rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/revoked_invite_links", tokenB, nil); rec.Code != http.StatusOK {
+		t.Fatalf("admin clears own revoked: %d %s", rec.Code, rec.Body.String())
+	}
+	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true&admin_id="+itoa(idB), tokenA, nil)); len(got) != 0 {
+		t.Fatalf("admin's revoked not cleared: %v", got)
+	}
+	// Создатель чистит отозванные админа через admin_id, свои отозванные не задевает.
+	rec = authedReq(t, h, http.MethodPost, base, tokenB, map[string]any{"title": "admin-link-2"})
+	b2 := inviteToken(t, rec)
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+b2, tokenB, map[string]any{"revoked": true})
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+cTok, tokenA, map[string]any{"revoked": true})
+	if rec = authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/revoked_invite_links?admin_id="+itoa(idB), tokenA, nil); rec.Code != http.StatusOK {
+		t.Fatalf("creator clears admin's revoked: %d %s", rec.Code, rec.Body.String())
+	}
+	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true&admin_id="+itoa(idB), tokenA, nil)); len(got) != 0 {
+		t.Fatalf("admin's revoked not cleared by creator: %v", got)
+	}
+	if got = tokens(authedReq(t, h, http.MethodGet, base+"?revoked=true", tokenA, nil)); !contains(got, cTok) {
+		t.Fatalf("creator's own revoked link lost: %v", got)
+	}
+	// возвращаем cTok в активные для проверки счётчиков ниже
+	_ = authedReq(t, h, http.MethodPatch, base+"/"+cTok, tokenA, map[string]any{"revoked": false})
+
+	// admins_with_invites: только создатель; контейнер со счётчиками и карточками.
+	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/admins_with_invites", tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("admin admins_with_invites: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/admins_with_invites", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admins_with_invites: %d %s", rec.Code, rec.Body.String())
+	}
+	var awi struct {
+		Underscore string `json:"_"`
+		Admins     []struct {
+			Underscore          string `json:"_"`
+			AdminID             int64  `json:"admin_id"`
+			InvitesCount        int    `json:"invites_count"`
+			RevokedInvitesCount int    `json:"revoked_invites_count"`
+		} `json:"admins"`
+		Users []struct {
+			ID int64 `json:"id"`
+		} `json:"users"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &awi)
+	if awi.Underscore != "messages.chatAdminsWithInvites" || len(awi.Admins) != 1 || awi.Admins[0].AdminID != idA {
+		// админ B после очистки отозванных ссылок не оставил ни одной — в списке только создатель
+		t.Fatalf("admins_with_invites = %s", rec.Body.String())
+	}
+	if awi.Admins[0].Underscore != "chatAdminWithInvites" || awi.Admins[0].InvitesCount < 2 || awi.Admins[0].RevokedInvitesCount != 0 {
+		t.Fatalf("creator counts = %+v", awi.Admins[0])
+	}
+	if len(awi.Users) != 1 || awi.Users[0].ID != idA {
+		t.Fatalf("admins_with_invites users = %s", rec.Body.String())
+	}
+}
