@@ -37,12 +37,22 @@ const maxBioLen = 70
 // книге, получает имя из книги и pFlags.contact — и в живом кадре, и в строке
 // журнала, которую переиграет getDifference.
 func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
+	i.emitUserCard(ctx, u, true)
+}
+
+// emitUserCard — рассылка карточки; withSelf=false опускает свои устройства
+// (удалённый аккаунт: его сессии отозваны, кадр им не нужен — как в tweb, где
+// удалённый клиент получает AUTH_KEY_UNREGISTERED и выходит).
+func (i *Interactor) emitUserCard(ctx context.Context, u domain.UserRecord, withSelf bool) {
 	if i.pub == nil && i.updates == nil {
 		return
 	}
 	// Recipients: own devices first, then shared-chat peers (dedup not needed —
 	// partners excludes self).
-	recipients := []int64{u.ID}
+	var recipients []int64
+	if withSelf {
+		recipients = append(recipients, u.ID)
+	}
 	if i.partners != nil {
 		partners, err := i.partners(ctx, u.ID)
 		if err != nil {
@@ -62,7 +72,15 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
 	for _, uid := range recipients {
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
-			return domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid]))
+			card := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid])
+			if uid == u.ID {
+				// Себе карточка с номером — как у tweb self (users.getUsers([inputUserSelf])):
+				// кадр заменяет карточку в кэше целиком, и без phone второе
+				// устройство потеряло бы номер. Остальным получателям его
+				// решает правило PrivacyPhoneNumber, а не этот кадр.
+				card.Phone = u.Phone
+			}
+			return domain.NewUpdateUserSnapshot(card)
 		}
 		live := seen(i.photoVisible(ctx, u.ID, uid))
 		env := map[string]any{"t": "user_update", "d": live}
@@ -153,13 +171,31 @@ func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string)
 	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
 		return domain.UserRecord{}, errors.New("emoji status too long")
 	}
-	return i.users.SetEmojiStatus(ctx, id, emoji)
+	u, changed, err := i.users.SetEmojiStatus(ctx, id, emoji)
+	// Повтор того же значения ничего не меняет — рассылка P получателям зря
+	// (tweb: `changedEmojiStatus`, appUsersManager.ts:728-729).
+	if err == nil && changed {
+		i.emitUserUpdate(ctx, u) // статус виден партнёрам и второму устройству
+	}
+	return u, err
 }
 
 // ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
 // "purchase" is faked, there's no billing — activating simply grants the badge.
 func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.UserRecord, error) {
-	return i.users.SetPremium(ctx, id, true)
+	return i.grantPremium(ctx, id)
+}
+
+// grantPremium включает значок и рассылает карточку, если он реально сменился
+// (продление подписки и повторная активация лишних строк журнала не пишут: tweb
+// реагирует на `changedPremium`, appUsersManager.ts:731). Значок приходит в
+// карточке `user` (tweb `checkPremium` :793-800).
+func (i *Interactor) grantPremium(ctx context.Context, id int64) (domain.UserRecord, error) {
+	u, changed, err := i.users.SetPremium(ctx, id, true)
+	if err == nil && changed {
+		i.emitUserUpdate(ctx, u)
+	}
+	return u, err
 }
 
 // CheckoutPremium runs the mock card checkout for a plan: it validates the plan,
@@ -189,7 +225,7 @@ func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID strin
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
-	user, err := i.users.SetPremium(ctx, id, true)
+	user, err := i.grantPremium(ctx, id)
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
