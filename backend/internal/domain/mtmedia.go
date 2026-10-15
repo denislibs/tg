@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Медиа сообщения в форме оригинала — структуры схемы TL (MTProto), а не
 // плоский набор полей и не собственный формат.
@@ -449,17 +452,14 @@ func NewMessageMediaVenue(lat, lng float64, title, address string) *MessageMedia
 // messageMediaContact#70322949 phone_number:string first_name:string
 // last_name:string vcard:string user_id:long = MessageMedia;
 //
-// Присланная визитка: снимок имени и телефона на момент отправки плюс ссылка на
-// аккаунт.
+// Присланная визитка: поля, которые прислал отправитель (inputMediaContact,
+// решение В-10), 1:1 — сервер телефон и имя сам не подставляет. user_id сервер
+// выводит по номеру сам (usecase/chat PhoneResolver); не найден или скрыт
+// правилом added_by_phone — 0, как у tweb (`user_id ?? '0'`,
+// appMessagesManager.ts:4035-4045).
 //
-// Все пять параметров ОБЯЗАТЕЛЬНЫЕ и едут всегда, в том числе пустыми:
-//   - last_name пуст, потому что мы храним имя визитки ОДНОЙ строкой
-//     (messages.contact_name) — ровно так же ведёт себя оригинал, когда у
-//     контакта нет фамилии. Разрезать нашу строку по первому пробелу значило бы
-//     выдумывать фамилию там, где её никто не вводил;
-//   - vcard пуст: карточки vCard мы не принимаем и не храним.
-//
-// Пустая строка здесь — ЗНАЧЕНИЕ («фамилии нет»), а не отсутствие параметра, и
+// Все пять параметров ОБЯЗАТЕЛЬНЫЕ и едут всегда, в том числе пустыми: пустая
+// строка — ЗНАЧЕНИЕ («фамилии нет», «vcard нет»), а не отсутствие параметра, и
 // разница видна на проводе.
 type MessageMediaContact struct {
 	Underscore  string `json:"_"`
@@ -473,13 +473,91 @@ type MessageMediaContact struct {
 func (MessageMediaContact) isMessageMedia() {}
 func (m MessageMediaContact) Tag() string   { return m.Underscore }
 
-func NewMessageMediaContact(userID int64, name, phone string) *MessageMediaContact {
+func NewMessageMediaContact(userID int64, firstName, lastName, phone, vcard string) *MessageMediaContact {
 	return &MessageMediaContact{
 		Underscore:  MessageMediaContactTag,
 		PhoneNumber: phone,
-		FirstName:   name,
+		FirstName:   firstName,
+		LastName:    lastName,
+		Vcard:       vcard,
 		UserID:      userID,
 	}
+}
+
+// IsContact — сообщение-визитка. Признак — first_name (ContactName): он есть у
+// каждой визитки, даже пустой строкой, тогда как user_id у визитки без
+// найденного аккаунта нет.
+func (m Message) IsContact() bool { return m.ContactName != nil }
+
+// ContactInput — поля визитки сообщения в форме входа отправки (копия и
+// пересылка кладут их в пробу Send). nil — сообщение не визитка.
+func (m Message) ContactInput() *InputMediaContact {
+	if !m.IsContact() {
+		return nil
+	}
+	return &InputMediaContact{
+		FirstName: deref(m.ContactName), LastName: deref(m.ContactLastName),
+		PhoneNumber: deref(m.ContactPhone), Vcard: deref(m.ContactVcard),
+	}
+}
+
+// inputMediaContact#f8ab7dfb phone_number:string first_name:string
+// last_name:string vcard:string = InputMedia;
+//
+// ВХОДНОЙ конструктор отправки визитки (tweb getContactMediaInput,
+// appUsersManager.ts:977-988). user_id в схеме у него НЕТ, и клиентского id сервер
+// не принимает: иначе отправитель привязал бы чужой номер к реальному аккаунту.
+// Конструктор различает SendMedia по `_`, в самой структуре он не хранится.
+type InputMediaContact struct {
+	PhoneNumber string `json:"phone_number"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	Vcard       string `json:"vcard"`
+}
+
+const InputMediaContactTag = "inputMediaContact"
+
+// SendMedia — значение ключа `media` тела отправки: объединение InputMedia,
+// из которого отправка принимает два конструктора — inputMediaContact (визитка)
+// и inputMediaWebPage (решение о превью ссылки, WebPageInput). Любой другой
+// конструктор не ошибка: он читается как inputMediaWebPage с чужим `_` и
+// превью не задаёт (см. WebPageInput.MediaURL).
+type SendMedia struct {
+	WebPage *InputMediaWebPage
+	Contact *InputMediaContact
+}
+
+func (m *SendMedia) UnmarshalJSON(b []byte) error {
+	*m = SendMedia{}
+	if string(b) == "null" {
+		return nil
+	}
+	var head struct {
+		Underscore string `json:"_"`
+	}
+	if err := json.Unmarshal(b, &head); err != nil {
+		return err
+	}
+	if head.Underscore == InputMediaContactTag {
+		var c InputMediaContact
+		if err := json.Unmarshal(b, &c); err != nil {
+			return err
+		}
+		m.Contact = &c
+		return nil
+	}
+	var w InputMediaWebPage
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	m.WebPage = &w
+	return nil
+}
+
+// WebPageInput — решение о превью из тела отправки: no_webpage и invert_media
+// едут отдельными ключами, media — объединением SendMedia.
+func (m SendMedia) WebPageInput(noWebpage, invertMedia bool) WebPageInput {
+	return WebPageInput{NoWebpage: noWebpage, InvertMedia: invertMedia, Media: m.WebPage}
 }
 
 // ── Платное медиа ───────────────────────────────────────────────────────────

@@ -171,9 +171,9 @@ func TestForward_CopiesContentAndRegroupsAlbum(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Контакт кладётся строкой: гидрация контакта по аккаунту — не предмет теста.
-	cu, cname, cphone := c, "Кэрол", "+79990000003"
+	cu, cname, clast, cphone, cvcard := c, "Кэрол", "Данверс", "+79990000003", "BEGIN:VCARD"
 	contact, err := (fakeMsgs{s}).Insert(ctx, domain.Message{ChatID: src, Seq: 100, SenderID: b, Type: "contact",
-		ContactUserID: &cu, ContactName: &cname, ContactPhone: &cphone})
+		ContactUserID: &cu, ContactName: &cname, ContactLastName: &clast, ContactPhone: &cphone, ContactVcard: &cvcard})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,8 @@ func TestForward_CopiesContentAndRegroupsAlbum(t *testing.T) {
 	if g.GeoLat == nil || *g.GeoLat != 55.7 || g.GeoTitle == nil || *g.GeoTitle != "Кремль" {
 		t.Fatalf("гео потеряно: %+v", g)
 	}
-	if k := out[1]; k.ContactUserID == nil || *k.ContactUserID != c || k.ContactPhone == nil {
+	if k := out[1]; k.ContactUserID == nil || *k.ContactUserID != c || k.ContactPhone == nil ||
+		k.ContactLastName == nil || *k.ContactLastName != "Данверс" || k.ContactVcard == nil || *k.ContactVcard != "BEGIN:VCARD" {
 		t.Fatalf("контакт потерян: %+v", k)
 	}
 	x, y := out[2].GroupedID, out[3].GroupedID

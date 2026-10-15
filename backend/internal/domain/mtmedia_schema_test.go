@@ -375,7 +375,12 @@ func mediaCases() []struct {
 			// Контакт без фамилии и без vcard: обязательные параметры едут
 			// ПУСТЫМИ строками, а не исчезают.
 			name:  "визитка",
-			media: NewMessageMediaContact(43, "Боб", "+70000000000"),
+			media: NewMessageMediaContact(43, "Боб", "", "+70000000000", ""),
+		},
+		{
+			// Все поля заданы отправителем; аккаунт не найден — user_id=0.
+			name:  "визитка с фамилией и vcard",
+			media: NewMessageMediaContact(0, "Боб", "Иванов", "+70000000000", "BEGIN:VCARD\nEND:VCARD"),
 		},
 		{
 			name: "опрос-викторина с голосом зрителя",
