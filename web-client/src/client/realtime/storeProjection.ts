@@ -4,7 +4,7 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
-import { applyChatTheme, applyPeerBlocked, applyTtlPeriod, resetChatFullMirror } from '../../core/chatFullCache'
+import { applyBotCommands, applyChatTheme, applyPeerBlocked, applyTtlPeriod, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
@@ -190,6 +190,9 @@ const APPLY: Projector = {
   // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
   // здесь. Событие выводит воркер из кадра `updatePeerBlocked` (журнал либо местный апдейт после ответа `privacy.toggleBlock`).
   peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
+  // Команды бота — то же исключение: `bot_info` лежит в карточке (tweb `onUpdateBotCommands`
+  // → `modifyCachedFullPeer`), а её зеркало здесь. Карточка не перечитывается.
+  bot_commands: (e) => { applyBotCommands(e.peerId, e.botId, e.commands) },
   // Срок автоудаления — тоже в полной карточке (`userFull`/`channelFull.ttl_period`,
   // tweb `onUpdatePeerHistoryTTL` → `modifyCachedFullPeer`, appProfileManager.ts:1544-1548);
   // строку диалога правит владелец в воркере, событие выводит он же.

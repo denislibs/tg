@@ -524,3 +524,202 @@ func TestSearchRepo_UserIDByUsername(t *testing.T) {
 		t.Fatalf("нет имени: err=%v; want ErrNotFound", err)
 	}
 }
+
+// Ф7-Е2: «свои» ищутся и по имени из книги контактов зрителя — так, как он
+// видит человека в списке (контакт «Мама» находится по «Мам», хотя профильное
+// имя другое). Чужой по профильному имени по-прежнему не находится, а скрытый
+// диалог («удалить чат») не делает собеседника своим.
+func TestSearchUsers_OwnByContactBookName(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7620")
+	mama := seedUser(t, pool, "+7621")     // профиль «Роберт», у зрителя — «Мама Иванова»
+	stranger := seedUser(t, pool, "+7622") // профиль «Мамонт», зрителю не контакт, без лички
+	hidden := seedUser(t, pool, "+7623")   // профиль «Мамаев», личка скрыта зрителем
+	live := seedUser(t, pool, "+7624")     // профиль «Мамин», живая личка
+
+	for id, name := range map[int64]string{mama: "Роберт", stranger: "Мамонт", hidden: "Мамаев", live: "Мамин"} {
+		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatalf("display_name: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO contacts (owner_id, user_id, first_name, last_name) VALUES ($1, $2, 'Мама', 'Иванова')`, viewer, mama); err != nil {
+		t.Fatalf("contact: %v", err)
+	}
+	createPrivate(t, pool, viewer, live)
+	hiddenChat := createPrivate(t, pool, viewer, hidden)
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = true WHERE chat_id=$1 AND user_id=$2`, hiddenChat, viewer); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+
+	r := NewSearchRepo(pool)
+	ids := func(q string) []int64 {
+		t.Helper()
+		us, err := r.SearchUsers(ctx, viewer, q, 20)
+		if err != nil {
+			t.Fatalf("SearchUsers(%q): %v", q, err)
+		}
+		out := make([]int64, len(us))
+		for i, u := range us {
+			out[i] = u.ID
+		}
+		return out
+	}
+	has := func(got []int64, id int64) bool {
+		for _, g := range got {
+			if g == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	// «Мам»: контакт по книге (профиль «Роберт»), живая личка по профилю «Мамин».
+	// Не находятся: посторонний «Мамонт» и скрытая личка «Мамаев».
+	got := ids("Мам")
+	if !has(got, mama) || !has(got, live) || has(got, stranger) || has(got, hidden) || len(got) != 2 {
+		t.Fatalf("«Мам» = %v; want контакт %d и живая личка %d, без постороннего %d и скрытой лички %d", got, mama, live, stranger, hidden)
+	}
+	// Фамилия из книги и «имя фамилия» целиком.
+	for _, q := range []string{"Иванов", "Мама Ив", "мама иванова"} {
+		if got = ids(q); !has(got, mama) {
+			t.Fatalf("%q = %v; want контакт %d по имени из книги", q, got, mama)
+		}
+	}
+	// Профильное имя контакта по-прежнему находит его.
+	if got = ids("Роб"); !has(got, mama) {
+		t.Fatalf("«Роб» = %v; want контакт %d по профилю", got, mama)
+	}
+	// Скрытая личка не «своя» и в OwnPeers: человек идёт глобальным результатом.
+	_, own, err := r.OwnPeers(ctx, viewer, nil, []int64{mama, live, hidden, stranger})
+	if err != nil {
+		t.Fatalf("OwnPeers: %v", err)
+	}
+	if !own[mama] || !own[live] || own[hidden] || own[stranger] {
+		t.Fatalf("OwnPeers = %v; want контакт и живая личка, без скрытой лички и постороннего", own)
+	}
+}
+
+// Ф7-Е2, границы: скрытая личка контакта остаётся своей; показ диалога
+// возвращает собеседника; удалённый аккаунт по имени из книги не ищется (у
+// него остаётся «Deleted Account», domain.UserReal.SeenBy); пустое имя в книге
+// — поиск по профилю; совпавший и по книге, и по профилю — одна строка;
+// порядок и отсечка по limit идут по ВИДИМОМУ зрителю имени (Кира, Костя,
+// Ксения — при профильных Яна, Юля, Ян: по профилю порядок другой).
+func TestSearchUsers_ContactBookEdges(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7630")
+	hiddenContact := seedUser(t, pool, "+7631") // профиль «Зинаида», в книге «Тёща», личка скрыта
+	hiddenPeer := seedUser(t, pool, "+7632")    // профиль «Зоя», не контакт, личка скрыта
+	deleted := seedUser(t, pool, "+7633")       // в книге «Яша», аккаунт удалён (SoftDelete → «Deleted Account»)
+	dex := seedUser(t, pool, "+7639")           // профиль «Delta», в книге «Яков»
+	emptyBook := seedUser(t, pool, "+7634")     // профиль «Эмилия», в книге пусто
+	both := seedUser(t, pool, "+7635")          // профиль «Леся», в книге «Лена»
+	a := seedUser(t, pool, "+7636")             // профиль «Ян», в книге «Ксения»
+	b := seedUser(t, pool, "+7637")             // профиль «Яна», в книге «Кира»
+	c := seedUser(t, pool, "+7638")             // профиль «Юля», в книге «Костя»
+
+	profile := map[int64]string{hiddenContact: "Зинаида", hiddenPeer: "Зоя", dex: "Delta", emptyBook: "Эмилия",
+		both: "Леся", a: "Ян", b: "Яна", c: "Юля"}
+	for id, name := range profile {
+		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatalf("display_name: %v", err)
+		}
+	}
+	for id, first := range map[int64]string{hiddenContact: "Тёща", deleted: "Яша", dex: "Яков", emptyBook: "", both: "Лена",
+		a: "Ксения", b: "Кира", c: "Костя"} {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1, $2, $3)`, viewer, id, first); err != nil {
+			t.Fatalf("contact: %v", err)
+		}
+	}
+	if err := NewAuthRepo(pool).SoftDelete(ctx, deleted); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	hide := func(chatID int64) {
+		if _, err := pool.Exec(ctx,
+			`UPDATE chat_members SET dialog_hidden = true WHERE chat_id=$1 AND user_id=$2`, chatID, viewer); err != nil {
+			t.Fatalf("hide: %v", err)
+		}
+	}
+	chatContact := createPrivate(t, pool, viewer, hiddenContact)
+	chatPeer := createPrivate(t, pool, viewer, hiddenPeer)
+	hide(chatContact)
+	hide(chatPeer)
+
+	r := NewSearchRepo(pool)
+	find := func(q string, limit int) []int64 {
+		t.Helper()
+		us, err := r.SearchUsers(ctx, viewer, q, limit)
+		if err != nil {
+			t.Fatalf("SearchUsers(%q): %v", q, err)
+		}
+		out := make([]int64, len(us))
+		for i, u := range us {
+			out[i] = u.ID
+		}
+		return out
+	}
+	eq := func(got []int64, want ...int64) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Скрытая личка, но контакт: свой и по книге, и по профилю; OwnPeers тоже.
+	if got := find("Тёщ", 20); !eq(got, hiddenContact) {
+		t.Fatalf("«Тёщ» = %v; want скрытый контакт %d по книге", got, hiddenContact)
+	}
+	if got := find("Зин", 20); !eq(got, hiddenContact) {
+		t.Fatalf("«Зин» = %v; want скрытый контакт %d по профилю", got, hiddenContact)
+	}
+	// Скрытая личка и не контакт: чужой.
+	if got := find("Зо", 20); len(got) != 0 {
+		t.Fatalf("«Зо» = %v; want пусто: личка скрыта", got)
+	}
+	_, own, err := r.OwnPeers(ctx, viewer, nil, []int64{hiddenContact, hiddenPeer})
+	if err != nil || !own[hiddenContact] || own[hiddenPeer] {
+		t.Fatalf("OwnPeers = %v %v; want скрытый контакт своим, скрытый не-контакт чужим", own, err)
+	}
+	// Показ диалога (новое сообщение) возвращает собеседника в свои.
+	if err := NewChatsRepo(pool).ShowDialogs(ctx, chatPeer); err != nil {
+		t.Fatalf("ShowDialogs: %v", err)
+	}
+	if got := find("Зо", 20); !eq(got, hiddenPeer) {
+		t.Fatalf("«Зо» после показа = %v; want %d", got, hiddenPeer)
+	}
+	// Удалённый аккаунт (настоящий SoftDelete): по имени из книги не находится,
+	// по «Deleted Account» — да; в порядке он стоит по видимому имени «Deleted
+	// Account», а не по «Яша» из книги (до «Delta» в книге «Яков»).
+	if got := find("Яш", 20); len(got) != 0 {
+		t.Fatalf("«Яш» = %v; want пусто: удалённый аккаунт без имени из книги", got)
+	}
+	if got := find("Del", 20); !eq(got, deleted, dex) {
+		t.Fatalf("«Del» = %v; want [удалённый %d, Delta %d]", got, deleted, dex)
+	}
+	// Пустое имя в книге — ищется по профилю.
+	if got := find("Эми", 20); !eq(got, emptyBook) {
+		t.Fatalf("«Эми» = %v; want %d", got, emptyBook)
+	}
+	// Подходит и по книге, и по профилю — одна строка.
+	if got := find("Ле", 20); !eq(got, both) {
+		t.Fatalf("«Ле» = %v; want ровно [%d]", got, both)
+	}
+	// Порядок и отсечка — по видимому имени (Кира, Ксения, Костя), не по профилю
+	// (Ян, Яна, Юля).
+	if got := find("К", 20); !eq(got, b, c, a) {
+		t.Fatalf("«К» = %v; want по видимому имени [Кира %d, Костя %d, Ксения %d]", got, b, c, a)
+	}
+	if got := find("К", 2); !eq(got, b, c) {
+		t.Fatalf("«К» limit 2 = %v; want [Кира %d, Костя %d]", got, b, c)
+	}
+}

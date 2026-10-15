@@ -63,14 +63,6 @@ func (i *Interactor) privateBotPeer(ctx context.Context, chatID, senderID int64)
 	return other, true
 }
 
-// BotCommands — список команд бота (для popup по «/» и меню).
-func (i *Interactor) BotCommands(ctx context.Context, botID int64) ([]domain.BotCommand, error) {
-	if i.bots == nil {
-		return nil, domain.ErrNotFound
-	}
-	return i.bots.Commands(ctx, botID)
-}
-
 // BotCallback обрабатывает нажатие callback-кнопки: возвращает всплывающий
 // ответ (toast/alert) и, для некоторых кнопок, шлёт новое сообщение бота.
 func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID, msgID int64, data string) (domain.BotCallbackAnswer, error) {

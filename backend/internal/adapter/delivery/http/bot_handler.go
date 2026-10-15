@@ -8,31 +8,7 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// Боты: список команд + нажатие callback-кнопки. Хендлеры на ChatHandler.
-
-// BotCommands — GET /bots/{botID}/commands.
-func (h *ChatHandler) BotCommands(w http.ResponseWriter, r *http.Request) {
-	botID, ok := pathInt(w, r, "botID")
-	if !ok {
-		return
-	}
-	cmds, err := h.svc.BotCommands(r.Context(), botID)
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "bots disabled")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load commands")
-		return
-	}
-	// Ответ — сам ВЕКТОР объявленных строк `botCommand`: обёртка
-	// `{"commands": …}` конструктора не имеет.
-	out := make([]domain.MTBotCommand, 0, len(cmds))
-	for _, c := range cmds {
-		out = append(out, domain.NewBotCommand(c))
-	}
-	writeJSON(w, http.StatusOK, out)
-}
+// Боты: inline-выдача, нажатие callback-кнопки и прочие ручки бота. Хендлеры на ChatHandler.
 
 // BotInline — GET /bots/{botID}/inline?q=...: выдача inline-режима (@bot query).
 func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {

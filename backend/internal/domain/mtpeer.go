@@ -951,6 +951,9 @@ type UserFull struct {
 	// PinnedMsgID — flags.6?int: закреплённое сообщение лички зрителя с пиром
 	// (номер в переписке); 0 — нет.
 	PinnedMsgID int64 `json:"pinned_msg_id,omitempty"`
+	// BotInfo — flags.3?BotInfo: описание и команды, если пир — бот. Команды
+	// скоупа лички глазами зрителя; у обычного пользователя ключа нет.
+	BotInfo *BotInfo `json:"bot_info,omitempty"`
 	// CommonChatsCount — common_chats_count:int: группы, где состоят оба
 	// (вкладка «Общие группы», tweb appSearchSuper.ts:3031). Каналы не в счёт:
 	// подписчики канала друг другу не видны.
