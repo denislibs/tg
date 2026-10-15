@@ -69,6 +69,9 @@ interface AllStories {
 /** stories.stories — плоский список (архив, закреплённые). */
 interface Stories { stories?: StoryItem[]; users?: UserReal[]; chats?: Chat[] }
 
+/** `updates` — ответ `stories.editStory`: пачка из одного `updateStory`. */
+interface EditedUpdates { updates?: { _: string; story: StoryItem }[] }
+
 /** stories.storyViewsList — просмотры вместе с карточками зрителей. */
 export interface StoryViewsList {
   count: number
@@ -148,22 +151,26 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
       const r = await rest.get<Stories>(`/stories/archive${suffix}`)
       return r.stories ?? []
     },
-    // Закреп в профиле: pin/unpin своей истории.
-    async pin(authorId: number, id: number, pinned: boolean): Promise<void> {
-      await rest.post(`/stories/${authorId}/${id}/pin`, { pinned })
+    // Закреп в профиле: pin/unpin своей истории. Ответ — `Vector<int>` номеров
+    // затронутых историй (tweb `stories.togglePinned`).
+    async pin(authorId: number, id: number, pinned: boolean): Promise<number[]> {
+      return await rest.post<number[]>(`/stories/${authorId}/${id}/pin`, { pinned })
     },
     async pinnedStories(peer: number): Promise<StoryItem[]> {
       const r = await rest.get<Stories>(`/stories/pinned?peer=${peer}`)
       return r.stories ?? []
     },
-    // Редактирование: подпись/приватность (+allow-лист для selected).
-    async editStory(authorId: number, id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<void> {
+    // Редактирование: подпись/приватность (+allow-лист для selected). Ответ —
+    // контейнер `updates` (tweb `stories.editStory` → Updates): достаём из него
+    // историю в том виде, как её видит автор, и отдаём вызывающему применить.
+    async editStory(authorId: number, id: number, patch: { caption?: string; privacy?: StoryPrivacy; allowIds?: number[]; mediaAreas?: MediaArea[] }): Promise<StoryItem | undefined> {
       const body: Record<string, unknown> = {}
       if (patch.caption != null) body.caption = patch.caption
       if (patch.privacy != null) body.privacy = patch.privacy
       if (patch.allowIds != null) body.allow_user_ids = patch.allowIds
       if (patch.mediaAreas != null) body.media_areas = patch.mediaAreas
-      await rest.patch(`/stories/${authorId}/${id}`, body)
+      const r = await rest.patch<EditedUpdates>(`/stories/${authorId}/${id}`, body)
+      return r.updates?.find((u) => u._ === 'updateStory')?.story
     },
     // Реакция на историю: POST ставит/меняет, DELETE снимает.
     async setReaction(authorId: number, id: number, reaction: string): Promise<void> {

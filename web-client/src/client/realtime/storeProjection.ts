@@ -21,7 +21,7 @@ import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, replaceMirrorWindow, resetMessagesMirror, setMirrorHistoryCount, winKey } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -355,13 +355,9 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as ReadStoriesEvt
     useStoriesStore.getState().markRead(Number(getPeerId(e.peer)), e.max_id)
   })
-  rootScope.addEventListener(RT.storyReaction, (raw) => {
-    const e = raw as SentStoryReactionEvt
-    // Кадр несёт МОЙ выбор и только его: общий агрегат приезжает внутри самой
-    // истории (`updateStory` выше), поэтому счётчик отсюда не берётся.
-    const emoticon = e.reaction?._ === 'reactionEmoji' ? e.reaction.emoticon : ''
-    useStoriesStore.getState().setMyReaction(e.story_id, emoticon || null)
-  })
+  // `updateSentStoryReaction` стор не меняет: tweb его не слушает (grep по lib и
+  // components пуст), а своя реакция на другом устройстве приезжает телом
+  // `updateStory`. Кадр остаётся в каталоге (`UPDATE_RT`), обработчика нет.
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле). Владелец — воркер:
   // и сами байты, и границы аплоада теперь его (messages.sendFile), поэтому
   // `done` (аплоад кончился успехом/ошибкой/отменой) приезжает тем же каналом,

@@ -8,14 +8,14 @@
 //    типа, и удалённая история отличалась от новой только конвертом;
 //  • история приезжает ЦЕЛИКОМ и применяется точечно; полный рефетч ленты
 //    остаётся ровно для НОВОГО автора, чьей карточки в зеркале ещё нет;
-//  • `updateSentStoryReaction` несёт МОЙ выбор и только его — общий агрегат
-//    приезжает внутри самой истории, и брать счётчик отсюда нельзя.
+//  • `updateSentStoryReaction` стор не меняет: tweb его не слушает (В-4), свою
+//    реакцию вторая вкладка получает телом `updateStory`.
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { useStoriesStore } from '../../stores/storiesStore'
-import type { StoryItem } from '../../core/stories/story'
-import { storyMyReaction } from '../../core/stories/story'
+import type { StoryItem, StoryItemReal } from '../../core/stories/story'
+import { storyCaption, storyMyReaction } from '../../core/stories/story'
 import type { Managers } from '../bootstrap'
 
 import { registerStoreProjection } from './storeProjection'
@@ -79,7 +79,12 @@ describe('storeProjection — кадры историй', () => {
     expect(useStoriesStore.getState().groups[0].maxReadId).toBe(5)
   })
 
-  it('updateSentStoryReaction ставит МОЮ реакцию', () => {
+  // tweb `updateSentStoryReaction` не слушает (grep по lib и components пуст,
+  // В-4): своя реакция на другом устройстве придёт в теле `updateStory`, а не
+  // этим кадром. Кадр остаётся в каталоге, но стор не меняет.
+  it('updateSentStoryReaction стор не меняет', () => {
+    const before = useStoriesStore.getState().groups
+
     rootScope.dispatchEventSingle(RT.storyReaction, {
       _: 'updateSentStoryReaction',
       peer: { _: 'peerUser', user_id: 2 },
@@ -87,19 +92,19 @@ describe('storeProjection — кадры историй', () => {
       reaction: { _: 'reactionEmoji', emoticon: '👍' },
     })
 
-    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBe('👍')
+    expect(useStoriesStore.getState().groups).toBe(before)
+    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBeNull()
   })
 
-  it('пустой эмодзи в кадре — «реакцию сняли», а не реакция с пустым значением', () => {
-    useStoriesStore.getState().setMyReaction(1, '👍')
-
-    rootScope.dispatchEventSingle(RT.storyReaction, {
-      _: 'updateSentStoryReaction',
+  it('updateStory с тем же номером ЗАМЕНЯЕТ историю: правка подписи доходит', () => {
+    rootScope.dispatchEventSingle(RT.story, {
+      _: 'updateStory',
       peer: { _: 'peerUser', user_id: 2 },
-      story_id: 1,
-      reaction: { _: 'reactionEmoji', emoticon: '' },
+      story: { ...(story(1) as StoryItemReal), caption: 'edited' },
     })
 
-    expect(storyMyReaction(useStoriesStore.getState().groups[0].stories[0])).toBeNull()
+    const stories = useStoriesStore.getState().groups[0].stories
+    expect(stories).toHaveLength(1)
+    expect(storyCaption(stories[0])).toBe('edited')
   })
 })
