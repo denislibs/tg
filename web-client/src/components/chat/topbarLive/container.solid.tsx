@@ -3,12 +3,13 @@
 // плашка идущей RTMP-трансляции канала под шапкой. Пачка П-5 волны 7 (Б-21).
 //
 // РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
-//  1. Источник «эфир идёт» — не флаги `call_active`/`call_not_empty` канала и
-//     `getGroupCallFull(...).pFlags.rtmp_stream` (у нас их нет: трансляции — своя
-//     подсистема REST `/chats/{id}/livestream`), а `livestreamStore.activeByChat`
+//  1. «Эфир идёт» — флаги `broadcast && call_active && call_not_empty` карточки канала, как
+//     у tweb (`:40-47`; их ставит сервер, f6-call). Дальше расхождение:
+//     `getGroupCallFull(...).pFlags.rtmp_stream` у нас нет (трансляции — своя подсистема REST
+//     `/chats/{id}/livestream`), поэтому «это именно эфир» — `livestreamStore.activeByChat`
 //     (живёт кадром `livestream_update`, `core/calls/livestreamEngine.ts`) со снимком
-//     `livestream.status(peerId)` на смене пира — тот же источник, что у прежнего
-//     React-баннера `Chat.tsx`. Число зрителей — `viewers` того же снимка (у tweb —
+//     `livestream.status(peerId)` на смене пира. Плашка нужна обоим условиям (флаги без
+//     эфира — это видеочат канала, он у плашки `topbarGroupCall`). Число зрителей — `viewers` того же снимка (у tweb —
 //     `participants_count` звонка и `group_call_update`); живого счётчика зрителей на
 //     плашке у нас нет, кадр трансляции несёт `viewers` только в ответе статуса.
 //  2. «Текущий эфир» (`useCurrentRtmpCall`) — `livestreamStore.watchingPeerId`.
@@ -18,7 +19,8 @@ import { Show, createEffect, createMemo, createSignal, type Accessor } from 'sol
 import type Chat from '@components/chat/chat'
 import type ChatTopbar from '@components/chat/topbar'
 import { NULL_PEER_ID } from '@core/peers/peerId'
-import { isBroadcastPeer } from '@core/peerCache'
+import { cachedChat, isBroadcastPeer, peerMirrorVersion, subscribePeerMirror } from '@core/peerCache'
+import { hasCallParticipants, isBroadcast } from '@core/peers/predicates'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import { i18n } from '@lib/langPack'
 import { useLivestreamStore } from '@stores/livestreamStore'
@@ -36,8 +38,14 @@ function LivePlateBody(props: {
   setHidden: (hidden: boolean) => void
 }) {
   const state = subscribeExternal(useLivestreamStore.subscribe, useLivestreamStore.getState)
+  const mirror = subscribeExternal(subscribePeerMirror, peerMirrorVersion)
+
   // расхождение 1
-  const isCallActive = createMemo(() => !!(props.peerId() && isBroadcastPeer(props.peerId()) && state().activeByChat[props.peerId()]))
+  const isCallActive = createMemo(() => {
+    mirror()
+    const chat = props.peerId() ? cachedChat(props.peerId()) : undefined
+    return isBroadcast(chat) && hasCallParticipants(chat) && !!state().activeByChat[props.peerId()]
+  })
   const shouldShow = createMemo(() => isCallActive() && state().watchingPeerId !== props.peerId())
 
   createEffect(() => props.setHidden(!shouldShow()))

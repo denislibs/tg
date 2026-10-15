@@ -98,3 +98,22 @@ export function getChatTitle(chat: Chat | undefined): string {
 export function getChatPhoto(chat: Chat | undefined) {
   return chat && (chat._ === 'chat' || chat._ === 'channel') ? chat.photo : undefined
 }
+
+/**
+ * `chat.pFlags.call_active` — в чате идёт видеочат или эфир (tweb `chat/topbar.ts:356`,
+ * `:386`, `appProfileManager.ts:95`). Флаг ставит сервер (`channel.call_active`); звонок
+ * без участников тоже «активен», для плашек и иконки в списке нужен `hasCallParticipants`.
+ */
+export function isCallActive(chat: Chat | undefined): boolean {
+  return !!(chat && (chat._ === 'channel' || chat._ === 'chat') && chat.pFlags?.call_active)
+}
+
+/**
+ * `call_active && call_not_empty` — звонок идёт и в нём кто-то есть. Ровно эта пара —
+ * условие иконки звонка в строке списка (tweb `autonomousDialogList/dialogs.ts:759`) и
+ * плашек под шапкой (`chat/topbarGroupCall/container.tsx:38-41`,
+ * `chat/topbarLive/container.tsx:41-46`).
+ */
+export function hasCallParticipants(chat: Chat | undefined): boolean {
+  return isCallActive(chat) && !!(chat as { pFlags?: { call_not_empty?: true } }).pFlags?.call_not_empty
+}

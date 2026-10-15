@@ -41,3 +41,26 @@ func (r *LivestreamRepo) Upsert(ctx context.Context, ls domain.Livestream) error
 		ls.ChatID, ls.StreamKey, ls.Active, ls.StartedAt)
 	return err
 }
+
+// ActiveAmong — чаты среди chatIDs, где эфир идёт: один запрос на пачку по
+// первичному ключу chat_id (флаг звонка в строках списка и карточках).
+func (r *LivestreamRepo) ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(chatIDs))
+	if len(chatIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT chat_id FROM livestreams WHERE chat_id = ANY($1) AND active`, chatIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}

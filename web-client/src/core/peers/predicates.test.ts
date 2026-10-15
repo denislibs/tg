@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Chat } from './peer'
-import { getChatTitle, isAnyGroup, isBroadcast, isChannel, isForum, isInChat, isMegagroup, isPublic } from './predicates'
+import { getChatTitle, hasCallParticipants, isAnyGroup, isBroadcast, isCallActive, isChannel, isForum, isInChat, isMegagroup, isPublic } from './predicates'
 
 const channel = (over: Partial<Extract<Chat, { _: 'channel' }>> = {}): Chat => ({
   _: 'channel', id: 42, title: 'Чат', photo: { _: 'chatPhotoEmpty' }, date: 0, ...over,
@@ -101,5 +101,23 @@ describe('getChatTitle', () => {
   it('у chatEmpty заголовка в схеме нет', () => {
     expect(getChatTitle({ _: 'chatEmpty', id: 1 })).toBe('')
     expect(getChatTitle(channel({ title: 'Наш чат' }))).toBe('Наш чат')
+  })
+})
+
+describe('звонок в чате: call_active и call_not_empty', () => {
+  const withCall = (pFlags: Record<string, true>) => channel({ pFlags: { megagroup: true, ...pFlags } })
+
+  it('isCallActive — только call_active (кнопки шапки), hasCallParticipants — пара (иконка списка, плашки)', () => {
+    expect(isCallActive(MEGAGROUP)).toBe(false)
+    expect(isCallActive(withCall({ call_active: true }))).toBe(true)
+    expect(hasCallParticipants(withCall({ call_active: true }))).toBe(false)
+    expect(hasCallParticipants(withCall({ call_not_empty: true }))).toBe(false)
+    expect(hasCallParticipants(withCall({ call_active: true, call_not_empty: true }))).toBe(true)
+  })
+
+  it('нет чата, нет звонка — false', () => {
+    expect(isCallActive(undefined)).toBe(false)
+    expect(hasCallParticipants(undefined)).toBe(false)
+    expect(isCallActive({ _: 'chatEmpty', id: 1 })).toBe(false)
   })
 })

@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
-import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { applyPeerOps, cachedChat, resetPeerMirror } from '@core/peerCache'
 import { resetMessagesMirror, setMirrorHistoryCount, winKey } from '@core/history/messagesMirror'
 import { useChatsStore } from '@stores/chatsStore'
 import { useAppStateStore } from '@stores/appState'
@@ -156,6 +156,18 @@ function makeChat(options: FakeChatOptions): FakeChat {
     ...fields,
   }
   return chat as unknown as FakeChat
+}
+
+/**
+ * Звонок в карточке чата — как его ставит сервер (`channel.pFlags.call_active` и
+ * `call_not_empty`, backend `usecase/chat/callstate.go`): снимок `chat_update`
+ * заменяет карточку в зеркале. `null` — звонок кончился.
+ */
+function setCall(peerId: PeerId, on: boolean) {
+  const chat = cachedChat(peerId)
+  if(!chat || chat._ !== 'channel') throw new Error('нет карточки ' + peerId)
+  const { call_active: _a, call_not_empty: _n, ...rest } = chat.pFlags ?? {}
+  applyPeerOps([{ op: 'upsert', peers: [{ ...chat, pFlags: on ? { ...rest, call_active: true, call_not_empty: true } : rest }] }])
 }
 
 async function open(chat: Chat) {
@@ -440,10 +452,20 @@ describe('ChatTopbar: кнопки звонка по правам (`verify*` `:3
     await Promise.resolve()
     expect(shown(topbar)).toEqual([false, false, false])
 
+    // идёт видеочат: участники живут в сторе, а САМ ФАКТ «звонок идёт» — флаг карточки
     useGroupCallStore.setState({ activeByChat: { [GROUP]: [BOB] } })
+    await Promise.resolve()
+    expect(shown(topbar)).toEqual([false, false, false])
+    setCall(GROUP, true)
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, true, false]))
     btn(topbar, 1).click()
     expect(joinGroupCall).toHaveBeenCalledWith(GROUP)
+
+    // звонок кончился (снимок без флагов) — кнопка гаснет, пока стор ещё не опустел
+    setCall(GROUP, false)
+    await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, false]))
+    setCall(GROUP, true)
+    await vi.waitFor(() => expect(shown(topbar)).toEqual([false, true, false]))
 
     useGroupCallStore.setState({ peerId: GROUP })
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, false]))
@@ -459,6 +481,7 @@ describe('ChatTopbar: кнопки звонка по правам (`verify*` `:3
     const topbar = await open(makeChat({ peerId: MY_CHANNEL }))
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, true]))
 
+    setCall(MY_CHANNEL, true)
     useLivestreamStore.setState({ activeByChat: { [MY_CHANNEL]: true } })
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, false]))
   })
@@ -468,7 +491,7 @@ describe('ChatTopbar: кнопки звонка по правам (`verify*` `:3
     await Promise.resolve()
     expect(shown(topbar)).toEqual([false, false, false])
 
-    useGroupCallStore.setState({ activeByChat: { [CHANNEL]: [BOB] } })
+    setCall(CHANNEL, true)
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, true, false]))
 
     useLivestreamStore.setState({ activeByChat: { [CHANNEL]: true } })
@@ -476,7 +499,7 @@ describe('ChatTopbar: кнопки звонка по правам (`verify*` `:3
   })
 
   it('тред комментариев: кнопок звонка нет', async() => {
-    useGroupCallStore.setState({ activeByChat: { [CHANNEL]: [BOB] } })
+    setCall(CHANNEL, true)
     const topbar = await open(makeChat({ peerId: CHANNEL, threadId: 50, type: ChatType.Discussion }))
     await Promise.resolve()
     expect(shown(topbar)).toEqual([false, false, false])
@@ -779,7 +802,11 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     const wrapper = q(topbar, '.topbar-floating-plates')
     expect(wrapper.classList.contains('hide')).toBe(true)
 
+    // участники (число и аватарки) — из стора, факт «звонок идёт» — флаги карточки
     useGroupCallStore.getState().setActive(GROUP, [ALICE, BOT])
+    await Promise.resolve()
+    expect(wrapper.classList.contains('hide')).toBe(true)
+    setCall(GROUP, true)
     await vi.waitFor(() => expect(wrapper.classList.contains('hide')).toBe(false))
     const plate = q(topbar, '.pinned-group-call')
     expect(plate.classList.contains('hide')).toBe(false)
@@ -794,16 +821,43 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     expect(chat.updatePinnedFloatingHeight).toHaveBeenLastCalledWith(0)
   })
 
+  it('флаги карточки без участников в сторе (снимок звонка доехал раньше списка) — плашки нет; ушли флаги — плашка гаснет', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    setCall(GROUP, true)
+    await Promise.resolve()
+    expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(true)
+
+    useGroupCallStore.getState().setActive(GROUP, [ALICE])
+    await vi.waitFor(() => expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(false))
+
+    // звонок кончился (снимок chat_update без флагов), а участники в сторе ещё не обновились
+    setCall(GROUP, false)
+    await vi.waitFor(() => expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(true))
+  })
+
   it('эфир канала: плашка по livestreamStore, в личке — никогда', async() => {
     const channel = makeChat({ peerId: CHANNEL, isBroadcast: true })
     const topbar = await open(channel)
     useLivestreamStore.getState().setActive(CHANNEL, true)
+    await Promise.resolve()
+    expect(q(topbar, '.pinned-live').classList.contains('hide')).toBe(true) // эфир есть, флагов карточки нет
+    setCall(CHANNEL, true)
     await vi.waitFor(() => expect(q(topbar, '.pinned-live').classList.contains('hide')).toBe(false))
     expect(q(topbar, '.pinned-live').textContent).toContain(t('Rtmp.Topbar.Join'))
 
     useLivestreamStore.getState().setActive(ALICE, true)
     const dm = await open(makeChat({ peerId: ALICE }))
     expect(q(dm, '.pinned-live').classList.contains('hide')).toBe(true)
+  })
+
+  it('эфир канала: плашка видеочата не показывается — `rtmp_stream` принадлежит плашке эфира (tweb container.tsx:73-74)', async() => {
+    const topbar = await open(makeChat({ peerId: CHANNEL, isBroadcast: true }))
+    // зрители эфира — участники группового звонка, поэтому в сторе они есть
+    useGroupCallStore.getState().setActive(CHANNEL, [ALICE, BOT])
+    useLivestreamStore.getState().setActive(CHANNEL, true)
+    setCall(CHANNEL, true)
+    await vi.waitFor(() => expect(q(topbar, '.pinned-live').classList.contains('hide')).toBe(false))
+    expect(q(topbar, '.pinned-group-call').classList.contains('hide')).toBe(true)
   })
 })
 
