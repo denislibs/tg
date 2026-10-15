@@ -17,7 +17,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
-import { HttpError } from '@core/net/restClient'
 import type { Folder, FolderInvite } from '@core/managers/foldersManager'
 import type { Chat, User } from '@core/peers/peer'
 import type { Dialog } from '@core/models'
@@ -87,6 +86,13 @@ const settle = async() => {
 }
 
 let host: InstalledSidebarLeft
+/**
+ * Отказ сервера, как он доходит до главного потока: через границу воркера
+ * объект ошибки не проходит — `rpc/superMessagePort.ts` собирает обычный
+ * `Error` с полем `type`, а не `HttpError`.
+ */
+const rpcError = (type: string) => Object.assign(new Error(type), { status: 400, type })
+
 let folders: {
   create: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
@@ -389,7 +395,7 @@ describe('редактор папки — изменения и сохранен
   })
 
   it('отказ «папок слишком много» — тост LimitReached (О-22), вкладка остаётся', async() => {
-    folders.update.mockRejectedValueOnce(new HttpError(400, 'folders limit reached', 'folders limit reached'))
+    folders.update.mockRejectedValueOnce(rpcError('DIALOG_FILTERS_TOO_MUCH'))
     const tab = await openEditor(WORK)
     await settle()
     typeName(tab, 'Офис')
@@ -512,8 +518,8 @@ describe('редактор папки → вкладка ссылки «Share Fo
     expect(row.isConnected).toBe(false)
   })
 
-  it('отказ «нечем делиться» открывает вкладку без ссылки (NoChats), а не тост; строки ссылки нет', async() => {
-    folders.createInvite.mockRejectedValueOnce(new HttpError(400, 'x', 'folder has no shareable public group/channel chats'))
+  it.each(['PEERS_LIST_EMPTY', 'CHAT_ADMIN_REQUIRED'])('отказ %s открывает вкладку без ссылки (NoChats), а не тост; строки ссылки нет', async(type) => {
+    folders.createInvite.mockRejectedValueOnce(rpcError(type))
     const tab = await openEditor(WORK)
     await settle()
     click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
@@ -525,6 +531,18 @@ describe('редактор папки → вкладка ссылки «Share Fo
     expect(shared.querySelector('.invite-link-container')).toBeNull()
     expect(toastNew).not.toHaveBeenCalled()
     expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(0)
+  })
+
+  it.each(['INVITES_TOO_MUCH', 'FILTERS_TOO_MUCH', 'CHATLISTS_TOO_MUCH'])('отказ %s — тост LimitReached (О-22), вкладка ссылки не открывается', async(type) => {
+    folders.createInvite.mockRejectedValueOnce(rpcError(type))
+    const tab = await openEditor(WORK)
+    await settle()
+    click(tab.scrollable.container.querySelector('.folder-list-links .folder-categories > .btn')!)
+    await settle()
+
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'LimitReached' })
+    expect(document.querySelector('.shared-folder-container')).toBeNull()
+    expect(tab.scrollable.container.querySelector<HTMLButtonElement>('.folder-list-links .folder-categories > .btn')!.disabled).toBe(false)
   })
 })
 

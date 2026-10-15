@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -41,26 +42,66 @@ func (r *StatsRepo) MemberRole(ctx context.Context, chatID, userID int64) (strin
 	return role, rights, err
 }
 
-// Summary — числовой обзор. Уведомления включены у тех, кто не в мьюте с
-// учётом типа чата (chatMutedSQL — та же копия domain.ChatMuted, что у пуша):
-// мьют чата — колонка muted_until (миграция 0104; «навсегда» —
-// to_timestamp(2147483647); NULL — наследует тип).
-func (r *StatsRepo) Summary(ctx context.Context, chatID int64) (domain.ChannelStatsSummary, error) {
+// SeqBefore — последний номер не удалённого сообщения чата с seq не выше
+// maxSeq, созданного строго до t; 0 — если такого нет. Индекса
+// messages(chat_id, created_at) нет, поэтому граница окна по времени
+// переводится в границу по seq: он почти монотонен по времени (расхождение —
+// длительность транзакции отправки, для окон в сутки пренебрежимо).
+// Обратный скан частичного индекса (chat_id, seq) WHERE deleted_at IS NULL
+// (idx_messages_unread_count) идёт от maxSeq вниз и проходит только
+// сообщения новее t, то есть окно.
+func (r *StatsRepo) SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.Time) (int64, error) {
+	var seq int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT seq FROM messages
+		WHERE chat_id=$1 AND deleted_at IS NULL AND seq <= $2 AND created_at < $3
+		ORDER BY seq DESC LIMIT 1`, chatID, maxSeq, t).Scan(&seq)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return seq, err
+}
+
+// Summary — числовой обзор окна: посты с seq в (fromSeq, toSeq] (не удалённые и
+// не служебные) и участники, вступившие до at. Окно выбирается одной
+// выборкой messages по seq, суммы и реакции считаются по ней же.
+//
+// Участники — приближение: вышедшие и исключённые строк не имеют (членство
+// стирается), поэтому «участников на начало окна» не учитывает тех, кто успел
+// уйти позже; точных исторических снимков состава у нас нет.
+func (r *StatsRepo) Summary(ctx context.Context, chatID, fromSeq, toSeq int64, at time.Time) (domain.ChannelStatsSummary, error) {
 	var s domain.ChannelStatsSummary
 	err := querier(ctx, r.pool).QueryRow(ctx, `
+		WITH win AS (
+			SELECT id, views, forwards, sender_id FROM messages
+			WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service' AND seq > $2 AND seq <= $3
+		)
 		SELECT
-			(SELECT count(*) FROM chat_members WHERE chat_id=$1),
-			(SELECT coalesce(sum(views),0) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL),
-			(SELECT coalesce(sum(forwards),0) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL),
-			(SELECT count(*) FROM reactions r JOIN messages m ON m.id = r.message_id
-			  WHERE m.chat_id=$1 AND m.deleted_at IS NULL),
-			(SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service'),
-			(SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
-			  LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
-			  WHERE m.chat_id=$1 AND NOT `+chatMutedSQL(joinedNotify)+`)`,
-		chatID,
-	).Scan(&s.Members, &s.TotalViews, &s.TotalForwards, &s.TotalReactions, &s.PostsCount, &s.NotificationsOn)
+			(SELECT count(*) FROM chat_members WHERE chat_id=$1 AND joined_at < $4),
+			(SELECT coalesce(sum(views),0) FROM win),
+			(SELECT coalesce(sum(forwards),0) FROM win),
+			(SELECT count(*) FROM reactions r JOIN win ON win.id = r.message_id),
+			(SELECT count(*) FROM win),
+			(SELECT count(DISTINCT sender_id) FROM win)`,
+		chatID, fromSeq, toSeq, at,
+	).Scan(&s.Members, &s.TotalViews, &s.TotalForwards, &s.TotalReactions, &s.PostsCount, &s.PostersCount)
 	return s, err
+}
+
+// NotificationsOn — вступившие до at участники с включёнными уведомлениями. Не мьютят те,
+// кто не в мьюте с учётом типа чата (chatMutedSQL — та же копия
+// domain.ChatMuted, что у пуша): мьют чата — колонка muted_until (миграция
+// 0104; «навсегда» — to_timestamp(2147483647); NULL — наследует тип). По схеме
+// `statsPercentValue` предыдущего значения нет — окна у показателя тоже нет.
+// Фильтр `joined_at < at` — тот же, что у Members текущего окна: доля не
+// превышает 100% при расхождении часов приложения и БД.
+func (r *StatsRepo) NotificationsOn(ctx context.Context, chatID int64, at time.Time) (int64, error) {
+	var n int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
+		LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
+		WHERE m.chat_id=$1 AND m.joined_at < $2 AND NOT `+chatMutedSQL(joinedNotify), chatID, at).Scan(&n)
+	return n, err
 }
 
 // dailySeries выполняет запрос вида «SELECT day::date, count/sum GROUP BY day

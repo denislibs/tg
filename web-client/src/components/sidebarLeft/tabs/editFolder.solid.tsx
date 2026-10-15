@@ -38,9 +38,10 @@
  *  4. (О-22) Лимиты не проверяются на клиенте: бэкенд не отдаёт `folders`/
  *     `folderPeers`/`chatlistInvites` (`getLimit`, `:515-517`, `:563-564`,
  *     `:635-638`), а `PopupLimit` — волна 2C. Отказ сервера по числу папок
- *     (`ErrTooMany`, текст `folders limit reached` — у tweb
- *     `DIALOG_FILTERS_TOO_MUCH`, `:480-481`) показывается уже существующим
- *     тостом с ключом tweb `LimitReached` вместо `showLimitPopup('folders')`.
+ *     (`DIALOG_FILTERS_TOO_MUCH`, `:480-481`) и ссылок (`INVITES_TOO_MUCH`/
+ *     `FILTERS_TOO_MUCH`/`CHATLISTS_TOO_MUCH`, `:690-692`; бэкенд их не отдаёт,
+ *     ветка — как у оригинала) показываются тостом с ключом tweb `LimitReached`
+ *     вместо `showLimitPopup('folders' | 'chatlistInvites')`.
  *  5. Сохранение: `managers.folders.create/update` + `foldersStore.upsert` вместо
  *     `filtersStorage.createDialogFilter/updateDialogFilter` (`:456-465`);
  *     `filter_update` (`:499-507`) — подписка на `appState.folders` (папку
@@ -52,9 +53,9 @@
  *     Вкладка «Share Folder» (`AppSharedFolderTab`, `openChatlistInvite`,
  *     `:702-724`) — `sharedFolder.solid.tsx`; её событие `edit` не слушается:
  *     выбор чатов ссылки заблокирован бэкендом (нет `editExportedInvite`, О-23).
- *     Отказ «нечем делиться» — наш `ErrNoShareable` (у tweb `PEERS_LIST_EMPTY`/
- *     `CHAT_ADMIN_REQUIRED`, `:686-689`): приватный чат сервер отбрасывает сам,
- *     отдельного отказа по правам у нас нет.
+ *     Отказ «нечем делиться» — `PEERS_LIST_EMPTY`/`CHAT_ADMIN_REQUIRED`, как у
+ *     оригинала (`:693-696`); сервер отдаёт `PEERS_LIST_EMPTY`, приватный чат он
+ *     отбрасывает сам, отдельного отказа по правам у нас нет.
  *  7. `toggleDisability` (`:662`) снят у нас задачей 9 — кнопка выключается
  *     атрибутом `disabled`, как его и ставит `toggleDisability`.
  *  8. Флаг `deleting` (`:275-290`) у tweb никогда не взводится — защита от
@@ -97,7 +98,6 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import { copyTextToClipboard } from '@helpers/clipboard'
 import { unwrapSolidElement, mountSolidComponent } from '@helpers/solid/wrapSolidComponent'
 import noop from '@helpers/noop'
-import { HttpError } from '@core/net/restClient'
 import { isUser } from '@core/peers/peerId'
 import type { Folder, FolderInvite } from '@core/managers/foldersManager'
 import type { IconName } from '@core/tgico-icons'
@@ -117,11 +117,6 @@ type EditFolderFlags = { [k in FolderPFlag]?: HTMLElement }
 
 /** tweb `editFolderInput/index.tsx:11` = `domain.MaxFolderNameLength` */
 const MAX_FOLDER_NAME_LENGTH = 12
-
-/** Отказ сервера «папок слишком много» (`usecase/folders.ErrTooMany`). */
-const FOLDERS_TOO_MUCH = 'folders limit reached'
-/** Отказ «нечем делиться» (`usecase/folders.ErrNoShareable`). */
-const NO_SHAREABLE = 'folder has no shareable public group/channel chats'
 
 const hasFlag = (filter: Folder, flag: FolderPFlag) => !!filter[FOLDER_PFLAGS[flag]]
 
@@ -533,7 +528,7 @@ const EditFolder = () => {
         postponedFilterUpdate = undefined
       }
 
-      if(err instanceof HttpError && err.type === FOLDERS_TOO_MUCH) {
+      if((err as ApiError).type === 'DIALOG_FILTERS_TOO_MUCH') {
         // (О-22) `showLimitPopup('folders')` — расхождение 4
         toastNew({ langPackKey: 'LimitReached' })
       } else {
@@ -725,8 +720,14 @@ const EditFolder = () => {
           })
         }, (err: unknown) => {
           toggle()
-          if(err instanceof HttpError && err.type === NO_SHAREABLE) {
-            // у tweb `PEERS_LIST_EMPTY`/`CHAT_ADMIN_REQUIRED` (расхождение 6)
+          // Через границу воркера отказ приходит обычным `Error` с полем `type`
+          // (`rpc/superMessagePort.ts`), не `HttpError` — `instanceof` не годится.
+          const type = (err as ApiError).type
+          if(type === 'INVITES_TOO_MUCH' || type === 'FILTERS_TOO_MUCH' || type === 'CHATLISTS_TOO_MUCH') {
+            // (О-22) `showLimitPopup('chatlistInvites')` — расхождение 4
+            toastNew({ langPackKey: 'LimitReached' })
+            return
+          } else if(type === 'PEERS_LIST_EMPTY' || type === 'CHAT_ADMIN_REQUIRED') {
             void openChatlistInvite()
             return
           }

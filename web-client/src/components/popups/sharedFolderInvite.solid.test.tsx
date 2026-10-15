@@ -11,6 +11,9 @@ import { resetPeerMirror } from '@core/peerCache'
 import { useSettingsStore } from '@/settings'
 import showSharedFolderInvitePopup from './sharedFolderInvite.solid'
 
+const toastNew = vi.hoisted(() => vi.fn())
+vi.mock('@components/toast', () => ({ toastNew }))
+
 const loadFolders = vi.hoisted(() => vi.fn(async() => {}))
 vi.mock('@stores/foldersStore', () => ({ loadFolders }))
 
@@ -30,6 +33,8 @@ let refresh: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   resetPeerMirror()
+  toastNew.mockReset()
+  loadFolders.mockClear()
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   joinInvite = vi.fn(async() => {})
   refresh = vi.fn(async() => null)
@@ -113,5 +118,16 @@ describe('попап «Добавить папку»', () => {
     expect(joinInvite).toHaveBeenCalledWith('abc', [-20])
     expect(refresh).toHaveBeenCalled()
     expect(loadFolders).toHaveBeenCalledWith(managers, { overwrite: true })
+  })
+
+  it('DIALOG_FILTERS_TOO_MUCH (tweb :212-216) — тост LimitReached, попап закрывается, папки не перечитываются', async() => {
+    // отказ доходит из воркера обычным `Error` с `type`, не `HttpError`
+    joinInvite.mockRejectedValueOnce(Object.assign(new Error('DIALOG_FILTERS_TOO_MUCH'), { status: 400, type: 'DIALOG_FILTERS_TOO_MUCH' }))
+    const popup = await open()
+    click(popup.querySelector('.popup-footer-button')!)
+    await settle()
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'LimitReached' })
+    expect(refresh).not.toHaveBeenCalled()
+    expect(loadFolders).not.toHaveBeenCalled()
   })
 })

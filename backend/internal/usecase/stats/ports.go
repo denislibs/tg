@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -15,8 +16,15 @@ type Repo interface {
 	// MemberRole возвращает роль и права участника; domain.ErrNotFound, если
 	// пользователь не участник чата.
 	MemberRole(ctx context.Context, chatID, userID int64) (role string, rights domain.Rights, err error)
-	// Summary — числовой обзор.
-	Summary(ctx context.Context, chatID int64) (domain.ChannelStatsSummary, error)
+	// SeqBefore — последний номер не удалённого сообщения чата с seq не выше
+	// maxSeq, созданного строго до t; 0, если такого нет. Переводит границу
+	// окна по времени в границу по seq (индекса по created_at нет).
+	SeqBefore(ctx context.Context, chatID, maxSeq int64, t time.Time) (int64, error)
+	// Summary — числовой обзор окна: посты с seq в (fromSeq, toSeq], участники,
+	// вступившие до at.
+	Summary(ctx context.Context, chatID, fromSeq, toSeq int64, at time.Time) (domain.ChannelStatsSummary, error)
+	// NotificationsOn — вступивших до at участников с включёнными уведомлениями.
+	NotificationsOn(ctx context.Context, chatID int64, at time.Time) (int64, error)
 	// MembersByDay — число присоединившихся по дням (chat_members.joined_at),
 	// возрастающе по дате. Кумулятив считает usecase.
 	MembersByDay(ctx context.Context, chatID int64) ([]domain.StatPoint, error)
