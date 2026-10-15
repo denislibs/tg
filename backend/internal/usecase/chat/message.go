@@ -1361,18 +1361,34 @@ func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) 
 }
 
 // Typing publishes an ephemeral typing indicator to the other chat members.
-// No DB write. No-op if the user isn't a member or no publisher is attached.
+// No DB write. No-op if no publisher is attached.
 //
 // Действие приходит КОНСТРУКТОРОМ объединения SendMessageAction: белый список
 // значений здесь больше не нужен — разбор с провода и есть единственное место,
 // где неизвестное сводится к обычной печати (domain.SendMessageActionByTag).
-func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action domain.SendMessageAction) error {
+//
+// topMsgSeq — серверный номер корня треда или темы (messages.setTyping
+// {top_msg_id}, tweb appMessagesManager.ts:13917-13921); nil и номер <= 0 —
+// печать вне треда. Номер уходит в кадр как есть (General форума — 1): ключ
+// треда клиент строит сам. Не участник действует только ГОСТЕМ обсуждения —
+// читателем канала в треде комментариев (discussionGuestThread): печатает в
+// тред живого зеркала поста, прочее — domain.ErrForbidden.
+func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, topMsgSeq *int64, action domain.SendMessageAction) error {
 	if i.publisher == nil {
 		return nil
 	}
+	var topMsgID int64
+	if topMsgSeq != nil && *topMsgSeq > 0 {
+		topMsgID = *topMsgSeq
+	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil || !ok {
+	if err != nil {
 		return err
+	}
+	if !ok {
+		if err := i.requireTypingGuest(ctx, chatID, userID, topMsgID); err != nil {
+			return err
+		}
 	}
 	// В broadcast-канале «печатает» не рассылается: пишет канал, а не человек,
 	// и сервер Telegram typing в канале подписчикам не шлёт (гейта у tweb нет —
@@ -1390,12 +1406,30 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action do
 	}
 	// Тело одно на всех: адрес кадр несёт САМ (конструктором), пер-зрительского
 	// в нём ничего нет — поэтому и развёртки по ключам пира здесь больше нет.
-	body := frame("typing", typingPayload(addr, userID, action))
+	body := frame("typing", typingPayload(addr, userID, topMsgID, action))
 	for _, uid := range members {
 		if uid == userID {
 			continue
 		}
 		_ = i.publisher.PublishToUser(ctx, uid, body)
+	}
+	return nil
+}
+
+// requireTypingGuest — не участник печатает как гость обсуждения: нужен номер
+// корня треда комментариев (discussionGuestThread, сам гейт — тот же, что у
+// отправки гостя). Любой отказ — domain.ErrForbidden: ответа на печать у клиента
+// нет (tweb setTyping возвращает Bool и не читает его).
+func (i *Interactor) requireTypingGuest(ctx context.Context, chatID, userID, topMsgID int64) error {
+	if topMsgID == 0 {
+		return domain.ErrForbidden
+	}
+	root, err := i.ResolveThreadRootForSend(ctx, chatID, &topMsgID)
+	if err != nil || root == nil {
+		return domain.ErrForbidden
+	}
+	if err := i.discussionGuestThread(ctx, chatID, userID, root, false); err != nil {
+		return domain.ErrForbidden
 	}
 	return nil
 }

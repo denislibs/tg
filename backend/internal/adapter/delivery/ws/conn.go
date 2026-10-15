@@ -528,7 +528,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
-			_ = c.svc.Typing(ctx, chatID, c.userID, domain.SendMessageActionByTag(d.Action.Underscore))
+			_ = c.svc.Typing(ctx, chatID, c.userID, d.TopMsgID, domain.SendMessageActionByTag(d.Action.Underscore))
 		}
 	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
 	// re-addressed to every device of to_user_id with from_user_id stamped in.

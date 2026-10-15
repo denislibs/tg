@@ -794,18 +794,21 @@ func SendMessageActionByTag(predicate string) SendMessageAction {
 // Печатают В ЛИЧНОМ чате. Ключа пира у кадра нет и не нужно: пир ЭТО и есть
 // печатающий — у нас же ключ приклеивался снаружи, как у всех прочих кадров.
 //
-// top_msg_id (печатают в треде) не производится: тредового индикатора у нас нет.
+// top_msg_id — серверный номер корня треда или темы, где печатают (0 — вне
+// треда, поля нет): tweb кладёт печать ровно в один ключ `peerId[_threadId]`
+// (appProfileManager.ts:1408-1420).
 type UpdateUserTyping struct {
 	Underscore string            `json:"_"`
 	UserID     int64             `json:"user_id"`
+	TopMsgID   int64             `json:"top_msg_id,omitempty"`
 	Action     SendMessageAction `json:"action"`
 }
 
 func (UpdateUserTyping) isUpdate()     {}
 func (u UpdateUserTyping) Tag() string { return u.Underscore }
 
-func NewUpdateUserTyping(userID int64, action SendMessageAction) UpdateUserTyping {
-	return UpdateUserTyping{Underscore: UpdateUserTypingTag, UserID: userID, Action: action}
+func NewUpdateUserTyping(userID, topMsgID int64, action SendMessageAction) UpdateUserTyping {
+	return UpdateUserTyping{Underscore: UpdateUserTypingTag, UserID: userID, TopMsgID: topMsgID, Action: action}
 }
 
 // updateChannelUserTyping#8c88c923 flags:# channel_id:long top_msg_id:flags.0?int
@@ -814,9 +817,13 @@ func NewUpdateUserTyping(userID int64, action SendMessageAction) UpdateUserTypin
 // Печатают в ГРУППЕ или канале: адрес чата и автор — разные параметры, потому
 // что это разные вопросы. Базового updateChatUserTyping мы не производим по той
 // же причине, что и базового `chat`: любая наша группа — channel.
+//
+// top_msg_id — серверный номер корня треда или темы, где печатают (General
+// форума — 1; 0 — вне треда, поля нет).
 type UpdateChannelUserTyping struct {
 	Underscore string            `json:"_"`
 	ChannelID  int64             `json:"channel_id"`
+	TopMsgID   int64             `json:"top_msg_id,omitempty"`
 	FromID     Peer              `json:"from_id"`
 	Action     SendMessageAction `json:"action"`
 }
@@ -824,9 +831,9 @@ type UpdateChannelUserTyping struct {
 func (UpdateChannelUserTyping) isUpdate()     {}
 func (u UpdateChannelUserTyping) Tag() string { return u.Underscore }
 
-func NewUpdateChannelUserTyping(channelID int64, from Peer, action SendMessageAction) UpdateChannelUserTyping {
+func NewUpdateChannelUserTyping(channelID, topMsgID int64, from Peer, action SendMessageAction) UpdateChannelUserTyping {
 	return UpdateChannelUserTyping{Underscore: UpdateChannelUserTypingTag, ChannelID: channelID,
-		FromID: from, Action: action}
+		TopMsgID: topMsgID, FromID: from, Action: action}
 }
 
 // updateUserStatus#e5bdf8de user_id:long status:UserStatus = Update;

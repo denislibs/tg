@@ -127,7 +127,7 @@ func TestTyping_PublishesToOthers(t *testing.T) {
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
 	act := domain.SendMessageActionByTag(domain.SendMessageRecordAudioActionTag)
-	if err := in.Typing(ctx, chatID, a, act); err != nil {
+	if err := in.Typing(ctx, chatID, a, nil, act); err != nil {
 		t.Fatalf("Typing: %v", err)
 	}
 	if pub.countFor(b) != 1 || pub.countFor(a) != 0 {
@@ -161,7 +161,7 @@ func TestTyping_GroupCarriesChannelAndAuthor(t *testing.T) {
 	}
 	pub.reset()
 
-	if err := in.Typing(ctx, chatID, owner, domain.SendMessageActionByTag(domain.SendMessageTypingActionTag)); err != nil {
+	if err := in.Typing(ctx, chatID, owner, nil, domain.SendMessageActionByTag(domain.SendMessageTypingActionTag)); err != nil {
 		t.Fatalf("Typing: %v", err)
 	}
 
