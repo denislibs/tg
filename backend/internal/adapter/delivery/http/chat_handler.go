@@ -218,6 +218,9 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not a live location")
 		return
+	case errors.Is(err, domain.ErrMessageNotModified):
+		writeError(w, http.StatusBadRequest, "MESSAGE_NOT_MODIFIED")
+		return
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
 		return

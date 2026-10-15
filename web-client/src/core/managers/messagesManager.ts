@@ -2045,17 +2045,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       if (sa.first.isEnd(SliceEnd.Bottom)) appendNewest(hkey(peerId), sa, m.id)
       return m
     },
-
-    // Live location: обновить координаты (или остановить трансляцию stopped=true).
-    async updateGeoLive(peerId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/geo_live`, {
-        lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
-      })
-      const m = await mapNet(r)
-      if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
-      return m
-    },
-
   }
   return api
 }

@@ -3,8 +3,10 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -228,5 +230,97 @@ func TestUpdateLiveLocation_Broadcast_ChannelJournal(t *testing.T) {
 		if uid != 7 && slices.Contains(e.userLog(uid), "edit_message") {
 			t.Fatalf("у %d строка edit_message в личном журнале", uid)
 		}
+	}
+}
+
+// Остановленная трансляция не воскресает от запоздавшего тика: запрос
+// «стоп» и тик могут прийти не по порядку, а в схеме конец трансляции —
+// истечение срока (tweb geo.ts:178). Ответ — MESSAGE_NOT_MODIFIED, строк
+// журнала не прибавляется, остановка остаётся.
+func TestUpdateLiveLocation_StoppedStaysStopped(t *testing.T) {
+	in, pub, s, chat, live := privateGeo(t)
+	ctx := context.Background()
+	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 1, 2, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	s.mu.Lock()
+	rows := len(s.updates[2])
+	s.mu.Unlock()
+	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 9, 9, nil, false); !errors.Is(err, domain.ErrMessageNotModified) {
+		t.Fatalf("тик после остановки: %v, want ErrMessageNotModified", err)
+	}
+	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 9, 9, nil, true); !errors.Is(err, domain.ErrMessageNotModified) {
+		t.Fatalf("повторная остановка: %v, want ErrMessageNotModified", err)
+	}
+	s.mu.Lock()
+	grown := len(s.updates[2]) != rows
+	s.mu.Unlock()
+	if grown {
+		t.Fatal("журнал вырос")
+	}
+	cur, _ := fakeMsgs{s}.GetByID(ctx, live.ID)
+	if !cur.GeoLiveStopped {
+		t.Fatal("остановка снята запоздавшим тиком")
+	}
+}
+
+// Срок трансляции вышел — точку принять нельзя.
+func TestUpdateLiveLocation_ExpiredRejected(t *testing.T) {
+	in, _, s, chat, live := privateGeo(t)
+	s.mu.Lock()
+	for idx, m := range s.messages[chat] {
+		if m.ID == live.ID {
+			m.CreatedAt = time.Now().Add(-time.Hour) // period 900 с
+			s.messages[chat][idx] = m
+		}
+	}
+	s.mu.Unlock()
+	if _, err := in.UpdateLiveLocation(context.Background(), chat, live.ID, 1, 9, 9, nil, false); !errors.Is(err, domain.ErrMessageNotModified) {
+		t.Fatalf("тик после срока: %v, want ErrMessageNotModified", err)
+	}
+}
+
+// Та же точка — не правка: журнал не растёт, кадров нет.
+func TestUpdateLiveLocation_SamePointIsNotAnEdit(t *testing.T) {
+	in, pub, s, chat, live := privateGeo(t)
+	ctx := context.Background()
+	s.mu.Lock()
+	rows := len(s.updates[2])
+	s.mu.Unlock()
+	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 1, 2, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.updates[2]) != rows || len(pub.frames) != 0 {
+		t.Fatalf("та же точка записана: журнал %d -> %d, кадров %d", rows, len(s.updates[2]), len(pub.frames))
+	}
+}
+
+// Вышедший из группы автор двигать точку не может: ни строки журнала, ни
+// кадра остальным.
+func TestUpdateLiveLocation_NonMemberForbidden(t *testing.T) {
+	e := newChannelEnv(t)
+	ctx := context.Background()
+	gid, _, err := e.i.CreateGroup(ctx, 1, "Группа", "", "", false, []int64{2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	period := 900
+	live, err := e.i.Send(ctx, SendInput{ChatID: gid, SenderID: 2, Type: "geo", GeoLat: f64(1), GeoLng: f64(2), GeoLivePeriod: &period})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.fg.mu.Lock()
+	delete(e.fg.members[gid], 2)
+	e.fg.mu.Unlock()
+	e.pub.reset()
+	before := len(e.userLog(3))
+	if _, err := e.i.UpdateLiveLocation(ctx, gid, live.ID, 2, 5, 5, nil, false); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("не участник: %v, want ErrForbidden", err)
+	}
+	if len(e.userLog(3)) != before || len(e.userFrames(3, "edit_message")) != 0 {
+		t.Fatal("правка не участника ушла участникам")
 	}
 }

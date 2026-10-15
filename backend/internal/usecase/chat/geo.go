@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -33,8 +34,26 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	if cur.SenderID != userID || isCopy(cur) {
 		return domain.Message{}, domain.ErrForbidden
 	}
+	// Правит тот, кто ещё вправе писать в этот чат: вышедшему, кикнутому и
+	// разжалованному админу устройство, которое продолжает слать точки,
+	// двигать чужой чат нельзя (CHAT_WRITE_FORBIDDEN, как у EditMessage).
+	if err := i.requireGeoWriter(ctx, chatID, userID); err != nil {
+		return domain.Message{}, err
+	}
+	// Остановленная и истёкшая трансляция не меняется: в схеме конец — это
+	// истечение срока (tweb geo.ts:178 isLiveExpired), а запоздавший тик не
+	// должен её «воскрешать»; сервер Telegram отвечает MESSAGE_NOT_MODIFIED.
+	if cur.GeoLiveStopped || !time.Now().Before(cur.CreatedAt.Add(time.Duration(*cur.GeoLivePeriod)*time.Second)) {
+		return domain.Message{}, domain.ErrMessageNotModified
+	}
 	if heading != nil && (*heading < 0 || *heading > 359) {
 		heading = nil
+	}
+	// Та же точка — не правка (MESSAGE_NOT_MODIFIED у оригинала): не пишем
+	// строку журнала каждому участнику ради того, что не изменилось.
+	if !stopped && cur.GeoLat != nil && cur.GeoLng != nil && *cur.GeoLat == lat && *cur.GeoLng == lng &&
+		(heading == nil || (cur.GeoHeading != nil && *cur.GeoHeading == *heading)) {
+		return cur, nil
 	}
 	broadcast := i.isBroadcast(ctx, chatID)
 	var msg domain.Message
@@ -68,4 +87,30 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	}
 	i.publishEdit(ctx, edit)
 	return msg, nil
+}
+
+// requireGeoWriter — вправе ли userID сейчас писать в чат с live-локацией:
+// участник; в группе — с правом писать (как canEditMessage), в канале — с
+// правом публикации. Личка и «Избранное» — достаточно членства.
+func (i *Interactor) requireGeoWriter(ctx context.Context, chatID, userID int64) error {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrForbidden
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	switch typ {
+	case domain.ChatTypeChannel:
+		return i.requireRight(ctx, chatID, userID, domain.RightPostMessages)
+	case domain.ChatTypeGroup:
+		if !i.canSendInGroup(ctx, chatID, userID) {
+			return domain.ErrForbidden
+		}
+	}
+	return nil
 }
