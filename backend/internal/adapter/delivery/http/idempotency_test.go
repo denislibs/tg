@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
@@ -156,4 +157,56 @@ func (b *barrierPaidMedia) UnlockedByIDs(ctx context.Context, userID int64, ids 
 	case <-time.After(700 * time.Millisecond):
 	}
 	return out, err
+}
+
+// PollsRepo.Delete / ChecklistsRepo.Delete: убирают строку несостоявшейся отправки; на опрос,
+// на который уже ссылается сообщение, внешний ключ не даёт удалить (ссылка защищена).
+func TestPollsChecklistsRepo_DeleteOrphanAndFKGuard(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	uc := newChatUC(pool)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, idA := signUp(t, h, pool, "+79990140021")
+	_, idB := signUp(t, h, pool, "+79990140022")
+	chatID, err := uc.CreatePrivateChat(context.Background(), idA, idB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	polls, lists := pgadapter.NewPollsRepo(pool), pgadapter.NewChecklistsRepo(pool)
+	count := func(table string) int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	p, err := polls.Create(ctx, domain.Poll{ChatID: chatID, Question: "q", Options: []string{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := lists.Create(ctx, domain.Checklist{ChatID: chatID, Title: "t", Items: []domain.ChecklistItem{{ID: 1, Text: "a"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := polls.Delete(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lists.Delete(ctx, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if count("polls") != 0 || count("checklists") != 0 {
+		t.Fatalf("строки остались: polls %d, checklists %d", count("polls"), count("checklists"))
+	}
+
+	// опрос, на который ссылается сообщение, не удаляется
+	sent, err := uc.SendPoll(ctx, usecasechat.SendPollInput{ChatID: chatID, SenderID: idA, Question: "q", Options: []string{"a", "b"}})
+	if err != nil || sent.PollID == nil {
+		t.Fatalf("SendPoll: %v", err)
+	}
+	if err := polls.Delete(ctx, *sent.PollID); err == nil {
+		t.Fatal("опрос со ссылкой из сообщения удалился")
+	}
+	if count("polls") != 1 {
+		t.Fatalf("опрос с сообщением пропал: %d", count("polls"))
+	}
 }
