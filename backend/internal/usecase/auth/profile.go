@@ -60,6 +60,88 @@ func (i *Interactor) emitUserCard(ctx context.Context, u domain.UserRecord, with
 		}
 		recipients = append(recipients, partners...)
 	}
+	i.sendUserUpdate(ctx, u, recipients)
+}
+
+// announceBatch — сколько получателей обслуживается по одному чтению записи.
+// Пересчёт идёт минуты (O(партнёров) проверок правила и записей журнала), и
+// карточка, прочитанная один раз в начале, к концу устарела бы: правка профиля,
+// вклинившаяся за это время, затёрлась бы у партнёров, до которых цикл дошёл
+// позже, строкой с БОЛЬШИМ pts.
+//
+// Окно гонки сужено до одной пачки, а не закрыто: правка, вклинившаяся внутрь
+// пачки, всё ещё может быть перекрыта строкой с большим pts (тот же класс гонки,
+// что у двух подряд идущих правок профиля в emitUserUpdate). Дедлайн ставится на
+// пачку, а не на весь проход: проход по десяткам тысяч партнёров не должен
+// обрываться в середине, оставляя хвост со старым видом.
+var announceBatch = 200
+
+const announceBatchTimeout = 30 * time.Second
+
+// AnnounceUser пересылает карточку пользователя заново ему самому и всем
+// партнёрам — когда её ВИД поменялся без правки самой записи (правило
+// приватности фото профиля: у каждого получателя карточка собирается по
+// правилу заново). Запись читается свежей на каждой пачке получателей.
+func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
+	var partners []int64
+	if i.partners != nil {
+		var err error
+		if partners, err = i.partners(ctx, userID); err != nil {
+			return err
+		}
+	}
+	for first := true; first || len(partners) > 0; first = false {
+		u, err := i.users.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		n := min(announceBatch, len(partners))
+		recipients := append([]int64(nil), partners[:n]...)
+		if first {
+			recipients = append([]int64{u.ID}, recipients...)
+		}
+		partners = partners[n:]
+		bctx, cancel := context.WithTimeout(ctx, announceBatchTimeout)
+		i.sendUserUpdate(bctx, u, recipients)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AnnounceUserTo — то же, но только названным зрителям и только тем из них, кто
+// партнёр (пересечение viewers ∩ партнёры): блок меняет вид карточки для
+// одного человека, и рассылка O(партнёров) тут лишняя. Не-партнёру карточка не
+// уходит: у него её нет, поправлять нечего, а живой кадр выдал бы момент блока.
+// Сам владелец получает свою строку, как при любой смене профиля.
+func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers []int64) error {
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
+	u, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	recipients := []int64{u.ID}
+	if len(viewers) > 0 && i.partnersIn != nil {
+		partners, err := i.partnersIn(ctx, u.ID, viewers)
+		if err != nil {
+			return err
+		}
+		recipients = append(recipients, partners...)
+	}
+	i.sendUserUpdate(ctx, u, recipients)
+	return nil
+}
+
+// sendUserUpdate кладёт в журнал и рассылает карточку u каждому из recipients
+// (первым идёт сам владелец).
+func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, recipients []int64) {
 	views := map[int64]domain.ContactView{}
 	if i.contacts != nil {
 		v, err := i.contacts.ContactViews(ctx, u.ID, recipients)

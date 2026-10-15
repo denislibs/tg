@@ -367,6 +367,18 @@ func (u UserReal) WithHiddenPhone(phone string) UserReal {
 	return u
 }
 
+// HiddenUserStatus — статус, которым выражено скрытое время захода: «недавно»,
+// когда его скрыло правило приватности, и userStatusEmpty («был(а) давно»), когда
+// зрителя заблокировали (tweb getUserStatusString.ts: всё, что не Recently/
+// LastWeek/LastMonth/Offline/Online, рисуется как ALongTimeAgo). Конструктора
+// «давно» в схеме нет: это пустой статус.
+func HiddenUserStatus(viewerBlocked bool) UserStatus {
+	if viewerBlocked {
+		return NewUserStatusEmpty()
+	}
+	return NewUserStatusRecently(false)
+}
+
 // UserViewRules — ответы правил приватности владельцев карточек ЗРИТЕЛЮ
 // (VisibleMap по ключу) и присутствие. Одно место, где карточка `user`
 // доводится до вида «глазами зрителя» на ЛЮБОЙ витрине: прежде status ехал
@@ -377,6 +389,11 @@ type UserViewRules struct {
 	Photo    map[int64]bool // profile_photo; nil — правило не спрошено (сбой): фото гасится
 	Phone    map[int64]bool // phone_number
 	LastSeen map[int64]bool // last_seen
+	// Blocked — владельцы, заблокировавшие зрителя. Скрытое ими время захода —
+	// userStatusEmpty («был(а) давно», как у Telegram), а не userStatusRecently,
+	// которым выражено скрытие правилом: заблокированный видит «давно». nil —
+	// не спрошено (скрытие считается правилом).
+	Blocked map[int64]bool
 	// Status — присутствие пользователя (точный статус); nil — источника нет.
 	Status func(userID int64) UserStatus
 }
@@ -413,7 +430,7 @@ func (r UserViewRules) Apply(users []UserReal) {
 			u.Status = NewUserStatusEmpty()
 		case u.PFlags["bot"] || u.PFlags["support"]:
 		case !self && !r.LastSeen[u.ID]:
-			u.Status = NewUserStatusRecently(false)
+			u.Status = HiddenUserStatus(r.Blocked[u.ID])
 		case r.Status != nil:
 			u.Status = r.Status(u.ID)
 		}

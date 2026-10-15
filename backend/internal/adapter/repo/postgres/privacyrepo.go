@@ -60,21 +60,30 @@ func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyK
 	return rule, err
 }
 
-func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) error {
+// Upsert сохраняет правило; true — строка вставлена либо реально изменилась
+// (повтор того же правила строку не трогает: ни WAL, ни блокировки, ни
+// RowsAffected). Решение «изменилось» принимает сама база в одном выражении:
+// чтение до записи вне замка проиграло бы гонку двух устройств.
+func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) (bool, error) {
 	allow, err := json.Marshal(orEmpty(rule.AllowUserIDs))
 	if err != nil {
-		return err
+		return false, err
 	}
 	deny, err := json.Marshal(orEmpty(rule.DenyUserIDs))
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = querier(ctx, r.pool).Exec(ctx,
+	tag, err := querier(ctx, r.pool).Exec(ctx,
 		`INSERT INTO privacy_rules (user_id, key, value, allow_user_ids, deny_user_ids)
 		 VALUES ($1,$2,$3,$4,$5)
-		 ON CONFLICT (user_id, key) DO UPDATE SET value=$3, allow_user_ids=$4, deny_user_ids=$5`,
+		 ON CONFLICT (user_id, key) DO UPDATE SET value=$3, allow_user_ids=$4, deny_user_ids=$5
+		 WHERE (privacy_rules.value, privacy_rules.allow_user_ids, privacy_rules.deny_user_ids)
+		       IS DISTINCT FROM (EXCLUDED.value, EXCLUDED.allow_user_ids, EXCLUDED.deny_user_ids)`,
 		userID, rule.Key, rule.Value, string(allow), string(deny))
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func orEmpty(ids []int64) []int64 {
@@ -84,14 +93,17 @@ func orEmpty(ids []int64) []int64 {
 	return ids
 }
 
-func (r *PrivacyRepo) Block(ctx context.Context, blockerID, blockedID int64) error {
-	_, err := querier(ctx, r.pool).Exec(ctx,
+func (r *PrivacyRepo) Block(ctx context.Context, blockerID, blockedID int64) (bool, error) {
+	tag, err := querier(ctx, r.pool).Exec(ctx,
 		`INSERT INTO user_blocks (blocker_id, blocked_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
 		blockerID, blockedID)
 	if isForeignKeyViolation(err) {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *PrivacyRepo) Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error) {
@@ -109,6 +121,28 @@ func (r *PrivacyRepo) IsBlocked(ctx context.Context, blockerID, blockedID int64)
 		`SELECT EXISTS(SELECT 1 FROM user_blocks WHERE blocker_id=$1 AND blocked_id=$2)`,
 		blockerID, blockedID).Scan(&yes)
 	return yes, err
+}
+
+// BlockedBy — какие из ownerIDs заблокировали viewerID (владелец закрыл зрителя).
+func (r *PrivacyRepo) BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	if len(ownerIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT blocker_id FROM user_blocks WHERE blocked_id = $1 AND blocker_id = ANY($2)`, viewerID, ownerIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error) {
@@ -183,6 +217,40 @@ func (r *PrivacyRepo) ContactCard(ctx context.Context, viewerID, targetID int64)
 	}
 	card.Note = contactNote(noteText, noteEntities)
 	return card, nil
+}
+
+// PartnersAmong — какие из candidates «знакомы» с userID для живых кадров о нём:
+// то же отношение, что ChatsRepo.ChatPartners (общий не-канальный чат либо
+// контакт в любую сторону), но проверка точечная по списку кандидатов, а не
+// выборка всех партнёров. Нужна, чтобы блок пересчитывал вид одному человеку
+// (usecase/auth.AnnounceUserTo, usecase/presence.ReannounceTo).
+func (r *PrivacyRepo) PartnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT c FROM unnest($2::bigint[]) AS c
+		  WHERE c <> $1 AND (
+		    EXISTS (SELECT 1 FROM chat_members m1
+		              JOIN chats ch ON ch.id = m1.chat_id AND ch.type <> 'channel'
+		              JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id = c
+		             WHERE m1.user_id = $1)
+		    OR EXISTS (SELECT 1 FROM contacts ct
+		                WHERE (ct.owner_id = $1 AND ct.user_id = c) OR (ct.owner_id = c AND ct.user_id = $1)))`,
+		userID, candidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // ContactViews — как книги зрителей viewerIDs видят пользователя userID

@@ -11,6 +11,7 @@ import { setStarsBalance } from '../../stores/starsStore'
 import { mapSuggestedPost } from '../../core/models'
 import { getPeerId } from '../../core/peers/peerId'
 import { useNotifyStore } from '../../stores/notifyStore'
+import { applyPrivacyUpdate } from '../../stores/privacyStore'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
@@ -169,7 +170,7 @@ const APPLY: Projector = {
   [RT.chatThemeUpdate]: (e) => { applyChatTheme(getPeerId(e.peer), e.theme_id) },
   // Флаг блокировки — то же исключение, что у темы: он живёт в `userFull.pFlags`
   // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
-  // здесь. Событие объявляет владелец блокировки (`privacy.toggleBlock`).
+  // здесь. Событие выводит воркер из кадра `updatePeerBlocked` (журнал либо местный апдейт после ответа `privacy.toggleBlock`).
   peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
   // История чата очищена (tweb `flushHistory` → `dialog_flush`, `bubbles.ts:1144`):
   // окно зеркала пусто. Это делают ВСЕ вкладки, а не та, что нажала кнопку, —
@@ -178,6 +179,9 @@ const APPLY: Projector = {
   // Глобальные настройки уведомлений по типу чатов — зеркало одно, `notifyStore`
   // (tweb `onUpdateNotifySettings` → `savePeerSettings`, `appNotificationsManager.ts:504-538`).
   notify_settings: (e) => { useNotifyStore.getState().apply(e.peer._, e.notify_settings) },
+  // Правило приватности одного ключа (tweb `onUpdatePrivacy`, `appPrivacyManager.ts:12-19`):
+  // зеркало одно — `privacyStore`, роль кэша `privacy[key]`.
+  privacy_update: (e) => { applyPrivacyUpdate(e) },
   // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
   // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
   // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки

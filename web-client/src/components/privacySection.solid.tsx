@@ -22,10 +22,11 @@
  *  2. `appPrivacyManager.getPrivacy` (`:72`) → `stores/privacyStore.ts`: у tweb
  *     ответ кэшируется в менеджере (`appPrivacyManager.ts:59-76`), у нас кэш —
  *     стор правил, загруженный на старте (`loadPrivacy`); не загружен — запрос
- *     ключа с зеркалом в стор. `setPrivacy` (`:343`) → `managers.privacy.setRule`
- *     + зеркало ответа в стор (у tweb это `updatePrivacy` → `privacy_update`,
- *     `appPrivacyManager.ts:14-17`, его слушает хаб); при ошибке стор
- *     перечитывается с сервера — хаб не показывает несохранённое.
+ *     ключа с зеркалом в стор. `setPrivacy` (`:343`) → `managers.privacy.setRule`;
+ *     стор обновляет событие `privacy_update` (местный `updatePrivacy` после
+ *     ответа — `appPrivacyManager.ts:14-17`, как у tweb; тот же апдейт приходит
+ *     с другого устройства); при ошибке стор перечитывается с сервера — хаб не
+ *     показывает несохранённое.
  *  3. (О-17) Исключения — только пользователи: у `PrivacyRuleWire` нет
  *     `privacyValue(Dis)allowChatParticipants`. Селектору передаётся
  *     `filterPeerTypeBy: ['isUser']` (у оригинала вкладка выбора берёт группы и
@@ -101,9 +102,7 @@ export function getPrivacy(managers: Managers, key: PrivacyKey): Promise<Privacy
 }
 
 export function setPrivacy(managers: Managers, rule: PrivacyRule) {
-  return managers.privacy.setRule(rule).then((saved) => {
-    usePrivacyStore.getState().setRule(saved)
-  }, () => loadPrivacy(managers))
+  return managers.privacy.setRule(rule).then(() => {}, () => loadPrivacy(managers))
 }
 
 export type PrivacySectionStr = LangPackKey | ''

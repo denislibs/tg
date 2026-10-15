@@ -1,6 +1,7 @@
 import type { RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
 import { getPeerId, type Peer } from '../peers/peerId'
+import type { PeerBlockedEvt, PrivacyEvt } from '../realtime/events'
 import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 import type { PeersManager } from './peersManager'
 
@@ -87,6 +88,25 @@ const KEY_TAGS: Record<PrivacyKey, string> = {
   read_time: 'privacyKeyReadTime',
 }
 
+/** Наш ключ → конструктор `PrivacyKey` схемы. */
+export function privacyKeyTag(key: PrivacyKey): string {
+  return KEY_TAGS[key]
+}
+
+/** Конструктор `PrivacyKey` схемы → наш ключ (обратная половина `KEY_TAGS`). */
+export function privacyKeyOfTag(tag: string): PrivacyKey | undefined {
+  return (Object.keys(KEY_TAGS) as PrivacyKey[]).find((k) => KEY_TAGS[k] === tag)
+}
+
+/**
+ * Ключ счётчика кадров, по которому менеджер отличает «пока шёл запрос, пришёл
+ * кадр этого же предмета». Один на предмет: правило одного ключа либо блок
+ * одного пира.
+ */
+export function privacyFrameKey(u: PrivacyEvt | PeerBlockedEvt): string {
+  return u._ === 'updatePrivacy' ? u.key._ : `blocked:${getPeerId(u.peer_id)}`
+}
+
 /** Экранная форма → вектор конструкторов. Исключения идут ПЕРЕД базовым
  *  значением: правило, поставленное после «всем», уже ничего не изменит. */
 export function toPrivacyRules(rule: PrivacyRule): PrivacyRuleWire[] {
@@ -136,12 +156,23 @@ export interface ContactsBlockedSlice {
  *  «скрыть мои истории» у нас нет (на проводе — только `POST/DELETE /me/blocked`). */
 export type PeerBlockEvt = { peerId: PeerId; blocked?: boolean }
 
-export function newPrivacyManager({ rest, peers, onPeerBlock }: {
+export function newPrivacyManager({ rest, peers, processLocalUpdate, frameVersion }: {
   rest: Pick<RestClient, 'get' | 'put' | 'post' | 'del'>
   /** Владелец карточек: вектор `users` ответов кладётся туда (см. `profile`, `getBlocked`). */
   peers?: Pick<PeersManager, 'saveApiPeers'>
-  /** Событие `peer_block` во вкладки (воркер — `broadcast`), см. `toggleBlock`. */
-  onPeerBlock?: (e: PeerBlockEvt) => void
+  /**
+   * Местный апдейт после ответа сервера (tweb `apiUpdatesManager.processLocalUpdate`,
+   * `appUsersManager.toggleBlock` :520-536, `appPrivacyManager.setPrivacy` :30-56):
+   * воркер разводит его по обработчикам, как живой кадр.
+   */
+  processLocalUpdate?: (u: PrivacyEvt | PeerBlockedEvt) => void
+  /**
+   * Сколько кадров этого предмета (`privacyFrameKey`) уже пришло с сервера. Наш
+   * сервер шлёт кадр и инициатору (TG — нет), поэтому ответ на запрос может
+   * опоздать за кадром: своим же, либо более новым с другого устройства. Кадр
+   * не старее ответа — местный апдейт, собранный из ответа, мог бы затереть его.
+   */
+  frameVersion?: (key: string) => number
 }) {
   // Без `this`: реестр RPC зовёт методы отвязанными (`rpc/managersProxy.ts`).
   const rule = async(key: PrivacyKey): Promise<PrivacyRule> => {
@@ -162,10 +193,20 @@ export function newPrivacyManager({ rest, peers, onPeerBlock }: {
       return Promise.all(PRIVACY_KEYS.map(rule))
     },
     rule,
+    /**
+     * Порт tweb `appPrivacyManager.setPrivacy` (:30-56): после ответа — местный
+     * `updatePrivacy{key, rules}` из правил ОТВЕТА; по нему воркер обновляет кэш и
+     * шлёт `privacy_update`.
+     */
     async setRule(rule: PrivacyRule): Promise<PrivacyRule> {
-      const res = await rest.put<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[rule.key]}`, {
+      const tag = privacyKeyTag(rule.key)
+      const frames = frameVersion?.(tag)
+      const res = await rest.put<AccountPrivacyRules>(`/me/privacy/${tag}`, {
         rules: toPrivacyRules(rule),
       })
+      if (frameVersion?.(tag) === frames) {
+        processLocalUpdate?.({ _: 'updatePrivacy', key: { _: tag }, rules: res.rules })
+      }
       return fromPrivacyRules(rule.key, res.rules)
     },
     /**
@@ -186,18 +227,23 @@ export function newPrivacyManager({ rest, peers, onPeerBlock }: {
     },
     /**
      * Порт tweb `appUsersManager.toggleBlock` (:520-536): после ответа сервера —
-     * местный апдейт `updatePeerBlocked`, из которого `appProfileManager`
-     * (`:1506-1532`) шлёт `peer_block` с `blocked` из `pFlags` (`true` или нет
-     * ключа). Апдейта на проводе у нас нет — событие шлётся здесь же, тем же
-     * содержимым. `refreshPeerSettingsIfNeeded` (:534) — нет `peerSettings`.
+     * местный апдейт `updatePeerBlocked`, из которого воркер (как
+     * `appProfileManager` :1506-1532) шлёт `peer_block` с `blocked` из `pFlags`
+     * (`true` или нет ключа). `refreshPeerSettingsIfNeeded` (:534) — нет
+     * `peerSettings`.
      */
     async toggleBlock(peerId: PeerId, block: boolean): Promise<void> {
+      const peer_id: Peer = { _: 'peerUser', user_id: peerId }
+      const key = privacyFrameKey({ _: 'updatePeerBlocked', peer_id })
+      const frames = frameVersion?.(key)
       if (block) {
         await rest.post('/me/blocked', { user_id: peerId })
       } else {
         await rest.del(`/me/blocked/${peerId}`)
       }
-      onPeerBlock?.({ peerId, blocked: block || undefined })
+      if (frameVersion?.(key) === frames) {
+        processLocalUpdate?.({ _: 'updatePeerBlocked', peer_id, ...(block ? { pFlags: { blocked: true as const } } : {}) })
+      }
     },
     // Автоудаление сообщений: глобальный период (новые чаты) и период чата.
     async autoDelete(): Promise<number> {
