@@ -1297,6 +1297,18 @@ describe('MessagesManager.cacheDelete', () => {
     expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)], missing: 0 }, { peerId: 1, ids: [], missing: 1 }])
   })
 
+  // Закреп вне окна воркер не знает (кэш закрепов живёт на главном потоке), поэтому
+  // сообщение о удалении несёт ВСЕ удалённые клиентские номера, включая неизвестные
+  // SSOT (`peer_pinned_deleted`, порт `resetPinnedMessagesCache` tweb :14078-14080).
+  it('onMessagesDeleted: четвёртым параметром — клиентский номер, в том числе неизвестного сообщения', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mids: number[][] = []
+    const mgr = newMessagesManager({ rest, onMessagesDeleted: (_peerId, _list, _missing, m) => mids.push(m) })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
+    expect(mids).toEqual([[cid(2)], [cid(999)]])
+  })
+
   // Владелец диалогов решает по этому срезу, кто станет последним после
   // удаления верхнего (tweb onUpdateDeleteMessages :11579 — `history.first`):
   // к моменту onMessagesDeleted удалённого в срезе уже нет, а низ — загружен.
