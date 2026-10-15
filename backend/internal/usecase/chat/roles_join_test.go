@@ -103,7 +103,7 @@ func TestJoinPublic_GroupGivesMemberWhoCanPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := i.SetPin(ctx, gid, msg.ID, 8, true); err != nil {
+	if _, err := i.SetPin(ctx, gid, msg.ID, 8, true, PinOpts{}); err != nil {
 		t.Fatalf("участник группы с дефолтным правом не закрепил: %v", err)
 	}
 }
@@ -353,10 +353,10 @@ func TestSetPin_ChannelAdminByPostMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := i.SetPin(ctx, ch, post.ID, 8, true); err != nil {
+	if _, err := i.SetPin(ctx, ch, post.ID, 8, true, PinOpts{}); err != nil {
 		t.Fatalf("админ канала с post_messages не закрепил: %v", err)
 	}
-	if err := i.SetPin(ctx, ch, post.ID, 9, true); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := i.SetPin(ctx, ch, post.ID, 9, true, PinOpts{}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("подписчик закрепил: %v", err)
 	}
 }

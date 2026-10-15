@@ -249,7 +249,7 @@ func TestWirePayloads_AddressMessageBySeqOnly(t *testing.T) {
 	check("media_read", "media_read", msg.Seq)
 
 	pub.reset()
-	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	check("pin_message", "pin_message", msg.Seq)
@@ -276,7 +276,7 @@ func TestPinService_TargetRidesInReplyTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	pill := lastMessage(t, in, chatID)

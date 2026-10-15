@@ -316,6 +316,11 @@ export type BroadcastEvents = {
   // воркер знает закреплёнными. Шлётся на каждое удаление; подписчик
   // (`client/realtime/refetchSubscriber.ts`) решает по кэшу закрепов вкладки.
   'peer_pinned_deleted': [{ peerId: PeerId; mids: number[]; pinned: number[] }]
+  // «Открепить все» выполнено воркером (`chats.unpinAllMessages`): каждая вкладка сбрасывает
+  // кэш закрепов пира и объявляет `peer_pinned_messages {unpinAll}` (`refetchSubscriber.ts`).
+  // Воркер шлёт его всем вкладкам, потому что ответ запроса сдвигает общий курсор раньше
+  // живого кадра, и тот отбрасывается воронкой как дубль — другая вкладка не узнала бы.
+  'peer_unpinned_all': [{ peerId: PeerId; threadId?: number }]
 
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).

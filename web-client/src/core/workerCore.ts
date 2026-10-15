@@ -201,6 +201,7 @@ export function createWorkerCore() {
       saveApiMessages: (list) => messages.saveApiMessages(list),
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
       flushHistoryWindows: (peerId) => messages.flushHistoryWindows(peerId),
+      cacheUnpinAll: (peerId, threadId) => messages.cacheUnpinAll(peerId, threadId),
     },
     // Очистка и удаление истории (tweb `flushHistory`): ответ — местный
     // `updatePts` воронки, затем окна и строка диалога. Воронка и владельцы

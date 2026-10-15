@@ -37,6 +37,7 @@ import { editWebPageWireFields, type WebPageSendOptions } from './messages/webPa
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
+import { channelTwin } from '../realtime/updateCatalog'
 import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd, type Slice } from '../history/slicedArray'
 import { saveMessageMedia } from '../media/messageMedia'
@@ -588,6 +589,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     for (const u of updates ?? []) {
       if (u._ === 'updateNewScheduledMessage') applyNewScheduledMessage(u)
       else if (u._ === 'updateDeleteScheduledMessages') applyDeleteScheduledMessages(u)
+    }
+  }
+
+  // Ответ `messages.updatePinnedMessage` — `Updates` (tweb `processUpdateMessage`,
+  // appMessagesManager.ts:6854). Закреп применяется сразу, до живого кадра: бит `pinned`
+  // у сообщений окна и операция окна (`cachePinned`). Курсора ответ не двигает — pts
+  // придёт живым кадром, и тот, повторив номера, ничего не изменит (идемпотентность
+  // `cachePinned`). Канальный близнец приводится к паре (`channelTwin`, как у воронки).
+  const applyPinUpdates = (r: ScheduledUpdates | undefined): void => {
+    for (const u of r?.updates ?? []) {
+      const pair = u._ === 'updatePinnedChannelMessages' ? channelTwin(u) : u
+      if (pair?._ === 'updatePinnedMessages') emitOps(api.cachePinned(pair as PinMessageEvt))
     }
   }
 
@@ -1480,12 +1493,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return msgs
     },
 
-    async pin(peerId: number, msgId: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`, {})
+    // `messages.updatePinnedMessage` (tweb :6838-6856): `silent` — без звука служебки
+    // (группа и канал), `pm_oneside` — закрепить только у себя (личка). Ответ — `Updates`.
+    async pin(peerId: number, msgId: number, flags?: { silent?: boolean, pm_oneside?: boolean }): Promise<void> {
+      const r = await rest.post<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`, {
+        ...(flags?.silent ? { silent: true } : {}),
+        ...(flags?.pm_oneside ? { pm_oneside: true } : {}),
+      })
+      applyPinUpdates(r)
     },
 
     async unpin(peerId: number, msgId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
+      applyPinUpdates(await rest.del<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`))
     },
 
     getDiscussionMessage,
@@ -1501,8 +1520,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     onThreadRead,
 
-    async listPins(peerId: number): Promise<MyMessage[]> {
-      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
+    // С `threadId` — закрепы одной темы/треда (`top_msg_id`, номер корня на проводе).
+    async listPins(peerId: number, threadId?: number): Promise<MyMessage[]> {
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`, threadId ? { top_msg_id: getServerMessageId(threadId) } : undefined)
       return decryptPage(await mapContainer(r))
     },
 
@@ -1901,6 +1921,32 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         const fields = { pFlags: pFlags as MyMessage['pFlags'] }
         return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
       })
+    },
+
+    /**
+     * Локальный итог `messages.unpinAllMessages` — цикл tweb `:6869-6888`: у сообщений окна
+     * в памяти снимается `pFlags.pinned`, с `threadId` — только у сообщений этого треда
+     * (закрепы других тем остаются). Окно узнаёт об этом операциями `patch {pFlags}`.
+     */
+    cacheUnpinAll(peerId: number, threadId?: number): MessageOp[] {
+      const c = msgsByChat.get(peerId)
+      if (!c) return []
+      const forum = isForum(getPeer?.(peerId) as Chat | undefined)
+      const ops: MessageOp[] = []
+      const changed: MyMessage[] = []
+      for (const [id, m] of c) {
+        if (!m.pFlags.pinned) continue
+        if (threadId && getMessageThreadId(m, { isForum: forum }) !== threadId) continue
+        const pFlags = { ...m.pFlags }
+        delete pFlags.pinned
+        const next = { ...m, pFlags }
+        c.set(id, next)
+        changed.push(next)
+        for (const key of opWindowsFor(peerId, id)) ops.push({ op: 'patch', key, msgId: id, fields: { pFlags } })
+      }
+      if (changed.length) void saveMessages(peerId, changed)
+      emitOps(ops)
+      return ops
     },
 
     /**

@@ -510,17 +510,17 @@ func TestPinAndViewers(t *testing.T) {
 	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "pin me"})
 
 	// Pin → appears in ListPins; unpin → gone.
-	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
-	pins, _ := in.ListPins(ctx, chatID, b)
+	pins, _ := in.ListPins(ctx, chatID, b, nil)
 	if len(pins) != 1 || pins[0].ID != msg.ID {
 		t.Fatalf("pins = %+v", pins)
 	}
-	if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, false, PinOpts{}); err != nil {
 		t.Fatalf("Unpin: %v", err)
 	}
-	if pins, _ := in.ListPins(ctx, chatID, b); len(pins) != 0 {
+	if pins, _ := in.ListPins(ctx, chatID, b, nil); len(pins) != 0 {
 		t.Fatalf("after unpin: %+v", pins)
 	}
 

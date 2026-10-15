@@ -54,7 +54,7 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	if err := in.SetPin(ctx, chatID, msg.ID, 7, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 7, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	pill := lastServicePill(t, s, chatID)
@@ -83,7 +83,7 @@ func TestSetPin_PostsPinServiceMessage(t *testing.T) {
 	}
 
 	before := len(s.messages[chatID])
-	if err := in.SetPin(ctx, chatID, msg.ID, 7, false); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 7, false, PinOpts{}); err != nil {
 		t.Fatalf("Unpin: %v", err)
 	}
 	if got := len(s.messages[chatID]); got != before {
@@ -108,7 +108,7 @@ func TestSetPin_NoServerBuiltPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if err := in.SetPin(ctx, chatID, msg.ID, 7, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, 7, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	pill := lastServicePill(t, s, chatID)
@@ -133,7 +133,7 @@ func TestPinned_FlagInHistoryAndEditFrame(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "важное"})
-	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	pinnedInHistory := func() bool {
@@ -154,7 +154,7 @@ func TestPinned_FlagInHistoryAndEditFrame(t *testing.T) {
 	if pf, _ := inner["pFlags"].(map[string]any); pf["pinned"] != true {
 		t.Fatalf("кадр правки закреплённого без pinned: %#v", inner["pFlags"])
 	}
-	if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+	if _, err := in.SetPin(ctx, chatID, msg.ID, a, false, PinOpts{}); err != nil {
 		t.Fatalf("unpin: %v", err)
 	}
 	if pinnedInHistory() {
