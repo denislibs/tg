@@ -159,15 +159,10 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 		return err
 	}
 	// Вступившему в канал — updateChannel: диалог и подписка сокетов на
-	// топик (Ф-2); остальные кадры вступления — ниже.
-	i.announceChannelJoin(ctx, id, userID)
-	// A2-07/A6-05: вступление по @имени живьём. Группа — служебка «вступил(а)»
-	// (у оригинала messageActionChatAddUser с самим собой); канал — без неё:
-	// состав broadcast-канала служебками не пишется (postGroupService).
-	i.postGroupService(ctx, id, userID, domain.NewMessageActionChatAddUser([]int64{userID}))
-	i.publishChatUpdate(ctx, id)
-	i.publishViewerChat(ctx, id, userID)
-	i.emitParticipant(ctx, id, userID, userID, participantChange{next: i.participantNow(ctx, id, userID)})
+	// топик (Ф-2); A2-07/A6-05: вступление по @имени живьём. Группа — служебка
+	// «вступил(а)» (у оригинала messageActionChatAddUser с самим собой); канал —
+	// без неё (afterSelfJoin).
+	i.afterSelfJoin(ctx, id, userID)
 	return nil
 }
 

@@ -52,7 +52,7 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 	if len(items) == 0 || len(items) > maxChecklistItems {
 		return domain.Message{}, domain.ErrTooLong
 	}
-	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
+	ok, err := i.isMemberOrCreator(ctx, in.ChatID, in.SenderID)
 	if err != nil {
 		return domain.Message{}, err
 	}

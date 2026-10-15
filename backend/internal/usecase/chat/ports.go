@@ -166,6 +166,9 @@ type ChatRepo interface {
 type GroupRepo interface {
 	CreateMultiMember(ctx context.Context, typ, title, about, username string, isPublic bool, creatorID int64) (int64, error)
 	AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
+	// InsertMember — AddMember с признаком «строка вставлена» (false — участник
+	// уже был): вступление из двух мест сразу пишет служебку один раз.
+	InsertMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) (bool, error)
 	RemoveMember(ctx context.Context, chatID, userID int64) error
 	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
 	// SetRole — смена роли; promotedBy — назначивший админа (0 — нет).
@@ -194,7 +197,12 @@ type GroupRepo interface {
 	// (отсутствующие пропускаются). Тот же сборщик, что Card: из него едут
 	// все карточки чатов — векторы `chats`, поиск, похожие, send-as.
 	Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error)
-	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
+	// EditTitle/EditAbout — отдельные колонки: название и описание правятся
+	// разными методами оригинала (channels.editTitle, messages.editChatAbout),
+	// публичное имя — только SetType.
+	// Оба возвращают changed: значение уже такое — служебки и рассылки нет.
+	EditTitle(ctx context.Context, chatID int64, title string) (bool, error)
+	EditAbout(ctx context.Context, chatID int64, about string) (bool, error)
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
 	// его книги и pFlags.contact. viewerID 0 — без зрителя (профильные имена).

@@ -44,12 +44,12 @@
  *  6. Порог тем (`forum_upgrade_participants_min`, :203-207): `help.getAppConfig`
  *     у нас нет, а сервер включает темы в группе любого размера — условие
  *     числа участников опущено.
- *  7. Менеджеры — наши ручки: `editTitle` + `editAbout` (:412-417) — один
- *     `groups.editInfo` (`PATCH /chats/{id}`; текущее имя чата передаётся как
- *     есть, ручка пишет все три поля); `editPhoto` — `groups.setPhoto` по
+ *  7. Менеджеры — наши ручки: `editPhoto` — `groups.setPhoto` по
  *     `media_id` (`AvatarEdit`, расхождение 3 его шапки); `toggleForum` —
  *     `groups.setForum`; `toggleSignatures` — `channels.setSignatures`;
  *     `togglePreHistoryHidden(!value)` — `groups.setHistory(value)`.
+ *     `editTitle` и `editAbout` (:412-417) — `groups.editTitle` /
+ *     `groups.editAbout`, как у оригинала (каждый — при своей правке).
  *  8. `chat_update`/`chat_full_update` (:352-370): краткая форма — из зеркала
  *     пиров (`subscribePeerMirror`, писатель — воркер). Полная перечитывается
  *     (`groups.card`) на кадры `rt:chat_update` и `rt:chat_participant` этого
@@ -342,13 +342,12 @@ function EditChatForm(props: { data: EditChatData }) {
     }
 
     const promises: Promise<unknown>[] = []
-    // расхождение 7
-    if(title() !== props.data.chat.title || about() !== (props.data.chatFull.about || '')) {
-      promises.push(managers.groups.editInfo(peerId(), {
-        title: title(),
-        about: about(),
-        username: chat().username ?? '',
-      }))
+    // tweb `editChat.tsx:414-420`: каждое поле — своим вызовом и только при правке
+    if(title() !== props.data.chat.title) {
+      promises.push(managers.groups.editTitle(peerId(), title()))
+    }
+    if(about() !== (props.data.chatFull.about || '')) {
+      promises.push(managers.groups.editAbout(peerId(), about()))
     }
     if(uploadAvatar) {
       promises.push(uploadAvatar.file().then((mediaId) => {

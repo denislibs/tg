@@ -77,7 +77,7 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	} else {
 		in.CorrectOption = nil
 	}
-	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
+	ok, err := i.isMemberOrCreator(ctx, in.ChatID, in.SenderID)
 	if err != nil {
 		return domain.Message{}, err
 	}
