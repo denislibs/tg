@@ -233,21 +233,79 @@ func TestDelete_PathAuthorMustBeActor(t *testing.T) {
 	}
 }
 
-// updateSentStoryReaction несёт НОМЕР истории у автора, а не внутренний ключ.
-func TestSetReaction_SentReactionCarriesSeq(t *testing.T) {
+// Реакция зрителя доходит до его второго устройства телом `updateStory` под
+// него (tweb: `storyItem.sent_reaction` + пометка `chosen_order` в чипах), под
+// НОМЕРОМ истории у автора, и лежит в журнале — значит и в getDifference. Автору
+// же — общее тело без личного.
+func TestSetReaction_ViewerGetsOwnBodyInJournal(t *testing.T) {
 	repo := &fakeRepo{visible: true, idByPair: map[[2]int64]int64{{alice, 5}: 900}, authors: map[int64]int64{900: alice}}
-	seedStory(repo, 900, func(r *domain.StoryRecord) { r.Seq = 5 })
+	seedStory(repo, 900, func(r *domain.StoryRecord) {
+		r.Seq = 5
+		r.ReactionsCount = 1
+		r.Reactions = []domain.ReactionCount{{Emoji: "👍", Count: 1}}
+	})
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	log := useJournal(svc, newFakePublisher())
 	if err := svc.SetReaction(context.Background(), alice, 5, bob, "👍"); err != nil {
 		t.Fatal(err)
 	}
-	rows := rowsOf(log, bob, "story_reaction")
+	rows := rowsOf(log, bob, "story_update")
 	if len(rows) != 1 {
-		t.Fatalf("строк story_reaction у зрителя: %d", len(rows))
+		t.Fatalf("строк story_update у зрителя: %d", len(rows))
 	}
-	if id := rows[0].body(t)["story_id"]; id != float64(5) {
-		t.Fatalf("story_id = %v; want номер 5, а не ключ 900", id)
+	st := storyOf(t, rows[0])
+	if st["id"] != float64(5) {
+		t.Fatalf("id = %v; want номер 5, а не ключ 900", st["id"])
+	}
+	sent, _ := st["sent_reaction"].(map[string]any)
+	if sent == nil || sent["emoticon"] != "👍" {
+		t.Fatalf("в теле зрителю нет sent_reaction: %v", st)
+	}
+	chips, _ := st["views"].(map[string]any)["reactions"].([]any)
+	if len(chips) != 1 {
+		t.Fatalf("чипы: %v", st["views"])
+	}
+	if _, chosen := chips[0].(map[string]any)["chosen_order"]; !chosen {
+		t.Errorf("чип своей реакции не помечен chosen_order: %v", chips[0])
+	}
+	// Снял реакцию: тело без личного — клиент ЗАМЕНЯЕТ историю целиком.
+	repo.byID[900] = domain.StoryRecord{ID: 900, Seq: 5, MediaID: 7, Privacy: "contacts"}
+	if err := svc.RemoveReaction(context.Background(), alice, 5, bob); err != nil {
+		t.Fatal(err)
+	}
+	rows = rowsOf(log, bob, "story_update")
+	if len(rows) != 2 {
+		t.Fatalf("после снятия строк: %d; want 2", len(rows))
+	}
+	if _, left := storyOf(t, rows[1])["sent_reaction"]; left {
+		t.Error("после снятия в теле осталась sent_reaction")
+	}
+}
+
+// Правка автора заменяет историю у зрителей целиком, поэтому реагировавший
+// получает тело С СВОЕЙ реакцией, остальные — общее.
+func TestEditStory_ReactorKeepsOwnReactionInBody(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Caption: "new", Privacy: "contacts", ReactionsCount: 1,
+		Reactions: []domain.ReactionCount{{Emoji: "❤", Count: 1, Mine: true}}}
+	repo.reactors = map[int64]map[int64]string{10: {bob: "❤"}}
+	svc := New(repo, &fakePartners{ids: []int64{bob, carol}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	caption := "new"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, &caption, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	bobBody := storyOf(t, rowsOf(log, bob, "story_update")[0])
+	if s, _ := bobBody["sent_reaction"].(map[string]any); s == nil || s["emoticon"] != "❤" {
+		t.Fatalf("реагировавший Боб потерял свою реакцию: %v", bobBody)
+	}
+	carolBody := storyOf(t, rowsOf(log, carol, "story_update")[0])
+	if _, has := carolBody["sent_reaction"]; has {
+		t.Fatalf("Кэрол получила чужую реакцию: %v", carolBody)
+	}
+	chips, _ := carolBody["views"].(map[string]any)["reactions"].([]any)
+	if _, chosen := chips[0].(map[string]any)["chosen_order"]; chosen {
+		t.Error("у Кэрол чужая реакция помечена chosen_order")
 	}
 }
 

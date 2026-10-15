@@ -45,6 +45,9 @@ type StoryRepo interface {
 	// PRIMARY KEY(story_id,user_id)); RemoveReaction снимает её.
 	SetReaction(ctx context.Context, storyID, userID int64, reaction string) error
 	RemoveReaction(ctx context.Context, storyID, userID int64) error
+	// Reactors — кто и какой эмодзи поставил на историю (user_id → эмодзи): под
+	// каждого реагировавшего собирается своё тело `updateStory`.
+	Reactors(ctx context.Context, storyID int64) (map[int64]string, error)
 	// ReactionsCount — всего реакций на историю (для живого счётчика в WS-событии).
 	ReactionsCount(ctx context.Context, storyID int64) (int, error)
 

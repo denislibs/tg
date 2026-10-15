@@ -397,6 +397,26 @@ func (r *StoryRepo) RemoveReaction(ctx context.Context, storyID, userID int64) e
 	return err
 }
 
+// Reactors — реакции на историю по пользователям (PK story_reactions).
+func (r *StoryRepo) Reactors(ctx context.Context, storyID int64) (map[int64]string, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT user_id, reaction FROM story_reactions WHERE story_id=$1`, storyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var uid int64
+		var reaction string
+		if err := rows.Scan(&uid, &reaction); err != nil {
+			return nil, err
+		}
+		out[uid] = reaction
+	}
+	return out, rows.Err()
+}
+
 // ReactionsCount — всего реакций на историю.
 func (r *StoryRepo) ReactionsCount(ctx context.Context, storyID int64) (int, error) {
 	var n int

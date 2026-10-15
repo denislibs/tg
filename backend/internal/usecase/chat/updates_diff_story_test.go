@@ -28,7 +28,8 @@ func TestUpdatesDifference_CarriesStoryRows(t *testing.T) {
 		{"story_update", domain.NewUpdateStory(peer, story), domain.UpdateStoryTag},
 		{"story_update", domain.NewUpdateStory(peer, domain.NewStoryItemDeleted(3)), domain.UpdateStoryTag},
 		{"story_read", domain.NewUpdateReadStories(peer, 3), domain.UpdateReadStoriesTag},
-		{"story_reaction", domain.NewUpdateSentStoryReaction(peer, 3, domain.NewReactionEmoji("👍")), domain.UpdateSentStoryReactionTag},
+		// своя реакция зрителя: тело под него, с sent_reaction внутри истории
+		{"story_update", domain.NewUpdateStory(peer, domain.StoryRecord{Seq: 3, MyReaction: "👍", CreatedAt: time.Unix(10, 0), ExpiresAt: time.Unix(20, 0)}.ToStoryItem(false)), domain.UpdateStoryTag},
 	}
 	for _, r := range rows {
 		raw, err := json.Marshal(r.body)
@@ -52,6 +53,13 @@ func TestUpdatesDifference_CarriesStoryRows(t *testing.T) {
 		if body["_"] != r.tag {
 			t.Errorf("строка %d: конструктор %v; want %s", i, body["_"], r.tag)
 		}
+	}
+	// Реакция зрителя доезжает после офлайна внутри самой истории.
+	var last map[string]any
+	_ = json.Unmarshal(d.OtherUpdates[len(rows)-1], &last)
+	sent, _ := last["story"].(map[string]any)["sent_reaction"].(map[string]any)
+	if sent == nil || sent["emoticon"] != "👍" {
+		t.Errorf("sent_reaction не доехал через getDifference: %v", last)
 	}
 	if d.State.Pts != int64(len(rows)) {
 		t.Errorf("state.pts = %d; want %d", d.State.Pts, len(rows))

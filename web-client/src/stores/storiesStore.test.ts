@@ -124,25 +124,14 @@ describe('storiesStore', () => {
     expect(byAuthor(2)).toBe('bob')
   })
 
-  it('addStory чужого автора сохраняет МОЮ реакцию: общее тело её не несёт', () => {
-    useStoriesStore.getState().setGroups([{
-      author: bob,
-      stories: [mkStory({ id: 1, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1, [chip('❤', 1, true)]) })],
-      maxReadId: 0,
-    }])
-    // Правка автора приезжает общим телом: без sent_reaction и без пометки «моя»
-    // в чипах (тело одно на всех получателей).
-    useStoriesStore.getState().addStory(2, mkStory({ id: 1, caption: 'edited', views: views(1, [chip('❤', 1)]) }))
-    expect(storyCaption(first())).toBe('edited')
+  it('addStory ЗАМЕНЯЕТ историю целиком: приехавшая sent_reaction ставится, отсутствующая — снимает', () => {
+    useStoriesStore.getState().setGroups([{ author: bob, stories: [mkStory({ id: 1 })], maxReadId: 0 }])
+    // реакция со второго устройства — тело под МЕНЯ с `sent_reaction`
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' }, views: views(1, [chip('❤', 1, true)]) }))
     expect(storyMyReaction(first())).toBe('❤')
     expect((first() as StoryItemReal).views?.reactions).toContainEqual(chip('❤', 1, true))
-  })
-
-  it('addStory СВОЕЙ истории берёт тело как есть: реакцию на неё снимает приехавшее тело', () => {
-    useStoriesStore.getState().setGroups([{
-      author: me, stories: [mkStory({ id: 1, sent_reaction: { _: 'reactionEmoji', emoticon: '❤' } })], maxReadId: 0,
-    }])
-    useStoriesStore.getState().addStory(7, mkStory({ id: 1 }))
+    // сняла — тело без личного
+    useStoriesStore.getState().addStory(2, mkStory({ id: 1, views: views(0) }))
     expect(storyMyReaction(first())).toBeNull()
   })
 

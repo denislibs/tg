@@ -647,3 +647,25 @@ func TestStoryRepo_ArchiveCountIsTotal(t *testing.T) {
 		t.Fatalf("ArchiveCount = %d, %v; want 3 при limit 2", n, err)
 	}
 }
+
+// Reactors — кто и какой эмодзи поставил: под каждого реагировавшего собирается
+// своё тело `updateStory`.
+func TestStoryRepo_Reactors(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewStoryRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+985")
+	v1 := seedUser(t, pool, "+986")
+	v2 := seedUser(t, pool, "+987")
+	id := createStory(t, pool, author, "everyone", time.Now().Add(time.Hour), nil)
+	if err := repo.SetReaction(ctx, id, v1, "👍"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetReaction(ctx, id, v2, "❤"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Reactors(ctx, id)
+	if err != nil || len(got) != 2 || got[v1] != "👍" || got[v2] != "❤" {
+		t.Fatalf("Reactors = %v, %v", got, err)
+	}
+}

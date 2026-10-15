@@ -21,7 +21,7 @@ import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, replaceMirrorWindow, resetMessagesMirror, setMirrorHistoryCount, winKey } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories, storyExpired } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -371,16 +371,10 @@ export function registerStoreProjection(managers: Managers): void {
     const e = raw as ReadStoriesEvt
     useStoriesStore.getState().markRead(Number(getPeerId(e.peer)), e.max_id)
   })
-  // Моя реакция на другом устройстве. tweb кадр не слушает (grep по lib и
-  // components пуст): сервер Telegram присылает зрителю `updateStory` с его
-  // `sent_reaction`. Наш сервер зрителю общее тело отдаёт без личного, поэтому
-  // личный выбор едет этим кадром (В-4, вариант «сопоставлять по peer + story_id»).
-  // `story_id` — НОМЕР у автора, `peer` — автор: пара адресует историю.
-  rootScope.addEventListener(RT.storyReaction, (raw) => {
-    const e = raw as SentStoryReactionEvt
-    const emoticon = e.reaction?._ === 'reactionEmoji' ? e.reaction.emoticon : ''
-    useStoriesStore.getState().setMyReaction(Number(getPeerId(e.peer)), e.story_id, emoticon || null)
-  })
+  // `updateSentStoryReaction` стор не меняет: tweb его не слушает (grep по lib и
+  // components пуст). Моя реакция с другого устройства приезжает внутри
+  // `updateStory` (`storyItem.sent_reaction`, В-4), который замещает историю.
+  // Кадр остаётся в каталоге (`UPDATE_RT`), обработчика нет.
   // Прогресс отгрузки медиа (кольцо на оптимистичном бабле). Владелец — воркер:
   // и сами байты, и границы аплоада теперь его (messages.sendFile), поэтому
   // `done` (аплоад кончился успехом/ошибкой/отменой) приезжает тем же каналом,

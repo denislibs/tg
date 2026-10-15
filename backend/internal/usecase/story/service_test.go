@@ -42,6 +42,7 @@ type fakeRepo struct {
 	// приватности); когда исчерпан — действует visibleAmong.
 	visibleSeq [][]int64
 	// visibleFailAt — номер вызова VisibleAmong (с 1), который падает.
+	reactors      map[int64]map[int64]string // история → пользователь → эмодзи
 	visibleFailAt int
 	visibleCalls  int
 	visibleErr    error
@@ -225,6 +226,9 @@ func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error)
 }
 func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	return f.archiveItems, f.archiveErr
+}
+func (f *fakeRepo) Reactors(ctx context.Context, storyID int64) (map[int64]string, error) {
+	return f.reactors[storyID], nil
 }
 func (f *fakeRepo) ArchiveCount(ctx context.Context, ownerID int64) (int, error) {
 	return f.archiveTotal, nil
@@ -615,10 +619,9 @@ func TestSetReaction_InvalidEmoji_BadReaction(t *testing.T) {
 	}
 }
 
-// Реакция рассылается ДВУМЯ разными апдейтами, потому что это два разных факта:
-// автору — свежая история (`updateStory`, агрегат внутри неё) ЖИВЫМ кадром без
-// журнала, самому зрителю — его личный выбор (`updateSentStoryReaction`) строкой
-// журнала для других его устройств.
+// Реакция уходит двум получателям, и оба получают `updateStory` (как у tweb):
+// автору — живой кадр без журнала, зрителю — строка журнала с телом под него
+// (его `sent_reaction`) для других его устройств.
 func TestSetReaction_OK_UpsertsAndNotifiesBothSides(t *testing.T) {
 	repo := &fakeRepo{visible: true, author: 10, reactionsCount: 3}
 	seedStory(repo, 5)
@@ -639,10 +642,10 @@ func TestSetReaction_OK_UpsertsAndNotifiesBothSides(t *testing.T) {
 	if len(log.rows[10]) != 0 {
 		t.Fatalf("автору чужая реакция в журнал не пишется (отступление от tweb), got %d строк", len(log.rows[10]))
 	}
-	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
-		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateStoryTag {
+		t.Fatalf("зрителю должен уехать updateStory с его телом, got %d кадров", len(pub.frames[1]))
 	}
-	if len(rowsOf(log, 1, "story_reaction")) != 1 {
+	if len(rowsOf(log, 1, "story_update")) != 1 {
 		t.Fatalf("своя реакция зрителя должна лечь в журнал, got %v", log.rows[1])
 	}
 }
@@ -663,10 +666,10 @@ func TestRemoveReaction_OK_NotifiesBothSides(t *testing.T) {
 	if got := framesTagged(t, pub, 10, domain.UpdateStoryTag); len(got) != 1 {
 		t.Fatalf("автору должен уехать updateStory, got %d кадров", len(got))
 	}
-	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateSentStoryReactionTag {
-		t.Fatalf("зрителю должен уехать updateSentStoryReaction, got %d кадров", len(pub.frames[1]))
+	if len(pub.frames[1]) != 1 || frameTag(t, pub.frames[1][0]) != domain.UpdateStoryTag {
+		t.Fatalf("зрителю должен уехать updateStory с его телом, got %d кадров", len(pub.frames[1]))
 	}
-	if len(rowsOf(log, 1, "story_reaction")) != 1 {
+	if len(rowsOf(log, 1, "story_update")) != 1 {
 		t.Fatalf("снятие реакции должно лечь в журнал зрителя, got %v", log.rows[1])
 	}
 }
@@ -800,6 +803,10 @@ func TestView_StealthActive_DoesNotRecord(t *testing.T) {
 	}
 	if repo.marked {
 		t.Fatal("stealth-active viewer must not record a view")
+	}
+	// Горизонт прочтения двигается и под stealth: tweb зовёт readStories всегда.
+	if !repo.readCalled || repo.readHorizon[10] != 5 {
+		t.Fatalf("горизонт под stealth не записан: %v", repo.readHorizon)
 	}
 }
 

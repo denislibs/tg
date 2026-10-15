@@ -131,28 +131,6 @@ export function storyExpired(story: StoryItem): boolean {
   return !!real && real.expire_date <= tsNow(true)
 }
 
-/**
- * Приехавшая история поверх прежней. Тело `updateStory`, которое получают
- * зрители, одно на всех и личного не несёт — ни `sent_reaction`, ни пометки
- * «моя» (`chosen_order`) в чипах реакций; у tweb сервер шлёт тело под каждого
- * зрителя. Поэтому у ЧУЖОЙ истории мой выбор берётся из прежней записи; у своей
- * тело автору собрано под него, и берётся как есть.
- */
-function withMyReaction(next: StoryItem, prev: StoryItem | undefined, authorId: number): StoryItem {
-  if (authorId === rootScope.myId) return next
-  const realNext = realStory(next)
-  const mine = prev ? storyMyReaction(prev) : null
-  if (!realNext || !mine || realNext.sent_reaction) return next
-  return {
-    ...realNext,
-    sent_reaction: { _: 'reactionEmoji', emoticon: mine },
-    views: realNext.views && {
-      ...realNext.views,
-      reactions: realNext.views.reactions?.map((r) => (reactionKey(r.reaction) === mine ? { ...r, chosen_order: 0 } : r)),
-    },
-  }
-}
-
 /** Флаги истории с одним переключённым; выключенный флаг СНИМАЕТСЯ, а не
  *  становится `false` — «выключено» это отсутствие ключа. */
 function withFlag(s: StoryItemReal, name: 'pinned' | 'edited', on: boolean): StoryItemReal['pFlags'] {
@@ -185,15 +163,16 @@ export const useStoriesStore = create<StoriesState>((set) => ({
       groups: arrange(state.groups, state.groups.map((g) => {
         if (g.author.id !== authorId) return g
         const prev = g.stories.find((s) => s.id === story.id)
-        const next = withMyReaction(story, prev, authorId)
-        if (prev) return { ...g, stories: g.stories.map((s) => (s.id === story.id ? next : s)) }
+        // Замена целиком, как у tweb: личное (`sent_reaction`, `chosen_order`)
+        // сервер кладёт в тело под каждого получателя.
+        if (prev) return { ...g, stories: g.stories.map((s) => (s.id === story.id ? story : s)) }
         // Истёкшая история в активную ленту не входит (tweb `isStoryExpired`,
         // appStoriesManager.ts:1740): её присылают закреплённой.
         if (storyExpired(story)) return g
         // Новая — на своё место по номеру: кадры двух быстрых историй могут прийти
         // вразнобой, а последняя в группе задаёт кольцо и позицию группы.
         const at = g.stories.findIndex((s) => s.id > story.id)
-        return { ...g, stories: at < 0 ? [...g.stories, next] : [...g.stories.slice(0, at), next, ...g.stories.slice(at)] }
+        return { ...g, stories: at < 0 ? [...g.stories, story] : [...g.stories.slice(0, at), story, ...g.stories.slice(at)] }
       })),
     })),
   removeStory: (authorId, storyId) =>

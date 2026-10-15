@@ -409,16 +409,21 @@ func (s *Service) View(ctx context.Context, authorID, seq, viewerID int64) error
 	if !ok {
 		return domain.ErrForbidden
 	}
-	// Stealth: пока режим активен, просмотры зрителя не записываются (tweb).
-	// Горизонт при этом не двигается тоже — иначе «невидимый просмотр» выдал бы
-	// себя погасшим кольцом на другом устройстве.
+	// Stealth: пока режим активен, просмотр зрителя автору не виден — в
+	// `story_views` не пишется (tweb: stealth скрывает `incrementStoryViews`).
+	// Горизонт прочтения при этом двигается: tweb зовёт `readStories` всегда
+	// (appStoriesManager.ts:1366, viewer.tsx:1762), он приватен самому зрителю и
+	// автору не виден.
+	hidden := false
 	if s.stealth != nil {
 		if st, err := s.stealth.Get(ctx, viewerID); err == nil && time.Now().Before(st.ActiveUntil) {
-			return nil
+			hidden = true
 		}
 	}
-	if err := s.repo.MarkViewed(ctx, storyID, viewerID); err != nil {
-		return err
+	if !hidden {
+		if err := s.repo.MarkViewed(ctx, storyID, viewerID); err != nil {
+			return err
+		}
 	}
 	maxRead, moved, err := s.repo.SetRead(ctx, viewerID, authorID, seq)
 	if err != nil {
@@ -806,37 +811,39 @@ func (s *Service) audience(ctx context.Context, authorID, storyID int64, privacy
 	return out, nil
 }
 
-// notifyReaction рассылает изменение реакции ДВУМЯ разными апдейтами, потому что
-// это два разных факта:
+// notifyReaction рассылает изменение реакции ДВУМ получателям, и оба получают
+// `updateStory` — историю целиком, как у tweb (там `storyItem.sent_reaction` и
+// агрегат `views` приезжают внутри истории, а отдельного кадра «моя реакция» нет:
+// `updateSentStoryReaction` tweb не слушает):
 //
-//   - АВТОРУ уезжает `updateStory` со свежей историей: агрегат реакций живёт
-//     внутри неё (`storyViews`). Это ЖИВОЙ кадр без журнала — отступление от
-//     tweb (там автору идёт `updateNewStoryReaction`, его порт в бэклоге):
-//     строка журнала с полной историей на каждую чужую реакцию раздула бы
-//     журнал автора популярной истории. Цена: кадр без pts не упорядочен с
-//     журнальными `updateStory`, и после разрыва переигровка журнала может
-//     вернуть автору более старый агрегат реакций до следующей загрузки истории;
-//   - САМОМУ ЗРИТЕЛЮ — `updateSentStoryReaction` через журнал: это его личный
-//     выбор, и на другие его устройства он попадает отдельным апдейтом.
-//     `story_id` — НОМЕР истории у автора, а не внутренний ключ строки.
+//   - ЗРИТЕЛЮ — строкой журнала, тело под него: его `sent_reaction`, его
+//     пометка `chosen_order` в чипах. Так реакцию видит его второе устройство
+//     живьём и через getDifference;
+//   - АВТОРУ — ЖИВЫМ кадром без журнала: отступление от tweb (там автору идёт
+//     `updateNewStoryReaction`, его порт в бэклоге). Строка журнала с полной
+//     историей на каждую чужую реакцию раздула бы журнал популярной истории.
+//     Цена: кадр без pts не упорядочен с журнальными `updateStory`, и после
+//     разрыва переигровка журнала может вернуть автору более старый агрегат
+//     реакций до следующей загрузки истории.
 func (s *Service) notifyReaction(ctx context.Context, authorID, seq, storyID, userID int64, reaction string) {
+	rec, err := s.ownerRecord(ctx, authorID, storyID)
+	if err != nil {
+		log.Printf("story: reaction author=%d seq=%d: %v", authorID, seq, err)
+		return
+	}
+	peer := domain.NewPeer(domain.PeerID(authorID))
+	if userID == authorID {
+		// Реагирует сам автор: его тело и есть тело автора, и оно же — для его
+		// других устройств; живой кадр поверх журнала не нужен.
+		s.emitTo(ctx, []int64{authorID}, "story_update", domain.NewUpdateStory(peer, rec.ToStoryItem(true)))
+		return
+	}
+	s.emitTo(ctx, []int64{userID}, "story_update", domain.NewUpdateStory(peer, viewerRecord(rec, reaction).ToStoryItem(false)))
 	if s.publisher != nil {
-		rec, err := s.ownerRecord(ctx, authorID, storyID)
-		if err != nil {
-			log.Printf("story: reaction author=%d seq=%d: %v", authorID, seq, err)
-		} else if f := frame("story_update", domain.NewUpdateStory(
-			domain.NewPeer(domain.PeerID(authorID)), rec.ToStoryItem(true),
-		)); f != nil {
+		if f := frame("story_update", domain.NewUpdateStory(peer, rec.ToStoryItem(true))); f != nil {
 			_ = s.publisher.PublishToUser(ctx, authorID, f)
 		}
 	}
-	// «Снял реакцию» — тоже событие, и в схеме оно выражается пустым
-	// конструктором объединения (`reactionEmpty` у оригинала нет, поэтому едет
-	// эмодзи-конструктор с пустым значением: клиент читает его как «нет»).
-	var r domain.Reaction = domain.NewReactionEmoji(reaction)
-	s.emitTo(ctx, []int64{userID}, "story_reaction", domain.NewUpdateSentStoryReaction(
-		domain.NewPeer(domain.PeerID(authorID)), int(seq), r,
-	))
 }
 
 // ownerRecord — история глазами АВТОРА: с его счётом просмотров, аудиторией
@@ -872,6 +879,23 @@ func sharedRecord(rec domain.StoryRecord) domain.StoryRecord {
 	return rec
 }
 
+// viewerRecord — общее тело (sharedRecord) под конкретного зрителя: его личная
+// реакция `sent_reaction` и пометка «моя» (`chosen_order`) на чипе этой реакции.
+// Пустая реакция — тело без личного (зритель не реагировал либо снял реакцию).
+// rec — любое тело; зрителю уходит копия, исходное не меняется.
+func viewerRecord(rec domain.StoryRecord, reaction string) domain.StoryRecord {
+	rec = sharedRecord(rec)
+	rec.MyReaction = reaction
+	if reaction != "" {
+		for i := range rec.Reactions {
+			if rec.Reactions[i].Emoji == reaction {
+				rec.Reactions[i].Mine = true
+			}
+		}
+	}
+	return rec
+}
+
 // publishStory пишет апдейт `updateStory` — историю ЦЕЛИКОМ, тем же конструктором,
 // что и витрина: автору всегда (его тело — с просмотрами и аудиторией), а при
 // toAudience ещё и тем, кто историю видит по приватности (общее тело без
@@ -893,9 +917,7 @@ func (s *Service) publishStory(ctx context.Context, authorID, storyID int64, toA
 		log.Printf("story: audience author=%d story=%d: %v", authorID, storyID, err)
 		return own, nil, nil
 	}
-	if len(others) > 0 {
-		s.emitTo(ctx, others, "story_update", domain.NewUpdateStory(peer, sharedRecord(rec).ToStoryItem(false)))
-	}
+	s.emitAudience(ctx, peer, rec, others)
 	return own, others, nil
 }
 
@@ -930,4 +952,28 @@ func frame(t string, d any) []byte {
 		return nil
 	}
 	return b
+}
+
+// emitAudience отправляет аудитории `updateStory` с телом под каждого: у tweb
+// сервер присылает зрителю историю С ЕГО `sent_reaction`, а `updateStory`
+// ЗАМЕНЯЕТ историю целиком, поэтому общее тело стёрло бы зрителю его реакцию.
+// Тела различаются только реакцией, и пачки получателей группируются по ней: не
+// реагировавшие получают общее тело, реагировавшие — по одному на эмодзи. Выборка
+// реакций читается один раз; ошибка не мешает общему телу уйти.
+func (s *Service) emitAudience(ctx context.Context, peer domain.Peer, rec domain.StoryRecord, others []int64) {
+	if len(others) == 0 {
+		return
+	}
+	reactors, err := s.repo.Reactors(ctx, rec.ID)
+	if err != nil {
+		log.Printf("story: reactors story=%d: %v", rec.ID, err)
+		reactors = nil
+	}
+	byEmoji := map[string][]int64{}
+	for _, id := range others {
+		byEmoji[reactors[id]] = append(byEmoji[reactors[id]], id)
+	}
+	for emoji, ids := range byEmoji {
+		s.emitTo(ctx, ids, "story_update", domain.NewUpdateStory(peer, viewerRecord(rec, emoji).ToStoryItem(false)))
+	}
 }
