@@ -255,8 +255,9 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    // Печать темы (ключ с threadId) сообщением не гасится — только TTL, как в tweb
-    // (у оригинала гасит её сервер кадром sendMessageCancelAction, наш не шлёт).
+    // tweb печать по сообщению не гасит вовсе (appProfileManager.ts:1407-1470) -
+    // гашение ключа ЧАТА здесь наше прежнее отступление; печать темы (ключ с
+    // threadId) сообщением не гасится, только TTL.
     if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(getTypingsKey(peerId), getPeerId(msg.from_id))
     // UI-реакции на новое сообщение (отметка прочтения — в самой ленте
     // `chat/bubbles.ts`, звук, нотификация) — отдельные подписчики rootScope

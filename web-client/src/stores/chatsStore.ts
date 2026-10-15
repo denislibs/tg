@@ -183,7 +183,7 @@ export const useChatsStore = create<ChatsState>((set) => ({
       const next = { ...chat }
       delete next[userId]
       // пустой набор — ключ уходит (tweb `delete this.typingsInPeer[key]`,
-      // appProfileManager.ts:1450-1452): ключей тем иначе копилось бы без предела
+      // appProfileManager.ts:1457): ключей тем иначе копилось бы без предела
       const typing = { ...s.typing }
       if (Object.keys(next).length) typing[key] = next
       else delete typing[key]
