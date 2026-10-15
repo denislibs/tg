@@ -428,3 +428,36 @@ func TestGiveaway_FinishVsDeleteChannelPaysDepositOnce(t *testing.T) {
 		t.Fatalf("сумма балансов = %d, want 1000: вклад выплачен не ровно один раз", sum)
 	}
 }
+
+// Удаление канала не берёт строку чата раньше балансов: создание розыгрыша
+// держит баланс создателя и просит строку чата (FK), удаление в это время ждёт
+// баланс - при обратном порядке блокировок это взаимоблокировка (500).
+func TestDeleteChannel_NoDeadlockWithGiveawayCreate(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, ownerID := signUp(t, h, pool, "+79990007620")
+	cid := newGiveawayChannel(t, h, owner, "gvnodeadlock")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	lock, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.Exec(t.Context(), `SELECT 1 FROM user_stars WHERE user_id=$1 FOR UPDATE`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	code := make(chan int, 1)
+	go func() { code <- authedReq(t, h, http.MethodDelete, "/chats/"+cid, owner, nil).Code }()
+	time.Sleep(1500 * time.Millisecond) // удаление дошло до ожидания баланса
+	// «Создание розыгрыша» просит строку чата, пока держит баланс.
+	if _, err := lock.Exec(t.Context(), `SELECT 1 FROM chats WHERE type='channel' FOR KEY SHARE`); err != nil {
+		t.Fatalf("строка чата занята удалением до баланса (взаимоблокировка): %v", err)
+	}
+	if err := lock.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if c := <-code; c >= 300 {
+		t.Fatalf("удаление канала = %d, want успех", c)
+	}
+}

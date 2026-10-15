@@ -583,6 +583,10 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 				ptsByUser[uid] = pts
 			}
 		}
+		// Строка чата - последней, после балансов (порядок блокировок отправки).
+		if e := i.lockChatForDelete(ctx, chatID); e != nil {
+			return e
+		}
 		return i.groups.DeleteChat(ctx, chatID)
 	})
 	if err != nil {

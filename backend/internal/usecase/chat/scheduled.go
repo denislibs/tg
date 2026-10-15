@@ -1294,7 +1294,8 @@ func (i *Interactor) lockScheduledForPublish(ctx context.Context, id int64) erro
 // снимаются и возвращаются авторам (в транзакции удаления).
 func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64, alsoLock ...int64) error {
 	if i.scheduled == nil || i.stars == nil {
-		return nil
+		// Очереди нет, но балансы вызывающего всё равно берутся одним проходом.
+		return i.lockBalances(ctx, alsoLock...)
 	}
 	rows, err := i.scheduled.TakePaidByChat(ctx, chatID)
 	if err != nil {

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"log"
 	"math/rand"
 	"time"
@@ -299,6 +300,29 @@ func (i *Interactor) claimGiveawayDeposits(ctx context.Context, chatID int64) ([
 		return nil, nil
 	}
 	return i.giveaways.ClaimActiveStarsByChat(ctx, chatID)
+}
+
+// errGiveawayRaced - розыгрыш создан между захватом и блокировкой чата при
+// удалении: транзакция откатывается, повтор запроса возвращает и этот вклад.
+var errGiveawayRaced = errors.New("giveaway created while the chat was being deleted, retry")
+
+// lockChatForDelete - последний шаг перед удалением чата (после балансов):
+// блокирует строку чата и убеждается, что новых звёздных розыгрышей не появилось.
+func (i *Interactor) lockChatForDelete(ctx context.Context, chatID int64) error {
+	if i.giveaways == nil || i.stars == nil {
+		return nil
+	}
+	if err := i.giveaways.LockChat(ctx, chatID); err != nil {
+		return err
+	}
+	late, err := i.giveaways.ClaimActiveStarsByChat(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if len(late) > 0 {
+		return errGiveawayRaced
+	}
+	return nil
 }
 
 // creditGiveawayDeposits возвращает захваченные вклады создателям; строки их

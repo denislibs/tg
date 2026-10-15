@@ -27,6 +27,14 @@ func (r *GiveawaysRepo) Create(ctx context.Context, g domain.Giveaway) (domain.G
 	return g, err
 }
 
+// LockChat берёт блокировку строки чата до конца транзакции: розыгрыш,
+// создаваемый параллельно (FK на чат), либо завершится раньше, либо упадёт после
+// удаления. Звать последним шагом перед удалением чата, после балансов.
+func (r *GiveawaysRepo) LockChat(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `SELECT 1 FROM chats WHERE id=$1 FOR UPDATE`, chatID)
+	return err
+}
+
 func (r *GiveawaysRepo) ByID(ctx context.Context, id int64) (domain.Giveaway, error) {
 	var g domain.Giveaway
 	var winnersRaw []byte
@@ -66,15 +74,10 @@ func (r *GiveawaysRepo) Participate(ctx context.Context, giveawayID, userID int6
 
 // ClaimActiveStarsByChat закрывает незавершённые звёздные розыгрыши чата с
 // вкладом (условный UPDATE: из параллельного завершения и удаления чата вклад
-// получает ровно одна сторона) и возвращает их. Предварительно берёт
-// блокировку строки чата: создание розыгрыша (NextSeq) ждёт её и не теряет вклад
-// каскадом. Звать внутри транзакции.
+// получает ровно одна сторона) и возвращает их. Строку чата НЕ блокирует
+// (порядок блокировок отправки: балансы раньше строки чата) - см. LockChat.
 func (r *GiveawaysRepo) ClaimActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error) {
-	q := querier(ctx, r.pool)
-	if _, err := q.Exec(ctx, `SELECT 1 FROM chats WHERE id=$1 FOR UPDATE`, chatID); err != nil {
-		return nil, err
-	}
-	rows, err := q.Query(ctx,
+	rows, err := querier(ctx, r.pool).Query(ctx,
 		`UPDATE giveaways SET status='finished', winner_ids='[]'
 		  WHERE chat_id=$1 AND status='active' AND prize_kind='stars' AND deposit > 0
 		  RETURNING id, creator_id, deposit`, chatID)
