@@ -93,11 +93,6 @@ export function messageToConvMsg(
 
   const real = m._ === 'message' ? m : undefined
   const action = m._ === 'messageService' ? m.action : undefined
-  // Предложение фото профиля: у получателя под превью кнопка «Установить фото»;
-  // `accepted` — НАШ параметр действия, он скрывает её на всех устройствах.
-  const photoSuggestion = action?._ === 'messageActionSuggestProfilePhoto'
-    ? { accepted: !!action.accepted }
-    : undefined
 
   const replyTo = opts?.replyToMessage
   const quoteText = m.reply_to?.quote_text
@@ -113,7 +108,6 @@ export function messageToConvMsg(
     type: convType,
     out,
     text: convType === 'service' ? serviceMsgText(m as Extract<MyMessage, { _: 'messageService' }>, opts?.pinnedTarget ? messageForReply(opts.pinnedTarget) : undefined) : getMessageText(m),
-    photoSuggestion,
     entities: real?.entities,
     createdAt: messageDateISO(m.date),
     date: m.date,

@@ -13,10 +13,17 @@ import { upsertAccount } from '../auth/accounts'
 
 beforeEach(() => { indexedDB = new IDBFactory() })
 
-function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }> = {}) {
+// Исходы `auth.exportLoginToken` (QR-вход). `token` — БАЙТЫ, на JSON-проводе
+// base64 (0x01 0x02 → 'AQI=' → hex '0102').
+const EXPORT_PENDING = { _: 'auth.loginToken', expires: 1787334148, token: 'AQI=' }
+const EXPORT_SUCCESS = { _: 'auth.loginTokenSuccess', authorization: { _: 'auth.authorization', token: 'sess999', user: { _: 'user', id: 7, phone: '+7' } } }
+const EXPORT_PASSWORD = { _: 'auth.loginTokenSuccess', authorization: { _: 'auth.passwordNeeded', password_token: 'pwtok', hint: 'подсказка' } }
+
+function deps(overrides: Partial<{ token: string | null; exportResponse: unknown }> = {}) {
   let token: string | null = overrides.token ?? null
-  const qrConfirmed = overrides.qrConfirmed ?? false
+  const exportResponse = overrides.exportResponse ?? EXPORT_PENDING
   const calls: Array<[string, unknown]> = []
+  const callOpts: Array<unknown> = []
   const store = {
     get: () => token,
     set: async (t: string) => { token = t },
@@ -24,17 +31,16 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
     ready: async () => {},
   }
   const rest = {
-    post: async (path: string, body: unknown) => {
+    post: async (path: string, body: unknown, opts?: unknown) => {
       calls.push([path, body])
+      callOpts.push(opts)
       if (path === '/auth/request_code') return { ok: true }
       // Исход шага входа — КОНСТРУКТОР объединения auth.Authorization, а
       // карточка внутри него КРАТКАЯ: полной формы вход не отдаёт.
       if (path === '/auth/sign_in') return { _: 'auth.authorization', token: 'TOK', user: briefWire(1, '+700') }
       if (path === '/auth/logout') return { ok: true }
-      // Выпуск кода — auth.loginToken; `token` это БАЙТЫ, на JSON-проводе
-      // base64 (0x01 0x02 → 'AQI=' → адрес маршрута '0102').
-      if (path === '/auth/qr/new') return { _: 'auth.loginToken', expires: 1787334148, token: 'AQI=' }
-      if (path === '/auth/qr/confirm') return { ok: true }
+      if (path === '/auth/export_login_token') return exportResponse
+      if (path === '/auth/accept_login_token') return { _: 'authorization', hash: 5 }
       throw new Error('unexpected ' + path)
     },
     get: async (path: string) => {
@@ -42,19 +48,10 @@ function deps(overrides: Partial<{ token: string | null; qrConfirmed: boolean }>
         if (!token) throw Object.assign(new Error('missing token'), { status: 401 })
         return profileWire(1, '+700')
       }
-      if (path === '/auth/qr/0102') {
-        return qrConfirmed
-          // Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг, —
-          // вложенным конструктором, а не соседними ключами.
-          ? { _: 'auth.loginTokenSuccess', authorization: { _: 'auth.authorization', token: 'sess999', user: { _: 'user', id: 7, phone: '+7' } } }
-          : { _: 'auth.loginToken', expires: 1787334148, token: 'AQI=' }
-      }
-      // Протухший (или чужой) код — ОТКАЗ, а не третий конструктор.
-      if (path === '/auth/qr/dead') throw new HttpError(404, 'AUTH_TOKEN_EXPIRED')
       throw new Error('unexpected ' + path)
     },
   }
-  return { d: { rest, store } as unknown as AuthDeps, calls, token: () => token }
+  return { d: { rest, store } as unknown as AuthDeps, calls, callOpts, token: () => token }
 }
 
 // Проводная форма профиля после шага C: пара конструкторов `users.userFull`
@@ -215,13 +212,13 @@ describe('AuthManager', () => {
     expect(onMeChanged).toHaveBeenCalledWith(r.user)
   })
 
-  // Второй путь через persist() (не toOutcome) — qrStatus(confirmed): доказывает,
+  // Второй путь через persist() (не toOutcome) — exportLoginToken(success): доказывает,
   // что фикс на самой persist(), а не на одном конкретном вызывающем методе.
-  it('qrStatus(confirmed) тоже зовёт onMeChanged (тот же persist(), другой вызывающий)', async () => {
+  it('exportLoginToken(success) тоже зовёт onMeChanged (тот же persist(), другой вызывающий)', async () => {
     const onMeChanged = vi.fn()
-    const { d } = deps({ qrConfirmed: true })
+    const { d } = deps({ exportResponse: EXPORT_SUCCESS })
     const auth = newAuthManager({ ...d, onMeChanged })
-    await auth.qrStatus('0102')
+    await auth.exportLoginToken('k'.repeat(64))
     expect(onMeChanged).toHaveBeenCalledTimes(1)
     expect(onMeChanged).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ id: 7 }) }))
   })
@@ -232,45 +229,97 @@ describe('AuthManager', () => {
     await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { user: { id: 1 } } })
   })
 
-  // Адрес кода: base64 конструктора → шестнадцатеричная запись маршрута.
-  // Ссылки для сканера в ответе больше нет — её строит экран входа сам.
-  it('qrNew отдаёт адрес кода шестнадцатеричной записью', async () => {
-    const { d } = deps()
-    const auth = newAuthManager(d)
-    await expect(auth.qrNew('web')).resolves.toBe('0102')
+  // auth.exportLoginToken: ключ входа едет заголовком, except_ids — аккаунты этого
+  // устройства (tweb SignQRCard.tsx:136-142, AccountController.getUserIds).
+  it('exportLoginToken шлёт except_ids из реестра аккаунтов и ключ входа заголовком', async () => {
+    await upsertAccount({ id: 11, token: 't11', name: 'A', photoId: 0, phone: '+1' })
+    await upsertAccount({ id: 12, token: 't12', name: 'B', photoId: 0, phone: '+2' })
+    const { d, calls, callOpts } = deps()
+    await newAuthManager(d).exportLoginToken('k'.repeat(64))
+    expect(calls[0]).toEqual(['/auth/export_login_token', { except_ids: [11, 12], platform: 'web' }])
+    expect(callOpts[0]).toEqual({ headers: { 'X-Login-Key': 'k'.repeat(64) } })
   })
 
-  it('qrStatus stores the session token when confirmed', async () => {
-    const { d, token } = deps({ qrConfirmed: true })
-    const auth = newAuthManager(d)
-    const r = await auth.qrStatus('0102')
-    expect(r.status).toBe('confirmed')
-    expect(r.user?.user.id).toBe(7)
+  // Адрес кода: base64 конструктора → шестнадцатеричная запись (та же, что в
+  // адресе QR `/qr/<hex>` и в acceptLoginToken). Сессии нет — токен не пишется.
+  it('exportLoginToken: auth.loginToken -> pending с hex-кодом, токен не сохраняется', async () => {
+    const { d, token } = deps()
+    await expect(newAuthManager(d).exportLoginToken('k'.repeat(64))).resolves.toEqual({
+      status: 'pending', token: '0102', expires: 1787334148,
+    })
+    expect(token()).toBeNull()
+  })
+
+  it('exportLoginToken: loginTokenSuccess{authorization} сохраняет сессию', async () => {
+    const { d, token } = deps({ exportResponse: EXPORT_SUCCESS })
+    const r = await newAuthManager(d).exportLoginToken('k'.repeat(64))
+    expect(r.status).toBe('success')
+    expect(r.status === 'success' && r.user.user.id).toBe(7)
     expect(token()).toBe('sess999')
   })
 
-  it('qrStatus pending does not store a token', async () => {
-    const { d, token } = deps({ qrConfirmed: false })
-    const auth = newAuthManager(d)
-    const r = await auth.qrStatus('0102')
-    expect(r.status).toBe('pending')
+  // Облачный пароль: сессии нет, токен не пишется, ни onMeChanged, ни onLoggedIn.
+  it('exportLoginToken: loginTokenSuccess{passwordNeeded} -> шаг пароля без сессии', async () => {
+    const onMeChanged = vi.fn()
+    const onLoggedIn = vi.fn()
+    const { d, token } = deps({ exportResponse: EXPORT_PASSWORD })
+    const r = await newAuthManager({ ...d, onMeChanged, onLoggedIn }).exportLoginToken('k'.repeat(64))
+    expect(r).toEqual({ status: 'password', passwordToken: 'pwtok', hint: 'подсказка' })
     expect(token()).toBeNull()
+    expect(onMeChanged).not.toHaveBeenCalled()
+    expect(onLoggedIn).not.toHaveBeenCalled()
   })
 
-  // Протухший код — отказ 404, а наружу тот же дискриминированный результат:
-  // HttpError не переживает границу worker-RPC.
-  it('qrStatus: отказ AUTH_TOKEN_EXPIRED становится статусом expired', async () => {
-    const { d, token } = deps()
-    const r = await newAuthManager(d).qrStatus('dead')
-    expect(r.status).toBe('expired')
-    expect(token()).toBeNull()
+  // Класс ошибки решает, умирает ли цикл карточки. У tweb сеть и разрыв
+  // переотправляет сам invokeApi, а `AUTH_TOKEN_EXPIRED` цикл переживает
+  // (SignQRCard.tsx:179-181); остальные отказы API останавливают его (:182-185).
+  it('exportLoginToken: сбой сети, 5xx, 429 и 420 -> retry, а не отказ', async () => {
+    const make = (err: unknown) => newAuthManager({
+      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(429, 'x')]) {
+      await expect(make(err).exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'retry' })
+    }
   })
 
-  it('qrConfirm posts the token', async () => {
+  it('exportLoginToken: 404 AUTH_TOKEN_EXPIRED -> expired (цикл продолжается)', async () => {
+    const auth = newAuthManager({
+      rest: { post: () => Promise.reject(new HttpError(404, 'AUTH_TOKEN_EXPIRED', 'AUTH_TOKEN_EXPIRED')) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(auth.exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'expired' })
+  })
+
+  it('exportLoginToken: постоянные отказы (503 qr login unavailable, 420 дольше минуты) пробрасываются', async () => {
+    const make = (err: unknown) => newAuthManager({
+      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(make(new HttpError(503, 'qr login unavailable', 'qr login unavailable')).exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 503 })
+    await expect(make(new HttpError(420, 'FLOOD_WAIT_90', 'FLOOD_WAIT_90')).exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 420 })
+  })
+
+  it('exportLoginToken: прочие отказы API (400 LOGIN_KEY_INVALID) пробрасываются', async () => {
+    const auth = newAuthManager({
+      rest: { post: () => Promise.reject(new HttpError(400, 'LOGIN_KEY_INVALID', 'LOGIN_KEY_INVALID')) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(auth.exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('acceptLoginToken шлёт hex-код', async () => {
     const { d, calls } = deps()
-    const auth = newAuthManager(d)
-    await auth.qrConfirm('tok123')
-    expect(calls).toContainEqual(['/auth/qr/confirm', { token: 'tok123' }])
+    await newAuthManager(d).acceptLoginToken('tok123')
+    expect(calls).toContainEqual(['/auth/accept_login_token', { token: 'tok123' }])
+  })
+
+  it('старых qrNew/qrStatus/qrConfirm в менеджере нет', () => {
+    const { d } = deps()
+    const auth = newAuthManager(d) as unknown as Record<string, unknown>
+    expect(auth.qrNew).toBeUndefined()
+    expect(auth.qrStatus).toBeUndefined()
+    expect(auth.qrConfirm).toBeUndefined()
   })
 
   // GET /auth/nearest_country: пустой ответ и любая ошибка — штатный исход,
@@ -401,10 +450,10 @@ describe('AuthManager: rt:logging_out — намерение перехода а
 
   // Второй путь через ту же persist() — доказывает, что кадр висит на общей
   // точке, а не на одном методе (тот же приём, что у onMeChanged выше).
-  it('qrStatus(confirmed) объявляет вход тем же кадром (другой вызывающий, та же persist)', async () => {
+  it('exportLoginToken(success) объявляет вход тем же кадром (другой вызывающий, та же persist)', async () => {
     const onLoggedIn = vi.fn()
-    const { d } = deps({ qrConfirmed: true })
-    await newAuthManager({ ...d, onLoggedIn }).qrStatus('0102')
+    const { d } = deps({ exportResponse: EXPORT_SUCCESS })
+    await newAuthManager({ ...d, onLoggedIn }).exportLoginToken('k'.repeat(64))
     expect(onLoggedIn).toHaveBeenCalledWith({ userId: 7 })
   })
 

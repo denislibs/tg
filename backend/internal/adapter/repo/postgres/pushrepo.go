@@ -72,9 +72,9 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 // решают глобальные настройки типа чата; прочих не участников зовущий сюда не
 // шлёт.
 //
-// Мьют чата читается СРОКОМ, а решает вопрос «замьючен ли сейчас» единственный
-// предикат домена (PeerNotifySettings.Muted) — той же копии условия в SQL здесь
-// больше нет.
+// Мьют чата читается СРОКОМ и трёхзначный (domain.ChatMuted): NULL — наследует
+// тип чата, 0 или истёкший срок — явное «уведомлять», перекрывающее выключенный
+// тип, срок в будущем — заглушён. SQL-копия того же условия — chatMutedSQL.
 func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (bool, bool, error) {
 	var muteUntil, topicMuteUntil *time.Time
 	var chatType string
@@ -115,7 +115,9 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID
 	// Мьют темы — три состояния (domain.TopicMuted): своя настройка темы решает
 	// сама, даже против заглушённого чата; нет её — мьют чата или типа чата
 	// (tweb isPeerLocalMuted, appNotificationsManager.ts:398-409).
-	chatMuted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted
+	// Мьют чата тоже трёхзначный (domain.ChatMuted): не задан — наследует тип,
+	// явное «уведомлять» (0, истёкший срок) перекрывает выключенный тип.
+	chatMuted := domain.ChatMuted(muteUntil, t.Muted, now)
 	muted := domain.TopicMuted(topicMuteUntil, chatMuted, now)
 	if muted && !mentioned {
 		return false, false, nil
@@ -154,9 +156,6 @@ func (r *PushRepo) NotifyTargets(ctx context.Context, chatID int64, userIDs []in
 		if err := rows.Scan(&uid, &muteUntil, &chatType, &pm, &pp, &gm, &gp, &cm, &cp); err != nil {
 			return nil, err
 		}
-		if peerNotifySettings(muteUntil, nil, nil, now).Muted(now) {
-			continue
-		}
 		ns := domain.DefaultNotifySettings()
 		if pm != nil { // строка notify_settings существует
 			ns.Private = domain.NotifyTypeSettings{Muted: *pm, Preview: *pp}
@@ -164,7 +163,7 @@ func (r *PushRepo) NotifyTargets(ctx context.Context, chatID int64, userIDs []in
 			ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
 		}
 		t := ns.ForChatType(chatType)
-		if t.Muted {
+		if domain.ChatMuted(muteUntil, t.Muted, now) {
 			continue
 		}
 		out[uid] = t.Preview
@@ -190,8 +189,9 @@ func (r *PushRepo) UnreadBadge(ctx context.Context, userID int64) (int, error) {
 	_ = querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT COALESCE(SUM(`+dialogUnreadCount("m", "c")+`),0)
 		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
+		   LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
 		  WHERE m.user_id=$1 AND NOT m.archived
-		    AND (m.muted_until IS NULL OR m.muted_until <= now())`,
+		    AND NOT `+chatMutedSQL(joinedNotify),
 		userID).Scan(&badge)
 	return badge, nil
 }

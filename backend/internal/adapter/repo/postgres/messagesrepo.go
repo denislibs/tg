@@ -962,16 +962,6 @@ func (r *MessagesRepo) UpdateText(ctx context.Context, msgID int64, text string,
 		msgID, text, entitiesParam(entities)))
 }
 
-// UpdateAction заменяет служебное действие сообщения (edited_at=now()) и
-// возвращает обновлённую строку. Единственный сегодняшний вызывающий —
-// принятие предложенного фото: признак «принято» живёт на самом действии.
-func (r *MessagesRepo) UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
-	q := querier(ctx, r.pool)
-	return scanOneMessage(q.QueryRow(ctx,
-		`UPDATE messages SET action=$2, edited_at=now() WHERE id=$1 RETURNING `+messageCols,
-		msgID, actionParam(action)))
-}
-
 // UpdateReplyMarkup replaces a message's inline/reply keyboard (edited_at=now());
 // returns the updated row. Used by the Bot API editMessageReplyMarkup.
 func (r *MessagesRepo) UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {

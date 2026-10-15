@@ -88,7 +88,7 @@ func TestMigration0104_MuteForeverBecomesDeadline(t *testing.T) {
 		if ns.MuteUntil == nil || *ns.MuteUntil != domain.MuteUntilForever {
 			t.Errorf("пользователь %d: mute_until = %v; want %d", userID, ns.MuteUntil, domain.MuteUntilForever)
 		}
-		if !ns.Muted(now) {
+		if !mutedAt(ns, now) {
 			t.Errorf("пользователь %d размьючен после миграции", userID)
 		}
 	}
@@ -98,15 +98,15 @@ func TestMigration0104_MuteForeverBecomesDeadline(t *testing.T) {
 	if ns.MuteUntil == nil || int64(*ns.MuteUntil) != until.Unix() {
 		t.Errorf("временный мьют = %v; want %d", ns.MuteUntil, until.Unix())
 	}
-	if !ns.Muted(now) {
+	if !mutedAt(ns, now) {
 		t.Error("временный мьют перестал действовать")
 	}
 
 	// ── 3. Истёкший и никогда не заглушённый — не замьючены ─────────────────
-	if settings(expired).Muted(now) {
+	if mutedAt(settings(expired), now) {
 		t.Error("истёкший мьют снова действует")
 	}
-	if got := settings(loud); got.Muted(now) || got.MuteUntil != nil {
+	if got := settings(loud); mutedAt(got, now) || got.MuteUntil != nil {
 		t.Errorf("незаглушённый чат = %+v; want ни срока, ни мьюта", got)
 	}
 

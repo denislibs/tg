@@ -3,6 +3,7 @@ import { countUnmutedUnreadPeers, notificationsCountTitle } from './appBadge'
 import { makeDialog } from '../core/dialogs/testDialog'
 import { applyForumUnread, resetForumUnreadMirror } from '../core/dialogs/forumUnreadMirror'
 import { applyPeerOps, resetPeerMirror } from '../core/peerCache'
+import { useNotifyStore } from '../stores/notifyStore'
 import { useI18nStore } from '../i18n'
 import { applyLang } from '@/test/lang'
 
@@ -10,6 +11,18 @@ import { applyLang } from '@/test/lang'
 // папки. Обе величины теперь ВЫЧИСЛЯЮТСЯ, а не читаются полем.
 const d = (unread: number, muted = false, archived = false) =>
   makeDialog({ peerId: 1, unread, archived, muteUntil: muted ? true : undefined })
+
+describe('countUnmutedUnreadPeers: тип чатов (tweb isDialogUnmuted, respectType: true)', () => {
+  afterEach(() => useNotifyStore.setState({ settings: useNotifyStore.getInitialState().settings }))
+
+  it('чат заглушённого типа в бейдж не идёт; явное «уведомлять» у чата — идёт', () => {
+    useNotifyStore.getState().apply('notifyUsers', { _: 'peerNotifySettings', mute_until: 0x7fffffff, show_previews: true })
+    const inherit = makeDialog({ peerId: 1, unread: 2 })
+    const explicit = { ...makeDialog({ peerId: 2, unread: 3 }), notify_settings: { _: 'peerNotifySettings' as const, mute_until: 0 } }
+    expect(countUnmutedUnreadPeers([inherit])).toBe(0)
+    expect(countUnmutedUnreadPeers([inherit, explicit])).toBe(1)
+  })
+})
 
 describe('countUnmutedUnreadPeers', () => {
   it('считает ЧАТЫ с непрочитанным, а не сумму сообщений (tweb unreadUnmutedPeerIds.size)', () => {

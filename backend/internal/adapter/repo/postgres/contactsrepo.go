@@ -199,7 +199,7 @@ func (r *ContactsRepo) CustomPhotoMap(ctx context.Context, ownerID int64, contac
 	if len(contactIDs) == 0 {
 		return out, nil
 	}
-	rows, err := r.pool.Query(ctx,
+	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT contact_user_id, media_id FROM contact_custom_photo WHERE owner_id=$1 AND contact_user_id = ANY($2)`,
 		ownerID, contactIDs)
 	if err != nil {
