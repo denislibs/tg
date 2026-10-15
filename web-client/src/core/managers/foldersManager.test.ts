@@ -50,3 +50,24 @@ describe('foldersManager — провод папки', () => {
     expect(put).toHaveBeenCalledWith('/me/folders/3', body)
   })
 })
+
+describe('foldersManager — порядок папок (Ф7-З)', () => {
+  it('list: all_chats_pos доезжает до модели; нет поля — 0', async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ folders: [RAW], all_chats_pos: 2 })
+      .mockResolvedValueOnce({ folders: [] })
+    const folders = newFoldersManager({ rest: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } as never })
+
+    expect(await folders.list()).toEqual({ folders: [mapFolder(RAW)], allChatsPos: 2 })
+    expect(await folders.list()).toEqual({ folders: [], allChatsPos: 0 })
+  })
+
+  it('updateOrder шлёт POST /me/folders/order {order}', async () => {
+    const post = vi.fn(async () => ({ _: 'boolTrue' }))
+    const folders = newFoldersManager({ rest: { get: vi.fn(), post, put: vi.fn(), del: vi.fn() } as never })
+
+    await folders.updateOrder([3, 0, 1])
+
+    expect(post).toHaveBeenCalledWith('/me/folders/order', { order: [3, 0, 1] })
+  })
+})

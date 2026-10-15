@@ -31,7 +31,7 @@ const snapshot = (f: Folder) => ({
 
 function managersWith(list: Folder[], contacts: number[] = []) {
   return {
-    folders: { list: vi.fn().mockResolvedValue(list) },
+    folders: { list: vi.fn().mockResolvedValue({ folders: list, allChatsPos: 0 }) },
     contacts: { list: vi.fn().mockResolvedValue(contacts.map((userId) => ({ userId }))) },
     // Этап 2: те же контакты уезжают владельцу списка диалогов (воркер) —
     // см. loadFolders и dialogsManager.setContactIds.
@@ -251,5 +251,40 @@ describe('refetchSubscriber: folder_update без похода в сеть', () 
 
     expect(list).not.toHaveBeenCalled()
     expect(useAppStateStore.getState().folders.map((f) => f.title)).toEqual(['Работа', 'Отдых!'])
+  })
+})
+
+describe('refetchSubscriber: updateDialogFilterOrder (Ф7-З)', () => {
+  it('кадр порядка папок применяется без похода в сеть: папки переставлены, место «Все чаты» запомнено', () => {
+    useAppStateStore.setState({ folders: [work, fun] })
+    const list = vi.fn()
+    registerRefetchSubscriber({
+      folders: { list },
+      messages: { listPins: vi.fn() },
+    } as unknown as Managers)
+
+    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [fun.id, 0, work.id] })
+
+    expect(list).not.toHaveBeenCalled()
+    expect(useAppStateStore.getState().folders.map((f) => f.id)).toEqual([fun.id, work.id])
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+  })
+})
+
+describe('refetchSubscriber: rt:resync перечитывает папки (Ф7-З)', () => {
+  it('differenceTooLong — журнал порядка/состава не доиграть, список папок берётся с сервера', async () => {
+    useAppStateStore.setState({ folders: [work, fun] })
+    const m = managersWith([fun, work])
+    registerRefetchSubscriber({
+      ...m,
+      dialogs: { ...m.dialogs, refresh: vi.fn().mockResolvedValue(undefined) },
+      notify: { getSettings: vi.fn().mockResolvedValue(undefined) },
+      messages: { listPins: vi.fn() },
+    } as unknown as Managers)
+
+    rootScope.dispatchEventSingle('rt:resync', null)
+
+    await vi.waitFor(() => expect(m.folders.list).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(useAppStateStore.getState().folders.map((f) => f.id)).toEqual([work.id, fun.id]))
   })
 })
