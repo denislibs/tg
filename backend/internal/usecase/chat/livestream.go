@@ -112,6 +112,7 @@ func (i *Interactor) StartLivestream(ctx context.Context, chatID, userID int64) 
 		return LivestreamState{}, err
 	}
 	i.publishLivestreamUpdate(ctx, chatID, "started")
+	i.announceCallChange(ctx, chatID)
 	return LivestreamState{
 		Active: true, Viewers: i.viewerCount(ctx, chatID), StartedAt: ls.StartedAt,
 		IsAdmin: true, RTMPURL: i.rtmpBaseURL(), StreamKey: ls.StreamKey,
@@ -136,6 +137,7 @@ func (i *Interactor) StopLivestream(ctx context.Context, chatID, userID int64) e
 		return err
 	}
 	i.publishLivestreamUpdate(ctx, chatID, "stopped")
+	i.announceCallChange(ctx, chatID)
 	return nil
 }
 

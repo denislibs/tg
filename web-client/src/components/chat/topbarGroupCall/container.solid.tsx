@@ -4,14 +4,18 @@
 // Пачка П-5 волны 7 (Б-21).
 //
 // РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
-//  1. Источник «звонок идёт» — не флаги `call_active`/`call_not_empty` карточки чата и
-//     `appGroupCallsManager.getGroupCallPreview` (у нас их нет: `chat` без `call_active`,
-//     `channelFull` без `call`), а участники видеочата по чатам `groupCallStore.activeByChat`
-//     (живут кадром `group_call_update`, `core/calls/groupCallEngine.ts::handleGroupCallFrame`)
-//     со снимком `messages.groupCallParticipants(peerId)` на смене пира — тот же источник,
-//     что у прежнего React-баннера `Chat.tsx`. Число участников — длина списка, превью —
-//     первые три (`PREVIEW_AVATARS_COUNT`). Отличать RTMP-эфир от видеочата не нужно:
-//     эфир у нас — отдельная подсистема (`livestreamStore`, плашка `topbarLive`).
+//  1. «Звонок идёт» — флаги `call_active && call_not_empty` карточки чата, как у tweb
+//     (`:38-42`; их ставит сервер, `channel.pFlags`, f6-call). Дальше расхождение:
+//     `channelFull.call` и `appGroupCallsManager.getGroupCallPreview` у нас нет (TL-модели звонка
+//     нет, `group_call_*` — транспорт), поэтому число и превью участников — из
+//     `groupCallStore.activeByChat` (живёт кадром `group_call_update`,
+//     `core/calls/groupCallEngine.ts::handleGroupCallFrame`) со снимком
+//     `messages.groupCallParticipants(peerId)` на смене пира. Число — длина списка, превью —
+//     первые три (`PREVIEW_AVATARS_COUNT`). Плашка нужна обоим условиям сразу: флаги без
+//     участников в сторе (снимок ещё не доехал) и участники без флагов (звонок кончился, а
+//     кадр выхода ещё не обработан) её не показывают. RTMP-эфир (`rtmp_stream` звонка у tweb,
+//     `:73-74`) у нас — отдельная подсистема (`livestreamStore`, плашка `topbarLive`): в чате с
+//     идущим эфиром плашки видеочата нет.
 //  2. «Текущий звонок» (`useCurrentGroupCall`) — `groupCallStore.peerId`.
 //  3. «Войти» — `groupCallEngine.joinGroupCall(peerId)`; у tweb `appImManager.joinGroupCall`
 //     (П-4 заводит его в `lib/appImManager.ts`, при влитии вызов переедет туда).
@@ -22,7 +26,10 @@ import { ChatType } from '@components/chat/chatType'
 import { NULL_PEER_ID, isUser } from '@core/peers/peerId'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import { i18n } from '@lib/langPack'
+import { cachedChat, peerMirrorVersion, subscribePeerMirror } from '@core/peerCache'
+import { hasCallParticipants } from '@core/peers/predicates'
 import { useGroupCallStore } from '@stores/groupCallStore'
+import { useLivestreamStore } from '@stores/livestreamStore'
 import { joinGroupCall } from '@core/calls/groupCallEngine'
 import type { AvatarManagers } from '@components/avatar'
 import TopbarPlate, { createTopbarPlate, type TopbarPlateController } from '@components/chat/topbarPlate.solid'
@@ -41,12 +48,21 @@ function GroupCallPlateBody(props: {
   setHidden: (hidden: boolean) => void
 }) {
   const state = subscribeExternal(useGroupCallStore.subscribe, useGroupCallStore.getState)
+  const livestream = subscribeExternal(useLivestreamStore.subscribe, useLivestreamStore.getState)
+  const mirror = subscribeExternal(subscribePeerMirror, peerMirrorVersion)
 
-  // расхождение 1
+  // `call_active` + `call_not_empty` карточки чата — расхождение 1
+  const isCallActive = createMemo(() => {
+    mirror()
+    return !!props.peerId() && hasCallParticipants(cachedChat(props.peerId()))
+  })
+
   const participants = createMemo(() => props.peerId() ? state().activeByChat[props.peerId()] ?? [] : [])
 
   const shouldShow = createMemo(() => !!(
+    isCallActive() &&
     participants().length &&
+    !livestream().activeByChat[props.peerId()] && // расхождение 1: эфир — плашка topbarLive
     state().peerId !== props.peerId() // расхождение 2
   ))
 

@@ -35,6 +35,9 @@ type Interactor struct {
 	scheduled    ScheduledRepo
 	topics       TopicRepo
 	groupCalls   GroupCallStore
+	// callNow — часы ограничителя снимков звонка; nil — time.Now (подменяются
+	// в тестах, чтобы окно в 5 с проходило одним вызовом).
+	callNow      func() time.Time
 	phoneCalls   PhoneCallStore
 	livestreams  LivestreamRepo
 	rtmpURL      string

@@ -137,6 +137,9 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	// ── dialogs + chats ─────────────────────────────────────────────────────
 	dialogs := make([]domain.Dialog, 0, len(records))
 	chats := make([]domain.Chat, 0, len(records))
+	// Звонки чатов страницы — ОДНИМ пакетным вопросом, уже после кэша списка:
+	// состояние живое и в кэш диалогов не попадает.
+	calls := i.callsOfDialogs(ctx, records)
 	users := make([]domain.UserReal, 0, len(records))
 	seen := make(map[int64]bool, len(records))
 	for _, d := range records {
@@ -156,6 +159,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		}
 		dialogs = append(dialogs, dialog)
 		if peerID.IsAnyChat() {
+			d.Call = domain.ActiveCall(calls[d.ChatID])
 			chats = append(chats, d.ToChannel())
 		}
 		if d.Peer != nil && !seen[d.Peer.ID] {

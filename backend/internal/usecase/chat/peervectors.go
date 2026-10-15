@@ -12,7 +12,15 @@ func (i *Interactor) chatCards(ctx context.Context, viewerID int64, ids []int64)
 	if i.groups == nil || len(ids) == 0 {
 		return nil, nil
 	}
-	return i.groups.Cards(ctx, viewerID, ids)
+	cards, err := i.groups.Cards(ctx, viewerID, ids)
+	if err != nil {
+		return nil, err
+	}
+	// Каждый вектор chats (история, разница, поиск, send_as-кандидаты, резолв
+	// @имени, обсуждения) собирается здесь, а клиент заменяет полный channel
+	// целиком — флаги звонка обязаны ехать с ним.
+	i.FillCallState(ctx, cards)
+	return cards, nil
 }
 
 // chatChannels — краткие `channel` чатов ids глазами зрителя: полная форма

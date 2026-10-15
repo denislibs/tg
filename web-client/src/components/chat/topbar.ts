@@ -83,14 +83,16 @@
 //  9. Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» помнится настройкой
 //     `chatContextMenuHintWasShown` нашего `useSettingsStore` (tweb `appSettings`).
 // 10. Кнопки звонка (расхождения З1, З3 блока H `lib/appImManager.ts`): `call_active` —
-//     идущий видеочат или эфир чата из сторов звонков (`groupCallStore.activeByChat`,
-//     `livestreamStore.activeByChat`), `groupCallsController.groupCall` — `groupCallStore.peerId`,
+//     флаг карточки чата (`chat.pFlags.call_active`, ставит сервер: идёт видеочат или эфир),
+//     `groupCallsController.groupCall` — `groupCallStore.peerId`,
 //     `rtmp_stream` звонка — `livestreamStore.activeByChat`, `manage_call` —
 //     `hasRights(chat, 'just_admin')`, `IS_GROUP_CALL_SUPPORTED` — `IS_CALL_SUPPORTED` (оба
 //     движка просят у браузера одно и то же), `getCachedFullUser` — `cachedPeerFull`.
 //     Поводы перепроверки: `peer_full_update` — зеркало полных карточек, `chat_update` —
-//     зеркало кратких, а смена `call_active` (у tweb едет в `chat_update`) — подписка на
-//     сторы звонков. Пункт меню «Stream With...» (`showRtmpStartStreamPopup`) — нет попапа
+//     зеркало кратких (смена `call_active` едет в нём; у tweb перепроверка только у канала
+//     `:1081-1090`, у нас и у группы — иначе кнопка видеочата группы не гаснет), а текущий
+//     звонок и эфир (`groupCallStore.peerId`, `livestreamStore.activeByChat`) — подписки на
+//     сторы. Пункт меню «Stream With...» (`showRtmpStartStreamPopup`) — нет попапа
 //     (`StreamSettingsPopup` снят на К-3, Б-18), в меню эфира только «Начать видеочат».
 //     Пункты ⋮ проверяет `ButtonMenuToggle` (`verify` пункта), поэтому `buttonsToVerify` —
 //     только кнопки звонка.
@@ -137,7 +139,7 @@ import { subscribeForumUnread } from '@core/dialogs/forumUnreadMirror'
 import canClearHistory from '@core/peers/canClearHistory'
 import canReportBot from '@core/peers/canReportBot'
 import { getDeleteButtonText } from '@core/peers/dialogType'
-import { isBroadcast } from '@core/peers/predicates'
+import { isBroadcast, isCallActive } from '@core/peers/predicates'
 import { hasRights } from '@core/peers/rights'
 import { cachedPeerFull, subscribeChatFullMirror } from '@core/chatFullCache'
 import IS_CALL_SUPPORTED from '@environment/callSupport'
@@ -161,12 +163,6 @@ import type Chat from './chat'
 import { ChatType } from './chatType'
 
 type ButtonToVerify = { element: HTMLElement, verify: () => boolean | Promise<boolean> }
-
-/** `chat.pFlags.call_active` (расхождение 10): идёт видеочат или эфир. */
-function isCallActive(peerId: PeerId) {
-  return !!useGroupCallStore.getState().activeByChat[peerId]?.length ||
-    !!useLivestreamStore.getState().activeByChat[peerId]
-}
 
 export default class ChatTopbar {
   public container!: HTMLDivElement
@@ -669,7 +665,7 @@ export default class ChatTopbar {
       return false
     }
 
-    if(isCallActive(this.peerId)) {
+    if(isCallActive(chat)) {
       return false
     }
 
@@ -702,7 +698,7 @@ export default class ChatTopbar {
       return false // * hide live stream top button
     }
     const needActiveCall = !canManageCall
-    if(!isCallActive(this.peerId)) {
+    if(!isCallActive(chat)) {
       return !needActiveCall
     }
 
@@ -796,8 +792,9 @@ export default class ChatTopbar {
         return
       }
 
+      const callChanged = isCallActive(chat) !== isCallActive(newChat)
       chat = newChat
-      if(!isBroadcast(chat)) {
+      if(!isBroadcast(chat) && !callChanged) {
         return
       }
 
@@ -836,21 +833,18 @@ export default class ChatTopbar {
       })
     })
 
-    // * `call_active` чата — расхождение 10
-    const onCallsChange = <T extends { activeByChat: Record<number, unknown> }>(state: T, prev: T) => {
-      if(state.activeByChat[this.peerId] !== prev.activeByChat[this.peerId]) {
-        this.verifyButtons()
-      }
-    }
+    // * текущий звонок (`groupCallsController.groupCall`) и `rtmp_stream` эфира — расхождение 10;
+    // * сам `call_active` приходит флагом карточки (подписка на зеркало выше)
     this.listenerSetter.addCleanup(useGroupCallStore.subscribe((state, prev) => {
       if(state.peerId !== prev.peerId) {
         this.verifyButtons()
-        return
       }
-
-      onCallsChange(state, prev)
     }))
-    this.listenerSetter.addCleanup(useLivestreamStore.subscribe(onCallsChange))
+    this.listenerSetter.addCleanup(useLivestreamStore.subscribe((state, prev) => {
+      if(state.activeByChat[this.peerId] !== prev.activeByChat[this.peerId]) {
+        this.verifyButtons()
+      }
+    }))
 
     return this
   }
