@@ -18,6 +18,13 @@ type ChecklistsRepo struct {
 
 func NewChecklistsRepo(pool *pgxpool.Pool) *ChecklistsRepo { return &ChecklistsRepo{pool: pool} }
 
+// Delete убирает чек-лист несостоявшейся отправки (отметки — каскадом); при ссылке из
+// сообщения внешний ключ messages.checklist_id не даст удалить.
+func (r *ChecklistsRepo) Delete(ctx context.Context, id int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `DELETE FROM checklists WHERE id = $1`, id)
+	return err
+}
+
 func (r *ChecklistsRepo) Create(ctx context.Context, c domain.Checklist) (domain.Checklist, error) {
 	items, err := json.Marshal(c.Items)
 	if err != nil {
