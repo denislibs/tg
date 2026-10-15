@@ -16,6 +16,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { playIncoming } from '../core/audio/sounds'
 import { incNotificationsCount } from './appBadge'
 import appImManager from '../lib/appImManager'
+import { getServerMessageId } from '../core/history/messageId'
 
 /** Входящее сообщение для уведомления — ЦЕЛЫЙ конструктор, а не выжимка из
  *  четырёх полей: кадр `new_message` несёт сообщение под ключом `message`
@@ -65,6 +66,15 @@ export function notifyIncomingMessage(evt: IncomingMsg, muted?: boolean): void {
   void show(chatTitle, body, evt)
 }
 
+/**
+ * `data` уведомления вкладки в форме `custom` пуша (tweb `PushNotificationObject`): клик по
+ * нему идёт через тот же `notificationclick` в `sw.js`, что и по серверному пушу, а адрес
+ * читает `appImManager.onPushClick`. Номер — серверный, как в теле пуша.
+ */
+export function foregroundNotificationData(evt: Pick<IncomingMsg, 'peerId' | 'id'>) {
+  return { custom: { peerId: String(evt.peerId), msg_id: String(getServerMessageId(evt.id)) } }
+}
+
 async function show(chatTitle: string, body: string, evt: IncomingMsg): Promise<void> {
   try {
     if (!('serviceWorker' in navigator)) return
@@ -79,7 +89,7 @@ async function show(chatTitle: string, body: string, evt: IncomingMsg): Promise<
       if (senderTitle) title = `${senderTitle} @ ${chatTitle}`
     }
     const reg = await navigator.serviceWorker.ready
-    await reg.showNotification(title, { body, tag: `chat-${evt.peerId}`, data: { peerId: evt.peerId } })
+    await reg.showNotification(title, { body, tag: `chat-${evt.peerId}`, data: foregroundNotificationData(evt) })
   } catch {
     /* нет SW / показ запрещён — молча пропускаем */
   }

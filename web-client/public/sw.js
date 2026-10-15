@@ -495,7 +495,7 @@ self.addEventListener('notificationclick', (event) => {
       pendingNotification = data
       for (const client of clientList) {
         if (!('focus' in client)) continue
-        client.focus()
+        Promise.resolve(client.focus()).catch(() => { /* фокус может быть отклонён браузером */ })
         if (locked) return // ждём push-ready после разблокировки
         client.postMessage({ type: 'push-click', payload: pendingNotification })
         pendingNotification = undefined
