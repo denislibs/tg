@@ -826,23 +826,57 @@ func (s *Service) audience(ctx context.Context, authorID, storyID int64, privacy
 //     разрыва переигровка журнала может вернуть автору более старый агрегат
 //     реакций до следующей загрузки истории.
 func (s *Service) notifyReaction(ctx context.Context, authorID, seq, storyID, userID int64, reaction string) {
+	s.emitViewerSnapshot(ctx, authorID, seq, storyID, userID)
+	if userID == authorID || s.publisher == nil {
+		return // реагирует сам автор: его тело ушло строкой журнала выше
+	}
 	rec, err := s.ownerRecord(ctx, authorID, storyID)
 	if err != nil {
 		log.Printf("story: reaction author=%d seq=%d: %v", authorID, seq, err)
 		return
 	}
-	peer := domain.NewPeer(domain.PeerID(authorID))
-	if userID == authorID {
-		// Реагирует сам автор: его тело и есть тело автора, и оно же — для его
-		// других устройств; живой кадр поверх журнала не нужен.
-		s.emitTo(ctx, []int64{authorID}, "story_update", domain.NewUpdateStory(peer, rec.ToStoryItem(true)))
-		return
+	if f := frame("story_update", domain.NewUpdateStory(
+		domain.NewPeer(domain.PeerID(authorID)), rec.ToStoryItem(true),
+	)); f != nil {
+		_ = s.publisher.PublishToUser(ctx, authorID, f)
 	}
-	s.emitTo(ctx, []int64{userID}, "story_update", domain.NewUpdateStory(peer, viewerRecord(rec, reaction).ToStoryItem(false)))
-	if s.publisher != nil {
-		if f := frame("story_update", domain.NewUpdateStory(peer, rec.ToStoryItem(true))); f != nil {
-			_ = s.publisher.PublishToUser(ctx, authorID, f)
+}
+
+// emitViewerSnapshot кладёт зрителю в журнал `updateStory` — СНИМОК истории его
+// глазами: тело читается из БД под блокировкой журнала зрителя (ownsync.EmitSnapshot),
+// поэтому у большего pts состояние не старее, а реакция и пометка «моя» берутся из
+// БД, а не из параметра запроса. Видимость проверяется заново: пока шла реакция,
+// автор мог сузить приватность или удалить историю — тогда вместо содержимого
+// уходит маркер `storyItemDeleted`.
+func (s *Service) emitViewerSnapshot(ctx context.Context, authorID, seq, storyID, userID int64) {
+	peer := domain.NewPeer(domain.PeerID(authorID))
+	err := s.emit.EmitSnapshot(ctx, userID, "story_update", func(ctx context.Context) (map[string]any, error) {
+		deleted := domain.NewUpdateStory(peer, domain.NewStoryItemDeleted(int(seq)))
+		ok, err := s.repo.Visible(ctx, storyID, userID)
+		if err != nil {
+			return nil, err
 		}
+		if !ok {
+			return bodyOf(deleted)
+		}
+		var rec domain.StoryRecord
+		if userID == authorID {
+			rec, err = s.ownerRecord(ctx, authorID, storyID)
+		} else {
+			if rec, err = s.repo.ByID(ctx, storyID, userID); err == nil {
+				err = s.attachMedia(ctx, []*domain.StoryRecord{&rec})
+			}
+		}
+		if errors.Is(err, domain.ErrNotFound) {
+			return bodyOf(deleted)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return bodyOf(domain.NewUpdateStory(peer, rec.ToStoryItem(userID == authorID)))
+	})
+	if err != nil {
+		log.Printf("story: viewer snapshot user=%d story=%d: %v", userID, storyID, err)
 	}
 }
 
@@ -917,7 +951,7 @@ func (s *Service) publishStory(ctx context.Context, authorID, storyID int64, toA
 		log.Printf("story: audience author=%d story=%d: %v", authorID, storyID, err)
 		return own, nil, nil
 	}
-	s.emitAudience(ctx, peer, rec, others)
+	s.emitAudience(ctx, authorID, rec, others)
 	return own, others, nil
 }
 
@@ -957,17 +991,30 @@ func frame(t string, d any) []byte {
 // emitAudience отправляет аудитории `updateStory` с телом под каждого: у tweb
 // сервер присылает зрителю историю С ЕГО `sent_reaction`, а `updateStory`
 // ЗАМЕНЯЕТ историю целиком, поэтому общее тело стёрло бы зрителю его реакцию.
-// Тела различаются только реакцией, и пачки получателей группируются по ней: не
-// реагировавшие получают общее тело, реагировавшие — по одному на эмодзи. Выборка
-// реакций читается один раз; ошибка не мешает общему телу уйти.
-func (s *Service) emitAudience(ctx context.Context, peer domain.Peer, rec domain.StoryRecord, others []int64) {
+// Тела различаются только реакцией, и получатели группируются по ней: не
+// реагировавшие получают общее тело, реагировавшие — по телу на эмодзи.
+//
+// Реакции читаются раньше записи, и реакция, легшая между чтением и записью,
+// осталась бы у зрителя стёртой (строка правки получила бы больший pts). Поэтому
+// после записи реакции читаются повторно, и тем, у кого они изменились, уходит
+// снимок из БД (emitViewerSnapshot). Окно сужено до записи, но не закрыто:
+// полная сериализация правки и реакции — в «Не закрыто».
+//
+// Без реакций (`ReactionsCount == 0`, в том числе у новой истории) выборка не идёт.
+// Не удалось прочитать реакции — аудитории не пишем: общее тело стёрло бы
+// неизвестные реакции, а прежняя версия истории у зрителей лишь устарела.
+func (s *Service) emitAudience(ctx context.Context, authorID int64, rec domain.StoryRecord, others []int64) {
 	if len(others) == 0 {
 		return
 	}
-	reactors, err := s.repo.Reactors(ctx, rec.ID)
-	if err != nil {
-		log.Printf("story: reactors story=%d: %v", rec.ID, err)
-		reactors = nil
+	peer := domain.NewPeer(domain.PeerID(authorID))
+	var reactors map[int64]string
+	if rec.ReactionsCount > 0 {
+		var err error
+		if reactors, err = s.repo.Reactors(ctx, rec.ID, others); err != nil {
+			log.Printf("story: reactors story=%d: %v", rec.ID, err)
+			return
+		}
 	}
 	byEmoji := map[string][]int64{}
 	for _, id := range others {
@@ -975,5 +1022,18 @@ func (s *Service) emitAudience(ctx context.Context, peer domain.Peer, rec domain
 	}
 	for emoji, ids := range byEmoji {
 		s.emitTo(ctx, ids, "story_update", domain.NewUpdateStory(peer, viewerRecord(rec, emoji).ToStoryItem(false)))
+	}
+	if rec.ReactionsCount == 0 {
+		return
+	}
+	after, err := s.repo.Reactors(ctx, rec.ID, others)
+	if err != nil {
+		log.Printf("story: reactors recheck story=%d: %v", rec.ID, err)
+		return
+	}
+	for _, id := range others {
+		if after[id] != reactors[id] {
+			s.emitViewerSnapshot(ctx, authorID, rec.Seq, rec.ID, id)
+		}
 	}
 }

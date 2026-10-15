@@ -664,8 +664,12 @@ func TestStoryRepo_Reactors(t *testing.T) {
 	if err := repo.SetReaction(ctx, id, v2, "❤"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.Reactors(ctx, id)
+	got, err := repo.Reactors(ctx, id, []int64{v1, v2, author})
 	if err != nil || len(got) != 2 || got[v1] != "👍" || got[v2] != "❤" {
 		t.Fatalf("Reactors = %v, %v", got, err)
+	}
+	// Только запрошенные: чужие реакции в карту не попадают.
+	if got, _ := repo.Reactors(ctx, id, []int64{v2}); len(got) != 1 || got[v2] != "❤" {
+		t.Fatalf("Reactors с фильтром = %v", got)
 	}
 }

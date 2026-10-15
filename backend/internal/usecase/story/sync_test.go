@@ -241,8 +241,10 @@ func TestSetReaction_ViewerGetsOwnBodyInJournal(t *testing.T) {
 	repo := &fakeRepo{visible: true, idByPair: map[[2]int64]int64{{alice, 5}: 900}, authors: map[int64]int64{900: alice}}
 	seedStory(repo, 900, func(r *domain.StoryRecord) {
 		r.Seq = 5
+		// как отдаёт БД после реакции: ByID(зритель) несёт его реакцию и пометку «моя»
 		r.ReactionsCount = 1
-		r.Reactions = []domain.ReactionCount{{Emoji: "👍", Count: 1}}
+		r.MyReaction = "👍"
+		r.Reactions = []domain.ReactionCount{{Emoji: "👍", Count: 1, Mine: true}}
 	})
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	log := useJournal(svc, newFakePublisher())
@@ -424,5 +426,137 @@ func TestEditStory_AudienceFailureRetractsNobody(t *testing.T) {
 	}
 	if n := len(log.rows[bob]); n != 0 {
 		t.Fatalf("при сбое выборки круга Боб получил %d строк; want 0", n)
+	}
+}
+
+// Пока шла реакция, автор мог сузить приватность или удалить историю: зрителю
+// вместо содержимого уходит маркер (видимость перепроверяется под замком журнала).
+func TestSetReaction_SnapshotRechecksVisibility(t *testing.T) {
+	repo := &fakeRepo{visible: true, idByPair: map[[2]int64]int64{{alice, 5}: 900}, authors: map[int64]int64{900: alice}}
+	seedStory(repo, 900, func(r *domain.StoryRecord) { r.Seq = 5; r.Caption = "secret" })
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	// canSee в начале SetReaction проходит, к снимку доступ уже закрыт
+	repo.visibleSeq = nil
+	repo.visibleFlip = true
+	if err := svc.SetReaction(context.Background(), alice, 5, bob, "👍"); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(log, bob, "story_update")
+	if len(rows) != 1 || storyOf(t, rows[0])["_"] != domain.StoryItemDeletedTag {
+		t.Fatalf("зрителю без доступа ушло содержимое: %v", log.rows[bob])
+	}
+}
+
+// Автор реагирует на свою историю: одна журнальная строка с его телом и ни одного
+// живого кадра поверх неё.
+func TestSetReaction_AuthorOnOwnStory(t *testing.T) {
+	repo := &fakeRepo{visible: true, idByPair: map[[2]int64]int64{{alice, 5}: 900}, authors: map[int64]int64{900: alice}}
+	seedStory(repo, 900, func(r *domain.StoryRecord) { r.Seq = 5; r.ViewsCount = 3; r.Privacy = "contacts" })
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
+	svc.SetPublisher(pub)
+	log := useJournal(svc, pub)
+	if err := svc.SetReaction(context.Background(), alice, 5, alice, "👍"); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(log, alice, "story_update")
+	if len(rows) != 1 {
+		t.Fatalf("строк у автора: %d; want 1", len(rows))
+	}
+	if v, _ := storyOf(t, rows[0])["views"].(map[string]any); v == nil || v["views_count"] != float64(3) {
+		t.Fatalf("тело автору без счёта просмотров: %v", storyOf(t, rows[0]))
+	}
+	if len(pub.frames[alice]) != 1 { // только кадр самой журнальной строки
+		t.Fatalf("кадров автору: %d; want 1", len(pub.frames[alice]))
+	}
+}
+
+// Разные реакции — разные тела: каждый получает только свою `sent_reaction`, а
+// не реагировавшие — общее тело.
+func TestEditStory_BodyPerReactorEmoji(t *testing.T) {
+	dave := int64(4)
+	repo := twoAuthorsRepo()
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "contacts", ReactionsCount: 2,
+		Reactions: []domain.ReactionCount{{Emoji: "❤", Count: 1}, {Emoji: "👍", Count: 1}}}
+	repo.reactors = map[int64]map[int64]string{10: {bob: "❤", dave: "👍"}}
+	svc := New(repo, &fakePartners{ids: []int64{bob, carol, dave}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	caption := "x"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, &caption, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64]string{bob: "❤", dave: "👍", carol: ""}
+	for uid, emoji := range want {
+		rows := rowsOf(log, uid, "story_update")
+		if len(rows) != 1 {
+			t.Fatalf("у %d строк %d", uid, len(rows))
+		}
+		sent, _ := storyOf(t, rows[0])["sent_reaction"].(map[string]any)
+		got := ""
+		if sent != nil {
+			got, _ = sent["emoticon"].(string)
+		}
+		if got != emoji {
+			t.Errorf("у %d sent_reaction=%q; want %q", uid, got, emoji)
+		}
+	}
+}
+
+// Не удалось прочитать реакции — аудитории не пишем: общее тело стёрло бы им
+// неизвестные реакции.
+func TestEditStory_ReactorsErrorSkipsAudience(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "contacts", ReactionsCount: 1}
+	repo.reactorsErr = errors.New("boom")
+	svc := New(repo, &fakePartners{ids: []int64{bob}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	caption := "x"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, &caption, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(log.rows[bob]) != 0 {
+		t.Fatalf("при сбое выборки реакций Боб получил тело: %v", log.rows[bob])
+	}
+	if len(rowsOf(log, alice, "story_update")) != 1 {
+		t.Fatal("автору тело должно уйти всегда")
+	}
+}
+
+// Новая история реакций не имеет: выборка реакций не идёт вовсе.
+func TestPost_NoReactorsQueryForNewStory(t *testing.T) {
+	repo := &fakeRepo{createID: 42}
+	seedStory(repo, 42)
+	svc := New(repo, &fakePartners{ids: []int64{bob}}, &fakeMedia{owner: alice}, &fakeTx{})
+	useJournal(svc, newFakePublisher())
+	if _, err := svc.Post(context.Background(), alice, 7, "hi", "contacts", nil, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	if repo.reactorsCalls != 0 {
+		t.Fatalf("Reactors вызван %d раз у истории без реакций", repo.reactorsCalls)
+	}
+}
+
+// Реакция легла между чтением реакций и записью правки: после записи реакции
+// читаются повторно, и опоздавшему зрителю уходит снимок из БД — иначе строка
+// правки (с большим pts) стёрла бы его реакцию.
+func TestEditStory_LateReactionGetsSnapshotAfterFanout(t *testing.T) {
+	repo := twoAuthorsRepo()
+	repo.byID[10] = domain.StoryRecord{ID: 10, Seq: 1, MediaID: 7, Privacy: "contacts", ReactionsCount: 1, MyReaction: "👍",
+		Reactions: []domain.ReactionCount{{Emoji: "👍", Count: 1, Mine: true}}}
+	repo.reactorsSeq = []map[int64]string{{}, {bob: "👍"}}
+	svc := New(repo, &fakePartners{ids: []int64{bob}}, &fakeMedia{}, &fakeTx{})
+	log := useJournal(svc, newFakePublisher())
+	caption := "x"
+	if _, err := svc.EditStory(context.Background(), alice, 1, alice, &caption, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(log, bob, "story_update")
+	if len(rows) != 2 {
+		t.Fatalf("у Боба строк %d; want 2 (тело правки и снимок)", len(rows))
+	}
+	last, _ := storyOf(t, rows[1])["sent_reaction"].(map[string]any)
+	if last == nil || last["emoticon"] != "👍" {
+		t.Fatalf("последняя строка Боба без его реакции: %v", storyOf(t, rows[1]))
 	}
 }

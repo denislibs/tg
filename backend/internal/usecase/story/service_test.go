@@ -43,6 +43,11 @@ type fakeRepo struct {
 	visibleSeq [][]int64
 	// visibleFailAt — номер вызова VisibleAmong (с 1), который падает.
 	reactors      map[int64]map[int64]string // история → пользователь → эмодзи
+	visibleFlip   bool
+	visibleClosed bool
+	reactorsSeq   []map[int64]string // ответы Reactors по порядку вызовов
+	reactorsCalls int
+	reactorsErr   error
 	visibleFailAt int
 	visibleCalls  int
 	visibleErr    error
@@ -159,6 +164,14 @@ func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 	return f.deleteErr
 }
 func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, error) {
+	if f.visibleFlip { // первый вызов проходит, дальше доступ закрыт (гонка с автором)
+		f.visibleFlip = false
+		f.visibleClosed = true
+		return f.visible, f.visibleErr
+	}
+	if f.visibleClosed {
+		return false, f.visibleErr
+	}
 	return f.visible, f.visibleErr
 }
 func (f *fakeRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
@@ -227,8 +240,23 @@ func (f *fakeRepo) AllowIDs(ctx context.Context, storyID int64) ([]int64, error)
 func (f *fakeRepo) Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error) {
 	return f.archiveItems, f.archiveErr
 }
-func (f *fakeRepo) Reactors(ctx context.Context, storyID int64) (map[int64]string, error) {
-	return f.reactors[storyID], nil
+func (f *fakeRepo) Reactors(ctx context.Context, storyID int64, userIDs []int64) (map[int64]string, error) {
+	f.reactorsCalls++
+	if len(f.reactorsSeq) > 0 {
+		next := f.reactorsSeq[0]
+		f.reactorsSeq = f.reactorsSeq[1:]
+		return next, nil
+	}
+	if f.reactorsErr != nil {
+		return nil, f.reactorsErr
+	}
+	out := map[int64]string{}
+	for _, id := range userIDs {
+		if e, ok := f.reactors[storyID][id]; ok {
+			out[id] = e
+		}
+	}
+	return out, nil
 }
 func (f *fakeRepo) ArchiveCount(ctx context.Context, ownerID int64) (int, error) {
 	return f.archiveTotal, nil

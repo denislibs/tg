@@ -397,10 +397,11 @@ func (r *StoryRepo) RemoveReaction(ctx context.Context, storyID, userID int64) e
 	return err
 }
 
-// Reactors — реакции на историю по пользователям (PK story_reactions).
-func (r *StoryRepo) Reactors(ctx context.Context, storyID int64) (map[int64]string, error) {
+// Reactors — реакции среди userIDs (PK story_reactions (story_id, user_id)):
+// память O(реагировавшие ∩ аудитория), а не O(все реакции истории).
+func (r *StoryRepo) Reactors(ctx context.Context, storyID int64, userIDs []int64) (map[int64]string, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT user_id, reaction FROM story_reactions WHERE story_id=$1`, storyID)
+		`SELECT user_id, reaction FROM story_reactions WHERE story_id=$1 AND user_id = ANY($2)`, storyID, userIDs)
 	if err != nil {
 		return nil, err
 	}
