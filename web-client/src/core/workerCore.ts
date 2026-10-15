@@ -763,11 +763,11 @@ export function createWorkerCore() {
     }
     else if (pred === 'updateRecentStickers' || pred === 'updateFavedStickers') {
       void stickers.onStickersUpdated(pred === 'updateRecentStickers' ? 'recent' : 'faved')
-        .catch((e) => console.warn(`[stickers] ${pred}: перечитать не удалось`, e))
+        .catch((e) => console.warn(`[stickers] ${pred}: refresh failed`, e))
       return
     }
     else if (pred === 'updateSavedGifs') {
-      void stickers.onGifsUpdated().catch((e) => console.warn('[stickers] updateSavedGifs: перечитать не удалось', e))
+      void stickers.onGifsUpdated().catch((e) => console.warn('[stickers] updateSavedGifs: refresh failed', e))
       return
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
