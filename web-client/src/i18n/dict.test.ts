@@ -659,8 +659,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `AreYouSureDeleteThisChatSavedMessages`.
 // Ф7-Г (платное сообщение с согласием): у ru +1 ключ tweb lang.ts:4907 —
 // `PaidMessages.PriceChanged` (плашка «Цена изменилась» над чатом).
+// М2-1 (ссылки-приглашения других админов, Б-6): у ru +4 ключа tweb lang.ts —
+// `LinksCreatedByOtherAdmins`, `LinksCreatedByThisAdmin`, `ManageLinks.Admin.Permanent.Desc`
+// и плюральный `InviteLinkCount` (`plural` 65 → 66).
 const COMPOSITION = {
-  ru: { keys: 1819, plural: 65 },
+  ru: { keys: 1823, plural: 66 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -870,10 +873,11 @@ const COMPOSITION = {
 // Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
 // Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
 // Ф-5 C2 — у ru +6 ключей превью ссылки (разбор — там же).
+// М2-1 — у ru +4 ключа ссылок других админов (разбор — там же).
 // М3-2 — у ru +2 ключа tweb lang.ts:1594, :4456: секция «Peer-to-Peer» вкладки «Звонки»
 // (`PrivacyP2PHeader`, `PrivacySettingsController.P2p.Desc`).
 const FINGERPRINT = {
-  ru: '8520b5c1',
+  ru: '86c29afe',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

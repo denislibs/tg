@@ -352,6 +352,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Patch("/chats/{peerID}/invite_links/{token}", gh.EditInvite)
 		pr.Delete("/chats/{peerID}/invite_links/{token}", gh.DeleteInvite)
 		pr.Delete("/chats/{peerID}/revoked_invite_links", gh.DeleteAllRevoked)
+		pr.Get("/chats/{peerID}/admins_with_invites", gh.AdminsWithInvites)
 		pr.Get("/chats/{peerID}/invite_links/{token}/importers", gh.InviteImporters)
 		pr.Post("/join/{token}", gh.Join)
 		pr.Get("/chats/{peerID}/join_requests", gh.JoinRequests)

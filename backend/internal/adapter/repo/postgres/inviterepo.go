@@ -51,9 +51,21 @@ func (r *InviteRepo) GetByToken(ctx context.Context, token string) (domain.Invit
 	return l, err
 }
 
-func (r *InviteRepo) List(ctx context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error) {
+// GetInChat — ссылка чата по токену, включая отозванную (владелец нужен и у неё).
+func (r *InviteRepo) GetInChat(ctx context.Context, chatID int64, token string) (domain.InviteLink, error) {
+	l, err := scanLink(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+inviteCols+` FROM invite_links WHERE chat_id=$1 AND token=$2`, chatID, token))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.InviteLink{}, domain.ErrNotFound
+	}
+	return l, err
+}
+
+// ListBy — ссылки, созданные createdBy в чате, по отзыву; новые первыми.
+func (r *InviteRepo) ListBy(ctx context.Context, chatID, createdBy int64, revoked bool) ([]domain.InviteLink, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+inviteCols+` FROM invite_links WHERE chat_id=$1 AND revoked=$2 ORDER BY id DESC`, chatID, revoked)
+		`SELECT `+inviteCols+` FROM invite_links WHERE chat_id=$1 AND created_by=$2 AND revoked=$3 ORDER BY id DESC`,
+		chatID, createdBy, revoked)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +77,26 @@ func (r *InviteRepo) List(ctx context.Context, chatID int64, revoked bool) ([]do
 			return nil, err
 		}
 		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// CountsByAdmin — по каждому создателю ссылок чата: неотозванные и отозванные.
+func (r *InviteRepo) CountsByAdmin(ctx context.Context, chatID int64) ([]domain.AdminInvites, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT created_by, count(*) FILTER (WHERE NOT revoked), count(*) FILTER (WHERE revoked)
+		   FROM invite_links WHERE chat_id=$1 GROUP BY created_by ORDER BY created_by`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.AdminInvites
+	for rows.Next() {
+		var a domain.AdminInvites
+		if err := rows.Scan(&a.AdminID, &a.Active, &a.Revoked); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
 	}
 	return out, rows.Err()
 }
@@ -94,10 +126,10 @@ func (r *InviteRepo) Delete(ctx context.Context, chatID int64, token string) err
 	return err
 }
 
-// DeleteAllRevoked hard-deletes every revoked link of the chat.
-func (r *InviteRepo) DeleteAllRevoked(ctx context.Context, chatID int64) error {
+// DeleteRevokedBy hard-deletes the revoked links of the chat created by createdBy.
+func (r *InviteRepo) DeleteRevokedBy(ctx context.Context, chatID, createdBy int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`DELETE FROM invite_links WHERE chat_id=$1 AND revoked=true`, chatID)
+		`DELETE FROM invite_links WHERE chat_id=$1 AND created_by=$2 AND revoked=true`, chatID, createdBy)
 	return err
 }
 
