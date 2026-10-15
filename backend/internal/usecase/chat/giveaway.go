@@ -209,6 +209,9 @@ func (i *Interactor) maybeFinishGiveaway(ctx context.Context, g domain.Giveaway)
 		return g, false
 	}
 	winners := pickWinners(ids, g.WinnersCount)
+	if g.PrizeKind == "premium" && !i.premiumGiveaways {
+		winners = nil // приз не выдаётся - победителей нет (иначе «вы выиграли» без приза)
+	}
 	balances := map[int64]int64{}
 	var claimed bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -288,24 +291,19 @@ func (i *Interactor) payOutGiveawayStars(ctx context.Context, g domain.Giveaway,
 	return nil
 }
 
-// refundGiveawayDeposits возвращает создателям вклад незавершённых звёздных
-// розыгрышей чата, который удаляется (строки розыгрышей уйдут каскадом).
-// Внутри транзакции удаления.
-func (i *Interactor) refundGiveawayDeposits(ctx context.Context, chatID int64, balances map[int64]int64) error {
+// claimGiveawayDeposits закрывает незавершённые звёздные розыгрыши удаляемого
+// чата и возвращает их вклады (захват строк: параллельное завершение не
+// выплатит тот же вклад второй раз). Внутри транзакции удаления.
+func (i *Interactor) claimGiveawayDeposits(ctx context.Context, chatID int64) ([]domain.Giveaway, error) {
 	if i.giveaways == nil || i.stars == nil {
-		return nil
+		return nil, nil
 	}
-	rows, err := i.giveaways.ActiveStarsByChat(ctx, chatID)
-	if err != nil || len(rows) == 0 {
-		return err
-	}
-	creators := make([]int64, 0, len(rows))
-	for _, g := range rows {
-		creators = append(creators, g.CreatorID)
-	}
-	if e := i.lockBalances(ctx, creators...); e != nil {
-		return e
-	}
+	return i.giveaways.ClaimActiveStarsByChat(ctx, chatID)
+}
+
+// creditGiveawayDeposits возвращает захваченные вклады создателям; строки их
+// балансов уже взяты вызывающим (общий проход lockBalances).
+func (i *Interactor) creditGiveawayDeposits(ctx context.Context, rows []domain.Giveaway, balances map[int64]int64) error {
 	for _, g := range rows {
 		b, e := i.stars.AddBalance(ctx, g.CreatorID, g.Deposit)
 		if e != nil {

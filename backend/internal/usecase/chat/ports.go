@@ -1179,8 +1179,10 @@ type GiveawayRepo interface {
 	// Participate добавляет участника в активный розыгрыш до срока (идемпотентно);
 	// закрытый или просроченный - domain.ErrForbidden.
 	Participate(ctx context.Context, giveawayID, userID int64) error
-	// ActiveStarsByChat - незавершённые звёздные розыгрыши чата с вкладом.
-	ActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error)
+	// ClaimActiveStarsByChat закрывает (захватом строк) незавершённые звёздные
+	// розыгрыши чата с вкладом и возвращает их: вклад вернёт вызывающий. Берёт
+	// блокировку строки чата - создание розыгрыша параллельно удалению не теряет вклад.
+	ClaimActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error)
 	IsParticipant(ctx context.Context, giveawayID, userID int64) (bool, error)
 	ParticipantCount(ctx context.Context, id int64) (int, error)
 	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)

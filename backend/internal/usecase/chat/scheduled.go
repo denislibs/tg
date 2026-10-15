@@ -1248,11 +1248,13 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 // refundScheduledBatch — возврат за набор строк одной транзакцией: строки балансов всех
 // участвующих берутся заранее по возрастанию user_id (lockBalances), иначе порядок строк
 // набора ломал бы общий порядок блокировок и взаимоблокировал бы возврат с платной отправкой.
-func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64) error {
+func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64, alsoLock ...int64) error {
 	if i.stars == nil {
 		return nil
 	}
-	var ids []int64
+	// alsoLock - балансы того же вызывающего (вклад розыгрышей при удалении
+	// канала): одним проходом с остальными, иначе общий порядок блокировок рвётся.
+	ids := append([]int64(nil), alsoLock...)
 	for _, r := range rows {
 		if r.PaidStars > 0 {
 			ids = append(ids, r.SenderID, r.PaidTo)
@@ -1290,7 +1292,7 @@ func (i *Interactor) lockScheduledForPublish(ctx context.Context, id int64) erro
 
 // refundScheduledOfChat — удаление группы: оплаченные отложенные чата
 // снимаются и возвращаются авторам (в транзакции удаления).
-func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64) error {
+func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64, alsoLock ...int64) error {
 	if i.scheduled == nil || i.stars == nil {
 		return nil
 	}
@@ -1298,7 +1300,7 @@ func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, ba
 	if err != nil {
 		return err
 	}
-	return i.refundScheduledBatch(ctx, rows, balances)
+	return i.refundScheduledBatch(ctx, rows, balances, alsoLock...)
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли

@@ -379,3 +379,52 @@ func TestGiveaway_ParticipateAfterEndAndPremiumGate(t *testing.T) {
 	}
 	_ = guestID
 }
+
+// Завершение розыгрыша и удаление канала одновременно: вклад выплачивается ровно
+// один раз (победителю и остаток создателю, либо целиком возвращается при
+// удалении), сумма балансов сохраняется. Гонку создаёт удержанная извне
+// блокировка баланса создателя: обе стороны доходят до неё и ждут.
+func TestGiveaway_FinishVsDeleteChannelPaysDepositOnce(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, ownerID := signUp(t, h, pool, "+79990007618")
+	guest, _ := signUp(t, h, pool, "+79990007619")
+	cid := newGiveawayChannel(t, h, owner, "gvfinishdel")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	authedReq(t, h, http.MethodPost, "/channels/join", guest, map[string]any{"username": "gvfinishdel"})
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var gid int64
+	if err := pool.QueryRow(t.Context(), `SELECT id FROM giveaways`).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	if rec := authedReq(t, h, http.MethodPost, "/giveaways/"+itoa(gid)+"/participate", guest, nil); rec.Code != http.StatusOK {
+		t.Fatalf("participate: %d", rec.Code)
+	}
+	expireGiveaway(t, pool, gid)
+
+	lock, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.Exec(t.Context(), `SELECT 1 FROM user_stars WHERE user_id=$1 FOR UPDATE`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); authedReq(t, h, http.MethodGet, "/giveaways/"+itoa(gid), guest, nil) }()
+	go func() { defer wg.Done(); authedReq(t, h, http.MethodDelete, "/chats/"+cid, owner, nil) }()
+	time.Sleep(1500 * time.Millisecond)
+	if err := lock.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	var sum int64
+	if err := pool.QueryRow(t.Context(), `SELECT COALESCE(sum(balance),0) FROM user_stars`).Scan(&sum); err != nil {
+		t.Fatal(err)
+	}
+	if sum != 1000 {
+		t.Fatalf("сумма балансов = %d, want 1000: вклад выплачен не ровно один раз", sum)
+	}
+}

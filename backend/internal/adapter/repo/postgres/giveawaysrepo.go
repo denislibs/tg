@@ -64,12 +64,20 @@ func (r *GiveawaysRepo) Participate(ctx context.Context, giveawayID, userID int6
 	return domain.ErrForbidden
 }
 
-// ActiveStarsByChat - незавершённые звёздные розыгрыши чата с вкладом (возврат
-// при удалении канала: строки уйдут каскадом вместе с ним).
-func (r *GiveawaysRepo) ActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error) {
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT id, creator_id, deposit FROM giveaways
-		  WHERE chat_id=$1 AND status='active' AND prize_kind='stars' AND deposit > 0`, chatID)
+// ClaimActiveStarsByChat закрывает незавершённые звёздные розыгрыши чата с
+// вкладом (условный UPDATE: из параллельного завершения и удаления чата вклад
+// получает ровно одна сторона) и возвращает их. Предварительно берёт
+// блокировку строки чата: создание розыгрыша (NextSeq) ждёт её и не теряет вклад
+// каскадом. Звать внутри транзакции.
+func (r *GiveawaysRepo) ClaimActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error) {
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx, `SELECT 1 FROM chats WHERE id=$1 FOR UPDATE`, chatID); err != nil {
+		return nil, err
+	}
+	rows, err := q.Query(ctx,
+		`UPDATE giveaways SET status='finished', winner_ids='[]'
+		  WHERE chat_id=$1 AND status='active' AND prize_kind='stars' AND deposit > 0
+		  RETURNING id, creator_id, deposit`, chatID)
 	if err != nil {
 		return nil, err
 	}
