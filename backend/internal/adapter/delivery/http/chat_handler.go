@@ -198,6 +198,7 @@ type geoLiveBody struct {
 
 // UpdateGeoLive — POST /chats/{chatID}/messages/{msgID}/geo_live: автор обновляет
 // координаты своей live-локации (watchPosition) или останавливает трансляцию.
+// Участникам правка уходит общим путём (edit_message с журналом), не отдельным кадром.
 func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
