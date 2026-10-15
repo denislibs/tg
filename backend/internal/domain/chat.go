@@ -35,6 +35,18 @@ type SendAsPeerRecord struct {
 	Chat *Channel
 }
 
+// CallState — идёт ли в чате групповой звонок. Оба флага схемы
+// (channel.call_active, channel.call_not_empty) ставятся вместе: звонок «идёт»,
+// пока в нём есть участники либо идёт эфир, и «пустого активного» звонка у нас
+// не бывает — конструктора groupCall с `participants_count` нет.
+type CallState struct {
+	Active   bool
+	NotEmpty bool
+}
+
+// ActiveCall — состояние чата, в котором звонок идёт.
+func ActiveCall(active bool) CallState { return CallState{Active: active, NotEmpty: active} }
+
 // DialogRecord — СТРОКА витрины списка чатов глазами зрителя, а не объект
 // провода. Наружу из неё собирается конструктор `dialog` вместе с векторами
 // контейнера messages.dialogs (см. mtdialog.go): сам dialog несёт только
@@ -83,6 +95,10 @@ type DialogRecord struct {
 	Folder FolderID
 	// IsForum — в группе включены темы (клиент рендерит список топиков).
 	IsForum bool
+	// Call — идёт ли в чате видеочат или эфир. Эфемерное состояние, не колонка
+	// и не часть выборки: страницу списка заполняет Interactor.FillCallState
+	// ПОСЛЕ кэша диалогов, поэтому в кэш оно не попадает.
+	Call CallState `json:"-"`
 	// TopMessageID — id ПОСЛЕДНЕГО сообщения чата (messages.id) с учётом
 	// пер-юзерной очистки истории (seq > cleared_max_seq); 0 — сообщений нет.
 	// Прежняя выжимка last_* (текст, тип, имя автора, признак пересылки…) с
@@ -184,6 +200,8 @@ func (d DialogRecord) ToChannel() Channel {
 		Forum:             d.IsForum,
 		HasLink:           d.DiscussionChatID != 0,
 		JoinToSend:        d.Settings.JoinToSend,
+		CallActive:        d.Call.Active,
+		CallNotEmpty:      d.Call.NotEmpty,
 	})
 	out.Username = d.Username
 	out.ParticipantsCount = d.MemberCount
@@ -344,6 +362,11 @@ type ChatRecord struct {
 	// default_banned_rights как права зрителя, и чужие настройки чата,
 	// слитые поверх лежащей карточки, блокировали ввод (A1-01).
 	Hidden bool
+	// Call — идёт ли в чате видеочат или эфир (channel.call_active/
+	// call_not_empty). Не колонка: заполняет Interactor.FillCallState перед
+	// каждым ToChannel (иначе клиент заменит лежащий канал без флагов и погасит
+	// иконку звонка).
+	Call CallState
 	// ThemeEmoticon — тема оформления чата (chat_theme.theme_id); "" — тема не
 	// задана. Прежде ехала полем каждой строки списка диалогов; в схеме её место
 	// — полная карточка (chatFull/channelFull.theme_emoticon), решение Р7.
@@ -460,6 +483,10 @@ func (c ChatRecord) ToChannel() Channel {
 		// обсуждением канала (Б-119).
 		HasLink:    c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
 		JoinToSend: c.Settings.JoinToSend,
+		// Звонок общий для всех зрителей, поэтому едет и в min-снимке без
+		// зрителя: клиент берёт из min общее (peersManager.mergeApiChat).
+		CallActive:   c.Call.Active,
+		CallNotEmpty: c.Call.NotEmpty,
 	})
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount

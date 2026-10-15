@@ -652,7 +652,7 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 `lib/appImManager.ts` до 5-3), активная строка открытого чата (`setDialogActive` по
 `navigationStore.selectedId`, `lastActiveElements`) и бейджи на аватарах узкой колонки
 (`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — порт `components/archiveDialog.solid.tsx`
-(custom element `<archive-dialog>` на зеркале диалогов, задача 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
+(custom element `<archive-dialog>` на зеркале диалогов, задача 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка (`setCallStatus`) — по флагам `call_active`/`call_not_empty` карточки чата (f6-call),
 потоковые черновики — О-97, контекст-меню строки — задача 1-2. React-список
 (`ChatList.tsx`, `ChatListItem.tsx`, `useDialogListSource.ts`) снесён. Значки у имени — `PeerTitle`
 `withIcons` (`components/generateTitleIcons.ts`: галочка, премиум/эмодзи-статус). Строка над

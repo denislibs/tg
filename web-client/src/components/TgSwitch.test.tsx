@@ -11,11 +11,10 @@ import TgSwitch from './TgSwitch'
 const label = (c: HTMLElement) => c.querySelector<HTMLElement>('label')!
 
 describe('TgSwitch', () => {
-  it('label.checkbox-field.checkbox-without-caption.checkbox-field-toggle > input + div.checkbox-toggle > div.checkbox-toggle-circle', () => {
+  it('label.checkbox-field.checkbox-field-toggle > input + div.checkbox-toggle > div.checkbox-toggle-circle', () => {
     const { container } = render(<TgSwitch checked={false} />)
     const l = label(container)
     expect(l.classList.contains('checkbox-field')).toBe(true)
-    expect(l.classList.contains('checkbox-without-caption')).toBe(true)
     expect(l.classList.contains('checkbox-field-toggle')).toBe(true)
 
     const [input, toggle] = Array.from(l.children) as HTMLElement[]

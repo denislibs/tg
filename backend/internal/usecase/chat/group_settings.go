@@ -215,7 +215,7 @@ const albumWindow = 30 * time.Second
 // смотрел только MediaID, и опрос, гео и контакт проходили мимо него.
 func (in SendInput) carriesMedia() bool {
 	return in.MediaID != nil || in.PollID != nil || in.ChecklistID != nil ||
-		in.GeoLat != nil || in.ContactUserID != nil || in.GiveawayID != nil
+		in.GeoLat != nil || in.Contact != nil || in.GiveawayID != nil
 }
 
 // ChatSettingsFor returns the chat's group settings (any member may read them).

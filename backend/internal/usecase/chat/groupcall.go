@@ -28,10 +28,15 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	if err := i.groupCalls.Join(ctx, chatID, userID); err != nil {
+	first, err := i.groupCalls.Join(ctx, chatID, userID)
+	if err != nil {
 		return nil, err
 	}
 	i.publishGroupCallUpdate(ctx, chatID, userID, "joined")
+	if first {
+		// Появился первый участник: у чата теперь call_active.
+		i.announceCallChange(ctx, chatID)
+	}
 	// без себя (на случай повторного join с другой вкладки)
 	out := make([]int64, 0, len(before))
 	for _, id := range before {
@@ -47,10 +52,15 @@ func (i *Interactor) LeaveGroupCall(ctx context.Context, chatID, userID int64) e
 	if i.groupCalls == nil {
 		return nil
 	}
-	if err := i.groupCalls.Leave(ctx, chatID, userID); err != nil {
+	last, err := i.groupCalls.Leave(ctx, chatID, userID)
+	if err != nil {
 		return err
 	}
 	i.publishGroupCallUpdate(ctx, chatID, userID, "left")
+	if last {
+		// Вышел последний участник: у чата снимается call_active.
+		i.announceCallChange(ctx, chatID)
+	}
 	return nil
 }
 

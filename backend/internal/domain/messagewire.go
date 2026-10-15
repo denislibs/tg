@@ -407,8 +407,9 @@ func (m Message) mediaWire() MessageMedia {
 		return NewMessageMediaPaidMedia(*m.PaidMediaPrice, m.Media, m.PaidMediaLocked)
 	case m.GeoLat != nil && m.GeoLng != nil:
 		return m.geoWire()
-	case m.ContactUserID != nil:
-		return NewMessageMediaContact(*m.ContactUserID, deref(m.ContactName), deref(m.ContactPhone))
+	case m.IsContact():
+		return NewMessageMediaContact(deref(m.ContactUserID), deref(m.ContactName), deref(m.ContactLastName),
+			deref(m.ContactPhone), deref(m.ContactVcard))
 	case m.Poll != nil:
 		return m.Poll.ToMedia()
 	case m.Checklist != nil:

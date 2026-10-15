@@ -366,7 +366,8 @@ export interface ChatEmpty { _: 'chatEmpty'; id: number }
 
 /**
  * chat#41cbf256 flags:# creator:flags.0?true left:flags.2?true
- * deactivated:flags.5?true … id:long title:string photo:ChatPhoto
+ * deactivated:flags.5?true call_active:flags.23?true call_not_empty:flags.24?true
+ * … id:long title:string photo:ChatPhoto
  * participants_count:int date:int version:int
  * admin_rights:flags.14?ChatAdminRights
  * default_banned_rights:flags.18?ChatBannedRights = Chat;
@@ -381,7 +382,7 @@ export interface ChatEmpty { _: 'chatEmpty'; id: number }
  */
 export interface ChatReal {
   _: 'chat'
-  pFlags?: Partial<{ creator: true; left: true; deactivated: true }>
+  pFlags?: Partial<{ creator: true; left: true; deactivated: true; call_active: true; call_not_empty: true }>
   id: number
   title: string
   photo: ChatPhoto
@@ -427,6 +428,10 @@ export interface Channel {
     slowmode_enabled: true
     forum: true
     has_link: true
+    /** идёт видеочат или эфир; `call_not_empty` — и в нём кто-то есть. Ставит
+     *  сервер (backend `usecase/chat/callstate.go`), `predicates.ts::isCallActive`. */
+    call_active: true
+    call_not_empty: true
   }>
   id: number
   title: string

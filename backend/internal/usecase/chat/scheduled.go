@@ -63,11 +63,12 @@ func scheduledParamsOf(in SendInput) domain.ScheduledParams {
 		PollID: in.PollID, ChecklistID: in.ChecklistID,
 		GeoLat: in.GeoLat, GeoLng: in.GeoLng, GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 		GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
-		ContactUserID: in.ContactUserID,
+		ContactUserID: in.contactUserID,
 		Silent:        in.Silent, Effect: in.Effect, PaidMediaPrice: in.PaidMediaPrice,
 		MediaSpoiler: in.MediaSpoiler, SendAsChatID: in.SendAsChatID,
 		WebPage: webPageInputPtr(in.WebPage),
 	}
+	p.ContactName, p.ContactLastName, p.ContactPhone, p.ContactVcard = in.contactFields()
 	// Согласие на плату переживает постановку: повторы платят по нему. Вход без
 	// согласия по TL (nil) повторы публикует без проверки, как строки до деплоя.
 	if !in.paidConsentNotRequired {
@@ -98,11 +99,11 @@ func sendInputOf(m domain.ScheduledMessage) SendInput {
 		PollID: p.PollID, ChecklistID: p.ChecklistID,
 		GeoLat: p.GeoLat, GeoLng: p.GeoLng, GeoTitle: p.GeoTitle, GeoAddress: p.GeoAddress,
 		GeoLivePeriod: p.GeoLivePeriod, GeoHeading: p.GeoHeading,
-		ContactUserID: p.ContactUserID,
-		Silent:        p.Silent, Effect: p.Effect, PaidMediaPrice: p.PaidMediaPrice,
+		Silent: p.Silent, Effect: p.Effect, PaidMediaPrice: p.PaidMediaPrice,
 		MediaSpoiler: p.MediaSpoiler, SendAsChatID: p.SendAsChatID,
 		ScheduleRepeatPeriod: m.RepeatPeriod,
 	}
+	in.Contact = p.ContactInput()
 	if p.AllowPaidStars != nil {
 		in.AllowPaidStars = *p.AllowPaidStars
 	} else {
@@ -210,13 +211,6 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 	}
 	row := scheduledRowOf(in)
 	row.SendAt, row.WhenOnline, row.RepeatPeriod = sendAt, whenOnline, repeat
-	// Карточка контакта — снимком для ленты (Send гидрирует её заново при
-	// публикации, как и при обычной отправке).
-	if in.Type == "contact" && in.ContactUserID != nil {
-		c := i.userCard(ctx, *in.ContactUserID)
-		name, phone := c.Title(), c.Phone
-		row.Params.ContactName, row.Params.ContactPhone = &name, &phone
-	}
 	stored, created, err := i.putScheduled(ctx, in.ChatID, in.SenderID, []domain.ScheduledMessage{row}, []SendInput{in})
 	if err != nil {
 		return domain.Message{}, err
@@ -334,7 +328,8 @@ func (i *Interactor) scheduleForward(ctx context.Context, in ForwardInput, srcID
 		p := domain.ScheduledParams{
 			ThreadRootID: in.ThreadRootID, PollID: c.PollID, ChecklistID: c.ChecklistID,
 			GeoLat: c.GeoLat, GeoLng: c.GeoLng, GeoTitle: c.GeoTitle, GeoAddress: c.GeoAddress,
-			ContactUserID: c.ContactUserID, ContactName: c.ContactName, ContactPhone: c.ContactPhone,
+			ContactUserID: c.ContactUserID, ContactName: c.ContactName, ContactLastName: c.ContactLastName,
+			ContactPhone: c.ContactPhone, ContactVcard: c.ContactVcard,
 			Silent: in.Silent, MediaSpoiler: c.MediaSpoiler, Fwd: fwd,
 		}
 		if c.GroupedID != nil {
@@ -741,7 +736,7 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	}
 	entities := domain.SanitizeEntities(in.Entities)
 	if in.Text == "" && m.MediaID == nil && m.Params.PollID == nil && m.Params.ChecklistID == nil &&
-		m.Params.GeoLat == nil && m.Params.ContactUserID == nil {
+		m.Params.GeoLat == nil && m.Params.ContactName == nil {
 		return nil, domain.ErrMessageEmpty
 	}
 	textChanged := in.Text != m.Text || !entitiesEqual(entities, m.Entities)

@@ -106,7 +106,7 @@ describe('тумблер строки остаётся в потоке (клас
     document.head.append(style)
     document.body.innerHTML = `<label class="row no-subtitle row-with-toggle"><div class="row-row row-title-row">
       <div class="row-title">Звук</div><div class="row-title row-title-right">
-      <label class="checkbox-field checkbox-without-caption checkbox-field-toggle ${extra}"></label>
+      <label class="checkbox-field checkbox-field-toggle ${extra}"></label>
       </div></div></label>`
     const pos = getComputedStyle(document.querySelector('.checkbox-field-toggle')!).position
     style.remove()

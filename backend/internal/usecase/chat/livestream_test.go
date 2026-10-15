@@ -30,6 +30,16 @@ func (r *fakeLivestreamRepo) Upsert(_ context.Context, ls domain.Livestream) err
 	return nil
 }
 
+func (r *fakeLivestreamRepo) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range chatIDs {
+		if r.rows[id].Active {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
 func newLivestreamTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeLivestreamRepo) {
 	t.Helper()
 	i, fg, _, _ := newChannelTestInteractor(t)

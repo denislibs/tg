@@ -38,6 +38,19 @@ import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
 import { applyForumUnread, resetForumUnreadMirror } from '@core/dialogs/forumUnreadMirror'
 import { AutonomousDialogList } from './dialogs'
+import groupCallActiveIcon from '@components/groupCallActiveIcon'
+
+// happy-dom без `RTCPeerConnection` — звонки «поддерживаются» явно (tweb `IS_GROUP_CALL_SUPPORTED`)
+vi.mock('@environment/callSupport', () => ({ default: true }))
+// канвас иконки в happy-dom без контекста — рисование проверяет её собственный тест
+vi.mock('@components/groupCallActiveIcon', () => ({
+  default: vi.fn((isActive = false) => ({
+    canvas: document.createElement('canvas'),
+    startAnimation: vi.fn(),
+    setActive: vi.fn(),
+    isActive,
+  })),
+}))
 
 const HOST_HEIGHT = 720
 /** `guessLoadCount()` в happy-dom: `max(768 / 64 * 1.25 | 0, 20)` */
@@ -526,6 +539,70 @@ describe('AutonomousDialogList: строка живёт событиями зе�
     const titleOf = (peerId: number) => xd().getDialogElement(peerId)!.dom.titleSpan
     expect(titleOf(1).querySelector('.verified-icon')).not.toBeNull()
     expect(titleOf(2).querySelector('.verified-icon')).toBeNull()
+  })
+})
+
+describe('Звонок в группе: иконка в строке (tweb `setCallStatus`/`processDialogForCallStatus`, dialogs.ts:721-760)', () => {
+  const GROUP = -100
+  const group = (pFlags: Record<string, true>) => ({
+    _: 'channel' as const, id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const, ...pFlags },
+  })
+  const callIcon = (peerId: number) => xd().getDialogElement(peerId)!.dom.listEl.querySelector('canvas.dialog-group-call-icon')
+
+  it('идёт звонок (call_active и call_not_empty) — иконка в строке и класс has-group-call-icon', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [group({ call_active: true, call_not_empty: true })] }])
+    seed([dialogOf(GROUP)])
+    await start()
+    await waitRows([GROUP])
+
+    await vi.waitFor(() => expect(callIcon(GROUP)).not.toBeNull())
+    const dom = xd().getDialogElement(GROUP)!.dom
+    expect(dom.listEl.classList.contains('has-group-call-icon')).toBe(true)
+    expect(dom.callIcon).toBeDefined()
+    expect(dom.callIcon!.startAnimation).toHaveBeenCalledTimes(1)
+  })
+
+  it('оба флага обязательны: call_active без call_not_empty (пустой звонок) иконки не даёт', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [group({ call_active: true })] }])
+    seed([dialogOf(GROUP)])
+    await start()
+    await waitRows([GROUP])
+    await settle()
+
+    expect(callIcon(GROUP)).toBeNull()
+    expect(xd().getDialogElement(GROUP)!.dom.listEl.classList.contains('has-group-call-icon')).toBe(false)
+  })
+
+  it('флаги пришли позже (снимок chat_update обновил зеркало) — иконка появляется; ушли — гаснет и снимается', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [group({})] }])
+    seed([dialogOf(GROUP)])
+    await start()
+    await waitRows([GROUP])
+    expect(callIcon(GROUP)).toBeNull()
+
+    applyPeerOps([{ op: 'upsert', peers: [group({ call_active: true, call_not_empty: true })] }])
+    await vi.waitFor(() => expect(callIcon(GROUP)).not.toBeNull())
+
+    applyPeerOps([{ op: 'upsert', peers: [group({})] }])
+    // иконка гаснет переходом (BADGE_TRANSITION_TIME) и только потом снимается
+    await vi.waitFor(() => expect(callIcon(GROUP)).toBeNull())
+    const dom = xd().getDialogElement(GROUP)!.dom
+    expect(dom.listEl.classList.contains('has-group-call-icon')).toBe(false)
+    expect(dom.callIcon).toBeUndefined()
+  })
+
+  it('открытие чата перекрашивает иконку (`setDialogActive` → `callIcon.setActive`), у личного чата иконки нет', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [group({ call_active: true, call_not_empty: true }), user(1)] }])
+    seed([dialogOf(GROUP), dialogOf(1)])
+    const m = await start()
+    await waitRows([GROUP, 1])
+    await vi.waitFor(() => expect(callIcon(GROUP)).not.toBeNull())
+    expect(callIcon(1)).toBeNull()
+
+    const dom = xd().getDialogElement(GROUP)!.dom
+    m.manager.setDialogActive(dom.listEl, true)
+    expect(dom.callIcon!.setActive).toHaveBeenLastCalledWith(true)
+    expect(vi.mocked(groupCallActiveIcon)).toHaveBeenCalled()
   })
 })
 

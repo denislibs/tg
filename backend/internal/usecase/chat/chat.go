@@ -35,6 +35,9 @@ type Interactor struct {
 	scheduled    ScheduledRepo
 	topics       TopicRepo
 	groupCalls   GroupCallStore
+	// callNow — часы ограничителя снимков звонка; nil — time.Now (подменяются
+	// в тестах, чтобы окно в 5 с проходило одним вызовом).
+	callNow      func() time.Time
 	phoneCalls   PhoneCallStore
 	livestreams  LivestreamRepo
 	rtmpURL      string
@@ -66,6 +69,7 @@ type Interactor struct {
 	suggested        SuggestedPostRepo
 	premium          PremiumRepo
 	contactPics      ContactPhotoLookup
+	phones           PhoneResolver
 	presence         PresenceQuery
 	botHub           *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
@@ -241,6 +245,10 @@ func (i *Interactor) SetSuggestedPosts(s SuggestedPostRepo) { i.suggested = s }
 // SetPremiumRepo подключает чтение/выдачу premium-статуса (для бустов и
 // premium-приза розыгрыша).
 func (i *Interactor) SetPremiumRepo(p PremiumRepo) { i.premium = p }
+
+// SetPhoneResolver подключает привязку визиток к аккаунтам по номеру (optional;
+// без него у присланной визитки user_id=0).
+func (i *Interactor) SetPhoneResolver(p PhoneResolver) { i.phones = p }
 
 // SetContactPhotos подключает справочник личных фото контактов (optional): в
 // списке диалогов аватар приватного пира подменяется личным фото владельца.
