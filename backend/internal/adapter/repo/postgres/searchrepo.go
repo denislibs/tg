@@ -13,7 +13,7 @@ import (
 
 // SearchRepo is a postgres-backed adapter implementing the chat usecase's
 // SearchRepo port: public-chat discovery by @username/title prefix (ordered by
-// member_count), user discovery by username/display_name prefix, the «own»
+// member_count), user discovery by username/display_name/contact-book name prefix, the «own»
 // split of those hits (OwnPeers), and
 // case-insensitive @username resolution for join-by-username. The username
 // column is citext, so ILIKE and equality are already case-insensitive. Like the
@@ -40,29 +40,49 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]in
 }
 
 // SearchUsers — пользователи по префиксу для contacts.search; карточки глазами
-// viewerID (userSeenCols). По @username ищется среди ВСЕХ, по имени профиля —
-// только среди СВОИХ (контакты зрителя ∪ собеседники по личке): иначе имя было
-// бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb отдаёт чужих
-// отдельным вектором `results`, appUsersManager.ts:1182-1214). Два запроса с
-// ORDER BY вместо одного OR: выдача детерминирована, а чужие по @username не
-// вытесняют своих из limit. Множество «своих» (то же правило, что ветки
-// пользователей в OwnPeers — менять вместе) материализуется в массив и берётся
-// по users_pkey: форма `IN (подзапрос)` планировщик разворачивал в полный
-// Seq Scan по users и chats. Слияние — «свои по имени» первыми, затем по
-// @username, без повторов, всего не больше limit.
+// viewerID (userSeenCols). По @username ищется среди ВСЕХ, по имени — только
+// среди СВОИХ (контакты зрителя ∪ собеседники по личке без скрытого диалога):
+// иначе имя было бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb
+// отдаёт чужих отдельным вектором `results`, appUsersManager.ts:1182-1214).
+//
+// Живой контакт находится по имени из книги зрителя (имя, фамилия, «имя
+// фамилия» — так он видит человека в списке, SeenBy) и по профильному; удалённый
+// аккаунт имени из книги не получает («Deleted Account»), поэтому по книге не
+// ищется. Собеседник по личке — по профильному. Совпадение — префикс СТРОКИ
+// (имя, фамилия или «имя фамилия» целиком), а не любого слова, как в локальном
+// индексе клиента (searchIndex.ts): серверный путь добирает то, чего нет в
+// загруженных контактах и диалогах.
+//
+// Два запроса с ORDER BY вместо одного OR: выдача детерминирована, а чужие по
+// @username не вытесняют своих из limit. Свои сортируются и отсекаются по
+// ВИДИМОМУ зрителю имени (книга, иначе профиль). Множество «своих» (то же
+// правило, что ветки пользователей в OwnPeers — менять вместе) материализуется
+// в массив и берётся по users_pkey: форма `IN (подзапрос)` и JOIN users
+// планировщик разворачивал в Seq Scan по users и chat_members. Слияние — «свои
+// по имени» первыми, затем по @username, без повторов, всего не больше limit.
 func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
 	own, err := r.queryUsers(ctx,
 		`SELECT `+userSeenCols("u.", "$3")+`
 		   FROM users u
-		  WHERE u.display_name ILIKE $1 AND u.id = ANY(ARRAY(
-		        SELECT ct.user_id FROM contacts ct WHERE ct.owner_id = $3
+		   LEFT JOIN contacts bk ON bk.owner_id = $3 AND bk.user_id = u.id AND u.deleted_at IS NULL
+		  WHERE u.id = ANY(ARRAY(
+		        SELECT ct.user_id FROM contacts ct JOIN users cu ON cu.id = ct.user_id AND cu.deleted_at IS NULL
+		         WHERE ct.owner_id = $3
+		           AND (ct.first_name ILIKE $1 OR ct.last_name ILIKE $1
+		                OR (ct.first_name || ' ' || ct.last_name) ILIKE $1)
 		        UNION
-		        SELECT other.user_id FROM chat_members me
-		          JOIN chat_members other ON other.chat_id = me.chat_id AND other.user_id <> $3
-		         WHERE me.user_id = $3
-		           AND EXISTS (SELECT 1 FROM chats c WHERE c.id = me.chat_id AND c.type = 'private')))
-		  ORDER BY u.display_name, u.id LIMIT $2`, like, limit, viewerID)
+		        SELECT o.user_id FROM (
+		              SELECT ct.user_id FROM contacts ct WHERE ct.owner_id = $3
+		              UNION
+		              SELECT other.user_id FROM chat_members other
+		               WHERE other.user_id <> $3 AND other.chat_id = ANY(ARRAY(
+		                     SELECT me.chat_id FROM chat_members me JOIN chats c ON c.id = me.chat_id
+		                      WHERE me.user_id = $3 AND NOT me.dialog_hidden AND c.type = 'private'))
+		        ) o JOIN users ou ON ou.id = o.user_id
+		         WHERE ou.display_name ILIKE $1))
+		  ORDER BY COALESCE(NULLIF(btrim(bk.first_name || ' ' || bk.last_name), ''), u.display_name), u.id LIMIT $2`,
+		like, limit, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +169,7 @@ func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64
 
 // OwnPeers делит попадания поиска пиров на «свои» (my_results contacts.search):
 // чаты, где viewerID участник, и пользователи из его контактов или с общим
-// личным чатом. Один запрос на всю выдачу — три ветки UNION по индексам:
+// личным чатом, не скрытым зрителем (dialog_hidden). Один запрос на всю выдачу — три ветки UNION по индексам:
 // PK chat_members (chat_id, user_id), PK contacts (owner_id, user_id) и
 // idx_chat_members_user для личных чатов зрителя.
 func (r *SearchRepo) OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (map[int64]bool, map[int64]bool, error) {
@@ -167,7 +187,7 @@ func (r *SearchRepo) OwnPeers(ctx context.Context, viewerID int64, chatIDs, user
 		 SELECT false, other.user_id FROM chat_members me
 		   JOIN chats c ON c.id = me.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = me.chat_id AND other.user_id <> $1
-		  WHERE me.user_id = $1 AND other.user_id = ANY($3)`,
+		  WHERE me.user_id = $1 AND NOT me.dialog_hidden AND other.user_id = ANY($3)`,
 		viewerID, chatIDs, userIDs)
 	if err != nil {
 		return nil, nil, err

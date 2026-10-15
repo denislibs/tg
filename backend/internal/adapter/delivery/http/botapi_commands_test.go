@@ -36,7 +36,7 @@ func newBotAPIEnv(t *testing.T, phone string) botAPIEnv {
 	chatUC := newChatUC(pool)
 	chatUC.SetBots(pgadapter.NewBotRepo(pool))
 	chatUC.SetBotAPI(pgadapter.NewBotAPIRepo(pool))
-	h := NewRouter(newAuthUC(pool), chatUC, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), chatUC, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, aliceID := signUp(t, h, pool, phone)
 	acc, err := pgadapter.NewBotAPIRepo(pool).CreateBot(context.Background(), aliceID, "Бот", "cmd_test_bot")
 	if err != nil {

@@ -427,6 +427,26 @@ paths:
                   hint: { type: string }
         "401": { description: web_auth_token_invalid, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /auth/web_token/cancel:
+    post:
+      tags: [auth]
+      summary: Burn a web auth token the client will not import (auth.cancelWebTokenAuthorization)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [web_auth_token]
+              properties:
+                web_auth_token: { type: string }
+      responses:
+        "200": { description: boolTrue (also for an unknown or already burned token) }
+        "400": { description: invalid body, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "429": { description: too many requests (bucket shared with /auth/sign_import), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "503": { description: web token login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /auth/web_token:
     post:
       tags: [auth]

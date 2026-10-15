@@ -212,6 +212,28 @@ describe('confirmationPopup — zIndex, раунд правок 2 (задача 
 })
 
 describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-124)', () => {
+  it('строка — label: щелчок по подписи переключает чекбокс, колбэк кнопки видит отметку', () => {
+    const onDelete = vi.fn()
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-click', {
+      titleLangKey: 'DeleteSingleMessagesTitle',
+      buttons: [{ langKey: 'Delete', isDanger: true, callback: onDelete }],
+      checkboxes: [{ text: 'DeleteMessagesOptionAlso', textArgs: ['Maya'] }],
+    })
+    popup.show()
+
+    const row = document.querySelector<HTMLElement>('.popup-checkbox-click .popup-peer-checkbox-row')!
+    expect(row.tagName).toBe('LABEL')
+    const input = row.querySelector<HTMLInputElement>('.checkbox-field-input')!
+    expect(input.checked).toBe(false)
+    row.querySelector<HTMLElement>('.row-title')!.click()
+    expect(input.checked).toBe(true)
+
+    document.querySelector<HTMLElement>('.popup-checkbox-click .popup-button.danger')!
+      .dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    expect(onDelete).toHaveBeenCalledWith(new Set(['DeleteMessagesOptionAlso']))
+    popup.forceHide()
+  })
+
   it('checkboxes непуст — have-checkbox на container, label в шапке между описанием и кнопками', () => {
     const popup = PopupElement.createPopup(PopupPeer, 'popup-checkbox-test', {
       titleLangKey: 'DeleteSingleMessagesTitle',
@@ -224,13 +246,18 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
     const container = document.querySelector('.popup-checkbox-test .popup-container')!
     expect(container.classList.contains('have-checkbox')).toBe(true) // peer.ts:104
 
-    const label = document.querySelector('.popup-checkbox-test .checkbox-field')!
-    expect(label.querySelector('.checkbox-caption')!.textContent).toBe('Also delete for Maya')
+    // peer.tsx:144-156 — подпись в `.row-title` строки, чекбокс без подписи в `.row-checkbox-field`
+    const row = document.querySelector('.popup-checkbox-test .row.popup-peer-checkbox-row')!
+    expect(row.querySelector('.row-title')!.textContent).toBe('Also delete for Maya')
+    const field = row.querySelector('.row-checkbox-field')!
+    expect(field.classList.contains('checkbox-field')).toBe(true)
+    expect(field.querySelector('.checkbox-caption')).toBeNull()
+    expect(row.querySelector('.row-title')!.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     // порядок в шапке: описание, потом чекбокс, потом кнопки (peer.ts:63-126)
     const kids = Array.from(container.children).map((c) =>
       c.classList.contains('popup-description') ? 'description'
-        : c.classList.contains('checkbox-field') ? 'checkbox'
+        : c.classList.contains('popup-peer-checkbox-row') ? 'checkbox'
           : c.classList.contains('popup-buttons') ? 'buttons'
             : c.classList.contains('popup-header') ? 'header'
               : c.tagName)
@@ -310,8 +337,8 @@ describe('confirmationPopup — checkbox (confirmationPopup.ts:10, :22-24, :36; 
       button: { langKey: 'OK' },
     })
 
-    const label = document.querySelector('.popup-confirmation .checkbox-field')!
-    expect(label.querySelector('.checkbox-caption')!.textContent).toBe('Don\'t ask again')
+    const row = document.querySelector('.popup-confirmation .popup-peer-checkbox-row')!
+    expect(row.querySelector('.row-title')!.textContent).toBe('Don\'t ask again')
     document.querySelector<HTMLInputElement>('.popup-confirmation .checkbox-field-input')!.click()
     click('.popup-confirmation .popup-button') // первая — подтверждение, «Отмена» добавлена после
 

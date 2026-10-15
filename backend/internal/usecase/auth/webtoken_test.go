@@ -115,3 +115,33 @@ func TestLoginSteps_Unavailable(t *testing.T) {
 		t.Fatalf("NewWebAuthToken = %v, want ErrLoginStepsUnavailable", err)
 	}
 }
+
+// Отмена непринятого веб-токена (tweb appAccountManager.ts:363-375): токен
+// умирает, обмен по нему — ErrNotFound; неизвестный токен — не ошибка.
+func TestCancelWebAuthToken(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+
+	owner := registerUser(t, i, "+79990030011", "Отмена", "", "web", "browser")
+	token, _, err := i.NewWebAuthToken(ctx, owner.User.ID)
+	if err != nil {
+		t.Fatalf("NewWebAuthToken: %v", err)
+	}
+	if err := i.CancelWebAuthToken(ctx, token); err != nil {
+		t.Fatalf("CancelWebAuthToken: %v", err)
+	}
+	if _, err := i.SignImport(ctx, token, "desktop", "web"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("обмен отменённого токена = %v, want ErrNotFound", err)
+	}
+	if err := i.CancelWebAuthToken(ctx, "deadbeef"); err != nil {
+		t.Fatalf("неизвестный токен = %v, want nil", err)
+	}
+}
+
+func TestCancelWebAuthToken_StepsUnavailable(t *testing.T) {
+	i, _, _, _ := newInteractor()
+	i.steps = nil
+	if err := i.CancelWebAuthToken(context.Background(), "x"); !errors.Is(err, ErrLoginStepsUnavailable) {
+		t.Fatalf("без steps = %v, want ErrLoginStepsUnavailable", err)
+	}
+}

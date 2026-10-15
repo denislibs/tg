@@ -19,7 +19,7 @@ import (
 func TestStarReaction_RandomIDIdempotent(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signUp(t, h, pool, "+79990140001")
 	tokenB, idB := signUp(t, h, pool, "+79990140002")
 	peerA := itoa(createdPeerFrom(t, authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})))
@@ -91,7 +91,7 @@ func TestUnlockPaidMedia_ConcurrentChargesOnce(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
 	uc.SetPaidMedia(&barrierPaidMedia{PaidMediaRepo: pgadapter.NewPaidMediaRepo(pool), want: 4, release: make(chan struct{})})
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signUp(t, h, pool, "+79990140011")
 	tokenB, idB := signUp(t, h, pool, "+79990140012")
 	chatID, err := uc.CreatePrivateChat(context.Background(), idA, idB)
@@ -164,7 +164,7 @@ func (b *barrierPaidMedia) UnlockedByIDs(ctx context.Context, userID int64, ids 
 func TestPollsChecklistsRepo_DeleteOrphanAndFKGuard(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	_, idA := signUp(t, h, pool, "+79990140021")
 	_, idB := signUp(t, h, pool, "+79990140022")
 	chatID, err := uc.CreatePrivateChat(context.Background(), idA, idB)
@@ -217,7 +217,7 @@ func TestPollsChecklistsRepo_DeleteOrphanAndFKGuard(t *testing.T) {
 func TestStarReaction_RolledBackAttemptDoesNotConsumeKey(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signUp(t, h, pool, "+79990140031")
 	tokenB, idB := signUp(t, h, pool, "+79990140032")
 	peerA := itoa(createdPeerFrom(t, authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})))

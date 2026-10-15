@@ -440,6 +440,34 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 	writeSignInResult(w, res)
 }
 
+// CancelWebToken сжигает веб-токен, который клиент не стал импортировать
+// (auth.cancelWebTokenAuthorization). Ответ — boolTrue и для токена, который
+// сервер уже забыл. Ведро то же, что у SignImport: отмена не даёт лишних попыток
+// перебора. Следствие: если импорт получил 429, отмена получит его же — токен
+// доживёт до своего TTL (5 мин); принято планом М1-4.
+func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		WebAuthToken string `json:"web_auth_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.WebAuthToken == "" {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if !h.limiter.allow("import-ip:"+clientIP(r), 0.2, 5) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
+		return
+	}
+	switch err := h.svc.CancelWebAuthToken(r.Context(), body.WebAuthToken); {
+	case errors.Is(err, usecaseauth.ErrLoginStepsUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "web token login unavailable")
+		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "cancel failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
 // NewWebAuthToken выпускает одноразовый веб-токен входа для текущей сессии —
 // его отдают другому веб-клиенту в ссылке #?tgWebAuthToken=…
 func (h *AuthHandler) NewWebAuthToken(w http.ResponseWriter, r *http.Request) {

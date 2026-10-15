@@ -1,10 +1,9 @@
 // Тумблер — разметка tweb `checkboxField.ts:36-133` (ветка `options.toggle`):
-//   label.checkbox-field.checkbox-without-caption.checkbox-field-toggle
+//   label.checkbox-field.checkbox-field-toggle
 //        [.checkbox-field-toggle-restriction][.checkbox-disabled][.disable-hover]
 //     > input.checkbox-field-input[type=checkbox]
 //     + div.checkbox-toggle > div.checkbox-toggle-circle
-// Подписей мы не рендерим, поэтому `checkbox-without-caption` стоит всегда
-// (tweb вешает его, когда нет `options.text`). Вся геометрия и анимация —
+// Подписей у тумблера нет (tweb HEAD: чекбокс — только контрол). Вся геометрия и анимация —
 // CSS из портированного `styles/tweb/_checkbox.scss`; своего модуля нет.
 //
 // Отступление от tweb (то же, что у `shared/ui/Checkbox`): клик по <label>
@@ -30,7 +29,6 @@ export default function TgSwitch({
     <label
       className={classNames(
         'checkbox-field',
-        'checkbox-without-caption',
         'checkbox-field-toggle',
         restriction ? 'checkbox-field-toggle-restriction' : '',
         disabled ? 'checkbox-disabled' : '',
