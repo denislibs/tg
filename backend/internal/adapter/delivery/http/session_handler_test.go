@@ -514,3 +514,198 @@ func TestSessions_AppVersionFollowsClientUpdates(t *testing.T) {
 		t.Errorf("app_version = %q; обновлённый клиент обязан обновить строку сессии", got)
 	}
 }
+
+// ── «Новый вход»: unconfirmed в списке и POST /sessions/{id}/settings ────────
+
+const freshChangeForbidden406 = `{"_":"error","code":406,"text":"FRESH_CHANGE_AUTHORIZATION_FORBIDDEN"}`
+
+// sessionFlags — pFlags сессии с данным hash глазами токена.
+func sessionFlags(t *testing.T, h http.Handler, token string, hash int64) map[string]bool {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/sessions", token, nil)
+	var listed sessionList
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	for _, a := range listed.Authorizations {
+		if a.Hash == hash {
+			return a.PFlags
+		}
+	}
+	t.Fatalf("сессия %d не найдена в списке: %s", hash, rec.Body.String())
+	return nil
+}
+
+func deviceIDOf(t *testing.T, pool *pgxpool.Pool, token string) int64 {
+	t.Helper()
+	var id int64
+	if err := pool.QueryRow(context.Background(),
+		`SELECT id FROM devices WHERE token_hash = $1`, domain.HashToken(token)).Scan(&id); err != nil {
+		t.Fatalf("deviceIDOf: %v", err)
+	}
+	return id
+}
+
+func settingsConfirm() map[string]any { return map[string]any{"confirmed": true} }
+
+// Вторая сессия аккаунта приходит неподтверждённой: флаг виден в списке у обеих
+// сторон (у текущей строки тоже — клиент отфильтрует её сам, tweb :285); первая
+// сессия аккаунта подтверждена.
+func TestSessions_SecondLoginIsUnconfirmedInList(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000060")
+	tokenB, _ := signUp(t, h, pool, "+79990000060")
+	idA, idB := deviceIDOf(t, pool, tokenA), deviceIDOf(t, pool, tokenB)
+
+	if f := sessionFlags(t, h, tokenA, idB); !f["unconfirmed"] || f["current"] {
+		t.Fatalf("B глазами A: %v, want unconfirmed без current", f)
+	}
+	if f := sessionFlags(t, h, tokenA, 0); f["unconfirmed"] || !f["current"] {
+		t.Fatalf("A глазами A: %v, want current без unconfirmed", f)
+	}
+	if f := sessionFlags(t, h, tokenB, 0); !f["unconfirmed"] || !f["current"] {
+		t.Fatalf("B глазами B: %v, want current+unconfirmed", f)
+	}
+	_ = idA
+}
+
+// Флаг гаснет сам через 7 суток (tweb authorizationAutoconfirmPeriod.ts).
+func TestSessions_UnconfirmedExpiresAfterAutoconfirmPeriod(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000061")
+	tokenB, _ := signUp(t, h, pool, "+79990000061")
+	idB := deviceIDOf(t, pool, tokenB)
+
+	ageSession(t, pool, tokenB, domain.AuthorizationAutoconfirmPeriod-time.Hour)
+	if f := sessionFlags(t, h, tokenA, idB); !f["unconfirmed"] {
+		t.Fatalf("6 суток 23 часа: %v, want unconfirmed", f)
+	}
+	ageSession(t, pool, tokenB, domain.AuthorizationAutoconfirmPeriod+time.Hour)
+	if f := sessionFlags(t, h, tokenA, idB); f["unconfirmed"] {
+		t.Fatalf("7 суток и час: %v, флаг должен погаснуть", f)
+	}
+}
+
+func TestSessions_Settings_ConfirmsSession(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000062")
+	tokenB, _ := signUp(t, h, pool, "+79990000062")
+	ageSession(t, pool, tokenA, 48*time.Hour)
+	idB := deviceIDOf(t, pool, tokenB)
+
+	rec := authedReq(t, h, http.MethodPost, "/sessions/"+itoa(idB)+"/settings", tokenA, settingsConfirm())
+	if rec.Code != http.StatusOK || !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("settings = %d %s; ожидался boolTrue", rec.Code, rec.Body.String())
+	}
+	if f := sessionFlags(t, h, tokenA, idB); f["unconfirmed"] {
+		t.Fatalf("после подтверждения флаг остался: %v", f)
+	}
+	// Повторное подтверждение — не ошибка.
+	rec = authedReq(t, h, http.MethodPost, "/sessions/"+itoa(idB)+"/settings", tokenA, settingsConfirm())
+	if rec.Code != http.StatusOK || !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("повторное settings = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessions_Settings_FreshCurrentForbidden(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000063")
+	tokenB, _ := signUp(t, h, pool, "+79990000063")
+	idB := deviceIDOf(t, pool, tokenB)
+
+	rec := authedReq(t, h, http.MethodPost, "/sessions/"+itoa(idB)+"/settings", tokenA, settingsConfirm())
+	if rec.Code != http.StatusNotAcceptable || strings.TrimSpace(rec.Body.String()) != freshChangeForbidden406 {
+		t.Fatalf("settings свежей = %d %s; ожидался 406 FRESH_CHANGE_AUTHORIZATION_FORBIDDEN", rec.Code, rec.Body.String())
+	}
+	if f := sessionFlags(t, h, tokenA, idB); !f["unconfirmed"] {
+		t.Fatal("свежая сессия сняла флаг несмотря на отказ")
+	}
+}
+
+func TestSessions_Settings_OwnAndZeroAndUnknown(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000064")
+	_, _ = signUp(t, h, pool, "+79990000064")
+	ageSession(t, pool, tokenA, 48*time.Hour)
+	idA := deviceIDOf(t, pool, tokenA)
+
+	for _, id := range []int64{0, idA} {
+		rec := authedReq(t, h, http.MethodPost, "/sessions/"+itoa(id)+"/settings", tokenA, settingsConfirm())
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "current session is not confirmable by hash") {
+			t.Fatalf("settings id=%d = %d %s; ожидался 400", id, rec.Code, rec.Body.String())
+		}
+	}
+	rec := authedReq(t, h, http.MethodPost, "/sessions/987654321/settings", tokenA, settingsConfirm())
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "session not found") {
+		t.Fatalf("settings неизвестной = %d %s; ожидался 404", rec.Code, rec.Body.String())
+	}
+}
+
+// Чужая сессия адресуется так же, как несуществующая: 404, флаг не тронут.
+func TestSessions_Settings_ForeignSessionNotFound(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000065")
+	_, _ = signUp(t, h, pool, "+79990000065")
+	tokenC, _ := signUp(t, h, pool, "+79990000066")
+	tokenD, _ := signUp(t, h, pool, "+79990000066")
+	ageSession(t, pool, tokenA, 48*time.Hour)
+	idD := deviceIDOf(t, pool, tokenD)
+
+	rec := authedReq(t, h, http.MethodPost, "/sessions/"+itoa(idD)+"/settings", tokenA, settingsConfirm())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("settings чужой = %d %s; ожидался 404", rec.Code, rec.Body.String())
+	}
+	if f := sessionFlags(t, h, tokenC, idD); !f["unconfirmed"] {
+		t.Fatal("чужой пользователь снял флаг")
+	}
+}
+
+// Без confirmed (или с false) менять нечего: boolTrue, ничего не затронуто —
+// даже у свежей текущей сессии.
+func TestSessions_Settings_WithoutConfirmedIsNoop(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000067")
+	tokenB, _ := signUp(t, h, pool, "+79990000067")
+	idB := deviceIDOf(t, pool, tokenB)
+
+	for _, body := range []any{map[string]any{}, map[string]any{"confirmed": false}, nil} {
+		rec := authedReq(t, h, http.MethodPost, "/sessions/"+itoa(idB)+"/settings", tokenA, body)
+		if rec.Code != http.StatusOK || !isBoolTrue(rec.Body.Bytes()) {
+			t.Fatalf("settings %v = %d %s; ожидался boolTrue", body, rec.Code, rec.Body.String())
+		}
+	}
+	if f := sessionFlags(t, h, tokenA, idB); !f["unconfirmed"] {
+		t.Fatal("флаг снят пустым телом")
+	}
+}
+
+func TestSessions_Settings_MalformedBody(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000068")
+	_, _ = signUp(t, h, pool, "+79990000068")
+	ageSession(t, pool, tokenA, 48*time.Hour)
+
+	req := httptest.NewRequest(http.MethodPost, "/sessions/5/settings", strings.NewReader("{oops"))
+	req.Header.Set("Authorization", "Bearer "+tokenA)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("битый JSON = %d %s; ожидался 400", rec.Code, rec.Body.String())
+	}
+}
+
+// Строки текущей сессии нет в БД, а кэш токен пропускает — 401 no session.
+func TestSessions_Settings_CurrentRowGone_Unauthorized(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, userID := signUp(t, h, pool, "+79990000069")
+	tokenB, _ := signUp(t, h, pool, "+79990000069")
+	idB := deviceIDOf(t, pool, tokenB)
+	_ = tokenA
+
+	buf, _ := json.Marshal(settingsConfirm())
+	req := httptest.NewRequest(http.MethodPost, "/sessions/"+itoa(idB)+"/settings", strings.NewReader(string(buf)))
+	req = req.WithContext(WithUser(req.Context(), domain.UserRecord{ID: userID}, 987654321))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"text":"no session"`) {
+		t.Fatalf("settings = %d %s; ожидался 401 no session", rec.Code, rec.Body.String())
+	}
+}

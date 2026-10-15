@@ -158,6 +158,26 @@ type Device struct {
 	LastActive time.Time
 	IP         string // sign-in IP (best effort)
 	Location   string // human place from GeoIP, when available
+	// Unconfirmed — вход, о котором владельца ещё не спросили или он не ответил
+	// («новый вход», флаг unconfirmed у authorization, tweb
+	// appAccountManager.ts:277-294). Ставит сервер при входе, который не одобрила
+	// уже вошедшая сессия, если у аккаунта есть другие сессии; снимает
+	// подтверждение владельца. Гаснет сам через AuthorizationAutoconfirmPeriod.
+	Unconfirmed bool
+}
+
+// AuthorizationAutoconfirmPeriod — срок, после которого неподтверждённый вход
+// считается подтверждённым сам (tweb authorizationAutoconfirmPeriod.ts:1, 7
+// суток; сервер Telegram отдаёт его в appConfig как
+// authorization_autoconfirm_period, у нас — константа).
+const AuthorizationAutoconfirmPeriod = 7 * 24 * time.Hour
+
+// IsUnconfirmed — вход ещё ждёт ответа владельца. Сравнение в целых секундах и
+// строго «больше», как у tweb (filterExpiredUnconfirmedAuthorizations,
+// appAccountManager.ts:61-69: date + period > now).
+func (d Device) IsUnconfirmed(now time.Time) bool {
+	return d.Unconfirmed &&
+		d.CreatedAt.Unix()+int64(AuthorizationAutoconfirmPeriod/time.Second) > now.Unix()
 }
 
 // FreshAuthorizationPeriod — первые сутки сессия не распоряжается другими

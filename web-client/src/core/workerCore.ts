@@ -59,7 +59,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt, type PresenceEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt, type PresenceEvt, type NewAuthorizationEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -182,11 +182,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); sessions.reset(); broadcast(RT.loggingOut, e); if (e.migrateTo !== null) refreshAuthorizations() },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); sessions.reset(); broadcast(RT.loggedIn, e); refreshAuthorizations() },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -579,7 +579,18 @@ export function createWorkerCore() {
   // Тема оформления чата: только REST. Её место в схеме — полная карточка
   // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
   const chatThemes = newChatThemesManager({ rest })
-  const sessions = newSessionsManager({ rest })
+  // Владелец запросов «это вы?» (tweb `AppAccountManager`): State — тем же writer'ом, что
+  // `persistManager.stateKey` (диск + зеркало во вкладки), событие — вкладкам тем же веером.
+  // `persist` и `broadcast` объявлены ниже — стрелки дёргают их лениво.
+  const sessions = newSessionsManager({
+    rest,
+    state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
+    broadcast: (event, payload) => broadcast(event, payload),
+  })
+  // Сверка запросов «это вы?» со списком сессий (tweb `user_auth`, appAccountManager.ts:112-120):
+  // после входа, перехода на другой аккаунт и на старте воркера с живым токеном. Офлайн и
+  // 401 — не повод для необработанного отказа: список перечитает вкладка «Устройства».
+  function refreshAuthorizations(): void { void sessions.getAuthorizations().catch(() => {}) }
   const calls = newCallsManager({ rest, getMeId: () => me?.user.id ?? null, peers })
   const livestream = newLivestreamManager({ rest })
   const stars = newStarsManager({ rest })
@@ -781,6 +792,10 @@ export function createWorkerCore() {
       broadcast('auto_delete_period_update', { peerId, period }, meta)
       return
     }
+    // «Новый вход» (журнал `new_authorization`): кадр применяет владелец запросов
+    // «это вы?» (tweb `apiUpdatesManager` → `processNewAuthorizationUpdate`,
+    // appAccountManager.ts:36-47) и сам объявляет вкладкам список. Сырой кадр дальше не идёт.
+    if (pred === 'updateNewAuthorization') { sessions.processNewAuthorizationUpdate(d as NewAuthorizationEvt); return }
     // Команды бота (журнал `bot_commands`): tweb `onUpdateBotCommands`
     // (`appProfileManager.ts:1560-1569`) берёт ключ пира из `update.peer`, бота —
     // из `update.bot_id`. Карточка пира живёт на главном потоке — вкладка кладёт
@@ -1390,7 +1405,17 @@ export function createWorkerCore() {
     // self-стаб-цикла с core.start(), который в этом файле воспроизводимо
     // ронял воркер vitest (см. докблок в workerCore.test.ts). Ошибку глотаем:
     // упавший /me на старте — штатный офлайн, не повод для unhandled rejection.
-    void tokens.ready().then(() => auth.me()).then((u) => { if (u && !me) setMe(u) }).catch(() => {})
+    //
+    // Тем же хвостом — сверка запросов «это вы?» со списком сессий (tweb `user_auth` на
+    // старте уже вошедшего аккаунта, appAccountManager.ts:112-120): флаг `unconfirmed`
+    // сессий, пока вкладки не работали, приезжает только списком. Ждём `meReady`: он снимается
+    // и гидрацией `me` после `persistScope`, и `setMe` — то есть почти всегда уже в скоупе
+    // токена, но не гарантированно. Окно — один запрос показа списка из прошлого скоупа; если
+    // `GET /sessions` упадёт, список останется до ближайшей успешной сверки.
+    void tokens.ready().then(() => auth.me()).then(async (u) => {
+      if (u && !me) setMe(u)
+      if (u) { await meReady; refreshAuthorizations() }
+    }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {
       onconnect?: (e: MessageEvent) => void

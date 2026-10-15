@@ -135,7 +135,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 
 **Защищённые** (основные группы):
 
-- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `POST /me/photos`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/accept_login_token`, `POST /auth/web_token`
+- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `POST /me/photos`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /sessions/{deviceID}/settings`, `POST /auth/logout`, `POST /auth/accept_login_token`, `POST /auth/web_token`
 - **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `GET /peer_dialogs?peers=` (messages.getPeerDialogs), `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
 - **Updates:** `GET /updates/state`, `GET /updates/difference`, `GET /updates/channel_difference` — догонка (updates.getState/getDifference/getChannelDifference)
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`

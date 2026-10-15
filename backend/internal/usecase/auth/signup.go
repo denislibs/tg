@@ -76,7 +76,7 @@ func (i *Interactor) SignUp(ctx context.Context, rawToken, firstName, lastName, 
 		}
 		return SignInResult{}, err
 	}
-	res, err := i.mintSession(ctx, user, deviceName, platform)
+	res, err := i.mintSession(ctx, user, deviceName, platform, false)
 	if err != nil {
 		return SignInResult{}, err
 	}

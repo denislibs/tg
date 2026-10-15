@@ -47,13 +47,13 @@ func (i *Interactor) SignImport(ctx context.Context, rawToken, deviceName, platf
 	if err != nil {
 		return SignInResult{}, err
 	}
-	if res, needed, err := i.startPasswordStep(ctx, userID); err != nil {
+	if res, needed, err := i.startPasswordStep(ctx, userID, true); err != nil {
 		return SignInResult{}, err
 	} else if needed {
 		_ = i.steps.DeleteWebAuthToken(ctx, tokenHash)
 		return res, nil
 	}
-	res, err := i.mintSession(ctx, user, deviceName, platform)
+	res, err := i.mintSession(ctx, user, deviceName, platform, true)
 	if err != nil {
 		return SignInResult{}, err
 	}

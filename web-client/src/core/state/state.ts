@@ -6,6 +6,7 @@
 // своих сторах IndexedDB (tweb config/databases/state.ts:5) — State целиком
 // перезаписывается на каждое изменение ключа, и сущности сделали бы это тяжёлым.
 import type { Folder } from '../managers/foldersManager'
+import type { UnconfirmedAuthorization } from '../managers/sessionsManager'
 
 export interface AppState {
   /** версия схемы State (tweb STATE_VERSION) — при несовпадении стартуем с STATE_INIT */
@@ -62,6 +63,12 @@ export interface AppState {
    *  через сутки она показывается снова, кадр заявок снимает скрытие сразу
    *  (tweb `hideChatJoinRequests`, `config/state.ts:254`) */
   hideChatJoinRequests: { [peerId: PeerId]: number }
+  /** неподтверждённые входы («это вы?», tweb `unconfirmedAuthorizations`, `config/state.ts:271`);
+   *  пишет и читает владелец сессий в воркере (`managers/sessionsManager.ts`) */
+  unconfirmedAuthorizations: UnconfirmedAuthorization[]
+  /** дата входа ЭТОЙ сессии, секунды (tweb `currentAuthorizationDate`, `config/state.ts:272`);
+   *  0 — неизвестна. Свежая сессия (< 24 ч) запросы скрывает, но помнит */
+  currentAuthorizationDate: number
 }
 
 // 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
@@ -86,6 +93,8 @@ export const STATE_INIT: AppState = {
   recentCustomEmoji: [],
   emojiVariants: {},
   hideChatJoinRequests: {},
+  unconfirmedAuthorizations: [],
+  currentAuthorizationDate: 0,
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */
