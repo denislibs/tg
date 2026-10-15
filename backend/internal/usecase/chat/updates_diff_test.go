@@ -299,3 +299,49 @@ func TestUpdatesDifference_GoneChatNotResurrected(t *testing.T) {
 		t.Fatalf("сообщение исчезнувшего чата воскресло: %s", d.NewMessages[0])
 	}
 }
+
+// f6-stickers: строка stickers_new_set — замороженный снимок. Набор, снятый
+// после установки (кадра о снятии нет, В-5), догоняющему устройству не
+// отдаётся; установленный — отдаётся.
+func TestUpdatesDifference_DropsStaleNewStickerSet(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const user int64 = 2
+	row := func(id int) json.RawMessage {
+		return json.RawMessage(`{"_":"updateNewStickerSet","stickerset":{"_":"messages.stickerSet","set":{"_":"stickerSet","id":` +
+			string(rune('0'+id)) + `},"packs":[],"keywords":[],"documents":[]}}`)
+	}
+	for id := 1; id <= 2; id++ {
+		if _, err := in.updates.AppendUpdate(ctx, user, 1, 1, "stickers_new_set", row(id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Без проверки (не подключена) обе строки отдаются как есть.
+	if got := len(diffReal(t, in, user, 0).OtherUpdates); got != 2 {
+		t.Fatalf("без проверки: other = %d, want 2", got)
+	}
+	in.SetStickerSetInstalled(func(_ context.Context, uid, setID int64) (bool, error) {
+		if uid != user {
+			t.Fatalf("проверка не для зрителя: %d", uid)
+		}
+		return setID == 2, nil // набор 1 снят
+	})
+	d := diffReal(t, in, user, 0)
+	if len(d.OtherUpdates) != 1 {
+		t.Fatalf("other = %d, want 1 (снятый набор отброшен)", len(d.OtherUpdates))
+	}
+	var body struct {
+		Stickerset struct {
+			Set struct{ ID int64 } `json:"set"`
+		} `json:"stickerset"`
+	}
+	_ = json.Unmarshal(d.OtherUpdates[0], &body)
+	if body.Stickerset.Set.ID != 2 {
+		t.Fatalf("осталась строка набора %d, want 2", body.Stickerset.Set.ID)
+	}
+	// Сбой проверки — строка отдаётся (потерять хуже, чем лишний набор).
+	in.SetStickerSetInstalled(func(context.Context, int64, int64) (bool, error) { return false, errors.New("db") })
+	if got := len(diffReal(t, in, user, 0).OtherUpdates); got != 2 {
+		t.Fatalf("при сбое проверки: other = %d, want 2", got)
+	}
+}

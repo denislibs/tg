@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -304,6 +305,7 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 		}
 	}
 	var refs domain.PeerRefs
+	installed := map[int64]bool{} // set_id → установлен ли сейчас (кэш на одну разницу)
 	for _, r := range rows {
 		var body map[string]any
 		if json.Unmarshal(r.Payload, &body) != nil {
@@ -315,6 +317,9 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 		}
 		if key, ok := stateUpdateKey(body); ok && folded[key] {
 			continue // состояние уже внутри сообщения из new_messages
+		}
+		if tag == domain.UpdateNewStickerSetTag && !i.stickerSetStillInstalled(ctx, viewerID, body, installed) {
+			continue // набор снят после установки: кадра о снятии нет (В-5), строка устарела
 		}
 		switch {
 		case tag == "" && r.Type != "":
@@ -430,4 +435,31 @@ func mergeChats(a, b []domain.Chat) []domain.Chat {
 		}
 	}
 	return a
+}
+
+// stickerSetStillInstalled — актуальна ли строка updateNewStickerSet: набор из
+// неё установлен у зрителя сейчас. Строка — замороженный снимок: устройство,
+// догоняющее разницу, не должно получить набор, который пользователь уже снял.
+// Не удалось проверить — строка отдаётся (лишний набор безвреднее потерянного).
+func (i *Interactor) stickerSetStillInstalled(ctx context.Context, viewerID int64, body map[string]any, cache map[int64]bool) bool {
+	if i.setInstalled == nil {
+		return true
+	}
+	set, _ := body["stickerset"].(map[string]any)
+	inner, _ := set["set"].(map[string]any)
+	idf, ok := inner["id"].(float64)
+	if !ok {
+		return true
+	}
+	id := int64(idf)
+	if v, ok := cache[id]; ok {
+		return v
+	}
+	v, err := i.setInstalled(ctx, viewerID, id)
+	if err != nil {
+		log.Printf("getDifference: stickers_new_set set=%d user=%d: %v", id, viewerID, err)
+		return true
+	}
+	cache[id] = v
+	return v
 }

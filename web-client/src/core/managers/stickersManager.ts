@@ -107,10 +107,43 @@ export function newStickersManager({ rest, dispatch }: {
   /** Объявить событие rootScope вкладкам (`stickers_installed` и т. п.). */
   dispatch: (event: 'stickers_installed' | 'stickers_updated' | 'gifs_updated', payload: unknown) => void
 }) {
-  // Номер последнего перечитывания по списку: ответ, обогнанный более новым
-  // кадром, устарел и вкладкам не объявляется (без этого старый список мог бы
-  // затереть свежий).
-  const reads = { recent: 0, faved: 0, gifs: 0 }
+  // Перечитывание списков по кадрам журнала: одно чтение в полёте на список, кадр
+  // во время чтения лишь помечает его устаревшим — после ответа читаем ещё раз и
+  // объявляем только последний результат. Серия кадров (догонка после разрыва,
+  // частая отправка стикеров) стоит одного-двух запросов, а не по запросу на
+  // кадр; устаревший ответ не затирает свежий (tweb склеивает одновременные
+  // чтения: apiManagerMethods.ts:184-187, appGifsManager.ts:31-35).
+  const flights = new Map<string, { dirty: boolean; promise: Promise<void> }>()
+  function refresh<T>(key: string, read: () => Promise<T>, publish: (v: T) => void): Promise<void> {
+    const cur = flights.get(key)
+    if (cur) { cur.dirty = true; return cur.promise }
+    const st = { dirty: false, promise: Promise.resolve() }
+    st.promise = (async () => {
+      try {
+        for (;;) {
+          st.dirty = false
+          let v: T
+          try { v = await read() } catch (e) {
+            if (st.dirty) continue // свежий кадр пришёл во время сбойного чтения
+            throw e
+          }
+          if (st.dirty) continue
+          publish(v)
+          return
+        }
+      } finally { flights.delete(key) }
+    })()
+    flights.set(key, st)
+    return st.promise
+  }
+
+  // Набор из кадра updateNewStickerSet — на короткое время отдаётся без запроса:
+  // слушатели `stickers_installed` во всех вкладках тут же просят этот же набор
+  // (tweb кладёт его в кэш: appStickersManager.ts:82). Кэш НЕ долгоживущий:
+  // срок установки зрителя меняется без кадра (снятие, В-5).
+  const FRESH_SET_TTL_MS = 10_000
+  const freshSets = new Map<string, { at: number; value: { set: StickerSet; stickers: Sticker[] } }>()
+  const freshKey = (input: InputStickerSetAddress) => ('shortName' in input ? `sn:${input.shortName}` : `id:${input.id}`)
 
   const manager = {
     /** messages.allStickers — установленные наборы. */
@@ -129,6 +162,8 @@ export function newStickersManager({ rest, dispatch }: {
      * `saveDocument`), как у оригинала, где такого метода не существует вовсе.
      */
     async getStickerSet(input: InputStickerSetAddress): Promise<{ set: StickerSet; stickers: Sticker[] }> {
+      const fresh = freshSets.get(freshKey(input))
+      if (fresh && Date.now() - fresh.at < FRESH_SET_TTL_MS) return fresh.value
       const path = 'shortName' in input
         ? `/sticker-sets/${encodeURIComponent(input.shortName)}`
         : `/sticker-sets/id/${input.id}`
@@ -149,8 +184,8 @@ export function newStickersManager({ rest, dispatch }: {
       const r = await rest.get<{ sets: StickerSetCovered[] }>('/sticker-sets/featured')
       return splitCovered(r.sets)
     },
-    async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
-    async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },
+    async install(setId: number): Promise<void> { freshSets.clear(); await rest.post(`/sticker-sets/${setId}/install`, {}) },
+    async uninstall(setId: number): Promise<void> { freshSets.clear(); await rest.del(`/sticker-sets/${setId}/install`) },
     /** messages.recentStickers. Параллельный вектор `dates` (когда стикер был
      * использован) пока не потребителен: панель показывает недавние в порядке
      * ответа, и порядок этот тот же самый. */
@@ -197,27 +232,25 @@ export function newStickersManager({ rest, dispatch }: {
     },
 
     // ── Кадры своих устройств (журнал f6-stickers) ──
-    /** tweb `updateNewStickerSet` (appStickersManager.ts:80-84): документы набора
-     * сохраняются, вкладкам объявляется `stickers_installed` с самим набором
-     * (`stickerset.set`). Кэша наборов у менеджера нет — открытый набор панели
-     * перечитывается по событию. */
+    /** tweb `updateNewStickerSet` (appStickersManager.ts:80-84): набор из кадра
+     * кладётся в кэш на короткое время (см. `freshSets`), вкладкам объявляется
+     * `stickers_installed` с самим набором (`stickerset.set`). */
     onNewStickerSet(update: NewStickerSetEvt): void {
-      saveAll(update.stickerset.documents)
-      dispatch('stickers_installed', update.stickerset.set)
+      const { set, documents } = update.stickerset
+      const value = { set, stickers: saveAll(documents) }
+      const at = Date.now()
+      freshSets.set(`id:${set.id}`, { at, value })
+      freshSets.set(`sn:${set.short_name}`, { at, value })
+      dispatch('stickers_installed', set)
     },
-    /** tweb `onStickersUpdated(type, true)` (:126-132): перечитать и объявить. */
-    async onStickersUpdated(type: 'recent' | 'faved'): Promise<void> {
-      const n = ++reads[type]
-      const stickers = await (type === 'recent' ? manager.recent() : manager.faved())
-      if (n !== reads[type]) return
-      dispatch('stickers_updated', { type, stickers })
+    /** tweb `onStickersUpdated(type, true)` (:128-134): перечитать и объявить. */
+    onStickersUpdated(type: 'recent' | 'faved'): Promise<void> {
+      return refresh(type, () => (type === 'recent' ? manager.recent() : manager.faved()),
+        (stickers) => dispatch('stickers_updated', { type, stickers }))
     },
     /** tweb `onGifsUpdated` (appGifsManager.ts:26-29). */
-    async onGifsUpdated(): Promise<void> {
-      const n = ++reads.gifs
-      const gifs = await manager.savedGifs()
-      if (n !== reads.gifs) return
-      dispatch('gifs_updated', gifs)
+    onGifsUpdated(): Promise<void> {
+      return refresh('gifs', () => manager.savedGifs(), (gifs) => dispatch('gifs_updated', gifs))
     },
   }
   return manager

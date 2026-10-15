@@ -126,9 +126,12 @@ func TestSync_InstallWritesNewStickerSetWithFullSet(t *testing.T) {
 	var body struct {
 		U          string `json:"_"`
 		Stickerset struct {
-			U         string             `json:"_"`
-			Set       struct{ ID int64 } `json:"set"`
-			Documents []json.RawMessage  `json:"documents"`
+			U   string `json:"_"`
+			Set struct {
+				ID            int64
+				InstalledDate int64 `json:"installed_date"`
+			} `json:"set"`
+			Documents []json.RawMessage `json:"documents"`
 		} `json:"stickerset"`
 	}
 	if err := json.Unmarshal(row.payload, &body); err != nil {
@@ -139,6 +142,10 @@ func TestSync_InstallWritesNewStickerSetWithFullSet(t *testing.T) {
 	}
 	if body.Stickerset.Set.ID != set.ID || len(body.Stickerset.Documents) != 2 {
 		t.Fatalf("набор в строке неполный: %s", row.payload)
+	}
+	// Снимок собран ПОСЛЕ установки: срок установки зрителя уже в наборе.
+	if body.Stickerset.Set.InstalledDate == 0 {
+		t.Fatalf("installed_date не проставлен: %s", row.payload)
 	}
 	if len(pub.frames[user]) != 1 {
 		t.Fatalf("живых кадров = %d, want 1", len(pub.frames[user]))

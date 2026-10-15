@@ -66,20 +66,58 @@ describe('StickersManager: кадры своих устройств', () => {
     expect((calls[0].payload as { id: number }[]).map((d) => d.id)).toEqual([9])
   })
 
-  // Два кадра подряд: первый ответ приходит ПОСЛЕ второго. Устаревший список не
-  // должен затереть свежий.
-  it('устаревший ответ перечитывания не затирает свежий', async () => {
+  // Кадры во время чтения не плодят запросов: после первого ответа — ОДНО
+  // повторное чтение, вкладкам объявляется только его результат.
+  it('серия кадров: одно чтение в полёте, затем одно повторное; объявляется последний результат', async () => {
     const resolvers: ((v: unknown) => void)[] = []
-    const { mgr, calls } = setup(() => new Promise((r) => resolvers.push(r)))
+    const { mgr, gets, calls } = setup(() => new Promise((r) => resolvers.push(r)))
     const first = mgr.onStickersUpdated('recent')
     const second = mgr.onStickersUpdated('recent')
-    resolvers[1]({ stickers: [makeSticker({ id: 2, setId: 1, emoji: '🙂' })] })
-    await second
-    resolvers[0]({ stickers: [makeSticker({ id: 1, setId: 1, emoji: '🙂' })] })
-    await first
+    const third = mgr.onStickersUpdated('recent')
+    expect(gets).toHaveLength(1)
+    resolvers[0]({ stickers: [makeSticker({ id: 1, setId: 1, emoji: '🙂' })] }) // устарел
     await wait()
+    expect(gets).toHaveLength(2)
+    expect(calls).toEqual([])
+    resolvers[1]({ stickers: [makeSticker({ id: 2, setId: 1, emoji: '🙂' })] })
+    await Promise.all([first, second, third])
     expect(calls).toHaveLength(1)
     expect((calls[0].payload as { stickers: { id: number }[] }).stickers.map((d) => d.id)).toEqual([2])
+    // Полёт закончился — следующий кадр читает заново.
+    const next = mgr.onStickersUpdated('recent')
+    expect(gets).toHaveLength(3)
+    resolvers[2]({ stickers: [] })
+    await next
+  })
+
+  it('сбой чтения, обогнанного свежим кадром, не теряет список: повторное чтение объявляется', async () => {
+    let n = 0
+    const { mgr, calls } = setup(async () => {
+      if (++n === 1) { await wait(); throw new Error('net') }
+      return { stickers: [] }
+    })
+    const first = mgr.onStickersUpdated('faved')
+    void mgr.onStickersUpdated('faved')
+    await first
+    expect(calls).toEqual([{ event: 'stickers_updated', payload: { type: 'faved', stickers: [] } }])
+  })
+
+  // Слушатели stickers_installed всех вкладок сразу просят этот же набор.
+  it('набор из кадра отдаётся getStickerSet без запроса; install/uninstall сбрасывают', async () => {
+    const { mgr, gets } = setup(async () => ({ set: makeStickerSet({ id: 5 }), documents: [] }))
+    const set = makeStickerSet({ id: 5, shortName: 'pack' })
+    mgr.onNewStickerSet({
+      _: 'updateNewStickerSet',
+      stickerset: { _: 'messages.stickerSet', set, packs: [], keywords: [], documents: [makeSticker({ id: 33, setId: 5 })] },
+    })
+    const byId = await mgr.getStickerSet({ id: 5 })
+    const byName = await mgr.getStickerSet({ shortName: 'pack' })
+    expect(gets).toEqual([])
+    expect(byId.set).toEqual(set)
+    expect(byName.stickers.map((d) => d.id)).toEqual([33])
+    await mgr.uninstall(5)
+    await mgr.getStickerSet({ id: 5 })
+    expect(gets).toEqual(['/sticker-sets/id/5'])
   })
 
   it('сбой чтения: ничего не объявляется, ошибка уходит вызывающему', async () => {

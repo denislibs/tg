@@ -365,7 +365,7 @@ func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, k
 		      up AS (
 		        INSERT INTO recent_stickers (user_id, media_id) VALUES ($1,$2)
 		        ON CONFLICT (user_id, media_id) DO UPDATE SET used_at = now())
-		 SELECT COALESCE((SELECT media_id FROM prev) IS DISTINCT FROM $2::bigint, TRUE)`,
+		 SELECT (SELECT media_id FROM prev) IS DISTINCT FROM $2::bigint`,
 		userID, mediaID).Scan(&changed); err != nil {
 		return false, err
 	}
