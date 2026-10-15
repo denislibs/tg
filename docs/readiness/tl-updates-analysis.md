@@ -137,7 +137,6 @@ qts}`). Верна сама наблюдаемая часть, а не выве�
 |---|---|---|
 | `edit_message` | `updateEditMessage` / `updateEditChannelMessage` | у нас ПАТЧ (id + text + entities + edit_date + reply_markup), в схеме — сообщение ЦЕЛИКОМ. Долг назван ещё в порту сообщения |
 | `reaction`, `star_reaction` | `updateMessageReactions{peer, msg_id, reactions: MessageReactions}` | у нас дифф (`user_id`+`emoji`+`action`) ПЛЮС абсолютный агрегат `counts`; в схеме едет только абсолютное состояние, а анимацию клиент выводит из разницы со своим прежним. Платная реакция при этом не отдельный кадр: она внутри `MessageReactions` |
-| `geo_live_update` | `updateEditMessage` | у нас патч вложения (`id` + `media` + `edit_date`); у оригинала движение точки — обычная ПРАВКА сообщения, отдельного кадра нет вовсе. Отдельный кадр `updateGeoLiveViewed` в схеме про другое: «трансляцию посмотрели» |
 | `chat_update` | `updateChat` / `updateChannel` | в схеме кадр несёт ТОЛЬКО id — «перечитай карточку»; у нас он несёт снимок `messages.chatFull` целиком |
 | `chat_removed` | `updateChannel` / `updateDialogFilter` | предмета «чат исчез» в схеме нет: у оригинала выход выражается сообщением-действием и перечитыванием |
 
@@ -285,8 +284,6 @@ date, seq}`, причём векторы `users`/`chats` решают ту же 
 - `folder_update` — ждёт порта самой папки (`dialogFilter` несёт
   `title:TextWithEntities` и `include_peers:Vector<InputPeer>`, у нас строка и
   список chat_id);
-- `geo_live_update` — у оригинала кадра нет вовсе: движение точки это ПРАВКА
-  сообщения, и порт означает перевод эфемерного кадра в журнальный;
 - `story_*` — ждут порта `storyItem`;
 - `suggested_post_update` — ждёт порта `SuggestedPostInfo`;
 - звонки, групповые звонки, трансляции и хендшейк секретных чатов — решением Р6

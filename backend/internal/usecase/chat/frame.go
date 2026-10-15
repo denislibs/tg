@@ -303,25 +303,6 @@ func (i *Interactor) messageThread(ctx context.Context, m domain.Message, kind s
 	return repliesOf(threads, m.ID)
 }
 
-// geoLiveUpdatePayload — тело фрейма geo_live_update (обновление координат
-// трансляции): клиент правит вложение открытого бабла без перезагрузки истории.
-//
-// Координаты едут ТЕМ ЖЕ конструктором, что и в самом сообщении
-// (messageMediaGeoLive под ключом media): собственный ключ `geo` с плоской
-// точкой внутри был второй формой гео на проводе.
-//
-// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
-// и то же edited_at прежде значило и «время правки» на верхнем уровне, и «время
-// обновления координат» внутри гео — два смысла на одну колонку. Оно же решает,
-// каким уедет period остановленной трансляции, поэтому едут они парой.
-func geoLiveUpdatePayload(m domain.Message) map[string]any {
-	p := map[string]any{"id": m.Seq, "media": m.ToWire(domain.MessageContext{}).(domain.MessageReal).Media}
-	if m.EditedAt != nil {
-		p["edit_date"] = m.EditedAt.Unix()
-	}
-	return p
-}
-
 // factCheckJSON — представление «проверки фактов» для клиента (nil → nil).
 func factCheckJSON(fc *domain.FactCheck) map[string]any {
 	if fc == nil {

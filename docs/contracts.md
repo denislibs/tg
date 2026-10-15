@@ -1240,7 +1240,6 @@ MTProto, которых мы не портируем):
 | `t` | чего ждёт |
 |-----|-----|
 | `folder_update` | порта самой папки (`dialogFilter` несёт `TextWithEntities` и `Vector<InputPeer>`). Курсор кадр НЕСЁТ — это единственный логируемый кадр без конструктора |
-| `geo_live_update` | у оригинала кадра нет вовсе: движение точки это ПРАВКА сообщения |
 | `suggested_post_update` | порта `SuggestedPostInfo` |
 
 ### Delivery guarantees
