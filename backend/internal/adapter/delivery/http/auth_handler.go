@@ -443,7 +443,8 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 // CancelWebToken сжигает веб-токен, который клиент не стал импортировать
 // (auth.cancelWebTokenAuthorization). Ответ — boolTrue и для токена, который
 // сервер уже забыл. Ведро то же, что у SignImport: отмена не даёт лишних попыток
-// перебора (если ведро исчерпано импортом, токен доживёт до своего TTL).
+// перебора. Следствие: если импорт получил 429, отмена получит его же — токен
+// доживёт до своего TTL (5 мин); принято планом М1-4.
 func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		WebAuthToken string `json:"web_auth_token"`
