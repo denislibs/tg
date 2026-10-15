@@ -210,19 +210,27 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// BeginLogin — POST /auth/passkey/begin (публичный) → {session, options}.
+// BeginLogin — POST /auth/passkey/begin (публичный) → `auth.passkeyLoginOptions`:
+// `options.data` — строка JSON `{"publicKey":{…}}` (tweb passkeyLoginButton.tsx
+// :38-41), `session` — одноразовый ключ церемонии для finish.
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	options, session, err := h.wa.BeginDiscoverableLogin()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": h.putSession(session), "options": options})
+	raw, err := json.Marshal(options)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewAuthPasskeyLoginOptions(string(raw), h.putSession(session)))
 }
 
 // FinishLogin — POST /auth/passkey/finish?session=...&device=...&platform=...
 // (тело — assertion) → тот же исход входа, что у остальных путей
-// (`auth.Authorization`).
+// (`auth.Authorization`): при включённом облачном пароле — `auth.passwordNeeded`
+// (шаг пароля, сессии нет), иначе `auth.authorization`.
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	session := h.takeSession(r.URL.Query().Get("session"))
 	if session == nil {
@@ -251,7 +259,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		_ = h.uc.TouchCredential(r.Context(), matched.ID, raw)
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
-	res, err := h.authUC.MintPasskeySession(ctx, matched.UserID,
+	res, err := h.authUC.PasskeySignIn(ctx, matched.UserID,
 		r.URL.Query().Get("device"), r.URL.Query().Get("platform"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal")

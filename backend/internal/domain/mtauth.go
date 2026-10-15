@@ -17,6 +17,7 @@ const (
 	AuthLoginTokenTag                  = "auth.loginToken"
 	AuthLoginTokenSuccessTag           = "auth.loginTokenSuccess"
 	AuthPasswordRecoveryTag            = "auth.passwordRecovery"
+	AuthPasskeyLoginOptionsTag         = "auth.passkeyLoginOptions"
 	AuthWebAuthTokenTag                = "auth.webAuthToken"
 	HelpCountryCodeTag                 = "help.countryCode"
 )
@@ -102,6 +103,33 @@ func (a AuthPasswordNeeded) Tag() string        { return a.Underscore }
 // NewAuthPasswordNeeded — включён облачный пароль: вход не окончен.
 func NewAuthPasswordNeeded(token, hint string) AuthPasswordNeeded {
 	return AuthPasswordNeeded{Underscore: AuthPasswordNeededTag, PasswordToken: token, Hint: hint}
+}
+
+// ── auth.PasskeyLoginOptions: параметры входа по ключу доступа ─────────────
+
+// auth.passkeyLoginOptions#e2037789 options:DataJSON = auth.PasskeyLoginOptions;
+//
+// Ответ `auth.initPasskeyLogin`. `options.data` — строка JSON вида
+// `{"publicKey":{…}}`: клиент берёт её как есть и разбирает
+// `JSON.parse(data).publicKey` (tweb passkeyLoginButton.tsx:38-41, :49-51).
+//
+// `session` — НАШ параметр (schema_additional_params.json): состояние церемонии
+// WebAuthn между begin и finish. У оригинала его держит сессия MTProto, у нас
+// состояния между запросами REST нет — вместо него одноразовый ключ, как
+// `password_token` у `auth.passwordNeeded`.
+type AuthPasskeyLoginOptions struct {
+	Underscore string   `json:"_"`
+	Options    DataJSON `json:"options"`
+	Session    string   `json:"session"`
+}
+
+// NewAuthPasskeyLoginOptions — optionsJSON уже сериализован вызывающим.
+func NewAuthPasskeyLoginOptions(optionsJSON, session string) AuthPasskeyLoginOptions {
+	return AuthPasskeyLoginOptions{
+		Underscore: AuthPasskeyLoginOptionsTag,
+		Options:    DataJSON{Underscore: DataJSONTag, Data: optionsJSON},
+		Session:    session,
+	}
 }
 
 // ── auth.LoginToken: вход по QR-коду ───────────────────────────────────────
