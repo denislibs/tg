@@ -2249,7 +2249,10 @@ func (h *ChatHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgID int64, emoji string, add bool) {
 	err := h.svc.React(r.Context(), chatID, msgID, h.meID(r), emoji, add)
 	if errors.Is(err, domain.ErrBadReaction) {
-		writeError(w, http.StatusBadRequest, "invalid reaction")
+		// Реакция не принята (чат без реакций, не из списка, пустая) — имя TG
+		// REACTION_INVALID: по нему клиент откатывает локальную реакцию
+		// (tweb appReactionsManager.ts:977-989).
+		writeError(w, http.StatusBadRequest, "REACTION_INVALID")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
@@ -2257,7 +2260,7 @@ func (h *ChatHandler) react(w http.ResponseWriter, r *http.Request, chatID, msgI
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "reaction failed")
+		writeDomainError(w, err, "reaction failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
