@@ -52,7 +52,6 @@ const FakeChat = vi.hoisted(() => class {
 })
 vi.mock('@components/chat/chat', () => ({ default: FakeChat }))
 
-
 const managers = {
   peers: { getPeers: async() => [], fillMirror: async() => {}, resolveUsername: vi.fn() },
   presence: { get: async() => [] },
