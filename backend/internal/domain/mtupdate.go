@@ -117,6 +117,8 @@ const (
 	UpdateRecentStickersTag = "updateRecentStickers"
 	UpdateFavedStickersTag  = "updateFavedStickers"
 	UpdateSavedGifsTag      = "updateSavedGifs"
+	// Команды бота (Ф-6, f6-bots) — tweb appProfileManager.ts:1560-1569.
+	UpdateBotCommandsTag = "updateBotCommands"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1564,4 +1566,27 @@ func (u UpdateSavedGifs) Tag() string { return u.Underscore }
 
 func NewUpdateSavedGifs() UpdateSavedGifs {
 	return UpdateSavedGifs{Underscore: UpdateSavedGifsTag}
+}
+
+// updateBotCommands#4d712f2e peer:Peer bot_id:long commands:Vector<BotCommand>
+// = Update; — бот сменил список команд, который видит получатель. Peer — чат, где
+// список действует: личка (peerUser бота) или группа (peerChannel). Параметра pts
+// нет — курсор едет в конверте кадра. Клиент кладёт команды в закэшированную
+// полную карточку пира, не перечитывая её (tweb onUpdateBotCommands).
+type UpdateBotCommands struct {
+	Underscore string         `json:"_"`
+	Peer       Peer           `json:"peer"`
+	BotID      int64          `json:"bot_id"`
+	Commands   []MTBotCommand `json:"commands"`
+}
+
+func (UpdateBotCommands) isUpdate()     {}
+func (u UpdateBotCommands) Tag() string { return u.Underscore }
+
+func NewUpdateBotCommands(peer Peer, botID int64, commands []BotCommand) UpdateBotCommands {
+	cs := make([]MTBotCommand, 0, len(commands))
+	for _, c := range commands {
+		cs = append(cs, NewBotCommand(c))
+	}
+	return UpdateBotCommands{Underscore: UpdateBotCommandsTag, Peer: peer, BotID: botID, Commands: cs}
 }

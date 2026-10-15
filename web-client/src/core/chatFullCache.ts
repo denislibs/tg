@@ -22,8 +22,8 @@
 // Чего здесь нет: краткой формы пира (она в `core/peerCache.ts`, владелец —
 // воркерный `peersManager`) и похода в сеть. Карточка сюда попадает только
 // тогда, когда её и так загрузили ради экрана.
-import type { ChannelFull, UserFull } from './peers/peer'
-import { isUser } from './peers/peerId'
+import type { BotCommand, BotInfo, ChannelFull, UserFull } from './peers/peer'
+import { isUser, toUserId } from './peers/peerId'
 
 export type PeerFull = ChannelFull | UserFull
 
@@ -90,7 +90,17 @@ export function canViewStatistics(peerId: PeerId): boolean {
 export function beginPeerFullFetch(peerId: PeerId): number {
   const ticket = (latestFetch.get(peerId) ?? 0) + 1
   latestFetch.set(peerId, ticket)
+  fetching.add(peerId)
   return ticket
+}
+
+/** Поход за карточкой peerId не удался: кадры, которые копились для его ответа
+ *  (`pendingBotCommands`), ему не нужны. Устаревший билет игнорируется — идёт
+ *  более новый поход. */
+export function endPeerFullFetch(peerId: PeerId, ticket: number): void {
+  if (latestFetch.get(peerId) !== ticket) return
+  fetching.delete(peerId)
+  pendingBotCommands.delete(peerId)
 }
 
 /**
@@ -119,9 +129,74 @@ export function isFetchTicketCurrent(peerId: PeerId, ticket?: number): boolean {
  */
 export function saveChatFull(peerId: PeerId, full: PeerFull, ticket?: number): void {
   if (!isFetchTicketCurrent(peerId, ticket)) return
+  if (ticket !== undefined) {
+    full = withPendingBotCommands(peerId, full, ticket)
+    fetching.delete(peerId)
+  }
   const prev = fullMirror.get(peerId)
   if (prev && JSON.stringify(prev) === JSON.stringify(full)) return
   fullMirror.set(peerId, full)
+  bump()
+}
+
+/**
+ * Кадры `updateBotCommands`, пришедшие, пока шёл поход за карточкой. Ответ,
+ * начатый ДО кадра, собран до него и принёс бы прежние команды; ответ, начатый
+ * ПОСЛЕ, уже содержит кадр. Различает их билет: кадр запоминает последний
+ * выданный на пира билет, и его команды ложатся только в ответ с билетом не
+ * больше этого. Порт `applyCachedBotCommands` tweb (`appProfileManager.ts:149`,
+ * `:452-465`): там кэш команд живёт в состоянии и применяется ко всякой
+ * сохраняемой карточке; здесь кадр запоминается только пока в пути поход за
+ * карточкой (`fetching`), потому что сервер рассылает кадр не всем (предел
+ * рассылки) и вечный кэш откатил бы свежую карточку.
+ */
+const fetching = new Set<PeerId>() // пиры, за карточкой которых идёт поход
+const pendingBotCommands = new Map<PeerId, Map<number, { commands: BotCommand[]; ticket: number }>>()
+
+function withPendingBotCommands(peerId: PeerId, full: PeerFull, ticket: number): PeerFull {
+  const frames = pendingBotCommands.get(peerId)
+  if (!frames) return full
+  pendingBotCommands.delete(peerId)
+  let out = full
+  for (const [botId, f] of frames) {
+    if (f.ticket < ticket) continue
+    out = patchBotCommands(out, peerId, botId, f.commands) ?? out
+  }
+  return out
+}
+
+/** Карточка с командами бота `botId`; `undefined` — менять нечего (бота в карточке
+ *  нет либо команды те же). Порт `appProfileManager.applyBotCommands` (`:425-450`). */
+function patchBotCommands(full: PeerFull, peerId: PeerId, botId: number, commands: BotCommand[]): PeerFull | undefined {
+  const same = (info: BotInfo) => JSON.stringify(info.commands ?? []) === JSON.stringify(commands)
+  if (full._ === 'userFull') {
+    const info = full.bot_info
+    // У бота bot_info может не назвать себя: тогда бот — сам пир карточки.
+    if (!info || (info.user_id ?? toUserId(peerId)) !== botId || same(info)) return undefined
+    return { ...full, bot_info: { ...info, commands } }
+  }
+  if (!full.bot_info?.some((info) => info.user_id === botId && !same(info))) return undefined
+  return { ...full, bot_info: full.bot_info.map((info) => info.user_id === botId ? { ...info, commands } : info) }
+}
+
+/**
+ * Кадр `updateBotCommands` (событие `bot_commands`): команды бота `botId`
+ * в закэшированной карточке `peerId` меняются на месте, карточка не
+ * перечитывается — tweb `onUpdateBotCommands` (`appProfileManager.ts:1560-1569`).
+ * Карточки нет — патчить нечего, команды приедут вместе с ней; если за ней идёт
+ * поход в сеть, кадр запоминается (см. `pendingBotCommands`).
+ */
+export function applyBotCommands(peerId: PeerId, botId: number, commands: BotCommand[]): void {
+  if (fetching.has(peerId)) {
+    const frames = pendingBotCommands.get(peerId) ?? new Map()
+    frames.set(botId, { commands, ticket: latestFetch.get(peerId) ?? 0 })
+    pendingBotCommands.set(peerId, frames)
+  }
+
+  const prev = fullMirror.get(peerId)
+  const next = prev && patchBotCommands(prev, peerId, botId, commands)
+  if (!next) return
+  fullMirror.set(peerId, next)
   bump()
 }
 
@@ -178,6 +253,8 @@ export function applyPeerBlocked(peerId: PeerId, blocked: boolean | undefined): 
 /** Смена аккаунта: карточки прошлой сессии чужие (та же причина, что у
  *  `resetPeerMirror`). */
 export function resetChatFullMirror(): void {
+  pendingBotCommands.clear()
+  fetching.clear()
   if (!fullMirror.size) return
   fullMirror.clear()
   bump()
