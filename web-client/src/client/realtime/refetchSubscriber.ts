@@ -12,7 +12,8 @@ import { cachedPeerFull } from '../../core/chatFullCache'
 import { refreshFullPeer } from '../../stores/fullPeers.solid'
 import { useChatsStore } from '../../stores/chatsStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
-import { onPinnedMessagesUpdate } from '../../core/pinnedMessages'
+import { onPinnedMessagesUpdate, hasPinnedMessageCached, flushPinnedMessagesCache } from '../../core/pinnedMessages'
+import { generateMessageId } from '../../core/history/messageId'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
 import type { Managers } from '../bootstrap'
@@ -55,7 +56,25 @@ export function registerRefetchSubscriber(managers: Managers): void {
     const e = raw as PinMessageEvt
     // Пир кадра — конструктор `Peer` (как у прочтения): ключ считает getPeerId,
     // а не сервер числом.
-    onPinnedMessagesUpdate(getPeerId(e.peer), e.messages, !!e.pFlags?.pinned)
+    // Номера кадра — серверные, а `peer_pinned_messages` несёт клиентские (по ним
+    // лента удаляет баблы, `bubbles.ts`): тот же перевод, что у `cachePinned` воркера.
+    onPinnedMessagesUpdate(getPeerId(e.peer), e.messages.map(generateMessageId), !!e.pFlags?.pinned)
+  })
+  // Удаление сообщения: сервер кадра закрепа не шлёт, закреп снимает клиент (tweb
+  // `handleDeletedMessages` :14078-14080 → `resetPinnedMessagesCache`). Воркер знает
+  // закреплённым только то, что лежит в его окне, а закреп может быть вне окна —
+  // поэтому сверяем ещё и с кэшем закрепов вкладки (`listPins`). Не закреп — ничего,
+  // без перечитки `/pins`.
+  rootScope.addEventListener('peer_pinned_deleted', ({ peerId, mids, pinned }) => {
+    if (pinned.length || hasPinnedMessageCached(peerId, mids)) onPinnedMessagesUpdate(peerId, mids, false)
+  })
+  // Очистка истории: tweb `flushStoragesByPeerId` сбрасывает только кэш закрепов (:6747,
+  // `flushPinnedMessagesCache` :6800) — скрытие плашки не трогает. Плашка и экран закрепов
+  // перечитывают список по `peer_pinned_messages`, поэтому объявляем его без номеров
+  // (отступление от tweb, план f6 задача 17: у нас нет другого сигнала вкладкам).
+  rootScope.addEventListener('dialog_flush', ({ peerId }) => {
+    flushPinnedMessagesCache(peerId)
+    rootScope.dispatchEventSingle('peer_pinned_messages', { peerId, pinned: false })
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
   // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число

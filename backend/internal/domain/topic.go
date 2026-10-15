@@ -51,6 +51,29 @@ const GeneralTopicID int64 = 1
 // стражем «треда нет» (resolveThreadRootForQuery).
 const GeneralThreadRoot int64 = -1
 
+// TopicScope — тема форума глазами выборок хранилища: сужает чтение
+// упоминаний и реакций (messages.readMentions/readReactions{top_msg_id}).
+// nil вместо указателя — весь чат.
+type TopicScope struct {
+	// General — тема General (номер 1): корня у неё нет, её сообщения — всё,
+	// что не в темах (страж GeneralThreadRoot).
+	General bool
+	// RootID — внутренний ключ строки корня обычной темы (ByRoot).
+	RootID int64
+}
+
+// ThreadRoot — ключ корня для threadFilter хранилища; nil — весь чат.
+func (s *TopicScope) ThreadRoot() *int64 {
+	if s == nil {
+		return nil
+	}
+	root := s.RootID
+	if s.General {
+		root = GeneralThreadRoot
+	}
+	return &root
+}
+
 // Number — номер темы снаружи (forumTopic.id, topic_id ручек, top_msg_id
 // кадров): номер служебки messageActionTopicCreate в чате, у General — 1.
 // Внутренний ID строки forum_topics наружу не выходит (tweb

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -805,7 +804,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if e != nil {
 			return e
 		}
-		if deliverReactions, e = i.journalOwnReactions(ctx, chatID, userID, readMsgs); e != nil {
+		if deliverReactions, _, _, e = i.journalOwnReactions(ctx, chatID, userID, readMsgs); e != nil {
 			return e
 		}
 		// Self-destruct: запускаем таймер для секретных сообщений, которые
@@ -988,37 +987,149 @@ func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq i
 	return i.chats.NextMention(ctx, chatID, userID, afterSeq)
 }
 
-// ReadReactions гасит ВСЕ непрочитанные реакции на сообщениях участника в
-// чате (Telegram messages.readReactions — POST /chats/{chatID}/reactions/read),
-// не трогая горизонт прочтения. Его устройствам — кадры реакций затронутых
-// сообщений его глазами (в журнал): по снятому pFlags.unread второе
-// устройство гасит бейдж ❤ само (tweb onUpdateMessageReactions). Не член →
-// domain.ErrNotFound.
-func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) error {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
+// readBatchLimit — сколько сообщений снимает за вызов readReactions и
+// readMentions. По tweb предела нет: сервер отвечает affectedHistory с offset и
+// клиент повторяет запрос (appMessagesManager.ts:9649). Наша константа держит
+// работу одной транзакции: не больше readBatchLimit строк журнала актора.
+const readBatchLimit = 100
+
+// ReadReactions — messages.readReactions{peer, top_msg_id} (tweb
+// appMessagesManager.readMentions с isReaction :9614-9650; POST
+// /chats/{peerID}/reactions/read?top_msg_id=): гасит непрочитанные реакции на
+// сообщениях участника в чате или в теме форума, не двигая горизонт
+// прочтения. topMsgID — серверный номер темы (General — 1); 0 и не-форум —
+// весь чат, неизвестная тема — domain.ErrTopicIDInvalid.
+//
+// Его устройствам — кадры реакций затронутых сообщений его глазами (в журнал,
+// по строке на сообщение, с top_msg_id темы): по снятому pFlags.unread
+// остальные устройства гасят бейдж ❤ темы и родителя сами (tweb
+// onUpdateMessageReactions :10552-10620). Ответ — messages.affectedHistory с
+// курсором актора; Offset=1 — снято readBatchLimit сообщений, остаток есть,
+// клиент повторяет запрос. Ничего не снято — PtsCount=0 и текущий pts актора.
+// Не член → domain.ErrNotFound.
+func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID, topMsgID int64) (domain.MessagesAffectedHistory, error) {
+	scope, err := i.readScope(ctx, chatID, userID, topMsgID)
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
-	if !ok {
-		return domain.ErrNotFound
-	}
-	var deliver func(context.Context)
+	var (
+		deliver func(context.Context)
+		lastPts int64
+		rows    int
+		more    bool
+	)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		msgs, e := i.chats.ReadReactions(ctx, chatID, userID, math.MaxInt64)
+		msgs, m, e := i.chats.ReadReactionsIn(ctx, chatID, userID, scope, readBatchLimit)
 		if e != nil {
 			return e
 		}
-		deliver, e = i.journalOwnReactions(ctx, chatID, userID, msgs)
+		more = m
+		deliver, lastPts, rows, e = i.journalOwnReactions(ctx, chatID, userID, msgs)
 		return e
 	})
 	if err != nil {
-		return err
+		return domain.MessagesAffectedHistory{}, err
 	}
-	if i.dialogsCache != nil {
-		i.dialogsCache.Invalidate(ctx, userID)
+	return i.affectedHistory(ctx, userID, deliver, lastPts, rows, more)
+}
+
+// ReadMentions — messages.readMentions{peer, top_msg_id} (tweb
+// appMessagesManager.readMentions :9614-9650; POST
+// /chats/{peerID}/mentions/read?top_msg_id=): гасит непрочитанные упоминания
+// участника в чате или теме форума, не двигая горизонт прочтения. Правила
+// top_msg_id, Offset и пустого ответа — как у ReadReactions.
+//
+// Его устройствам — ОДНА строка media_read (updateReadPeerMessagesContents) со
+// всеми снятыми номерами, тот же конструктор, что у прослушанного голосового:
+// клиент снимает бейдж «@» по каждому названному сообщению, а неизвестные ему
+// заменяет перечитыванием строки диалога. Не член → domain.ErrNotFound.
+func (i *Interactor) ReadMentions(ctx context.Context, chatID, userID, topMsgID int64) (domain.MessagesAffectedHistory, error) {
+	scope, err := i.readScope(ctx, chatID, userID, topMsgID)
+	if err != nil {
+		return domain.MessagesAffectedHistory{}, err
 	}
-	deliver(ctx)
-	return nil
+	var (
+		deliver func(context.Context)
+		lastPts int64
+		rows    int
+		more    bool
+	)
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		cleared, m, e := i.chats.ClearMentionsIn(ctx, chatID, userID, scope, readBatchLimit)
+		if e != nil {
+			return e
+		}
+		more = m
+		if len(cleared) == 0 {
+			deliver = func(context.Context) {}
+			return nil
+		}
+		addr, e := i.peerAddress(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		body := mediaReadPayload(addr.forViewer(userID), cleared...)
+		// Тема форума, в которой сняты упоминания: tweb читает её из кадра
+		// (onUpdateReadMessagesContents :10998-10999).
+		if scope != nil {
+			body["top_msg_id"] = topMsgID
+		}
+		deliver, lastPts, rows, e = i.journalOwn(ctx, userID, []ownFrame{{typ: "media_read", body: body}})
+		return e
+	})
+	if err != nil {
+		return domain.MessagesAffectedHistory{}, err
+	}
+	return i.affectedHistory(ctx, userID, deliver, lastPts, rows, more)
+}
+
+// readScope проверяет членство и переводит top_msg_id в тему. nil — весь чат:
+// номера нет, чат не форум (параметр игнорируется, как у ResolveThreadRootForSend
+// вне форума) — иначе тема-General (номер 1) или тема по корню. Номер, который
+// не тема, — domain.ErrTopicIDInvalid.
+func (i *Interactor) readScope(ctx context.Context, chatID, userID, topMsgID int64) (*domain.TopicScope, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	if topMsgID <= 0 || i.groups == nil || !i.isForum(ctx, chatID) {
+		return nil, nil
+	}
+	root, err := i.ResolveThreadRootForSend(ctx, chatID, &topMsgID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, domain.ErrTopicIDInvalid
+	}
+	if err != nil {
+		return nil, err
+	}
+	if root == nil {
+		return &domain.TopicScope{General: true}, nil
+	}
+	return &domain.TopicScope{RootID: *root}, nil
+}
+
+// affectedHistory — общий хвост readReactions/readMentions: доставка живых
+// кадров после коммита и ответ с курсором актора. Строк не было — текущий pts
+// журнала и pts_count=0 (клиент местный updatePts в этом случае не применяет).
+func (i *Interactor) affectedHistory(ctx context.Context, userID int64, deliver func(context.Context), lastPts int64, rows int, more bool) (domain.MessagesAffectedHistory, error) {
+	if rows > 0 {
+		i.invalidateDialogs(ctx, userID)
+		deliver(ctx)
+	} else {
+		st, err := i.updates.GetUserState(ctx, userID)
+		if err != nil {
+			return domain.MessagesAffectedHistory{}, err
+		}
+		lastPts = st.Pts
+	}
+	res := domain.NewMessagesAffectedHistory(lastPts, rows)
+	if more {
+		res.Offset = 1
+	}
+	return res, nil
 }
 
 // ReadContentsMaxIDs — потолок вектора ReadMessageContents. По tweb он не

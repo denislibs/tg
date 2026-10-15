@@ -113,6 +113,20 @@ type ChatRepo interface {
 	// (по ним уходят кадры реакций его устройствам).
 	RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
 	ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error)
+	// LockMember берёт строку участника до конца транзакции. Единый порядок
+	// замков для путей, что пишут строки упоминаний и реакций и затем счётчик
+	// участника: сначала chat_members, потом строки (как MarkRead).
+	LockMember(ctx context.Context, chatID, userID int64) error
+	// ReadReactionsIn — messages.readReactions{top_msg_id}: гасит ❤ на
+	// сообщениях участника в чате (topic == nil) или теме форума, не больше
+	// limit СООБЩЕНИЙ за вызов (по возрастанию номера); more — остались ещё.
+	// Горизонт чтения не трогает. Возвращает затронутые видимые ему сообщения.
+	ReadReactionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) (msgs []domain.Message, more bool, err error)
+	// ClearMentionsIn — messages.readMentions{top_msg_id}: гасит непрочитанные
+	// упоминания участника в чате или теме, не больше limit за вызов (по
+	// возрастанию номера); cleared — номера (seq) снятых, more — остались ещё.
+	// Счётчик чата пересчитывается по оставшимся.
+	ClearMentionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) (cleared []int64, more bool, err error)
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// SetClearedSeq — персональный горизонт участника (cleared_max_seq). Читает
 	// его единый предикат видимости сообщения в хранилище.
@@ -580,6 +594,9 @@ type SearchRepo interface {
 	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
 	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
+	// UserIDByUsername — пользователь по точному @имени без учёта регистра
+	// (contacts.resolveUsername); domain.ErrNotFound — такого имени нет.
+	UserIDByUsername(ctx context.Context, username string) (int64, error)
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные
 	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам

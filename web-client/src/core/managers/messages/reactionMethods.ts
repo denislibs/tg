@@ -9,8 +9,11 @@ import {
   sameReactions, setPaidReaction,
 } from '../../reactions/messageReactions'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
-import { getPeerId } from '../../peers/peerId'
+import { getOutputPeer, getPeerId } from '../../peers/peerId'
 import getUnreadReactions from '../../messages/getUnreadReactions'
+import isMentionUnread from '../../messages/isMentionUnread'
+import noop from '@helpers/noop'
+import type { MessagesAffectedHistory } from '@layer'
 import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { ReactionEvt } from '../../realtime/events'
@@ -170,7 +173,7 @@ export function newPaidReactionRandomId(): string {
   return ((BigInt(Math.floor(Date.now() / 1000)) << 32n) | random32).toString()
 }
 
-export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }: MessagesCtx) {
+export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf }: MessagesCtx) {
   /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
    *  читается ИЗ SSOT после применения — операция несёт то же значение, что
    *  лежит у владельца, а не отдельно пересчитанное. */
@@ -271,6 +274,28 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
     emitOps(reactionOps(peerId, id))
   }
 
+  /**
+   * Порт tweb `appMessagesManager.readMentions` (:9614-9650):
+   * `messages.readMentions|readReactions{peer, top_msg_id}` → `affectedHistory`
+   * → местный `updatePts`; `offset > 0` — повтор, иначе счётчик ТОГО, что
+   * вернул бы `getAnyDialog(peerId, threadId)` (темы или диалога), в ноль.
+   * Родителя темы ответ не трогает — его бейдж снимают кадры
+   * `updateMessageReactions` с `top_msg_id` (:10603-10620).
+   *
+   * `pts_count = 0` (сервер ничего не снял) курсор не двигает: местный
+   * апдейт без строк журнала дал бы дыру.
+   */
+  async function readMentions(peerId: number, threadId?: number, isReaction = false): Promise<boolean> {
+    const query = threadId ? `?top_msg_id=${getServerMessageId(threadId)}` : ''
+    for (;;) {
+      const r = await rest.post<MessagesAffectedHistory>(`/chats/${peerId}/${isReaction ? 'reactions' : 'mentions'}/read${query}`, {})
+      if (r.pts_count > 0) applyLocalPts?.(r.pts, r.pts_count)
+      if (!r.offset) break
+    }
+    clearUnreadBadge?.(peerId, threadId, isReaction)
+    return true
+  }
+
   return {
     // ── Live-кадры funnel'а (worker APPLY зовёт messages.cacheX) → SSOT ──
     // С counts (серверное эхо/catch-up) — АБСОЛЮТНЫЙ set; без counts (оптимистичный
@@ -320,32 +345,50 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
     },
 
     /**
-     * Порт tweb `appMessagesManager.readMessages` (:9519-9616) в объёме
-     * НЕПРОЧИТАННЫХ РЕАКЦИЙ: среди увиденных лентой сообщений есть моё с
-     * непрочитанной реакцией (`getUnreadReactions`), а у диалога горит ❤
-     * (`hadUnreadReactions`, :9566) — follow-up `readMentions(peerId, threadId,
-     * true)`, то есть `messages.readReactions` (:9607-9609). У нас это
-     * `POST /chats/{peer}/reactions/read`.
+     * Порт tweb `appMessagesManager.readMessages` (:9519-9612): лента увидела
+     * сообщения со непрочитанным содержимым — упоминаниями (`isMentionUnread`)
+     * или реакциями на моё сообщение (`getUnreadReactions`).
      *
-     * Бейдж здесь НЕ трогается: у оригинала его обнуляет ответ ручки
-     * (`modifyCachedMentionsAndSave({addReaction: -count})`, :9640-9648), а наш
-     * сервер вместо `affectedHistory` шлёт моим устройствам кадры
-     * `updateMessageReactions` уже без `unread` — по ним бейдж снимает
-     * `unreadReactionsChange`. Локальный сброс сверху дал бы двойной −1.
-     *
-     * Не портировано: `messages.readMessageContents` (снятие `media_unread` у
-     * увиденных — у нас его владелец плеер, `core/mediaRead.ts`) и follow-up
-     * `messages.readMentions` (бейдж «@»), а с ними — `threadId` форума:
-     * сервер гасит непрочитанные реакции всего чата.
+     *  • Тема форума берётся из первого увиденного сообщения (:9549-9555).
+     *  • Бейджи темы или диалога («@», ❤) читаются ДО любых локальных изменений
+     *    (`hadUnreadMentions`/`hadUnreadReactions`, :9564-9566).
+     *  • Упоминания уходят в `readMessageContents` (WS `read_media`) и гасятся
+     *    локально тем же кадром, что пришёл бы с сервера (`processLocalUpdate`,
+     *    :9593-9600). Реакции содержимым не считаются: сервер их там не гасит.
+     *  • Follow-up — `readMentions(peerId, threadId)` при упоминании и горящем
+     *    «@», `readMentions(peerId, threadId, true)` при реакции и горящем ❤
+     *    (:9602-9611); их отказ не мешает друг другу (`.catch(noop)`).
      */
     async readMessages(peerId: number, msgIds: number[]): Promise<void> {
-      const hasUnreadReaction = msgIds.some((id) => {
+      const mentionIds: number[] = []
+      const contentIds: number[] = []
+      let hasUnreadReaction = false
+      let threadId: number | undefined
+      for (const id of msgIds) {
         const message = readMsg(peerId, id)
-        return !!message && !!getUnreadReactions(message)
-      })
-      if (!hasUnreadReaction || !getUnreadReactionsCount?.(peerId)) return
-      await rest.post(`/chats/${peerId}/reactions/read`, {})
+        if (!message) continue
+        if (isMentionUnread(message)) mentionIds.push(id)
+        if (getUnreadReactions(message)) hasUnreadReaction = true
+        if (isMentionUnread(message) || getUnreadReactions(message)) contentIds.push(id)
+        if (threadId === undefined) threadId = forumThreadIdOf?.(message)
+      }
+      if (!mentionIds.length && !hasUnreadReaction) return
+      const badge = getUnreadBadge?.(peerId, threadId)
+      const hadMentions = !!badge?.mentions
+      const hadReactions = !!badge?.reactions
+      // Местный `updateReadMessagesContents` по ВСЕМ увиденным (:9593-9600):
+      // он гасит точку упоминаний и локально снимает `unread` с реакций; на
+      // сервер (`readMessageContents`) уходят только упоминания — реакции там
+      // не гасятся.
+      applyLocalMediaRead?.({ _: 'updateReadPeerMessagesContents', peer: getOutputPeer(peerId), messages: contentIds.map(getServerMessageId) })
+      if (mentionIds.length) markMediaRead?.(peerId, mentionIds.map(getServerMessageId))
+      const followUps: Promise<unknown>[] = []
+      if (mentionIds.length && hadMentions) followUps.push(readMentions(peerId, threadId).catch(noop))
+      if (hasUnreadReaction && hadReactions) followUps.push(readMentions(peerId, threadId, true).catch(noop))
+      await Promise.all(followUps)
     },
+
+    readMentions,
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)
     // — применяем локально ДО сети; на ошибке сети — откат обратной дельтой. meId

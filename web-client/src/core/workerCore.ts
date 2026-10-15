@@ -213,6 +213,30 @@ export function createWorkerCore() {
     },
     broadcast: (event, payload) => broadcast(event, payload),
   })
+  // Закреп удалён вместе с сообщением (tweb :14078-14080, `resetPinnedMessagesCache`):
+  // кэш закрепов живёт на главном потоке и сообщений вне окна воркера не знает, поэтому
+  // воркер шлёт вкладкам номера удалённых и те из них, что сам знает закреплёнными
+  // (`peer_pinned_deleted`). Вектор кадра `updateDeletePeerMessages` расходится по
+  // номерам (`evictAndBuildRemoveOps`), а очистка истории шлёт кадры по 1000 номеров, —
+  // события одного пира склеены в одно на микротаске: после операций окна того же кадра
+  // и с одним обработчиком на вкладке вместо обработчика на каждый номер. `broadcast` объявлен ниже — вызов ленивый.
+  const pinnedDeleted = new Map<number, { mids: number[]; pinned: number[] }>()
+  const queuePinnedDeleted = (peerId: number, mids: number[], pinned: number[]) => {
+    let batch = pinnedDeleted.get(peerId)
+    if (!batch) {
+      batch = { mids: [], pinned: [] }
+      pinnedDeleted.set(peerId, batch)
+      if (pinnedDeleted.size === 1) {
+        queueMicrotask(() => {
+          const flush = [...pinnedDeleted]
+          pinnedDeleted.clear()
+          for (const [id, b] of flush) broadcast('peer_pinned_deleted', { peerId: id, ...b })
+        })
+      }
+    }
+    batch.mids.push(...mids)
+    batch.pinned.push(...pinned)
+  }
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
@@ -263,15 +287,28 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted, missing) => {
+    onMessagesDeleted: (peerId, deleted, missing, mids) => {
       dialogs.applyDeletedMessages(peerId, deleted, missing)
+      queuePinnedDeleted(peerId, mids, deleted.filter((m) => m.pFlags.pinned).map((m) => m.id))
       // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
       // объявлен ниже — стрелка дёргает его лениво
       forumTopics.applyDeletedMessages(peerId, deleted)
     },
-    // Бейдж ❤ строки — гейт сброса непрочитанных реакций (`messages.readMessages`,
-    // tweb `hadUnreadReactions`). Стрелка ленивая: `dialogs` объявлен ниже.
-    getUnreadReactionsCount: (peerId) => dialogs.getUnreadReactionsCount(peerId),
+    // `readMessages`/`readMentions` (tweb appMessagesManager.ts:9519-9650) читают
+    // бейджи «@»/❤ у `getAnyDialog(peerId, threadId)` — темы форума или строки
+    // диалога, обнуляют их ответом и двигают курсор журнала местным `updatePts`.
+    // Все стрелки ленивые: `dialogs`, `forumTopics`, `funnel`, `conn` объявлены ниже.
+    getUnreadBadge: (peerId, threadId) =>
+      threadId ? forumTopics.getUnreadBadge(peerId, threadId) : dialogs.getUnreadBadge(peerId),
+    clearUnreadBadge: (peerId, threadId, isReaction) => {
+      if (threadId) forumTopics.clearUnread(peerId, threadId, isReaction)
+      else dialogs.clearUnread(peerId, isReaction)
+    },
+    applyLocalPts: (pts, count) => { funnel.applyLocalPts(pts, count) },
+    markMediaRead: (peerId, serverIds) => { conn.markMediaRead(peerId, serverIds) },
+    // Местный `updateReadMessagesContents` (tweb `processLocalUpdate`) идёт тем же
+    // путём, что серверный кадр: SSOT, счётчики, вкладки.
+    applyLocalMediaRead: (frame) => { dispatch('updateReadPeerMessagesContents', frame) },
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
   // beforeMessageSending), наружу это обычные операции над окном (публикует их
@@ -727,8 +764,8 @@ export function createWorkerCore() {
       ? messages.unreadReactionsChange(d as ReactionEvt) : undefined
     // Тот же порядок для бейджа «@»: было ли упоминание непрочитанным, решает
     // окно ДО снятия media_unread (tweb onUpdateReadMessagesContents).
-    const mentionsRead = pred === 'updateReadPeerMessagesContents'
-      ? messages.mentionsUnreadAmong(d as MediaReadEvt) : 0
+    const mediaRead = pred === 'updateReadPeerMessagesContents'
+      ? messages.mediaReadEffects(d as MediaReadEvt) : undefined
     const ops = CACHE[pred]?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
     // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
@@ -736,8 +773,23 @@ export function createWorkerCore() {
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
     if (pred === 'updateReadHistoryInbox' || pred === 'updateReadHistoryOutbox') dialogs.applyRead(d as ReadEvt)
-    else if (pred === 'updateReadPeerMessagesContents') {
-      if (mentionsRead) dialogs.applyMentionsRead(getPeerId((d as MediaReadEvt).peer), mentionsRead)
+    else if (pred === 'updateReadPeerMessagesContents' && mediaRead) {
+      // Цикл по номерам tweb `onUpdateReadMessagesContents` (:11009-11079): «@»
+      // минус по каждому непрочитанному упоминанию из памяти — у его темы (если
+      // она есть) и у строки форума; сообщение с непрочитанной реакцией
+      // отдаёт местный кадр реакции (:11053-11070); номер вне памяти — перечитать
+      // строку (и темы форума: тему кадр без `top_msg_id` назвать не может).
+      const peerId = getPeerId((d as MediaReadEvt).peer)
+      for (const threadId of mediaRead.mentionThreads) {
+        if (threadId !== undefined) forumTopics.modifyUnreadMentions(peerId, threadId, false)
+      }
+      if (mediaRead.mentionThreads.length) dialogs.applyMentionsRead(peerId, mediaRead.mentionThreads.length)
+      for (const frame of mediaRead.readReactions) dispatch('updateMessageReactions', frame)
+      if (mediaRead.missing) {
+        dialogs.fixUnreadIfNoMessage(peerId)
+        const badge = dialogs.getUnreadBadge(peerId)
+        if (badge && (badge.mentions || badge.reactions)) forumTopics.reload(peerId)
+      }
     }
     else if (pred === 'updateChatFullSnapshot' || pred === 'updateChannelFullSnapshot') {
       // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
@@ -836,9 +888,21 @@ export function createWorkerCore() {
       // Бейдж непрочитанных реакций — порт tweb onUpdateMessageReactions:
       // ответ владельца окна (ВЫШЕ, до применения агрегата) — либо знак ±1,
       // либо «сообщения в памяти нет, перечитай строку».
-      const peerId = getPeerId((d as ReactionEvt).peer)
+      const e = d as ReactionEvt
+      const peerId = getPeerId(e.peer)
+      // `top_msg_id` — тема форума, в которой лежит сообщение (:10556). Он
+      // направляет счётчик: с темой меняется бейдж ТЕМЫ, а родитель — только
+      // при прочтении и только если там больше нуля (:10603-10620); без темы —
+      // строка диалога, как раньше.
+      const threadId = e.top_msg_id ? generateMessageId(e.top_msg_id) : undefined
       if (unreadReactions === 'reload') dialogs.reloadConversation(peerId)
-      else if (unreadReactions !== undefined) dialogs.modifyUnreadReactions(peerId, unreadReactions)
+      else if (unreadReactions !== undefined) {
+        if (threadId === undefined) dialogs.modifyUnreadReactions(peerId, unreadReactions)
+        else {
+          forumTopics.modifyUnreadReactions(peerId, threadId, unreadReactions)
+          if (!unreadReactions) dialogs.modifyUnreadReactions(peerId, false)
+        }
+      }
     }
     broadcast(UPDATE_RT[pred], d, meta)
   }
