@@ -13,12 +13,35 @@ import (
 // session/device is revoked (caches evicted, sockets closed). Message history is
 // intentionally preserved — it stays attributed to a "Deleted Account".
 func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
-	if err := i.users.SoftDelete(ctx, userID); err != nil {
+	deleted, err := i.anonymizeAndRevoke(ctx, userID)
+	if err != nil {
 		return err
+	}
+	i.announceDeleted(ctx, deleted)
+	return nil
+}
+
+// anonymizeAndRevoke — анонимизация и отзыв всех сессий; карточку удалённого не
+// рассылает (это делает вызывающий последним шагом). Отзыв — мера безопасности
+// (сброс чужого аккаунта), и растягивать его на время рассылки партнёрам нельзя.
+//
+// SoftDelete необратим, поэтому весь хвост идёт на неотменяемом контексте:
+// разрыв соединения клиентом не оставит анонимизированный аккаунт с живыми
+// сессиями.
+func (i *Interactor) anonymizeAndRevoke(ctx context.Context, userID int64) (domain.UserRecord, error) {
+	if err := i.users.SoftDelete(ctx, userID); err != nil {
+		return domain.UserRecord{}, err
+	}
+	ctx = context.WithoutCancel(ctx)
+	// Снимок читаем сразу после анонимизации. Сбой чтения не отменяет удаление —
+	// оно уже записано; партнёры тогда узнают о нём при ближайшей загрузке.
+	deleted, readErr := i.users.GetByID(ctx, userID)
+	if readErr != nil {
+		i.logf("[user_update] reread deleted user %d: %v", userID, readErr)
 	}
 	removed, err := i.devices.DeleteAll(ctx, userID)
 	if err != nil {
-		return err
+		return domain.UserRecord{}, err
 	}
 	for _, d := range removed {
 		if i.cache != nil {
@@ -28,7 +51,16 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 			_ = i.revoker.NotifyRevoked(ctx, d.ID)
 		}
 	}
-	return nil
+	return deleted, nil
+}
+
+// announceDeleted рассылает партнёрам карточку «Deleted Account». Свои устройства
+// в рассылке не участвуют: их сессии отозваны, клиент выходит по отзыву.
+func (i *Interactor) announceDeleted(ctx context.Context, deleted domain.UserRecord) {
+	if deleted.ID == 0 {
+		return // снимок не прочитался
+	}
+	i.emitUserCard(context.WithoutCancel(ctx), deleted, false)
 }
 
 // defaultAccountResetWindow — сколько ждать между запросом сброса и удалением
@@ -135,7 +167,10 @@ func (i *Interactor) executeAccountReset(ctx context.Context, userID int64, toke
 		return err
 	}
 	// Анонимизация + отзыв всех сессий — общий путь с удалением из настроек.
-	if err := i.DeleteAccount(ctx, userID); err != nil {
+	// Рассылка партнёрам — последним шагом: пока она идёт, запись сброса и токен
+	// уже погашены, и повтор запроса второй проход не запустит.
+	deleted, err := i.anonymizeAndRevoke(ctx, userID)
+	if err != nil {
 		return err
 	}
 	// Запись сброса исполнена: users остаётся (аккаунт анонимизируется, а не
@@ -146,6 +181,7 @@ func (i *Interactor) executeAccountReset(ctx context.Context, userID int64, toke
 	i.pwFails.clear(tokenHash)
 	_ = i.pw.DeletePasswordToken(ctx, tokenHash) // шаг пароля сгорает
 	i.logf("[auth] account reset executed (no recovery email) user=%d", userID)
+	i.announceDeleted(ctx, deleted)
 	return nil
 }
 

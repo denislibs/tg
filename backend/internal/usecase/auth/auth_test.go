@@ -122,30 +122,33 @@ func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
 	u.FirstName, u.LastName = "Deleted", "Account"
 	u.Deleted = true
 	u.Bio, u.PhotoID, u.EmojiStatus = "", nil, ""
+	u.IsPremium, u.IsVerified = false, false
 	// Re-key under a unique sentinel so multiple deleted users can coexist
 	// (the real store keys on id; the fake keys on phone).
 	r.byPhone["deleted:"+strconv.FormatInt(id, 10)] = u
 	return nil
 }
 
-func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.UserRecord, error) {
+func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.UserRecord, bool, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.UserRecord{}, domain.ErrNotFound
+		return domain.UserRecord{}, false, domain.ErrNotFound
 	}
+	changed := u.EmojiStatus != emoji
 	u.EmojiStatus = emoji
 	r.byPhone[phone] = u
-	return u, nil
+	return u, changed, nil
 }
 
-func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.UserRecord, error) {
+func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.UserRecord, bool, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.UserRecord{}, domain.ErrNotFound
+		return domain.UserRecord{}, false, domain.ErrNotFound
 	}
+	changed := u.IsPremium != premium
 	u.IsPremium = premium
 	r.byPhone[phone] = u
-	return u, nil
+	return u, changed, nil
 }
 
 func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID, mediaID int64, videoMediaID *int64, preview []byte) (domain.ProfilePhoto, error) {
