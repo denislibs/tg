@@ -381,6 +381,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Get("/chats/{peerID}/messages/{msgSeq}/stats", sth.PostStats)
 		}
 		pr.Get("/search", chh.Search)
+		pr.Get("/contacts/resolve_username", chh.ResolveUsername)
 		pr.Get("/search/messages", ch.GlobalSearchMessages)
 
 		if mediaH != nil {

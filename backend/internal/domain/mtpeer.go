@@ -1069,6 +1069,8 @@ const (
 	PeerBlockedTag          = "peerBlocked"
 	ContactsBlockedSliceTag = "contacts.blockedSlice"
 	ContactsFoundTag        = "contacts.found"
+	// ContactsResolvedPeerTag — ответ contacts.resolveUsername.
+	ContactsResolvedPeerTag = "contacts.resolvedPeer"
 )
 
 // peerBlocked#e8fd8014 peer_id:Peer date:int = PeerBlocked;
@@ -1153,6 +1155,31 @@ func NewContactsFound(myChats []Chat, myUsers []UserReal, chats []Chat, users []
 		Chats:      allChats,
 		Users:      allUsers,
 	}
+}
+
+// contacts.resolvedPeer#7f077ad9 peer:Peer chats:Vector<Chat>
+// users:Vector<User> = contacts.ResolvedPeer;
+//
+// Ответ contacts.resolveUsername: ссылка на найденный пир и его тело в
+// векторе своего вида (tweb appUsersManager.ts:405-410 сохраняет оба вектора
+// и достаёт пир по ссылке).
+type ContactsResolvedPeer struct {
+	Underscore string     `json:"_"`
+	Peer       Peer       `json:"peer"`
+	Chats      []Chat     `json:"chats"`
+	Users      []UserReal `json:"users"`
+}
+
+// NewContactsResolvedPeer — ответ разбора @имени. Обязательные векторы едут
+// пустыми ([], а не null).
+func NewContactsResolvedPeer(peer Peer, chats []Chat, users []UserReal) ContactsResolvedPeer {
+	if chats == nil {
+		chats = []Chat{}
+	}
+	if users == nil {
+		users = []UserReal{}
+	}
+	return ContactsResolvedPeer{Underscore: ContactsResolvedPeerTag, Peer: peer, Chats: chats, Users: users}
 }
 
 // ── Общие мелочи разбора ────────────────────────────────────────────────────

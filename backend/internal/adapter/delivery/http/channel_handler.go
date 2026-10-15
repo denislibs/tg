@@ -542,6 +542,32 @@ func (h *ChannelHandler) Similar(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesChatsSlice(count, channelsOf(chats)))
 }
 
+// ResolveUsername — GET /contacts/resolve_username?username= (аналог
+// contacts.resolveUsername): точное @имя пользователя или публичного чата →
+// contacts.resolvedPeer{peer, chats, users}. Кривая форма — 400
+// USERNAME_INVALID, свободное имя — 400 USERNAME_NOT_OCCUPIED; клиент
+// разбирает оба (tweb internalLinkProcessor.ts:75-81, appImManager.ts:2175-2178).
+func (h *ChannelHandler) ResolveUsername(w http.ResponseWriter, r *http.Request) {
+	viewer, _ := UserFromContext(r.Context())
+	username := domain.NormalizeUsername(r.URL.Query().Get("username"))
+	if domain.ValidateUsername(username) != nil {
+		writeError(w, http.StatusBadRequest, "USERNAME_INVALID")
+		return
+	}
+	res, err := h.uc.ResolveUsername(r.Context(), viewer.ID, username)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "USERNAME_NOT_OCCUPIED")
+		return
+	}
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	// Аватар найденного человека — по правилу profile_photo владельца.
+	viewUsers(r, h.privacy, res.Users)
+	writeJSON(w, http.StatusOK, res)
+}
+
 // Search — GET /search?q=&limit=: поиск пиров (аналог contacts.search).
 // Свои попадания — ссылками в my_results, чужие — в results; limit — на
 // каждый вид (чаты, люди), по умолчанию 20, потолок 200.
