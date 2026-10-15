@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateKeyPair, exportPublicKey, b64FromBytes } from '../secret/crypto'
 import {
-  connectPair, createNet, FakePC, fpOfTag, PEER_OF, pcOf, sdpWithFp, settle, startPair, until, type Frame, type Net,
+  connectPair, createNet, FakePC, fpOfTag, PEER_OF, pcOf, sdpWithFp, settle, startPair, until, type Frame, type Net, type Side,
 } from './callTestKit'
 
 let net: Net
@@ -20,6 +20,7 @@ afterEach(() => {
 })
 
 const FAKE_FP = 'sha-256 DE:AD:BE:EF'
+let sideB: Side
 const reasonsOf = (frames: Frame[]) => frames.map((f) => f.data.reason)
 
 describe('честный звонок', () => {
@@ -210,10 +211,13 @@ describe('порядок и гонки очереди', () => {
     expect(B.frames('call_accept')).toHaveLength(1)
   })
 
-  it('свой localDescription с чужим отпечатком: call_end disconnect, SDP наружу не уходит', async () => {
+  it.each([
+    ['чужой отпечаток', sdpWithFp(FAKE_FP)],
+    ['битая строка отпечатка', 'v=0\r\na=fingerprint: sha-256 AB:CD\r\n'],
+  ])('свой localDescription: %s — call_end disconnect, SDP наружу не уходит', async (_n, badSdp) => {
     const spy = vi.spyOn(FakePC.prototype, 'setLocalDescription')
     spy.mockImplementation(async function (this: FakePC) {
-      this.localDescription = { type: 'offer', sdp: sdpWithFp(FAKE_FP), toJSON() { return { type: this.type, sdp: this.sdp } } }
+      this.localDescription = { type: 'offer', sdp: badSdp, toJSON() { return { type: this.type, sdp: this.sdp } } }
       this.signalingState = 'have-local-offer'
     })
     try {
@@ -225,6 +229,69 @@ describe('порядок и гонки очереди', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+describe('фатальность звеньев протокола и устаревшие звенья', () => {
+  it('сбой создания pc у отвечающего: call_end disconnect, failed (звонок не виснет в connecting)', async () => {
+    FakePC.throwOnMain = 1
+    const { B } = await startPair(net)
+    await until(() => B.call()?.endReason === 'failed', 'B failed')
+    expect(reasonsOf(B.frames('call_end'))).toEqual(['disconnect'])
+  })
+
+  it('сбой создания pc у звонящего (внутри onCallAccept): call_end disconnect, failed', async () => {
+    FakePC.throwOnMain = 2
+    const { A } = await startPair(net)
+    await until(() => A.call()?.endReason === 'failed', 'A failed')
+    expect(reasonsOf(A.frames('call_end'))).toEqual(['disconnect'])
+  })
+
+  it('идущий разговор не рвётся таймером звонка (45 с): clearRingTimer снят при ответе', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const { A } = await connectPair(net)
+      await vi.advanceTimersByTimeAsync(46_000)
+      expect(reasonsOf(A.frames('call_end'))).not.toContain('missed')
+      expect(A.call()?.phase).not.toBe('ended')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('звено, провисевшее на setRemoteDescription до hangup, не отправляет SDP из закрытого звонка', async () => {
+    const orig = Object.getOwnPropertyDescriptor(FakePC.prototype, 'setRemoteDescription')!.value as (d: { type: RTCSdpType; sdp?: string }) => Promise<void>
+    let release: () => void = () => {}
+    let hung = false
+    const setLocal = vi.spyOn(FakePC.prototype, 'setLocalDescription')
+    const { A, B } = await (async () => {
+      const spy = vi.spyOn(FakePC.prototype, 'setRemoteDescription').mockImplementation(function (this: FakePC, d) {
+        if (!hung && this === pcOf(sideB)) {
+          hung = true
+          return new Promise<void>((r) => { release = () => r(orig.call(this, d)) })
+        }
+        return orig.call(this, d)
+      })
+      void spy
+      const A = await net.side(1); const B = await net.side(2)
+      sideB = B
+      A.engine.startOutgoing(PEER_OF(2), false)
+      await until(() => B.call()?.phase === 'incoming', 'incoming')
+      B.engine.accept()
+      return { A, B }
+    })()
+    void A
+    await until(() => hung, 'setRemoteDescription hung at B')
+    B.engine.hangup()
+    const before = B.frames('call_signal').filter((f) => f.data.sdp).length
+    const localCalls = () => setLocal.mock.contexts.filter((c) => c === pcOf(B)).length
+    const localBefore = localCalls()
+    release()
+    await settle()
+    expect(B.frames('call_signal').filter((f) => f.data.sdp)).toHaveLength(before)
+    // устаревшее звено не трогает даже свой (уже закрытый) pc: setLocalDescription не вызван
+    expect(localCalls()).toBe(localBefore)
+    vi.restoreAllMocks()
   })
 })
 

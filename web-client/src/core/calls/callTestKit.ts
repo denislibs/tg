@@ -33,9 +33,14 @@ type Desc = { type: RTCSdpType; sdp: string; toJSON(): { type: RTCSdpType; sdp: 
 export class FakePC {
   static all: FakePC[] = []
   static seq = 0
+  /** Номер (с 1) боевого pc, конструктор которого бросает; 0 — не бросать. */
+  static throwOnMain = 0
+  static mainsCreated = 0
   static generateCertificate: () => Promise<{ tag: string }> = async () => ({ tag: `c${++FakePC.seq}` })
   static reset() {
     FakePC.all = []
+    FakePC.throwOnMain = 0
+    FakePC.mainsCreated = 0
     FakePC.generateCertificate = async () => ({ tag: `c${++FakePC.seq}` })
   }
   /** Боевые pc движка (временные pc из createDtlsIdentity без bundlePolicy). */
@@ -54,7 +59,11 @@ export class FakePC {
   closed = false
   tracks: unknown[] = []
   ice: unknown[] = []
-  constructor(config: RTCConfiguration = {}) { this.config = config; FakePC.all.push(this) }
+  constructor(config: RTCConfiguration = {}) {
+    this.config = config
+    if (config.bundlePolicy === 'max-bundle' && ++FakePC.mainsCreated === FakePC.throwOnMain) throw new Error('pc ctor failed')
+    FakePC.all.push(this)
+  }
   get cert() { return (this.config.certificates?.[0] as unknown as { tag: string } | undefined)?.tag ?? '' }
   private negotiate() { queueMicrotask(() => { if (!this.closed && this.signalingState === 'stable') this.onnegotiationneeded?.() }) }
   addTransceiver(kind: string) { this.transceivers.push({ receiver: { track: { kind } } }); this.negotiate() }

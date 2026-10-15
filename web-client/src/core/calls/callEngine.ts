@@ -407,6 +407,7 @@ async function handleSignal(d: Record<string, unknown>, alive: () => boolean) {
     await p.setRemoteDescription(sdp)
     if (!alive() || pc !== p) return // звонок закончился (или начался новый) посреди переговоров
     for (const c of pendingCandidates) await p.addIceCandidate(c).catch(() => {})
+    if (!alive() || pc !== p) return
     pendingCandidates = []
     if (sdp.type === 'offer') {
       await p.setLocalDescription()
@@ -733,7 +734,8 @@ export function handleFrame(evt: CallFrameEvt) {
       break
     case 'call_signal':
       // до ответа (звонящий в outgoing, отвечающий в incoming) сигналинга быть не может
-      if (call.phase === 'connecting' || call.phase === 'active') enqueue((alive) => handleSignal(d, alive))
+      if (call.phase === 'connecting' || call.phase === 'active') // раскрытие ключа — звено протокола: его сбой фатален (иначе звонок пошёл бы без бейджа)
+      enqueue((alive) => handleSignal(d, alive), d.dh_reveal !== undefined)
       break
   }
 }
