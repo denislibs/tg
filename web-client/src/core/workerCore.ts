@@ -369,6 +369,11 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
+    // Сверка `state.pts` ответа `messages.getPeerDialogs` с курсором апдейтов
+    // (tweb reloadConversation, appMessagesManager.ts:6313-6319). Курсор, сокет и
+    // движок догонки объявлены ниже — стрелки ленивые.
+    getUpdatesPts: () => cursor.get().pts,
+    isLiveSynced: () => conn.state() === 'ready' && !sync.isSyncing(),
     // Горизонт треда — у `threadReads` (объявлен ниже, стрелка ленивая).
     getThreadReadState: (peerId, threadId) => threadReads.getReadState(peerId, threadId),
     // Состояние канала из строки списка (tweb addChannelState, dialogs.ts:1756):
