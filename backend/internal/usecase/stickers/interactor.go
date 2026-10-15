@@ -3,11 +3,13 @@ package stickers
 import (
 	"context"
 	"errors"
+	"log"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 )
 
 // Лимиты хранения — как в tweb: RECENT_STICKERS_COUNT=20, избранные ~10,
@@ -42,6 +44,7 @@ type Interactor struct {
 	gifs   GifSearcher
 	media  MediaReader // обязателен: проверки «файл свой» и «это гиф»
 	access MediaAccess // обязателен для SaveGif: файл виден пользователю
+	emit   *ownsync.Emitter
 }
 
 // errMediaReaderUnwired — забытая проводка MediaReader/MediaAccess в
@@ -50,6 +53,10 @@ type Interactor struct {
 var errMediaReaderUnwired = errors.New("media reader не подключён")
 
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
+
+// SetEmitter подключает журнал своих устройств; без него мутация проходит, но
+// второе устройство о ней не узнаёт.
+func (i *Interactor) SetEmitter(e *ownsync.Emitter) { i.emit = e }
 
 // SetMediaReader подключает чтение строк media (владелец, mime, Animated).
 func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
@@ -85,12 +92,63 @@ func (i *Interactor) SetByID(ctx context.Context, userID, id int64) (domain.Stic
 	return set, sts, err
 }
 
+// SetWire — messages.stickerSet из записи набора и его стикеров: один сборщик
+// на ответ GET набора и на тело updateNewStickerSet.
+func SetWire(set domain.StickerSetRecord, sts []domain.Sticker) domain.MessagesStickerSet {
+	return domain.NewMessagesStickerSet(
+		domain.StickerSetWire(set), domain.StickerPacks(sts), domain.StickerDocuments(sts))
+}
+
+// StickerSetWire — messages.stickerSet набора по id глазами userID (срок
+// установки — его).
+func (i *Interactor) StickerSetWire(ctx context.Context, userID, id int64) (domain.MessagesStickerSet, error) {
+	set, sts, err := i.SetByID(ctx, userID, id)
+	if err != nil {
+		return domain.MessagesStickerSet{}, err
+	}
+	return SetWire(set, sts), nil
+}
+
 // Install добавляет набор пользователю (идемпотентно). Нет набора → ErrNotFound.
+// Новая установка уходит строкой stickers_new_set на устройства владельца
+// (tweb appStickersManager.ts:80-84); повтор по уже установленному набору
+// ничего не меняет — строки нет.
 func (i *Interactor) Install(ctx context.Context, userID, setID int64) error {
-	if _, err := i.repo.SetByID(ctx, userID, setID); err != nil {
+	cur, err := i.repo.SetByID(ctx, userID, setID)
+	if err != nil {
 		return err
 	}
-	return i.repo.Install(ctx, userID, setID)
+	if err := i.repo.Install(ctx, userID, setID); err != nil {
+		return err
+	}
+	if !cur.InstalledAt.IsZero() {
+		return nil
+	}
+	// Снимок перечитывается под замком журнала: набор с документами и сроком
+	// установки — состояние, а не сигнал.
+	journalErr(userID, "stickers_new_set", i.emit.EmitSnapshot(ctx, userID, "stickers_new_set",
+		func(ctx context.Context) (map[string]any, error) {
+			w, err := i.StickerSetWire(ctx, userID, setID)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"_": domain.UpdateNewStickerSetTag, "stickerset": w}, nil
+		}))
+	return nil
+}
+
+// journalErr логирует сбой записи журнала: мутация уже закоммичена, ответ клиенту
+// остаётся успешным, второе устройство догонит при следующем getDifference.
+func journalErr(userID int64, typ string, err error) {
+	if err != nil {
+		log.Printf("ownsync: %s user=%d: %v", typ, userID, err)
+	}
+}
+
+// signal — строка-сигнал «перечитай» (updateRecentStickers и т. п.): параметров
+// у конструктора нет, клиент сам перечитывает список.
+func (i *Interactor) signal(ctx context.Context, userID int64, typ, tag string) {
+	journalErr(userID, typ, i.emit.Emit(ctx, []int64{userID}, typ, map[string]any{"_": tag}))
 }
 
 // Uninstall убирает набор у пользователя (идемпотентно).
@@ -148,7 +206,11 @@ func (i *Interactor) Recent(ctx context.Context, userID int64) ([]domain.RecentS
 
 // ClearRecent — очистить список недавних (tweb clearRecentStickers).
 func (i *Interactor) ClearRecent(ctx context.Context, userID int64) error {
-	return i.repo.ClearRecent(ctx, userID)
+	if err := i.repo.ClearRecent(ctx, userID); err != nil {
+		return err
+	}
+	i.signal(ctx, userID, "stickers_recent", domain.UpdateRecentStickersTag)
+	return nil
 }
 
 // Use отмечает использование стикера (upsert used_at) и держит список в
@@ -157,11 +219,22 @@ func (i *Interactor) ClearRecent(ctx context.Context, userID int64) error {
 // Адресует ФАЙЛ (document.id схемы), а не строку набора: у оригинала
 // messages.saveRecentSticker принимает InputDocument. Побочно это снимает
 // дубль — тот же файл из двух наборов давал две записи (Р2).
+//
+// Строка журнала — только если порядок недавних изменился: Use зовётся на
+// каждую отправку стикера, а повтор того же стикера, что уже первый, ничего
+// не меняет.
 func (i *Interactor) Use(ctx context.Context, userID, mediaID int64) error {
 	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	return i.repo.TouchRecent(ctx, userID, mediaID, recentLimit)
+	changed, err := i.repo.TouchRecent(ctx, userID, mediaID, recentLimit)
+	if err != nil {
+		return err
+	}
+	if changed {
+		i.signal(ctx, userID, "stickers_recent", domain.UpdateRecentStickersTag)
+	}
+	return nil
 }
 
 // Faved — избранные стикеры, новые первыми.
@@ -175,12 +248,20 @@ func (i *Interactor) Fave(ctx context.Context, userID, mediaID int64) error {
 	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	return i.repo.Fave(ctx, userID, mediaID, favedLimit)
+	if err := i.repo.Fave(ctx, userID, mediaID, favedLimit); err != nil {
+		return err
+	}
+	i.signal(ctx, userID, "stickers_faved", domain.UpdateFavedStickersTag)
+	return nil
 }
 
 // Unfave убирает стикер из избранного (идемпотентно).
 func (i *Interactor) Unfave(ctx context.Context, userID, mediaID int64) error {
-	return i.repo.Unfave(ctx, userID, mediaID)
+	if err := i.repo.Unfave(ctx, userID, mediaID); err != nil {
+		return err
+	}
+	i.signal(ctx, userID, "stickers_faved", domain.UpdateFavedStickersTag)
+	return nil
 }
 
 // SearchByEmoji — стикеры с данным эмодзи из установленных наборов
@@ -314,12 +395,20 @@ func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
 	if !ok {
 		return domain.ErrNotFound
 	}
-	return i.repo.SaveGif(ctx, userID, mediaID, savedGifsLimit)
+	if err := i.repo.SaveGif(ctx, userID, mediaID, savedGifsLimit); err != nil {
+		return err
+	}
+	i.signal(ctx, userID, "saved_gifs", domain.UpdateSavedGifsTag)
+	return nil
 }
 
 // DeleteGif удаляет сохранённый GIF (идемпотентно).
 func (i *Interactor) DeleteGif(ctx context.Context, userID, mediaID int64) error {
-	return i.repo.DeleteGif(ctx, userID, mediaID)
+	if err := i.repo.DeleteGif(ctx, userID, mediaID); err != nil {
+		return err
+	}
+	i.signal(ctx, userID, "saved_gifs", domain.UpdateSavedGifsTag)
+	return nil
 }
 
 // CanUseStickerMedia — можно ли слать/читать media как стикер: наборы

@@ -139,8 +139,12 @@ func TestStickersRepo_RecentUpsertTrim(t *testing.T) {
 	_, seeded := seedFullSet(t, pool, r, owner, "recent_set", 6)
 	// keep=4: после 6 касаний остаются 4 последних. Адресуем ФАЙЛ (Р2).
 	for _, s := range seeded {
-		if err := r.TouchRecent(ctx, user, s.MediaID, 4); err != nil {
+		changed, err := r.TouchRecent(ctx, user, s.MediaID, 4)
+		if err != nil {
 			t.Fatalf("TouchRecent(%d): %v", s.MediaID, err)
+		}
+		if !changed {
+			t.Fatalf("TouchRecent(%d): каждый новый первый меняет порядок", s.MediaID)
 		}
 	}
 	got, err := r.Recent(ctx, user, 10)
@@ -151,12 +155,17 @@ func TestStickersRepo_RecentUpsertTrim(t *testing.T) {
 		t.Fatalf("Recent[0]: want %d, got %d", seeded[5].MediaID, got[0].MediaID)
 	}
 	// Upsert: повторное касание поднимает стикер наверх, не плодя строк.
-	if err := r.TouchRecent(ctx, user, seeded[2].MediaID, 4); err != nil {
-		t.Fatalf("TouchRecent повторно: %v", err)
+	changed, err := r.TouchRecent(ctx, user, seeded[2].MediaID, 4)
+	if err != nil || !changed {
+		t.Fatalf("TouchRecent повторно: changed=%v err=%v", changed, err)
 	}
 	got, _ = r.Recent(ctx, user, 10)
 	if len(got) != 4 || got[0].MediaID != seeded[2].MediaID {
 		t.Fatalf("Recent после upsert: %+v", got)
+	}
+	// Тот же файл, что уже первый: порядок не меняется.
+	if changed, err = r.TouchRecent(ctx, user, seeded[2].MediaID, 4); err != nil || changed {
+		t.Fatalf("TouchRecent первого: changed=%v err=%v", changed, err)
 	}
 }
 
@@ -299,7 +308,7 @@ func TestStickersRepo_MediaMetadataInEveryQuery(t *testing.T) {
 	if err := r.Install(ctx, owner, set.ID); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
-	if err := r.TouchRecent(ctx, owner, added.MediaID, 20); err != nil {
+	if _, err := r.TouchRecent(ctx, owner, added.MediaID, 20); err != nil {
 		t.Fatalf("TouchRecent: %v", err)
 	}
 	if err := r.Fave(ctx, owner, added.MediaID, 10); err != nil {

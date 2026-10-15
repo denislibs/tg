@@ -77,6 +77,10 @@ export const UPDATE_RT = {
   updateChannelBoostStatus: RT.boostUpdate,
   updateStarsBalance: RT.balanceUpdate,
   updateSavedReactionTags: RT.savedReactionTags,
+  updateNewStickerSet: RT.newStickerSet,
+  updateRecentStickers: RT.recentStickers,
+  updateFavedStickers: RT.favedStickers,
+  updateSavedGifs: RT.savedGifs,
   updateUserSnapshot: RT.userUpdate,
   // Ниже — кадры БЕЗ курсора. Прежде они лежали в отдельном списке
   // «эфемерных», и список этот был рукописным. Теперь деления нет: несёт кадр

@@ -53,6 +53,7 @@ type Interactor struct {
 	reactionCat  ReactionCatalogAccess
 	preview      LinkPreviewer
 	ivProbe      IVProber
+	setInstalled SetInstalledFunc
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
 	suggested    SuggestedPostRepo
@@ -210,6 +211,15 @@ func (i *Interactor) SetLinkPreviewer(p LinkPreviewer) { i.preview = p }
 // SetIVProber подключает пробу Instant View для карточек превью (optional; без
 // неё кнопки «Мгновенный просмотр» на карточках нет).
 func (i *Interactor) SetIVProber(p IVProber) { i.ivProbe = p }
+
+// SetInstalledFunc — «набор стикеров сейчас установлен у пользователя». Нужна
+// getDifference, чтобы не воскрешать набор, снятый после строки stickers_new_set
+// (снятие кадра не пишет, В-5 f6-stickers).
+type SetInstalledFunc func(ctx context.Context, userID, setID int64) (bool, error)
+
+// SetStickerSetInstalled подключает проверку установки набора (optional; без неё
+// строки stickers_new_set отдаются как есть).
+func (i *Interactor) SetStickerSetInstalled(f SetInstalledFunc) { i.setInstalled = f }
 
 // SetBoosts подключает хранилище бустов каналов (optional; без него → 404).
 func (i *Interactor) SetBoosts(b BoostRepo) { i.boosts = b }
