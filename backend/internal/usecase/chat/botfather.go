@@ -294,7 +294,7 @@ func (i *Interactor) bfStepSetCommands(ctx context.Context, chatID, ownerID int6
 		i.bfSend(ctx, chatID, "Не разобрал ни одной команды. Формат: «command - описание».", nil)
 		return
 	}
-	if err := i.botAPI.SetCommands(ctx, botID, "default", "", cmds); err != nil {
+	if err := i.setBotCommands(ctx, botID, domain.BotCommandScope{}, "", cmds); err != nil {
 		i.bfSend(ctx, chatID, "Не удалось сохранить команды.", nil)
 		return
 	}

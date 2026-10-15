@@ -127,14 +127,20 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	case "setMyCommands":
 		scope, lang := parseCommandScope(p.raw("scope")), p.str("language_code")
 		if err := h.svc.BotSetCommands(r.Context(), bot, scope, lang, parseCommands(p.raw("commands"))); err != nil {
-			botErr(w, http.StatusInternalServerError, "setMyCommands failed")
+			botErr(w, botCommandsErrCode(err), "setMyCommands failed")
+			return
+		}
+		botOK(w, true)
+	case "deleteMyCommands":
+		if err := h.svc.BotDeleteCommands(r.Context(), bot, parseCommandScope(p.raw("scope")), p.str("language_code")); err != nil {
+			botErr(w, botCommandsErrCode(err), "deleteMyCommands failed")
 			return
 		}
 		botOK(w, true)
 	case "getMyCommands":
 		cmds, err := h.svc.BotGetCommands(r.Context(), bot, parseCommandScope(p.raw("scope")), p.str("language_code"))
 		if err != nil {
-			botErr(w, http.StatusInternalServerError, "getMyCommands failed")
+			botErr(w, botCommandsErrCode(err), "getMyCommands failed")
 			return
 		}
 		out := make([]map[string]any, 0, len(cmds))
@@ -171,7 +177,11 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		markup := parseReplyMarkup(p.raw("reply_markup"))
-		msg, err := h.svc.BotSendMessage(r.Context(), bot, chatID, text, markup)
+		msg, err := h.svc.BotSendMessage(r.Context(), bot, chatID, text, markup, usecasechat.BotSendOpts{
+			Entities:   parseEntities(p.raw("entities")),
+			ReplyToSeq: parseReplyTo(p),
+			Silent:     p.boolean("disable_notification"),
+		})
 		if err != nil {
 			botErr(w, http.StatusBadRequest, "sendMessage failed: "+err.Error())
 			return
@@ -600,18 +610,53 @@ func parseCommands(raw json.RawMessage) []domain.BotCommand {
 	return cmds
 }
 
-// parseCommandScope: {"type":"..."} → строка скоупа (пустая = default).
-func parseCommandScope(raw json.RawMessage) string {
+// parseCommandScope: BotCommandScope Bot API {type, chat_id?, user_id?} → наш
+// скоуп (пустой или нечитаемый = default). chat_id — внутренний номер чата, как у
+// sendMessage; адрес без типа, нужного ему, отсеивает usecase (Valid).
+func parseCommandScope(raw json.RawMessage) domain.BotCommandScope {
 	if len(raw) == 0 {
-		return "default"
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}
 	}
 	var s struct {
-		Type string `json:"type"`
+		Type   string `json:"type"`
+		ChatID int64  `json:"chat_id"`
+		UserID int64  `json:"user_id"`
 	}
-	if json.Unmarshal(raw, &s) != nil || s.Type == "" {
-		return "default"
+	if json.Unmarshal(raw, &s) != nil {
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}
 	}
-	return s.Type
+	return domain.BotCommandScope{Type: s.Type, ChatID: s.ChatID, UserID: s.UserID}
+}
+
+// parseReplyTo: reply_parameters.message_id, а у старой формы —
+// reply_to_message_id. Номер сообщения в чате; нет — ответа нет.
+func parseReplyTo(p bodyParams) *int64 {
+	if raw := p.raw("reply_parameters"); len(raw) > 0 {
+		var rp struct {
+			MessageID int64 `json:"message_id"`
+		}
+		if json.Unmarshal(raw, &rp) == nil && rp.MessageID > 0 {
+			return &rp.MessageID
+		}
+	}
+	if id := p.int("reply_to_message_id"); id > 0 {
+		return &id
+	}
+	return nil
+}
+
+// botCommandsErrCode — код ответа методов команд: неверный скоуп или список —
+// 400, чужой чат — 403, нет чата — 404; остальное — сбой хранилища.
+func botCommandsErrCode(err error) int {
+	switch {
+	case errors.Is(err, domain.ErrInvalid):
+		return http.StatusBadRequest
+	case errors.Is(err, domain.ErrForbidden):
+		return http.StatusForbidden
+	case errors.Is(err, domain.ErrNotFound):
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }
 
 // ── Разметка на границе Bot API ─────────────────────────────────────────────

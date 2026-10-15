@@ -8,25 +8,34 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// fakeBots — in-memory BotRepo: заданные боты + команды.
+// fakeBots — in-memory BotRepo: только флаг is_bot (команды и рассылка их
+// смены — в fakeBotRepo, botcommands_test.go).
 type fakeBots struct {
 	botIDs map[int64]bool
-	cmds   map[int64][]domain.BotCommand
 }
 
 func (f fakeBots) IsBot(_ context.Context, userID int64) (bool, error) { return f.botIDs[userID], nil }
-func (f fakeBots) Commands(_ context.Context, botID int64) ([]domain.BotCommand, error) {
-	return f.cmds[botID], nil
+func (f fakeBots) CommandsFor(context.Context, int64, int64, int64, bool, string) ([]domain.BotCommand, error) {
+	return nil, nil
 }
+func (f fakeBots) CommandsForBots(context.Context, []int64, int64, int64, bool, string) (map[int64][]domain.BotCommand, error) {
+	return nil, nil
+}
+func (f fakeBots) BotChats(context.Context, int64, int) ([]domain.BotChat, error) { return nil, nil }
+func (f fakeBots) CountChatMembers(context.Context, []int64, int) (int, error)    { return 0, nil }
+func (f fakeBots) ChatRecipients(context.Context, int64, []int64) ([]domain.BotRecipient, error) {
+	return nil, nil
+}
+func (f fakeBots) ChatMemberCommands(context.Context, int64, int64) (map[int64][]domain.BotCommand, error) {
+	return nil, nil
+}
+func (f fakeBots) ChatBotIDs(context.Context, int64, int) ([]int64, error) { return nil, nil }
 
 // botInteractor: приватный чат user(1) ↔ bot(42), publisher для проверки рассылки.
 func botInteractor(t *testing.T) (*Interactor, *store, int64) {
 	t.Helper()
 	in, s := newInteractor()
-	in.SetBots(fakeBots{
-		botIDs: map[int64]bool{42: true},
-		cmds:   map[int64][]domain.BotCommand{42: {{Command: "start", Description: "s"}}},
-	})
+	in.SetBots(fakeBots{botIDs: map[int64]bool{42: true}})
 	in.SetPublisher(&fakePublisher{})
 	chatID, err := in.CreatePrivateChat(context.Background(), 1, 42)
 	if err != nil {

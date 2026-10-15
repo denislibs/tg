@@ -166,6 +166,8 @@ func updateCases() []struct {
 		{"недавние стикеры", NewUpdateRecentStickers()},
 		{"избранные стикеры", NewUpdateFavedStickers()},
 		{"сохранённые GIF", NewUpdateSavedGifs()},
+		{"команды бота в личке", NewUpdateBotCommands(NewPeerUser(9), 9, []BotCommand{{Command: "start", Description: "Начать"}})},
+		{"команды бота в группе", NewUpdateBotCommands(NewPeerChannel(5), 9, nil)},
 	}
 }
 
@@ -286,6 +288,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateRecentStickersTag,
 		UpdateFavedStickersTag,
 		UpdateSavedGifsTag,
+		UpdateBotCommandsTag,
 	}
 
 	covered := map[string]bool{}

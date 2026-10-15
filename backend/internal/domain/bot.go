@@ -10,19 +10,59 @@ type BotCommand struct {
 	Description string `json:"description"`
 }
 
+// Типы области видимости списка команд (Bot API BotCommandScope.type).
+const (
+	BotScopeDefault           = "default"
+	BotScopeAllPrivateChats   = "all_private_chats"
+	BotScopeAllGroupChats     = "all_group_chats"
+	BotScopeAllChatAdmins     = "all_chat_administrators"
+	BotScopeChat              = "chat"
+	BotScopeChatAdministrator = "chat_administrators"
+	BotScopeChatMember        = "chat_member"
+)
+
 // BotCommandScope — область видимости списка команд (Telegram BotCommandScope).
-// Пустой Type == "default".
+// Пустой Type == "default". ChatID — внутренний chats.id (chat, chat_administrators,
+// chat_member), UserID — участник (chat_member); у остальных типов оба нули.
 type BotCommandScope struct {
-	Type   string // ""|default|all_private_chats|all_group_chats|all_chat_administrators
-	ChatID int64  // для chat-scope (не используется в текущем подмножестве)
+	Type   string
+	ChatID int64
+	UserID int64
 }
 
 // Norm нормализует пустой тип к «default».
 func (s BotCommandScope) Norm() string {
 	if s.Type == "" {
-		return "default"
+		return BotScopeDefault
 	}
 	return s.Type
+}
+
+// Valid — тип известен и адрес на месте: chat/chat_administrators требуют чат,
+// chat_member — чат и пользователя; безадресным типам адрес не положен.
+func (s BotCommandScope) Valid() bool {
+	switch s.Norm() {
+	case BotScopeDefault, BotScopeAllPrivateChats, BotScopeAllGroupChats, BotScopeAllChatAdmins:
+		return s.ChatID == 0 && s.UserID == 0
+	case BotScopeChat, BotScopeChatAdministrator:
+		return s.ChatID != 0 && s.UserID == 0
+	case BotScopeChatMember:
+		return s.ChatID != 0 && s.UserID != 0
+	}
+	return false
+}
+
+// BotChat — чат, где состоит бот (рассылка updateBotCommands).
+type BotChat struct {
+	ChatID int64
+	Type   string // ChatTypePrivate | ChatTypeGroup | ChatTypeChannel | ...
+}
+
+// BotRecipient — участник чата бота, которому уходит updateBotCommands.
+type BotRecipient struct {
+	ChatID int64
+	UserID int64
+	Staff  bool // создатель или админ чата
 }
 
 // Клавиатура сообщения (ReplyMarkup / KeyboardButton) живёт в mtreplymarkup.go —
