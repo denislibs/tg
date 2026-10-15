@@ -6,7 +6,9 @@
 // Без glare: НОВИЧОК шлёт офферы всем, кто уже в звонке (их список отдаёт
 // GET /chats/{id}/group_call перед join); сидящие просто ждут оффер.
 // Mute/камера — track.enabled + media_state внутри group_call_signal.
+import { toastNew } from '@components/toast'
 import { useGroupCallStore } from '../../stores/groupCallStore'
+import { useLivestreamStore } from '../../stores/livestreamStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { startClient } from '../../client/bootstrap'
 import { iceServers } from './callEngine'
@@ -28,7 +30,7 @@ export interface GroupCallFrame {
   d: {
     peer_id: number
     user_id?: number
-    action?: 'joined' | 'left'
+    action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
     from_user_id?: number
     sdp?: RTCSessionDescriptionInit
@@ -103,9 +105,19 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
     const pc = await newPc(userId)
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
+    // сервер мог отказать во входе (rejected), пока шли офферы: звонка уже нет
+    if (store().peerId !== peerId) return
     signal(userId, { sdp: sdpJSON(pc.localDescription) })
   }
   broadcastMediaState()
+}
+
+/** Локальная уборка звонка: соединения, микрофон/камера, стор. Кадров не шлёт. */
+function teardownCall() {
+  for (const userId of [...pcs.keys()]) closePeer(userId)
+  localStream?.getTracks().forEach((t) => t.stop())
+  localStream = null
+  store().reset()
 }
 
 /** Выйти из видеочата. */
@@ -113,10 +125,22 @@ export function leaveGroupCall() {
   const peerId = store().peerId
   if (peerId == null) return
   void managers().realtime.sendCallFrame({ type: 'group_call_leave', data: { peer_id: peerId } })
-  for (const userId of [...pcs.keys()]) closePeer(userId)
-  localStream?.getTracks().forEach((t) => t.stop())
-  localStream = null
-  store().reset()
+  teardownCall()
+}
+
+/**
+ * Сервер не пустил в видеочат (рядовой участник при пустом звонке, Б-9): мы уже
+ * взяли микрофон и открыли экран звонка — откатываем локально, без
+ * group_call_leave (мы в звонок не входили).
+ */
+function handleJoinRejected(peerId: number) {
+  const inCall = store().peerId === peerId
+  const live = useLivestreamStore.getState()
+  const watching = live.watchingPeerId === peerId
+  if (!inCall && !watching) return // отказ запоздал: мы уже вышли
+  if (inCall) teardownCall()
+  if (watching) live.setWatching(null)
+  toastNew({ langPackKey: 'Error.AnError' })
 }
 
 export function toggleGroupMic() {
@@ -160,6 +184,11 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   if (t === 'group_call_update') {
     // список идущих звонков — для баннера Join у всех членов чата
     store().setActive(d.peer_id, d.participants ?? [])
+    if (d.action === 'rejected') {
+      // кадр адресован только отказанному, но user_id сверяем: чужой не трогает наш звонок
+      if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id)
+      return
+    }
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }

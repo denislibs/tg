@@ -4,11 +4,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendCallFrame = vi.fn()
+const toastNew = vi.fn()
+vi.mock('@components/toast', () => ({ toastNew: (...a: unknown[]) => toastNew(...a) }))
 
 vi.mock('../../client/bootstrap', () => ({
   startClient: () => ({
     managers: {
       realtime: { sendCallFrame: (...a: unknown[]) => sendCallFrame(...a) },
+      messages: { groupCallParticipants: async () => [] },
       calls: { iceConfig: async () => ({ servers: [], ttlSeconds: 0 }) },
     },
   }),
@@ -40,6 +43,7 @@ beforeEach(async () => {
   vi.resetModules()
   created.length = 0
   sendCallFrame.mockReset()
+  toastNew.mockReset()
   vi.stubGlobal('RTCPeerConnection', FakePC)
   engine = await import('./groupCallEngine')
   store = await import('../../stores/groupCallStore')
@@ -63,5 +67,57 @@ describe('groupCallEngine: сигнал только от участника', (
     engine.handleGroupCallFrame(offer(2))
     await vi.waitFor(() => expect(created).toHaveLength(1))
     await vi.waitFor(() => expect(sendCallFrame).toHaveBeenCalled())
+  })
+})
+
+// Б-9: сервер не пустил в видеочат. К этому моменту клиент уже взял микрофон и
+// открыл экран звонка — кадр rejected всё откатывает БЕЗ group_call_leave.
+describe('groupCallEngine: отказ входа (action = rejected)', () => {
+  const stopped: boolean[] = []
+  const track = () => ({ stop: () => stopped.push(true), enabled: true })
+
+  beforeEach(() => {
+    stopped.length = 0
+    store.useGroupCallStore.getState().reset()
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        getUserMedia: async () => ({ getTracks: () => [track()], getAudioTracks: () => [], getVideoTracks: () => [] }),
+      },
+    })
+  })
+
+  const rejected = (peer: number, user: number) => ({
+    t: 'group_call_update', d: { peer_id: peer, user_id: user, action: 'rejected' as const, participants: [] },
+  })
+
+  it('убирает локальный звонок, останавливает треки, не шлёт group_call_leave, показывает тост', async () => {
+    await engine.joinGroupCall(PEER)
+    expect(store.useGroupCallStore.getState().peerId).toBe(PEER)
+    sendCallFrame.mockClear()
+
+    engine.handleGroupCallFrame(rejected(PEER, 1))
+
+    expect(store.useGroupCallStore.getState().peerId).toBeNull()
+    expect(stopped).toHaveLength(1)
+    expect(engine.getLocalStream()).toBeNull()
+    expect(sendCallFrame).not.toHaveBeenCalled()
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+  })
+
+  it('отказ чужого пользователя или другого чата звонок не трогает', async () => {
+    await engine.joinGroupCall(PEER)
+    engine.handleGroupCallFrame(rejected(PEER, 2))
+    engine.handleGroupCallFrame(rejected(-200, 1))
+    expect(store.useGroupCallStore.getState().peerId).toBe(PEER)
+    expect(stopped).toHaveLength(0)
+    expect(toastNew).not.toHaveBeenCalled()
+  })
+
+  it('зритель эфира: отказ снимает просмотр', async () => {
+    const live = await import('../../stores/livestreamStore')
+    live.useLivestreamStore.getState().setWatching(PEER)
+    engine.handleGroupCallFrame(rejected(PEER, 1))
+    expect(live.useLivestreamStore.getState().watchingPeerId).toBeNull()
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
   })
 })
