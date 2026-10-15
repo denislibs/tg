@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 70,
+      "version": 71,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -7079,6 +7079,49 @@
         {
           "key": "UnblockUser",
           "value": "Unblock user"
+        },
+        {
+          "key": "UnconfirmedAuthConfirm",
+          "value": "Yes, it’s me"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmed",
+          "value": "New Login Allowed"
+        },
+        {
+          "key": "UnconfirmedAuthConfirmedMessage",
+          "value": "You can check the list of your active logins in %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedButton",
+          "value": "Got it"
+        },
+        {
+          "key": "UnconfirmedAuthDeniedMessageSingle",
+          "value": "We have terminated the login attempt from %s."
+        },
+        {
+          "key": "UnconfirmedAuthDeniedTitle",
+          "forms": {
+            "one_value": "New Login Prevented",
+            "other_value": "New Logins Prevented"
+          }
+        },
+        {
+          "key": "UnconfirmedAuthDeniedWarning",
+          "value": "Never send your login code to anyone or you can lose your Telegram account!"
+        },
+        {
+          "key": "UnconfirmedAuthDeny",
+          "value": "No, it’s not me!"
+        },
+        {
+          "key": "UnconfirmedAuthSingle",
+          "value": "We detected a new login to your account from %s. Is it you?"
+        },
+        {
+          "key": "UnconfirmedAuthTitle",
+          "value": "Someone just got access to your messages!"
         },
         {
           "key": "Unit.Bytes",

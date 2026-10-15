@@ -19,7 +19,7 @@
  *  • завершение — из контекстного меню строки и с экрана сессии;
  *  • подпись `ClearOtherSessionsHelp` и кнопка — только при других сессиях;
  *  • `password_pending` — своя секция «Incomplete login attempts»;
- *  • список перечитывается раз в минуту, опрос гаснет с вкладкой.
+ *  • список перечитывается раз в минуту и по событию `unconfirmed_authorizations_update`, оба гаснут с вкладкой.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
@@ -33,6 +33,7 @@ import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 import contextMenuController from '@helpers/contextMenuController'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
+import rootScope from '@lib/rootScope'
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -389,6 +390,23 @@ describe('«Устройства» — опрос и жизненный цикл
     expect(sessions.list).toHaveBeenCalledTimes(1)
 
     await vi.waitFor(() => expect(rowByTitle(section(tab, lang.OtherSessions), 'Telegram Desktop 5.0')).toBeTruthy())
+  })
+
+  it('событие unconfirmed_authorizations_update перечитывает список (tweb :101-103), после закрытия — нет', async() => {
+    const tab = await open([current])
+    const fresh = { ...other, hash: 9, app_name: 'Telegram Desktop', app_version: '5.0' } as Auth
+    sessions.list.mockResolvedValue([current, fresh])
+
+    rootScope.dispatchEventSingle('unconfirmed_authorizations_update', [])
+    await vi.waitFor(() => expect(rowByTitle(section(tab, lang.OtherSessions), 'Telegram Desktop 5.0')).toBeTruthy())
+    expect(sessions.list).toHaveBeenCalledTimes(1)
+
+    tab.close()
+    await pause(400)
+    sessions.list.mockClear()
+    rootScope.dispatchEventSingle('unconfirmed_authorizations_update', [])
+    await pause(10)
+    expect(sessions.list).not.toHaveBeenCalled()
   })
 
   it('после закрытия опрос погашен и Solid-остров снят (DoD 5)', async() => {

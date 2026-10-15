@@ -229,12 +229,12 @@ describe('плашка на своём месте — в оверлее влад
     resetPeerMirror()
   })
 
-  it('плашка — первой в .chatlist-overlay, над рядом папок; её высота уходит в --chatlist-overlay-height', async () => {
+  it('плашка — в .chatlist-overlay сразу за плашкой «новый вход» (tweb :1390-1394 препендит её следом), над рядом папок; её высота уходит в --chatlist-overlay-height', async () => {
     mounted = mountOwner()
     await settle()
     const overlay = mounted.host.querySelector<HTMLElement>(':scope > .chatlist-overlay')!
 
-    const first = overlay.firstElementChild as HTMLElement
+    const first = overlay.children[1] as HTMLElement
     expect(first.firstElementChild!.classList.contains(styles.suggestionContainer)).toBe(true)
     expect(first.nextElementSibling!.classList.contains('folders-tabs-gradient-container')).toBe(true)
 
