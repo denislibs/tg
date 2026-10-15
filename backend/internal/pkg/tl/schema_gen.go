@@ -8476,7 +8476,6 @@ var clientParams = map[string][]string{
 	"messageEntityBotCommand":            {"unsafe"},
 	"user":                               {"sortName", "emoji_status_emoticon"},
 	"auth.sentCode":                      {"phone_number"},
-	"messageActionSuggestProfilePhoto":   {"accepted"},
 	"messageActionSuggestedPostApproval": {"channel_id"},
 	"langPackDifference":                 {"localVersion", "countries"},
 	"updateDraftMessage":                 {"local", "threadId"},

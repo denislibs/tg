@@ -266,7 +266,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, err // propagate real DB errors (don't mask as 403)
 		case ownerID != in.SenderID && in.skipMediaOwner:
 			// Share истории: media принадлежит автору истории, а не отправителю;
-			// видимость истории уже проверена story-usecase, поэтому владельца не сверяем.
+			// story-usecase уже проверил, что история видна отправителю И публична
+			// (privacy everyone), поэтому владельца не сверяем.
 		case ownerID != in.SenderID:
 			// Стикер шлётся чужим media: наборы публичны, поэтому достаточно,
 			// чтобы media принадлежало какому-либо стикеру.
@@ -703,7 +704,8 @@ func (i *Interactor) documentKind(ctx context.Context, mediaID int64) (string, e
 // SendStoryShare posts a story into a chat as a regular media message with an
 // attribution caption (story-usecase's MessageSender port; tweb inputMediaStory,
 // lightweight variant without a dedicated message type). The story-usecase has
-// already checked story visibility, so the media-owner check is skipped; chat
+// already checked that the story is visible AND public, so the media-owner check
+// is skipped (the caller owns that guarantee — mediaID is NOT verified here); chat
 // membership, slowmode and send-privacy still apply through Send (a non-member
 // yields domain.ErrNotFound). The message type follows the media mime.
 func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string, allowPaidStars int64) error {

@@ -33,8 +33,10 @@ import (
 // mute_until, «навсегда» — MuteUntilForever, «снять» — 0. Цепочка у нас уже
 // была построена целиком (UI предлагает «на час», клиент шлёт срок, бэкенд
 // хранит muted_until), провод её и терял: «заглушить на 1 час» работало как
-// «навсегда». Предикат «замьючен ли сейчас» здесь ОДИН — PeerNotifySettings.
-// Muted; пять копий SQL-условия сводятся к нему на шаге B.
+// «навсегда». Мьют чата ТРЁХЗНАЧНЫЙ (как у тем форума): отсутствие значения —
+// наследовать тип чатов, 0 или истёкший срок — явное «уведомлять», срок в
+// будущем — заглушён. Предикат «замьючен ли сейчас» — ChatMuted (notify.go),
+// его SQL-копия — chatMutedSQL.
 //
 // ── Чего в этом порту нет и почему (решение Р10) ────────────────────────────
 // Пропуски названы, а не забыты — молчаливый пропуск и есть тот способ, каким
@@ -588,21 +590,6 @@ type PeerNotifySettings struct {
 	// OtherSound — звук уведомления как ОБЪЕДИНЕНИЕ, а не строка 'default'/'none'
 	// (решение Р4): наш chat_members.notify_sound.
 	OtherSound NotificationSound `json:"other_sound,omitempty"`
-}
-
-// Muted — замьючен ли пир В ЭТОТ МОМЕНТ. Порт tweb appNotificationsManager.ts:255
-// (`silent || mute_until * 1000 > tsNow()`): мьют это СРОК, поэтому предикат
-// принимает время, а не читает часы сам — иначе его нельзя проверить тестом и
-// нельзя посчитать «на момент кадра».
-//
-// Единственное место, где этот вопрос решается: пять копий SQL-условия
-// (`m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())` в
-// chatsrepo/pushrepo/grouprepo) сводятся сюда на шаге B.
-func (s PeerNotifySettings) Muted(now time.Time) bool {
-	if s.Silent != nil && *s.Silent {
-		return true
-	}
-	return s.MuteUntil != nil && int64(*s.MuteUntil) > now.Unix()
 }
 
 // NewPeerNotifySettings собирает настройки пира. Каждый аргумент умеет означать

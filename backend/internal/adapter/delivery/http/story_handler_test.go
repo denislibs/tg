@@ -592,9 +592,36 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 		t.Fatalf("C repost: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
 
+	// F7-A2: историю с узким правилом (selected) нельзя ни репостить, ни
+	// пересылать в чаты, даже тому, кто её видит (B в списке): копия файла
+	// пережила бы правило автора. По tweb «Поделиться» — только у публичной
+	// истории (viewer.tsx:2222-2224).
+	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenB, map[string]any{
+		"source_author_id": idA, "source_story_id": posted, "privacy": "everyone",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("B repost of selected story: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/share", tokenA, map[string]any{
+		"peer_ids": []int64{chat},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("A share of own selected story: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Публичная история A — её можно репостить и пересылать.
+	rec = authedReq(t, h, http.MethodPost, "/stories", tokenA, map[string]any{
+		"media_id": created.MediaID, "caption": "public", "privacy": "everyone",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post public story: %d %s", rec.Code, rec.Body.String())
+	}
+	var pub int64
+	_ = json.Unmarshal(rec.Body.Bytes(), &pub)
+
 	// B (partner) reposts; the new story references A via fwd_from.
 	rec = authedReq(t, h, http.MethodPost, "/stories/repost", tokenB, map[string]any{
-		"source_author_id": idA, "source_story_id": posted, "caption": "look", "privacy": "everyone",
+		"source_author_id": idA, "source_story_id": pub, "caption": "look", "privacy": "everyone",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("B repost: %d %s", rec.Code, rec.Body.String())
@@ -623,7 +650,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 			if from == nil || from["_"] != "peerUser" || int64(from["user_id"].(float64)) != idA {
 				t.Fatalf("repost fwd_from payload = %+v", s.FwdFrom)
 			}
-			if int64(s.FwdFrom["story_id"].(float64)) != posted {
+			if int64(s.FwdFrom["story_id"].(float64)) != pub {
 				t.Fatalf("repost fwd_from story = %+v", s.FwdFrom)
 			}
 			fwdSeen = true
@@ -634,7 +661,7 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	}
 
 	// A shares the story into the A↔B chat: sent count 1, a media message lands.
-	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/share", tokenA, map[string]any{
+	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(pub)+"/share", tokenA, map[string]any{
 		"peer_ids": []int64{chat},
 	})
 	if rec.Code != http.StatusOK {

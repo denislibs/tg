@@ -544,7 +544,7 @@ describe('dialogsManager: действия без оптимистики — п�
   // Без этого «заглушить на час» оставалось бы неотличимо от «навсегда»:
   // иконка не погасла бы в назначенный час, пересчёт случался бы только при
   // следующей полной загрузке списка.
-  it('истёкший срок мьюта владелец снимает сам, по таймеру на ближайший срок', async () => {
+  it('истёкший срок мьюта владелец гасит сам явным 0, по таймеру на ближайший срок', async () => {
     vi.useFakeTimers()
     const now = Math.floor(Date.now() / 1000)
     const muted = makeDialog({ peerId: 1, muteUntil: now + 60, lastMessage: makeLastMessage({ peerId: 1, id: 1 }) })
@@ -557,9 +557,11 @@ describe('dialogsManager: действия без оптимистики — п�
 
     expect(ops).toHaveLength(1)
     expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1 })
-    // Переопределения больше нет — ключ снят, а не обнулён.
+    // Срок вышел — явное «уведомлять» (mute_until: 0), а не снятый ключ: tweb
+    // checkMuteUntil (:232-235) «не удаляет — иначе пер-чатные настройки были бы
+    // перетёрты настройками типа в getPeerLocalSettings».
     const d = mgr.getSnapshot()[0].dialog
-    expect(d.notify_settings.mute_until).toBeUndefined()
+    expect(d.notify_settings.mute_until).toBe(0)
     expect(isMuted(d)).toBe(false)
     vi.useRealTimers()
   })

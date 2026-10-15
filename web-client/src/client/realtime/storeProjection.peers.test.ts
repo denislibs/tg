@@ -112,14 +112,17 @@ describe('storeProjection — карточки пиров: воркер влад
     expect(fromWorker).toEqual(fresh)
   })
 
-  // Кадр приходит на пира, которого воркер не знает: объявлять некому (зеркало
-  // — подмножество кэша), и молчание тут — правило, а не потеря.
-  it('user_update о неизвестном пире зеркало не наполняет', async () => {
+  // Кадр приходит на пира, которого воркер не знает: приёмник кладёт и новую
+  // карточку (tweb `saveApiUser`, `oldUser === undefined` → `mirrorUser`,
+  // appUsersManager.ts:663-782) и объявляет её — кадр «добавил в контакты» со
+  // второго устройства не пропадает, пока человека не прочитали отдельно.
+  it('user_update о неизвестном пире наполняет зеркало (saveApiUser)', async () => {
     const { mgr } = stand([user(2)])
 
-    mgr.applyUserUpdate(user(404, { first_name: 'Никто' }))
+    const stranger = user(404, { first_name: 'Никто' })
+    mgr.applyUserUpdate(stranger)
 
-    expect(cachedPeer(404)).toBeUndefined()
+    expect(cachedPeer(404)).toEqual(stranger)
   })
 
   // Уход активной сессии. Зеркало читают СИНХРОННО на рендере (императивная

@@ -105,6 +105,9 @@ const (
 	// Прочтение треда (Ф-5, БЭК-1b) — messages.readDiscussion.
 	UpdateReadChannelDiscussionInboxTag  = "updateReadChannelDiscussionInbox"
 	UpdateReadChannelDiscussionOutboxTag = "updateReadChannelDiscussionOutbox"
+	// Теги «Избранного» (Ф-6, f6-contacts) — updateSavedReactionTags без
+	// параметров: «перечитай теги» (tweb appReactionsManager.ts:121-132).
+	UpdateSavedReactionTagsTag = "updateSavedReactionTags"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1364,4 +1367,20 @@ func NewUpdateDeleteScheduledMessages(peer Peer, ids, sent []int64) UpdateDelete
 		u.SentMessages = sent
 	}
 	return u
+}
+
+// updateSavedReactionTags#39c67432 = Update; — тег «Избранного» переименован.
+// Параметров нет: клиент перечитывает теги, если они у него в кэше (tweb
+// appReactionsManager.ts:121-132). Кадр пишет только переименование; смена
+// набора тегов реакциями в «Избранном» не синхронизируется (UI тегов не
+// портирован, Б-26).
+type UpdateSavedReactionTags struct {
+	Underscore string `json:"_"`
+}
+
+func (UpdateSavedReactionTags) isUpdate()     {}
+func (u UpdateSavedReactionTags) Tag() string { return u.Underscore }
+
+func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
+	return UpdateSavedReactionTags{Underscore: UpdateSavedReactionTagsTag}
 }

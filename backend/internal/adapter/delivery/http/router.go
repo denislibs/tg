@@ -442,7 +442,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Put("/contacts/{userID}/photo", cph.SetCustomPhoto)
 			pr.Delete("/contacts/{userID}/photo", cph.ClearCustomPhoto)
 			pr.Post("/contacts/{userID}/suggest_photo", cph.SuggestPhoto)
-			pr.Post("/chats/{peerID}/photo_suggestions/{msgSeq}/accept", cph.AcceptSuggestion)
 		}
 
 		// ICE-конфиг для звонков (STUN + эфемерные TURN-креды)

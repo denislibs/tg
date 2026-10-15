@@ -221,31 +221,6 @@ func TestAddProfilePhoto_UnwiredMediaReader(t *testing.T) {
 	}
 }
 
-// Принятое предложение фото: файл принадлежит предложившему, не принимающему.
-func TestAddSuggestedProfilePhoto(t *testing.T) {
-	ctx := context.Background()
-	i, _, _, _ := newInteractor()
-	me := seedUser(t, i, "+79990000054")
-	suggester := seedUser(t, i, "+79990000055")
-	stranger := seedUser(t, i, "+79990000056")
-	sq := &fakeSquarer{}
-	i.SetAvatarSquarer(sq)
-	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{
-		20: {ID: 20, OwnerID: suggester, Mime: "image/jpeg"},
-		21: {ID: 21, OwnerID: stranger, Mime: "image/jpeg"},
-	}})
-	if _, err := i.AddSuggestedProfilePhoto(ctx, me, suggester, 21); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("файл не предложившего: err=%v; want ErrNotFound", err)
-	}
-	ph, err := i.AddSuggestedProfilePhoto(ctx, me, suggester, 20)
-	if err != nil || ph.MediaID != 20 {
-		t.Fatalf("файл предложившего: ph=%+v err=%v", ph, err)
-	}
-	if sq.lastOwner != suggester {
-		t.Fatalf("кроп с владельцем %d; want предложивший %d", sq.lastOwner, suggester)
-	}
-}
-
 func TestSetUsername(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
