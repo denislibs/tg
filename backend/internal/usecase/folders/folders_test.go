@@ -87,13 +87,16 @@ type fakeChats struct {
 	banned map[[2]int64]bool // (chatID,userID) → бан: Join отвечает ErrForbidden
 	// inviters — (chatID,userID), у которых есть право приглашать (создатель
 	// или админ с invite_users).
-	inviters map[[2]int64]bool
-	joined   [][2]int64
+	inviters    map[[2]int64]bool
+	infoCalls   int // вызовов Info
+	inviteCalls int // вызовов CanInvite
+	joined      [][2]int64
 	// announced — Joined (после коммита) по вступившим именно сейчас.
 	announced [][2]int64
 }
 
 func (c *fakeChats) Info(_ context.Context, chatID int64) (string, bool, error) {
+	c.infoCalls++
 	ch, ok := c.chats[chatID]
 	if !ok {
 		return "", false, domain.ErrNotFound
@@ -101,6 +104,7 @@ func (c *fakeChats) Info(_ context.Context, chatID int64) (string, bool, error) 
 	return ch.typ, ch.isPublic, nil
 }
 func (c *fakeChats) CanInvite(_ context.Context, chatID, userID int64) (bool, error) {
+	c.inviteCalls++
 	return c.inviters[[2]int64{chatID, userID}], nil
 }
 func (c *fakeChats) Preview(_ context.Context, chatID int64) (domain.FolderInviteChat, error) {
@@ -349,5 +353,48 @@ func TestPreviewInvite_HidesNonGroupKind(t *testing.T) {
 	_, got, err := uc.PreviewInvite(context.Background(), slug)
 	if err != nil || len(got) != 1 || got[0].ID != 11 {
 		t.Fatalf("превью = %+v, %v, ждали только чат 11", got, err)
+	}
+}
+
+// Публичный чат не стоит запроса прав автора (цена из плана: GetMember — только
+// для приватного).
+func TestAdmissible_PublicChatDoesNotAskInviteRight(t *testing.T) {
+	uc, _, chats, slug := linkOnPublicChats(t)
+	if _, _, err := uc.PreviewInvite(context.Background(), slug); err != nil {
+		t.Fatal(err)
+	}
+	if chats.inviteCalls != 0 {
+		t.Fatalf("CanInvite вызван %d раз для публичных чатов, ждали 0", chats.inviteCalls)
+	}
+}
+
+// Явный выбор клиента с приватным чатом: тот не вступается, остальные — да.
+func TestJoinInvite_ExplicitSelectionWithPrivateChat(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	makePrivate(chats, 10)
+
+	if err := uc.JoinInvite(context.Background(), 2, slug, []int64{10, 11}); err != nil {
+		t.Fatal(err)
+	}
+	last := repo.created[len(repo.created)-1]
+	if len(chats.joined) != 1 || len(last.IncludeChats) != 1 || last.IncludeChats[0] != 11 {
+		t.Fatalf("joined = %v, папка = %+v, ждали только чат 11", chats.joined, last)
+	}
+}
+
+// Повторы в выборе не множат проверки и не плодят дубли в папке.
+func TestJoinInvite_DuplicateSelectionCollapsed(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	before := chats.infoCalls
+
+	if err := uc.JoinInvite(context.Background(), 2, slug, []int64{10, 10, 10, 10}); err != nil {
+		t.Fatal(err)
+	}
+	if n := chats.infoCalls - before; n != 1 {
+		t.Fatalf("Info вызван %d раз, ждали 1", n)
+	}
+	last := repo.created[len(repo.created)-1]
+	if len(last.IncludeChats) != 1 || last.IncludeChats[0] != 10 {
+		t.Fatalf("папка = %+v, ждали [10]", last)
 	}
 }

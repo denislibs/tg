@@ -66,16 +66,23 @@ func (a *FolderChatAccess) IsMember(ctx context.Context, chatID, userID int64) (
 	return err == nil, err
 }
 
-// CanInvite — создатель или админ с правом invite_users; не участник — false.
+// CanInvite — создатель или админ с правом invite_users; не участник и
+// удалённый аккаунт — false (строки удалённого админа в chat_members остаются,
+// а ссылка живёт: его право не должно впускать в приватный чат бессрочно).
 func (a *FolderChatAccess) CanInvite(ctx context.Context, chatID, userID int64) (bool, error) {
-	m, err := a.groups.GetMember(ctx, chatID, userID)
-	if errors.Is(err, domain.ErrNotFound) {
+	var role string
+	var rights int
+	err := querier(ctx, a.pool).QueryRow(ctx,
+		`SELECT m.role, m.rights FROM chat_members m
+		   JOIN users u ON u.id = m.user_id AND u.deleted_at IS NULL
+		  WHERE m.chat_id=$1 AND m.user_id=$2`, chatID, userID).Scan(&role, &rights)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return domain.HasRight(m.Role, m.Rights, domain.RightInviteUsers), nil
+	return domain.HasRight(role, domain.Rights(rights), domain.RightInviteUsers), nil
 }
 
 // Join вступает в чат общей точкой вступления usecase чатов.

@@ -21,6 +21,7 @@ func TestFolderChatAccess_CanInvite(t *testing.T) {
 	adminNoBit := seedUser(t, pool, "+7823")
 	member := seedUser(t, pool, "+7824")
 	outsider := seedUser(t, pool, "+7825")
+	deletedAdmin := seedUser(t, pool, "+7826")
 
 	chatID, err := g.CreateMultiMember(ctx, "group", "G", "", "", false, creator)
 	if err != nil {
@@ -29,7 +30,7 @@ func TestFolderChatAccess_CanInvite(t *testing.T) {
 	if err := g.AddMember(ctx, chatID, creator, domain.RoleCreator, domain.AllRights); err != nil {
 		t.Fatal(err)
 	}
-	for _, u := range []int64{adminInvite, adminNoBit, member} {
+	for _, u := range []int64{adminInvite, adminNoBit, member, deletedAdmin} {
 		if err := g.AddMember(ctx, chatID, u, domain.RoleMember, 0); err != nil {
 			t.Fatal(err)
 		}
@@ -38,6 +39,13 @@ func TestFolderChatAccess_CanInvite(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := g.SetRole(ctx, chatID, adminNoBit, domain.RoleAdmin, domain.RightPinMessages, creator); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := g.SetRole(ctx, chatID, deletedAdmin, domain.RoleAdmin, domain.RightInviteUsers, creator); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewAuthRepo(pool).SoftDelete(ctx, deletedAdmin); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,6 +59,7 @@ func TestFolderChatAccess_CanInvite(t *testing.T) {
 		{"админ без invite_users", adminNoBit, false},
 		{"рядовой", member, false},
 		{"не участник", outsider, false},
+		{"удалённый админ с invite_users", deletedAdmin, false},
 	} {
 		got, err := a.CanInvite(ctx, chatID, tc.user)
 		if err != nil || got != tc.want {

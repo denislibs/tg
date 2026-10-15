@@ -313,15 +313,23 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	if len(want) == 0 {
 		want = inv.ChatIDs
 	}
+	// Только чаты ссылки и по разу: повторы в теле запроса иначе множили бы
+	// запросы admissible/IsMember внутри одной транзакции и дубли в папке.
+	seen := make(map[int64]bool, len(inv.ChatIDs))
+	picked := make([]int64, 0, len(inv.ChatIDs))
+	for _, id := range want {
+		if allowed[id] && !seen[id] {
+			seen[id] = true
+			picked = append(picked, id)
+		}
+	}
+	want = picked
 	joined := make([]int64, 0, len(want))
 	var fresh []int64 // вступил именно сейчас (а не был участником)
 	var created domain.DialogFilter
 	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, id := range want {
-			if !allowed[id] {
-				continue
-			}
 			ok, e := i.admissible(ctx, id, inv.OwnerID)
 			if e != nil {
 				return e
@@ -395,12 +403,12 @@ func (i *Interactor) ownedFolder(ctx context.Context, ownerID, folderID int64) (
 // chatKindShareable — группа или канал: единственные виды чатов, на которые
 // бывает ссылка на папку (tweb sharedFolder.tsx:49-55 — личные чаты отсекаются).
 func chatKindShareable(typ string) bool {
-	return typ == "group" || typ == "channel"
+	return typ == domain.ChatTypeGroup || typ == domain.ChatTypeChannel
 }
 
 // admissible — чат ссылки всё ещё можно показывать и впускать в него: группа/
 // канал, который сейчас публичный или где автор ссылки — создатель/админ с
-// invite_users. По tweb (sharedFolder.tsx:48-58) в ссылку попадает чат с
+// invite_users (при создании ссылки берутся только публичные, см. shareableChats). По tweb (sharedFolder.tsx:48-58) в ссылку попадает чат с
 // публичным именем или с правом invite_links; сервер обязан держать то же
 // условие и при предпросмотре, и при вступлении, иначе ссылка продолжает
 // впускать в чат, ставший приватным. Удалённый чат — не admissible.
