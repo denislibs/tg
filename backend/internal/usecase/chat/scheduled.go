@@ -1234,7 +1234,12 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 		if err != nil {
 			return err
 		}
-		balances[r.PaidTo] = cbal
+		if taken > 0 {
+			balances[r.PaidTo] = cbal
+		}
+		if taken < r.PaidStars {
+			log.Printf("scheduled: возврат %d из %d звёзд автору %d: получатель %d потратил остальное", taken, r.PaidStars, r.SenderID, r.PaidTo)
+		}
 		refund = taken
 	}
 	if refund <= 0 {

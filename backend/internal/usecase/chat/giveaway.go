@@ -266,7 +266,7 @@ func (i *Interactor) payOutGiveawayStars(ctx context.Context, g domain.Giveaway,
 	if g.WinnersCount <= 0 {
 		return domain.ErrInvalid
 	}
-	prize := g.Stars / int64(g.WinnersCount) // остаток от деления остаётся во вкладе и вернётся
+	prize := g.Deposit / int64(g.WinnersCount) // от вклада, не от поля показа; остаток от деления вернётся
 	paid := int64(len(winners)) * prize
 	if paid > g.Deposit {
 		return domain.ErrInvalid // вклад меньше призов: строка не из этого кода
