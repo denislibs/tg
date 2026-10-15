@@ -16,6 +16,15 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// PhoneResolver привязывает присланную визитку к аккаунту по номеру
+// (messageMediaContact.user_id, решение В-10). Реализует contacts-usecase тем же
+// поиском и правилом added_by_phone, что у «добавить контакт по номеру»; не
+// найден или скрыт правилом — ok=false без ошибки. Опционален: без него
+// user_id всегда 0.
+type PhoneResolver interface {
+	ResolvePhone(ctx context.Context, viewerID int64, phone string) (userID int64, ok bool, err error)
+}
+
 // ContactPhotoLookup reads the viewer's personal photos for contacts so the
 // dialog list can show them in place of the peer's real avatar (Telegram
 // personal_photo). Implemented by the contacts repo. Optional.
@@ -845,8 +854,13 @@ type SendInput struct {
 	GeoAddress    *string
 	GeoLivePeriod *int
 	GeoHeading    *int
-	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
-	ContactUserID *int64
+	// Контакт (type 'contact'): поля inputMediaContact от отправителя 1:1
+	// (ключ `media` тела). Телефон и имя сервер не подставляет; user_id по
+	// номеру выводит сам (PhoneResolver) — клиентского id вход не несёт.
+	Contact *domain.InputMediaContact
+	// contactUserID — аккаунт визитки, выведенный Send по номеру (nil — не
+	// найден или скрыт правилом). Не часть входа: ставит только Send.
+	contactUserID *int64
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.

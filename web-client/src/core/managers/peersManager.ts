@@ -4,6 +4,7 @@ import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadCh
 import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
 import { getPeerId, isUser, toUserId, type Peer } from '../peers/peerId'
 import type { PresenceEvt } from '../realtime/events'
+import type { InputMedia } from '@layer'
 
 // Карточка пира — КОНСТРУКТОР схемы (`user` / `channel` / …), а не плоская
 // выдумка. Прежний `Peer {id, username, displayName, avatarUrl, avatarPreview}`
@@ -438,6 +439,28 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     return found
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername }
+  /**
+   * Порт `appUsersManager.getContactMediaInput` (tweb `appUsersManager.ts:977-988`):
+   * визитка пользователя глазами ОТПРАВИТЕЛЯ — имя, фамилия и номер, как карточка
+   * их несёт (скрытый номер — пустая строка), vcard пуст, `user_id: id` — как у
+   * tweb (:986): из него бабл берёт `user_id` (`appMessagesManager.ts:4041`). На
+   * провод он не уходит — в схеме у `inputMediaContact` его нет, а сервер
+   * привязывает аккаунт по номеру (В-10); срезает его `connectionManager`.
+   * Карточки нет — ошибка, как у tweb (`getUser(id)` без записи).
+   */
+  function getContactMediaInput(userId: number): InputMedia.inputMediaContact {
+    const user = cache.get(userId)
+    if (user?._ !== 'user') throw new Error(`getContactMediaInput: no user card for ${userId}`)
+    return {
+      _: 'inputMediaContact',
+      first_name: user.first_name ?? '',
+      last_name: user.last_name ?? '',
+      phone_number: user.phone ?? '',
+      vcard: '',
+      user_id: userId,
+    }
+  }
+
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername, getContactMediaInput }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>

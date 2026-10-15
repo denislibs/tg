@@ -120,6 +120,9 @@ func registerServer(p serverParams) {
 	// правит, поэтому источник здесь она, а не второй репозиторий.
 	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
+	// Визитка в сообщении: user_id выводится по номеру тем же поиском и правилом
+	// added_by_phone, что у «добавить контакт по номеру» (В-10).
+	p.ChatUC.SetPhoneResolver(p.ContactsUC)
 
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))

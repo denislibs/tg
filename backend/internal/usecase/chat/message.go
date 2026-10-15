@@ -307,9 +307,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
-	// Гео/контакт: координаты в валидном диапазоне; контакт гидрируется по
-	// аккаунту (снимок имени/телефона хранится на сообщении, как в Telegram).
-	var contactName, contactPhone *string
+	// Гео/контакт: координаты в валидном диапазоне; поля визитки хранятся на
+	// сообщении ровно такими, какими их прислал отправитель (checkContact).
 	if in.Type == "geo" {
 		if in.GeoLat == nil || in.GeoLng == nil ||
 			*in.GeoLat < -90 || *in.GeoLat > 90 || *in.GeoLng < -180 || *in.GeoLng > 180 {
@@ -329,17 +328,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		in.GeoTitle, in.GeoAddress, in.GeoLivePeriod, in.GeoHeading = nil, nil, nil, nil
 	}
 	if in.Type == "contact" {
-		if in.ContactUserID == nil {
+		if in.Contact == nil {
 			return domain.Message{}, domain.ErrForbidden
 		}
-		c := i.userCard(ctx, *in.ContactUserID)
-		if c.Title() == "" && c.Phone == "" {
-			return domain.Message{}, domain.ErrNotFound // такого аккаунта нет
+		if err := validateContact(*in.Contact); err != nil {
+			return domain.Message{}, err
 		}
-		name, phone := c.Title(), c.Phone
-		contactName, contactPhone = &name, &phone
 	} else {
-		in.ContactUserID = nil
+		in.Contact, in.contactUserID = nil, nil
 	}
 
 	if in.Type == "encrypted" {
@@ -411,6 +407,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				return domain.Message{}, domain.ErrForbidden
 			}
 		}
+	}
+
+	// Аккаунт визитки — после гейтов: отказанная отправка поиск по номеру не
+	// тратит.
+	if in.Contact != nil {
+		uid, err := i.resolveContact(ctx, in.SenderID, *in.Contact)
+		if err != nil {
+			return domain.Message{}, err
+		}
+		in.contactUserID = uid
 	}
 
 	// Отложенная отправка (schedule_date): все гейты пройдены — вместо
@@ -522,6 +528,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.GroupedID != 0 && in.MediaID != nil {
 			groupedID = &in.GroupedID
 		}
+		cFirst, cLast, cPhone, cVcard := in.contactFields()
 		msg, e = i.insertCopy(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
@@ -534,7 +541,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			GeoLat: in.GeoLat, GeoLng: in.GeoLng,
 			GeoTitle: in.GeoTitle, GeoAddress: in.GeoAddress,
 			GeoLivePeriod: in.GeoLivePeriod, GeoHeading: in.GeoHeading,
-			ContactUserID: in.ContactUserID, ContactName: contactName, ContactPhone: contactPhone,
+			ContactUserID: in.contactUserID, ContactName: cFirst, ContactLastName: cLast,
+			ContactPhone: cPhone, ContactVcard: cVcard,
 			EncBody: in.EncBody, TTLSeconds: in.TTLSeconds, Effect: in.Effect,
 			SendAsChatID: in.SendAsChatID,
 			// Спойлер — свойство вложения, без медиа он бессмысленен (так же

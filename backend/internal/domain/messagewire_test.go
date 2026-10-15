@@ -132,7 +132,7 @@ func wireAttachments() map[string]Message {
 	title, address := "Кремль", "Москва"
 	livePeriod, heading := 3600, 90
 	contactUser := int64(43)
-	contactName, contactPhone := "Боб", "+70000000000"
+	contactName, contactLast, contactPhone, contactVcard := "Боб", "Иванов", "+70000000000", "BEGIN:VCARD"
 	price := int64(50)
 
 	geoBase := func(m *Message) {
@@ -160,6 +160,10 @@ func wireAttachments() map[string]Message {
 		"визитка": wireMessageWith(func(m *Message) {
 			m.Type = "contact"
 			m.ContactUserID, m.ContactName, m.ContactPhone = &contactUser, &contactName, &contactPhone
+		}),
+		"визитка с фамилией и vcard без аккаунта": wireMessageWith(func(m *Message) {
+			m.Type = "contact"
+			m.ContactName, m.ContactLastName, m.ContactPhone, m.ContactVcard = &contactName, &contactLast, &contactPhone, &contactVcard
 		}),
 		"опрос": wireMessageWith(func(m *Message) {
 			m.Type = "poll"

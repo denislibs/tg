@@ -32,14 +32,13 @@ type sendMessageData struct {
 	ClientMsgID      string  `json:"client_msg_id"`
 	MediaID          *int64  `json:"media_id"`
 	GroupedID        int64   `json:"grouped_id"`
-	// Гео-точка (type 'geo') / контакт (type 'contact').
+	// Гео-точка (type 'geo').
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
 	GeoTitle      *string  `json:"geo_title"`
 	GeoAddress    *string  `json:"geo_address"`
 	GeoLivePeriod *int     `json:"geo_live_period"`
 	GeoHeading    *int     `json:"geo_heading"`
-	ContactUserID *int64   `json:"contact_user_id"`
 	// Сообщение в тред (форум-топик / комментарии): НОМЕР корневого сообщения.
 	ThreadRootID *int64 `json:"thread_root_id"`
 	// E2E (type 'encrypted'): base64 iv||ciphertext + опциональный self-destruct TTL.
@@ -56,9 +55,13 @@ type sendMessageData struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// SendAsPeerID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
-	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
-	// (TL messages.sendMessage/sendMedia).
-	domain.WebPageInput
+	// no_webpage / invert_media — превью ссылки (TL messages.sendMessage/
+	// sendMedia). Ключ `media` — объединение InputMedia: inputMediaWebPage
+	// (решение о превью) или inputMediaContact (type 'contact', В-10: поля
+	// визитки от отправителя 1:1, user_id сервер выводит сам).
+	NoWebpage   bool             `json:"no_webpage"`
+	InvertMedia bool             `json:"invert_media"`
+	Media       domain.SendMedia `json:"media"`
 	// ScheduleDate — отложенная отправка (schema schedule_date, unix-секунды;
 	// 0x7FFFFFFE — «когда будет в сети»), ScheduleRepeatPeriod — её повтор
 	// (tweb appMessagesManager.ts:2741-2742).
@@ -68,6 +71,11 @@ type sendMessageData struct {
 	// группе (tweb allow_paid_stars, appMessagesManager.ts:2702): цена ЭТОГО
 	// кадра; 0/нет — не согласен.
 	AllowPaidStars int64 `json:"allow_paid_stars"`
+}
+
+// webPage — решение отправителя о превью ссылки из тела кадра.
+func (d sendMessageData) webPage() domain.WebPageInput {
+	return d.Media.WebPageInput(d.NoWebpage, d.InvertMedia)
 }
 
 type readData struct {

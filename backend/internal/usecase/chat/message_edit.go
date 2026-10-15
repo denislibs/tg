@@ -310,7 +310,7 @@ func editableContent(m domain.Message) bool {
 		m.FwdFromUserID != nil || m.FwdFromChatID != nil || m.FwdFromName != nil || m.IsDiscussionMirror {
 		return false
 	}
-	if m.GeoLat != nil || m.ContactUserID != nil || m.PollID != nil || m.GiveawayID != nil || m.GiftID != nil {
+	if m.GeoLat != nil || m.IsContact() || m.PollID != nil || m.GiveawayID != nil || m.GiftID != nil {
 		return false
 	}
 	switch m.Type {
