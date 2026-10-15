@@ -580,6 +580,9 @@ type SearchRepo interface {
 	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
 	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
+	// UserIDByUsername — пользователь по точному @имени без учёта регистра
+	// (contacts.resolveUsername); domain.ErrNotFound — такого имени нет.
+	UserIDByUsername(ctx context.Context, username string) (int64, error)
 	// SimilarChannels рекомендует публичные каналы по пересечению аудитории с
 	// каналом chatID: берём его подписчиков, смотрим на какие ещё публичные
 	// каналы они подписаны, ранжируем по размеру пересечения. Исключаются сам

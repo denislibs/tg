@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -418,5 +419,108 @@ func TestListDialogs_ChannelMatchesCard(t *testing.T) {
 		if !found {
 			t.Fatalf("зритель %d: группы нет в списке чатов", viewer)
 		}
+	}
+}
+
+// SearchUsers (contacts.search): по @username — среди всех; по display_name —
+// только среди своих (контакты зрителя ∪ собеседники по личке), иначе имя было
+// бы вектором перебора людей (Ф7-Е, MC-14, решение В-8). Свои по имени идут
+// первыми.
+func TestSearchUsers_NameOnlyAmongOwn(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7600")
+	stranger := seedUser(t, pool, "+7601")   // "Иван", не контакт, без лички, @zz1
+	contact := seedUser(t, pool, "+7602")    // "Иван", контакт зрителя
+	dialog := seedUser(t, pool, "+7603")     // "Иванна", личка со зрителем
+	byUsername := seedUser(t, pool, "+7604") // "Другой", @ivan
+	fan := seedUser(t, pool, "+7605")        // "Иван", зритель у него в контактах, у зрителя его нет
+
+	for id, name := range map[int64]string{stranger: "Иван", contact: "Иван", dialog: "Иванна", byUsername: "Другой", fan: "Иван"} {
+		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatalf("display_name: %v", err)
+		}
+	}
+	for id, un := range map[int64]string{stranger: "zz1_user", byUsername: "ivan_vip"} {
+		if _, err := pool.Exec(ctx, `UPDATE users SET username=$2 WHERE id=$1`, id, un); err != nil {
+			t.Fatalf("username: %v", err)
+		}
+	}
+	for _, pair := range [][2]int64{{viewer, contact}, {fan, viewer}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id) VALUES ($1, $2)`, pair[0], pair[1]); err != nil {
+			t.Fatalf("contact: %v", err)
+		}
+	}
+	createPrivate(t, pool, viewer, dialog)
+
+	r := NewSearchRepo(pool)
+	ids := func(q string, limit int) []int64 {
+		t.Helper()
+		us, err := r.SearchUsers(ctx, viewer, q, limit)
+		if err != nil {
+			t.Fatalf("SearchUsers(%q): %v", q, err)
+		}
+		out := make([]int64, len(us))
+		for i, u := range us {
+			out[i] = u.ID
+		}
+		return out
+	}
+
+	// По имени «Ив»: контакт и собеседник; посторонний «Иван» и тот, чей контакт
+	// — зритель, не находятся. Имя пользователя «ivan_vip» не начинается с «Ив»
+	// кириллицей — не совпадает.
+	got := ids("Ив", 20)
+	if len(got) != 2 || got[0] != contact || got[1] != dialog {
+		t.Fatalf("по имени «Ив» = %v; want [контакт %d, личка %d]", got, contact, dialog)
+	}
+	// По @username — среди всех, в том числе постороннему (имя «Другой»).
+	got = ids("iv", 20)
+	if len(got) != 1 || got[0] != byUsername {
+		t.Fatalf("по @iv = %v; want [%d]", got, byUsername)
+	}
+	got = ids("zz", 20)
+	if len(got) != 1 || got[0] != stranger {
+		t.Fatalf("по @zz = %v; want [%d]", got, stranger)
+	}
+	// Свои по имени идут первыми, затем по @username; без повторов; общий
+	// потолок — limit. Контакту ставим @ivan_own: он найдётся обоими запросами.
+	if _, err := pool.Exec(ctx, `UPDATE users SET username='ivan_own' WHERE id=$1`, contact); err != nil {
+		t.Fatalf("username: %v", err)
+	}
+	// Запрос «Ив» не совпадёт с «ivan_own» (кириллица против латиницы), поэтому
+	// проверяем дедупликацию латинским именем контакта.
+	if _, err := pool.Exec(ctx, `UPDATE users SET display_name='Ivan' WHERE id=$1`, contact); err != nil {
+		t.Fatalf("display_name: %v", err)
+	}
+	got = ids("iv", 20)
+	if len(got) != 2 || got[0] != contact || got[1] != byUsername {
+		t.Fatalf("по «iv» после переименования = %v; want [свой по имени %d, затем по @ %d] без повторов", got, contact, byUsername)
+	}
+	if got = ids("iv", 1); len(got) != 1 || got[0] != contact {
+		t.Fatalf("limit=1: %v; want [%d]", got, contact)
+	}
+}
+
+// UserIDByUsername — точное имя без учёта регистра (users.username — CITEXT).
+func TestSearchRepo_UserIDByUsername(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	u := seedUser(t, pool, "+7610")
+	if _, err := pool.Exec(ctx, `UPDATE users SET username='ivan_exact' WHERE id=$1`, u); err != nil {
+		t.Fatalf("username: %v", err)
+	}
+	r := NewSearchRepo(pool)
+	for _, name := range []string{"ivan_exact", "Ivan_Exact"} {
+		if id, err := r.UserIDByUsername(ctx, name); err != nil || id != u {
+			t.Fatalf("UserIDByUsername(%q) = %d %v; want %d", name, id, err, u)
+		}
+	}
+	// Префикс — не совпадение.
+	if _, err := r.UserIDByUsername(ctx, "ivan"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("префикс: err=%v; want ErrNotFound", err)
+	}
+	if _, err := r.UserIDByUsername(ctx, "nobody"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("нет имени: err=%v; want ErrNotFound", err)
 	}
 }
