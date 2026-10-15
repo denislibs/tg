@@ -14,7 +14,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
 import { onPinnedMessagesUpdate, hasPinnedMessageCached, flushPinnedMessagesCache } from '../../core/pinnedMessages'
 import { generateMessageId } from '../../core/history/messageId'
-import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
+import { applyFolderUpdate, applyOrder, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
 import type { Managers } from '../bootstrap'
 
@@ -118,6 +118,11 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // (filters.ts:167): апдейт MTProto самих фильтров не несёт.
   rootScope.addEventListener(RT.folderUpdate, (raw) => {
     applyFolderUpdate(raw as FolderUpdateEvt)
+  })
+  // Порядок папок сменился на другом устройстве (tweb `filter_order`,
+  // filters.ts:179-199): тело — сам `updateDialogFilterOrder`, в сеть не идём.
+  rootScope.addEventListener(RT.dialogFilterOrder, (u) => {
+    applyOrder(u.order)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
   rootScope.addEventListener('rt:resync', () => {
