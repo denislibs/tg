@@ -228,8 +228,11 @@ export interface MessagesDeps {
    *  удалённые непрочитанные входящие. Спросить «было ли оно непрочитанным»
    *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр.
    *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
-   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
-  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
+   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). `mids` — клиентские
+   *  номера ВСЕХ удалённых, в том числе неизвестных SSOT: закреп вне окна воркер
+   *  не знает, а вкладка сверяет номер со своим кэшем закрепов
+   *  (`peer_pinned_deleted`, tweb :14078-14080). */
+  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number, mids: number[]) => void
   /** Бейдж ❤ диалога (`dialogsManager.getUnreadReactionsCount`) — гейт
    *  `hadUnreadReactions` у `readMessages` (tweb appMessagesManager.ts:9566),
    *  см. `MessagesCtx`. */
@@ -426,7 +429,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const keys = opWindowsFor(peerId, msgId)
     const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
-    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1)
+    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1, [msgId])
     // tweb `handleDeletedMessages` (:14082): удалённое из треда перечитывает пост
     if (known) updateMessageRepliesIfNeeded(known)
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
