@@ -214,14 +214,17 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
   it('пока медленный запрос в полёте, новые вызовы не плодят запросов', async() => {
     vi.useFakeTimers()
     try {
-      const { mgr, get } = setup()
+      const { mgr, get, clock } = setup()
       get.mockImplementation(() => new Promise(() => {}))
       void mgr.getAppConfig()
+      void mgr.getConfig()
+      await vi.advanceTimersByTimeAsync(0) // полёты стартовали при часах T0
+      clock.now += 5000
       await vi.advanceTimersByTimeAsync(5000)
-      const second = mgr.getAppConfig()
-      await vi.advanceTimersByTimeAsync(5000)
-      await expect(second).resolves.toEqual({})
-      expect(get).toHaveBeenCalledTimes(1)
+      // Потолок от начала полёта истёк: следующий вызов отвечает сразу, без новых 5 с.
+      await expect(mgr.getAppConfig()).resolves.toEqual({})
+      await expect(mgr.getConfig()).resolves.toEqual({})
+      expect(get).toHaveBeenCalledTimes(2) // по одному на ручку
     } finally {
       vi.useRealTimers()
     }

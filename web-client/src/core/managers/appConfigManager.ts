@@ -32,7 +32,8 @@ import type { RestClient } from '../net/restClient'
  *  4. Кэш в KV привязан к origin, а не к серверу или аккаунту: значений, зависящих от
  *     пользователя, в конфиге нет (подписка читается живым геттером), а при смене бэкенда
  *     на том же origin старые флаги живут до суток.
- *  5. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
+ *  5. `overwrite` во время идущего полёта делит его (запрос ушёл до вызова).
+ *  6. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
  *     его `expires` не читается (tweb его тоже не читает — `config` обновляется
  *     переподключением, которого у REST нет, только `overwrite`).
  */
@@ -132,6 +133,7 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
   /** `requestedAppConfig` (:342): после первого ответа в этой жизни воркера возраст копии не смотрим. */
   let requestedAppConfig = false
   let appConfigFlight: Promise<MTAppConfig> | undefined
+  let appConfigFlightStart = 0
   /** Раньше этого момента после отказа запрос не повторяется. */
   let retryAt = 0
 
@@ -141,15 +143,23 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
    * (на сети с RTT дольше потолка конфиг иначе не приехал бы никогда). Поток `flight` сам
    * не отклоняется: отказы разобраны внутри `request*`.
    */
-  function raceTimeout<T>(flight: Promise<T>, fallback: () => T): Promise<T> {
+  function raceTimeout<T>(flight: Promise<T>, startedAt: number, fallback: () => T): Promise<T> {
     return new Promise<T>((resolve) => {
-      const timer = setTimeout(() => resolve(fallback()), REQUEST_TIMEOUT_MS)
-      void flight.then((value) => { clearTimeout(timer); resolve(value) })
+      // Ждём только остаток потолка от НАЧАЛА полёта: когда он истёк, все следующие
+      // вызывающие получают копию сразу, а не по 5 с на каждый клик.
+      const left = startedAt + REQUEST_TIMEOUT_MS - now()
+      if (left <= 0) { resolve(fallback()); return }
+      const timer = setTimeout(() => resolve(fallback()), left)
+      flight.then(
+        (value) => { clearTimeout(timer); resolve(value) },
+        () => { clearTimeout(timer); resolve(fallback()) },
+      )
     })
   }
 
   let config: MTConfig | undefined
   let configFlight: Promise<MTConfig> | undefined
+  let configFlightStart = 0
   let configRetryAt = 0
 
   function hydrate(): Promise<void> {
@@ -195,8 +205,11 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
       return appConfig
     }
     if (!overwrite && now() < retryAt) return appConfig ?? {}
-    appConfigFlight ??= requestAppConfig().finally(() => { appConfigFlight = undefined })
-    return raceTimeout(appConfigFlight, () => appConfig ?? {})
+    if (!appConfigFlight) {
+      appConfigFlightStart = now()
+      appConfigFlight = requestAppConfig().finally(() => { appConfigFlight = undefined })
+    }
+    return raceTimeout(appConfigFlight, appConfigFlightStart, () => appConfig ?? {})
   }
 
   async function requestConfig(): Promise<MTConfig> {
@@ -214,8 +227,11 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
   function getConfig(overwrite?: boolean): Promise<MTConfig> {
     if (config && !overwrite) return Promise.resolve(config)
     if (!overwrite && now() < configRetryAt) return Promise.resolve({})
-    configFlight ??= requestConfig().finally(() => { configFlight = undefined })
-    return raceTimeout(configFlight, () => ({}))
+    if (!configFlight) {
+      configFlightStart = now()
+      configFlight = requestConfig().finally(() => { configFlight = undefined })
+    }
+    return raceTimeout(configFlight, configFlightStart, () => ({}))
   }
 
   return {
