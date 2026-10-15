@@ -74,6 +74,21 @@ describe('подмена отпечатков после обещания (по�
     expect(reasonsOf(B.frames('call_end'))).toEqual(['disconnect'])
   })
 
+  it('а2) подмена согласованная: dtls в dh_reveal и a=fingerprint в offer одним набором — коммитмент ловит', async () => {
+    net.tamper = (_f, _t, f) => {
+      if (f.type !== 'call_signal') return [f]
+      if (f.data.dh_reveal) return [{ ...f, data: { ...f.data, dtls: [FAKE_FP] } }]
+      if ((f.data.sdp as { type?: string } | undefined)?.type === 'offer') {
+        return [{ ...f, data: { ...f.data, sdp: { type: 'offer', sdp: sdpWithFp(FAKE_FP) } } }]
+      }
+      return [f]
+    }
+    const { B } = await startPair(net)
+    await until(() => B.call()?.endReason === 'failed', 'B failed on commitment')
+    expect(B.call()!.e2eFingerprint).toBeUndefined()
+    expect(pcOf(B)?.remoteDescription ?? null).toBeNull()
+  })
+
   it('б) dtls в call_accept заменён: настоящий answer не совпадает с обещанным, звонок рвётся', async () => {
     net.tamper = (_f, _t, f) => [f.type === 'call_accept' ? { ...f, data: { ...f.data, dtls: [FAKE_FP] } } : f]
     const A = await net.side(1); const B = await net.side(2)
