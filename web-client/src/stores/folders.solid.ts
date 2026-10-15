@@ -34,8 +34,14 @@
  *     `filter.localId`): `appState.folders` уже упорядочен единственным
  *     писателем `foldersStore.ts::applyFolders` по `pos, id` (как `ORDER BY` на
  *     бэкенде), и вторая сортировка была бы вторым правилом порядка. «Все
- *     чаты» — всегда первой: у оригинала её `localId` минимальный
- *     (`prependFilters`, `storages/filters.ts:96-98`). Позиция элемента в
+ *     чаты» у оригинала — такой же фильтр со своим `localId`, и премиум
+ *     переставляет её среди папок (`chatFolders.tsx:108-110`, `:200-203`); у
+ *     нас её нет в `appState.folders`, место хранится ключом
+ *     `appState.allChatsPos` (число папок перед ней, Ф7-З, решение В-6) и
+ *     действует только для премиума. У не-премиум она первая: её `localId`
+ *     минимальный (`prependFilters`, `storages/filters.ts:96-98`), а событие
+ *     `premium_toggle` (`stores/folders.ts:197-206`) возвращает порядок —
+ *     проекция пересчитывается подпиской на премиум-флаг. Позиция элемента в
  *     `folderItems` и есть наш `localId` (им позиционирует контейнеры задача 5).
  *  2. Фильтр «Все чаты» — порт `LOCAL_FILTER` (`storages/filters.ts:24-35`):
  *     пустой заголовок, флагов типов нет. Правило «всё, кроме архива»
@@ -53,8 +59,10 @@
  *     точечно по `dialog_flush`/`folder_unread` (`:170-178`): таких событий у
  *     главного потока нет, а зеркало диалогов — вот оно. Элементы при этом
  *     живут: `reconcile` по `id` сохраняет прокси неизменившихся папок.
- *  5. `filter_joined` (`:193-195`) и `premium_toggle` (`:197-206`) — событий на
- *     проводе нет, отложенная задача 15. `deleteFolder` со сбросом выбора
+ *  5. `filter_joined` (`:193-195`) — события на проводе нет, отложенная задача
+ *     15. `premium_toggle` (`:197-206`) — тоже события нет: его роль (вернуть
+ *     «Все чаты» на первое место и обратно) играет подписка на премиум-флаг
+ *     (расхождение 1). `deleteFolder` со сбросом выбора
  *     (`:120-134`) — забота владельца (`selectTab(0)`, задача 5); вместе с ним
  *     не нужен и `createEffect` `:61-63`, державший `onClick()` для этих трёх
  *     мест.
@@ -111,6 +119,8 @@ const ALL_CHATS_FILTER: Folder = {
   excludeChats: [],
 }
 
+const isPremium = () => !!useChatsStore.getState().me?.user.pFlags?.premium
+
 const [folderItems, setFolderItems] = createStore<StoredFolder[]>([])
 const [onClick, setOnClick] = createSignal<FolderClick>()
 
@@ -128,10 +138,11 @@ function project(): void {
     getForumUnread,
   )
   const chatsCount = (filter: Folder) => folderChatsCount(useChatsStore.getState().dialogs, filter)
-  const items: StoredFolder[] = [
-    { id: ALL_FOLDER_ID, notifications: counts[ALL_FOLDER_ID], chatsCount: null, filter: ALL_CHATS_FILTER },
-    ...folders.map((filter) => ({ id: filter.id, notifications: counts[filter.id], chatsCount: chatsCount(filter), filter })),
-  ]
+  const all: StoredFolder = { id: ALL_FOLDER_ID, notifications: counts[ALL_FOLDER_ID], chatsCount: null, filter: ALL_CHATS_FILTER }
+  const items: StoredFolder[] = folders.map((filter) => ({ id: filter.id, notifications: counts[filter.id], chatsCount: chatsCount(filter), filter }))
+  // Расхождение 1: место «Все чаты» — только у премиума; сохранённое место за
+  // концом списка (папки удалили) — последняя.
+  items.splice(isPremium() ? Math.min(useAppStateStore.getState().allChatsPos, items.length) : 0, 0, all)
   setFolderItems(reconcile(items, { key: 'id' }))
 }
 
@@ -161,8 +172,12 @@ function hydrate(): void {
   if (unsubscribe) return
   project()
   unsubscribe = [
-    useAppStateStore.subscribe((s, prev) => { if (s.folders !== prev.folders) project() }),
-    useChatsStore.subscribe((s, prev) => { if (s.dialogs !== prev.dialogs) project() }),
+    useAppStateStore.subscribe((s, prev) => {
+      if (s.folders !== prev.folders || s.allChatsPos !== prev.allChatsPos) project()
+    }),
+    useChatsStore.subscribe((s, prev) => {
+      if (s.dialogs !== prev.dialogs || !!s.me?.user.pFlags?.premium !== !!prev.me?.user.pFlags?.premium) project()
+    }),
     useFoldersStore.subscribe((s, prev) => { if (s.contactIds !== prev.contactIds) project() }),
     useNotifyStore.subscribe((s, prev) => { if (s.settings !== prev.settings) project() }),
     // Карточка пира решает «канал, группа или бот» — и правило типов папки, и

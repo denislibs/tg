@@ -108,6 +108,9 @@ const (
 	// Теги «Избранного» (Ф-6, f6-contacts) — updateSavedReactionTags без
 	// параметров: «перечитай теги» (tweb appReactionsManager.ts:121-132).
 	UpdateSavedReactionTagsTag = "updateSavedReactionTags"
+	// Порядок папок (Ф7-З, MC-10) — updateDialogFilterOrder{order}
+	// (tweb filters.ts:179-199).
+	UpdateDialogFilterOrderTag = "updateDialogFilterOrder"
 	// Стикеры и GIF (Ф-6, f6-stickers) — свои устройства (tweb
 	// appStickersManager.ts:80-88, appGifsManager.ts:21-29).
 	UpdateNewStickerSetTag  = "updateNewStickerSet"
@@ -1456,6 +1459,57 @@ func (u UpdateSavedReactionTags) Tag() string { return u.Underscore }
 
 func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
 	return UpdateSavedReactionTags{Underscore: UpdateSavedReactionTagsTag}
+}
+
+// updateDialogFilterOrder#a5d72105 order:Vector<int> = Update; — порядок папок
+// сменился на другом устройстве владельца (tweb filters.ts:179-199). order — id
+// папок в новом порядке; 0 — «Все чаты», он присутствует, только если
+// устройство его переставляло (у не-премиум tweb вырезает его из order,
+// chatFolders.tsx:365-367). Папки, которых в списке нет, остаются в хвосте в
+// прежнем порядке — так же, как их ставит сервер. Своего pts у конструктора
+// нет — курсор едет в конверте.
+type UpdateDialogFilterOrder struct {
+	Underscore string  `json:"_"`
+	Order      []int64 `json:"order"`
+}
+
+func (UpdateDialogFilterOrder) isUpdate()     {}
+func (u UpdateDialogFilterOrder) Tag() string { return u.Underscore }
+
+// NewUpdateDialogFilterOrder: id папок в схеме — int (Vector<int>), а у нас
+// BIGSERIAL; пока id папок < 2³¹ кадр кодируется в TL без потерь. nil → пустой
+// вектор, а не JSON null.
+func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
+	if order == nil {
+		order = []int64{}
+	}
+	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
+}
+
+// ── Автоудаление чата (Ф-6, f6-ttl) — блок в конце по правилу горячих файлов ──
+
+const (
+	UpdatePeerHistoryTTLTag = "updatePeerHistoryTTL"
+)
+
+// updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
+//
+// Срок автоудаления чата сменился (messages.setHistoryTTL, любое устройство
+// любой стороны). Нуль — «выключено» — выражается ОТСУТСТВИЕМ ключа: tweb кладёт
+// `update.ttl_period` в диалог и в полную карточку как есть (appProfileManager.ts
+// :1541-1558). Своего pts у конструктора нет — курсор едет в конверте. Личке и
+// группе; у broadcast-канала срок едет снимком карточки (chat_update).
+type UpdatePeerHistoryTTL struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	TTLPeriod  int    `json:"ttl_period,omitempty"`
+}
+
+func (UpdatePeerHistoryTTL) isUpdate()     {}
+func (u UpdatePeerHistoryTTL) Tag() string { return u.Underscore }
+
+func NewUpdatePeerHistoryTTL(peer Peer, ttlPeriod int) UpdatePeerHistoryTTL {
+	return UpdatePeerHistoryTTL{Underscore: UpdatePeerHistoryTTLTag, Peer: peer, TTLPeriod: ttlPeriod}
 }
 
 // updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; —

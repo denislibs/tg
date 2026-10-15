@@ -494,6 +494,15 @@ func (r *fakeGroupRepo) SetArchived(_ context.Context, chatID, userID int64, arc
 	return nil
 }
 
+// setAutoDelete — chats.auto_delete_period: карточка читает его обратно.
+func (r *fakeGroupRepo) setAutoDelete(chatID int64, seconds int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cards[chatID]
+	c.Settings.AutoDeletePeriod = seconds
+	r.cards[chatID] = c
+}
+
 func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1034,9 +1043,12 @@ func (c groupChats) UnreadTotal(context.Context, int64) (int, error) { return 0,
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
-func (c groupChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
-func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
-func (c groupChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupChats) StoryPartners(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)  { return nil, nil }
+func (c groupChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
+	c.fg.setAutoDelete(chatID, seconds)
+	return nil
+}
 func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
 func (c groupChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }

@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -755,6 +755,18 @@ export function createWorkerCore() {
       broadcast('privacy_update', e, meta)
       return
     }
+    // Срок автоудаления чата (журнал `peer_history_ttl`): tweb
+    // `onUpdatePeerHistoryTTL` (appProfileManager.ts:1541-1558) правит диалог и
+    // объявляет `auto_delete_period_update` безусловно — карточку правит
+    // главный поток по этому событию. Сырой кадр дальше не идёт.
+    if (pred === 'updatePeerHistoryTTL') {
+      const e = d as PeerHistoryTTLEvt
+      const peerId = getPeerId(e.peer)
+      const period = e.ttl_period ?? 0
+      dialogs.applyTtlPeriod(peerId, period)
+      broadcast('auto_delete_period_update', { peerId, period }, meta)
+      return
+    }
     // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
     // `onUpdateDeleteScheduledMessages`, appMessagesManager.ts:11773-11815):
     // кадр применяет владелец хранилища отложенных и сам объявляет вкладкам
@@ -809,6 +821,23 @@ export function createWorkerCore() {
       // `dialogs.applyChatMeta` перекладывал четыре поля из карточки в строку —
       // ровно то второе зеркало одного факта, которого этот шаг и лишает.
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
+      // В-3 Ф-6: у broadcast-канала отдельного `updatePeerHistoryTTL` нет — срок
+      // едет в этом же снимке (`full_chat.ttl_period`). Сравниваем его со строкой
+      // диалога и при расхождении делаем то же, что делает tweb по
+      // `updatePeerHistoryTTL`. Диалога нет — объявлять нечего. Совпало —
+      // тишина: иначе каждая правка карточки будила бы подписчиков события.
+      // Только канальный снимок: у группы свой кадр, а её снимок читается вне
+      // транзакции журнала и может запоздать за более свежим сроком.
+      const snap = d as ChatUpdateEvt
+      const peerId = getPeerId(snap.peer)
+      const prev = pred === 'updateChannelFullSnapshot' ? dialogs.getDialogOnly(peerId) : undefined
+      if (prev) {
+        const next = (snap.chat_full.full_chat as { ttl_period?: number }).ttl_period ?? 0
+        if ((prev.ttl_period ?? 0) !== next) {
+          dialogs.applyTtlPeriod(peerId, next)
+          broadcast('auto_delete_period_update', { peerId, period: next }, meta)
+        }
+      }
     }
     // Стикеры и GIF своих устройств (журнал f6-stickers): владелец —
     // `stickersManager`; вкладкам уезжают события rootScope, а не rt-имя каталога

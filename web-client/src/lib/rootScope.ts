@@ -16,7 +16,7 @@ import type {
   ChatRemovedEvt, ChannelEvt, ChannelTooLongEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
-  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt,
+  PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt, DialogFilterOrderEvt,
   ViewsUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
   PrivacyEvt,
@@ -105,6 +105,7 @@ export type BroadcastEvents = {
   [RT.giveawayUpdate]: [GiveawayUpdateEvt, EventMeta?]
   [RT.balanceUpdate]: [BalanceUpdateEvt, EventMeta?]
   [RT.savedReactionTags]: [SavedReactionTagsEvt, EventMeta?]
+  [RT.dialogFilterOrder]: [DialogFilterOrderEvt, EventMeta?]
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]
@@ -340,6 +341,11 @@ export type BroadcastEvents = {
   // Подписчики: проектор зеркала окна (`storeProjection.ts`) и лента открытого чата
   // (`chat/bubbles.ts`); строку диалога никто из `dialog` не берёт.
   'dialog_flush': [{ peerId: PeerId; dialog: Dialog | undefined }]
+  // tweb rootScope.ts:271 — срок автоудаления чата сменился (`updatePeerHistoryTTL`,
+  // appProfileManager.ts:1557; у broadcast-канала событие выводит воркер из снимка
+  // карточки, В-3 Ф-6). `period` 0 — выключено. Подписчик на главном потоке —
+  // `chatFullCache.applyTtlPeriod` (`storeProjection.ts`).
+  'auto_delete_period_update': [{ peerId: PeerId; period: number }]
   // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
   // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).
   'draft_updated': [DraftUpdatedEvt]

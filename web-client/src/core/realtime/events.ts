@@ -79,6 +79,11 @@ export const RT = {
   // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
   // logged, pts. Клиент перечитывает список папок.
   folderUpdate: 'rt:folder_update',
+  // Порядок папок сменился на другом устройстве/вкладке — `updateDialogFilterOrder`
+  // (tweb `filters.ts:179-199`, событие `filter_order`). Конструктор схемы с
+  // курсором в конверте: идёт общим путём (UPDATE_RT), а не исключением
+  // `folder_update`. Применяет `foldersStore.applyOrder`.
+  dialogFilterOrder: 'rt:dialog_filter_order',
   // Юзер сменил имя/username/аватар (сервер шлёт участникам общих чатов + своим
   // сессиям). Кадр интерпретирует ВОРКЕР (peersManager.applyUserUpdate) и
   // публикует результат через rt:peer_op ниже — витрина сырой кадр не разбирает.
@@ -157,6 +162,10 @@ export const RT = {
   // рассылаются: имена нужны только полноте реестра `UPDATE_RT`.
   peerBlocked: 'rt:peer_blocked',
   privacy: 'rt:privacy',
+  // Срок автоудаления чата (Ф-6, f6-ttl): воркер переводит кадр в событие tweb
+  // `auto_delete_period_update` (rootScope.ts:271) и сам не рассылается: имя
+  // нужно только полноте реестра `UPDATE_RT`.
+  peerHistoryTTL: 'rt:peer_history_ttl',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -740,6 +749,15 @@ export interface BoostUpdateEvt {
   status: import('../models').BoostsStatus
   pts?: number
 }
+/**
+ * updateDialogFilterOrder#a5d72105 order:Vector<int> = Update;
+ *
+ * Порядок папок. `order` — id папок в новом порядке, `0` — «Все чаты» (есть,
+ * только если устройство его переставляло: у не-премиум tweb вырезает его,
+ * `chatFolders.tsx:365-367`). Неперечисленные папки остаются в хвосте в прежнем
+ * порядке. Курсор едет в конверте.
+ */
+export interface DialogFilterOrderEvt { _: 'updateDialogFilterOrder'; order: number[] }
 /** updateSavedReactionTags#39c67432 = Update; — параметров нет. */
 export interface SavedReactionTagsEvt { _: 'updateSavedReactionTags' }
 /** updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; */
@@ -803,6 +821,14 @@ export interface PeerBlockedEvt { _: 'updatePeerBlocked'; pFlags?: { blocked?: t
  */
 export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: import('../managers/privacyManager').PrivacyRuleWire[] }
 /**
+ * updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
+ *
+ * Срок автоудаления чата сменился (личка и группа; у broadcast-канала срок
+ * едет снимком карточки, В-3 Ф-6). Отсутствие `ttl_period` — «выключено».
+ * Курсор едет в конверте.
+ */
+export interface PeerHistoryTTLEvt { _: 'updatePeerHistoryTTL'; peer: Peer; ttl_period?: number }
+/**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
  * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
@@ -848,6 +874,7 @@ export type Update =
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | SavedReactionTagsEvt
+  | DialogFilterOrderEvt
   | NewStickerSetEvt
   | RecentStickersEvt
   | FavedStickersEvt
@@ -860,6 +887,7 @@ export type Update =
   | DeleteScheduledMessagesEvt
   | PeerBlockedEvt
   | PrivacyEvt
+  | PeerHistoryTTLEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']
