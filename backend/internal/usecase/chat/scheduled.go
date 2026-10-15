@@ -57,7 +57,7 @@ func scheduledRowOf(in SendInput) domain.ScheduledMessage {
 }
 
 func scheduledParamsOf(in SendInput) domain.ScheduledParams {
-	return domain.ScheduledParams{
+	p := domain.ScheduledParams{
 		ReplyToPeerID: in.ReplyToPeerID, ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 		ThreadRootID: in.ThreadRootID, GroupedID: in.GroupedID,
 		PollID: in.PollID, ChecklistID: in.ChecklistID,
@@ -68,6 +68,13 @@ func scheduledParamsOf(in SendInput) domain.ScheduledParams {
 		MediaSpoiler: in.MediaSpoiler, SendAsChatID: in.SendAsChatID,
 		WebPage: webPageInputPtr(in.WebPage),
 	}
+	// Согласие на плату переживает постановку: повторы платят по нему. Вход без
+	// согласия по TL (nil) повторы публикует без проверки, как строки до деплоя.
+	if !in.paidConsentNotRequired {
+		allow := in.AllowPaidStars
+		p.AllowPaidStars = &allow
+	}
+	return p
 }
 
 // webPageInputPtr — решение о превью в снимок, нормализованное: ложные
@@ -95,6 +102,11 @@ func sendInputOf(m domain.ScheduledMessage) SendInput {
 		Silent:        p.Silent, Effect: p.Effect, PaidMediaPrice: p.PaidMediaPrice,
 		MediaSpoiler: p.MediaSpoiler, SendAsChatID: p.SendAsChatID,
 		ScheduleRepeatPeriod: m.RepeatPeriod,
+	}
+	if p.AllowPaidStars != nil {
+		in.AllowPaidStars = *p.AllowPaidStars
+	} else {
+		in.paidConsentNotRequired = true // строка до деплоя: платит как раньше
 	}
 	if p.WebPage != nil {
 		in.WebPage = *p.WebPage
@@ -328,12 +340,18 @@ func (i *Interactor) scheduleForward(ctx context.Context, in ForwardInput, srcID
 		if c.GroupedID != nil {
 			p.GroupedID = *c.GroupedID
 		}
+		// Согласие пачки делится на сообщения: повтор строки платит за одно.
+		if !in.paidConsentNotRequired {
+			allow := in.AllowPaidStars / int64(len(copies))
+			p.AllowPaidStars = &allow
+		}
 		rows[idx] = domain.ScheduledMessage{
 			ChatID: in.ToChatID, SenderID: in.SenderID, Type: c.Type, Text: c.Text, Entities: c.Entities,
 			MediaID: c.MediaID, SendAt: sendAt, WhenOnline: whenOnline, RepeatPeriod: repeat,
 			Params: p, WebPage: c.WebPage,
 		}
 		probes[idx] = sendProbe(in.ToChatID, in.SenderID, c)
+		probes[idx].AllowPaidStars, probes[idx].paidConsentNotRequired = in.AllowPaidStars, in.paidConsentNotRequired
 	}
 	stored, _, err := i.putScheduled(ctx, in.ToChatID, in.SenderID, rows, probes)
 	if err != nil {
@@ -401,16 +419,23 @@ func (i *Interactor) putScheduledOnce(ctx context.Context, chatID, senderID int6
 		if n+len(fresh) > maxScheduledPerChat {
 			return domain.ErrScheduleTooMuch
 		}
+		// Согласие на плату — на все новые строки сразу, до первого списания:
+		// у одиночной отправки allow — её сумма, у пересылки — сумма пачки.
+		price, e := i.paidPriceFor(ctx, probes[fresh[0]], len(fresh))
+		if e != nil {
+			return e
+		}
+		// Плата за все новые строки — одним списанием; на каждой строке остаётся
+		// её доля (цена одного сообщения): отвергнутая публикация вернёт её.
+		ch, e := i.chargePaidMessage(ctx, chatID, senderID, price*int64(len(fresh)))
+		if e != nil {
+			return e
+		}
+		charge = ch
 		news := make([]domain.ScheduledMessage, 0, len(fresh))
 		for _, idx := range fresh {
-			ch, e := i.chargePaidMessage(ctx, probes[idx])
-			if e != nil {
-				return e
-			}
 			if ch.applied {
-				charge = ch
-				// Сумма — на строке: отвергнутая публикация её вернёт.
-				rows[idx].PaidStars, rows[idx].PaidTo = ch.amount, ch.creatorID
+				rows[idx].PaidStars, rows[idx].PaidTo = price, ch.creatorID
 			}
 			// Превью у строки бывает только снимком копии (пересылка); пишется
 			// отдельным UPDATE, как у сообщения (insertCopy).
@@ -847,6 +872,7 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 			return nil, e
 		}
 		deleted := make([]int64, len(gone))
+		var toRefund []domain.ScheduledMessage
 		for k, r := range gone {
 			deleted[k] = r.ID
 			if r.PaidStars <= 0 {
@@ -857,9 +883,10 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 			} else if !errors.Is(e, domain.ErrNotFound) {
 				return nil, e
 			}
-			if e := i.refundScheduled(ctx, r, balances); e != nil {
-				return nil, e
-			}
+			toRefund = append(toRefund, r)
+		}
+		if e := i.refundScheduledBatch(ctx, toRefund, balances); e != nil {
+			return nil, e
 		}
 		slices.Sort(deleted)
 		u, e := i.scheduledDeleteUpdate(ctx, chatID, userID, deleted, nil)
@@ -1144,12 +1171,14 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		// Возврат звёзд отвергнутым — в той же транзакции, что снятие, и
 		// только за РЕАЛЬНО снятые строки (DeleteIDs отдаёт каждую ровно
 		// одному снятию): повторная попытка воркера второй раз не вернёт.
+		var refunds []domain.ScheduledMessage
 		for _, id := range deletedRejected {
 			if r, ok := refundOf[id]; ok {
-				if e := i.refundScheduled(ctx, r, balances); e != nil {
-					return nil, e
-				}
+				refunds = append(refunds, r)
 			}
+		}
+		if e := i.refundScheduledBatch(ctx, refunds, balances); e != nil {
+			return nil, e
 		}
 		// Перепостановка повтора — условно, по опубликованному сроку: только
 		// срок и счётчик вхождений, текст и прочее остаются как в строке.
@@ -1216,6 +1245,30 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 	return nil
 }
 
+// refundScheduledBatch — возврат за набор строк одной транзакцией: строки балансов всех
+// участвующих берутся заранее по возрастанию user_id (lockBalances), иначе порядок строк
+// набора ломал бы общий порядок блокировок и взаимоблокировал бы возврат с платной отправкой.
+func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64) error {
+	if i.stars == nil {
+		return nil
+	}
+	var ids []int64
+	for _, r := range rows {
+		if r.PaidStars > 0 {
+			ids = append(ids, r.SenderID, r.PaidTo)
+		}
+	}
+	if err := i.lockBalances(ctx, ids...); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := i.refundScheduled(ctx, r, balances); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // lockScheduledForPublish — в транзакции вставки опубликованного: строка
 // очереди под блокировкой до коммита. Снятие автором (DELETE) ждёт её и
 // после коммита видит вставленное сообщение по ключу публикации — без
@@ -1245,12 +1298,7 @@ func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, ba
 	if err != nil {
 		return err
 	}
-	for _, r := range rows {
-		if err := i.refundScheduled(ctx, r, balances); err != nil {
-			return err
-		}
-	}
-	return nil
+	return i.refundScheduledBatch(ctx, rows, balances)
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли
@@ -1258,12 +1306,14 @@ func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, ba
 // кадром без sent_messages. Прочие ошибки — сбои, строка ждёт следующей попытки.
 func publishRefused(err error) bool {
 	for _, e := range []error{domain.ErrNotFound, domain.ErrForbidden, domain.ErrPrivacy, domain.ErrInvalid,
-		domain.ErrTooLong, domain.ErrPaidRequired, domain.ErrSlowmode} {
+		domain.ErrTooLong, domain.ErrBalanceTooLow, domain.ErrSlowmode} {
 		if errors.Is(err, e) {
 			return true
 		}
 	}
-	return false
+	// Цена выросла выше согласия постановки: повтор без согласия не уходит.
+	var need domain.ErrAllowPaymentRequired
+	return errors.As(err, &need)
 }
 
 // nextRepeat — следующий срок повтора: от прежнего срока шагами периода, пока
@@ -1356,6 +1406,11 @@ func (i *Interactor) publishScheduledCopy(ctx context.Context, row domain.Schedu
 		ToChatID: row.ChatID, SenderID: row.SenderID, Silent: row.Params.Silent,
 		ThreadRootID: row.Params.ThreadRootID, fromSchedule: true, repeatOccurrence: row.Occurrence > 0,
 		scheduledID: row.ID,
+	}
+	if row.Params.AllowPaidStars != nil {
+		in.AllowPaidStars = *row.Params.AllowPaidStars
+	} else {
+		in.paidConsentNotRequired = true // строка до деплоя: платит как раньше
 	}
 	if err := i.checkForwardAllowed(ctx, in, []domain.Message{c}, 1, broadcast); err != nil {
 		return domain.Message{}, err

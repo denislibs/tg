@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import { usePopupStore, type PopupApi } from '@stores/popupStore'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
+import { PAYMENT_REJECTED, type PreparedPaymentResult } from '@components/chat/paidMessagesInterceptor'
 
 type StubProps = {
   files: File[]
@@ -40,13 +41,14 @@ function makeChat(params: MessageSendingParams, type = ChatType.Chat) {
   const getMessageSendingParams = vi.fn(() => params)
   const scheduleSending = vi.fn((_callback: () => void) => {})
   const resetSendingFlags = vi.fn()
+  const prepareStarsForPayment = vi.fn(async(_messageCount: number): Promise<PreparedPaymentResult> => undefined)
   const chat = {
     peerId: 5 as PeerId,
     managers: { messages: { sendFile, sendGrouped } } as never,
     type,
-    input: { getMessageSendingParams, onHelperCancel, scheduleSending, resetSendingFlags },
+    input: { getMessageSendingParams, onHelperCancel, scheduleSending, resetSendingFlags, paidMessageInterceptor: { prepareStarsForPayment } },
   }
-  return { chat, sendFile, sendGrouped, onHelperCancel, getMessageSendingParams, scheduleSending, resetSendingFlags }
+  return { chat, sendFile, sendGrouped, onHelperCancel, getMessageSendingParams, scheduleSending, resetSendingFlags, prepareStarsForPayment }
 }
 
 function mountTopPopup() {
@@ -97,6 +99,65 @@ describe('popups/newMedia — мост попапа медиа', () => {
     expect([a.spoiler, b.spoiler]).toEqual([false, true])
     expect(onHelperCancel).toHaveBeenCalledTimes(1)
     expect(usePopupStore.getState().popups).toHaveLength(0)
+  })
+
+  // Контрольный проход Ф7-Г п.1, tweb newMedia.tsx:1013-1018 -> :1032-1036: в ленте отложенных
+  // сперва календарь (попап открыт), затем согласие на плату и только потом закрытие.
+  it('лента отложенных: календарь → согласие → закрытие попапа; отказ после календаря оставляет попап', async() => {
+    const { chat, sendGrouped, scheduleSending, prepareStarsForPayment, resetSendingFlags } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
+    showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
+    mountTopPopup()
+
+    act(() => lastProps!.onSend('', false))
+    await flush()
+    expect(scheduleSending).toHaveBeenCalledTimes(1)
+    expect(prepareStarsForPayment).not.toHaveBeenCalled() // календарь ещё открыт
+    expect(usePopupStore.getState().popups).toHaveLength(1)
+
+    prepareStarsForPayment.mockResolvedValueOnce(PAYMENT_REJECTED)
+    scheduleSending.mock.calls[0][0]()
+    await flush()
+    expect(prepareStarsForPayment).toHaveBeenCalledWith(2)
+    expect(sendGrouped).not.toHaveBeenCalled()
+    expect(resetSendingFlags).toHaveBeenCalledTimes(1) // время календаря не утекает
+    expect(usePopupStore.getState().popups).toHaveLength(1)
+
+    scheduleSending.mock.calls[0][0]()
+    await flush()
+    expect(sendGrouped).toHaveBeenCalledTimes(1)
+    expect(usePopupStore.getState().popups).toHaveLength(0)
+  })
+
+  // Ф7-Г (MC-06), tweb newMedia.tsx:1032-1036: согласие на плату за ВСЕ сообщения
+  // выборки; цена одного уезжает пакетом в каждый файл.
+  it('платный чат: согласие спрашивается на число файлов и уезжает в каждый файл пакетом', async() => {
+    const { chat, sendGrouped, prepareStarsForPayment } = makeChat({})
+    prepareStarsForPayment.mockResolvedValue({ starsAmount: 5, canUndo: false })
+    showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
+    mountTopPopup()
+
+    act(() => lastProps!.onSend('', false))
+    await flush()
+
+    expect(prepareStarsForPayment).toHaveBeenCalledWith(2)
+    const items = (sendGrouped.mock.calls[0] as unknown as [Record<string, unknown>[]])[0]
+    expect(items.map((c) => c.confirmedPaymentResult)).toEqual([{ starsAmount: 5, canUndo: false }, { starsAmount: 5, canUndo: false }])
+  })
+
+  it('платный чат: отказ от оплаты — ничего не уходит, плашка ответа остаётся', async() => {
+    const { chat, sendFile, sendGrouped, onHelperCancel, prepareStarsForPayment } = makeChat({ replyToMsgId: 42 })
+    prepareStarsForPayment.mockResolvedValue(PAYMENT_REJECTED)
+    showNewMediaPopup(chat, [photo('1.png')], 'media')
+    mountTopPopup()
+
+    act(() => lastProps!.onSend('', false))
+    await flush()
+
+    expect(sendFile).not.toHaveBeenCalled()
+    expect(sendGrouped).not.toHaveBeenCalled()
+    expect(onHelperCancel).not.toHaveBeenCalled()
+    // tweb newMedia.tsx:1035 — попап остаётся открытым, выборка и подпись не теряются
+    expect(usePopupStore.getState().popups).toHaveLength(1)
   })
 
   // tweb newMedia.tsx:1013-1018: в ленте отложенных сперва календарь, затем

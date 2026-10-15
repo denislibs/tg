@@ -8,6 +8,7 @@ import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { UserReal } from '../../peers/peer'
 import type { ScheduledUpdates } from '../messagesManager'
+import type { RepayRequestHandler } from './repayRequestHandler'
 
 /** Точечно обновить одно сообщение чата в SSOT + персист (см. messagesManager.patchMsg). */
 export type PatchMsg = (peerId: number, match: (m: MyMessage) => boolean, upd: (m: MyMessage) => MyMessage | null) => void
@@ -53,4 +54,8 @@ export interface MessagesCtx {
    *  ленты отложенных применяет её владелец (messagesManager). Опционален по
    *  той же причине, что `getMeId`. */
   applyScheduledUpdates?: (r: ScheduledUpdates | undefined) => void
+  /** Запросы на повторную оплату (tweb `RepayRequestHandler`): отказ
+   *  `ALLOW_PAYMENT_REQUIRED_<N>` у опроса/чек-листа/пересылки заводит запрос,
+   *  а не бросается. Опционален — без него отказ бросается как раньше. */
+  repay?: RepayRequestHandler
 }

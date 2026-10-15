@@ -64,6 +64,10 @@ type sendMessageData struct {
 	// (tweb appMessagesManager.ts:2741-2742).
 	ScheduleDate         int64 `json:"schedule_date"`
 	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+	// AllowPaidStars — сумма, на которую отправитель согласился в платной
+	// группе (tweb allow_paid_stars, appMessagesManager.ts:2702): цена ЭТОГО
+	// кадра; 0/нет — не согласен.
+	AllowPaidStars int64 `json:"allow_paid_stars"`
 }
 
 type readData struct {

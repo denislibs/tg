@@ -59,7 +59,7 @@ func TestDiscussionContainer(t *testing.T) {
 	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
 	disc, _ := in.EnableDiscussion(ctx, ch, 7)
 	post, _ := in.PostToChannel(ctx, ch, 7, "пост", nil, "")
-	c1, err := in.PostComment(ctx, ch, post.ID, 8, "c1", "k1")
+	c1, err := in.PostComment(ctx, ch, post.ID, 8, "c1", "k1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}

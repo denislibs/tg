@@ -90,6 +90,10 @@ type ScheduledParams struct {
 	PaidMediaPrice   *int64   `json:"paid_media_price,omitempty"`
 	MediaSpoiler     bool     `json:"media_spoiler,omitempty"`
 	SendAsChatID     *int64   `json:"send_as_chat_id,omitempty"`
+	// AllowPaidStars — согласие на плату за ОДНО сообщение, данное при
+	// постановке (allow_paid_stars): повторы платят заново по нему. nil — строка
+	// поставлена до деплоя, повтор платит без проверки согласия, как раньше.
+	AllowPaidStars *int64 `json:"allow_paid_stars,omitempty"`
 	// ContactName/ContactPhone — снимок карточки контакта на момент постановки
 	// (только для отдачи ленты: при публикации Send гидрирует контакт заново).
 	ContactName  *string `json:"contact_name,omitempty"`

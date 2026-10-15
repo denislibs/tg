@@ -137,7 +137,10 @@ func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([
 // если обсуждения выключены ЛИБО постId не резолвится в реальный пост этого
 // канала (тредить действительно некуда). Комментатор в группу НЕ вступает:
 // не участник пишет гостем обсуждения (requireDiscussionGuest внутри Send).
-func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
+//
+// allowPaidStars — согласие на плату, если группа обсуждения платная (tweb шлёт
+// комментарий как messages.sendMessage в группу с allow_paid_stars).
+func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string, allowPaidStars int64) (domain.Message, error) {
 	// Комментировать может тот, кто читает канал и не забанен в группе
 	// обсуждения — до ленивой дозаводки зеркала, чтобы посторонний не плодил
 	// зеркала постов приватного канала.
@@ -171,7 +174,7 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 	}
 	return i.Send(ctx, SendInput{
 		ChatID: disc, SenderID: userID, Type: "text", Text: text,
-		ClientMsgID: clientMsgID, ThreadRootID: &root,
+		ClientMsgID: clientMsgID, ThreadRootID: &root, AllowPaidStars: allowPaidStars,
 	})
 }
 

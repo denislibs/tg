@@ -20,7 +20,7 @@ func TestListComments_HydratedLikeHistory(t *testing.T) {
 		t.Fatalf("EnableDiscussion: %v", err)
 	}
 	post, _ := i.PostToChannel(ctx, ch, 7, "hello", nil, "")
-	comment, err := i.PostComment(ctx, ch, post.ID, 8, "смотри фото", "c1")
+	comment, err := i.PostComment(ctx, ch, post.ID, 8, "смотри фото", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}

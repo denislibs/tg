@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 69,
+      "version": 70,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -4479,6 +4479,10 @@
           }
         },
         {
+          "key": "PaidMessages.PriceChanged",
+          "value": "Price changed to %s"
+        },
+        {
           "key": "PaidMessages.SetPrice",
           "value": "Set your price per message"
         },
@@ -7522,7 +7526,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 68,
+      "version": 69,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -14720,6 +14724,10 @@
             "many_value": "Оплатить %d сообщений",
             "other_value": "Оплатить %d сообщения"
           }
+        },
+        {
+          "key": "PaidMessages.PriceChanged",
+          "value": "Цена изменилась: %s"
         },
         {
           "key": "PaidMessages.UserChargesForMultipleMessageWarning",

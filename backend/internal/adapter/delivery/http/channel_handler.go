@@ -23,6 +23,7 @@ func NewChannelHandler(uc *usecasechat.Interactor, privacy PrivacyQuery) *Channe
 
 func (h *ChannelHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
+	case writePaidError(w, err):
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrNotFound):
@@ -77,6 +78,8 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		// отправки, tweb appMessagesManager.ts:2741-2742).
 		ScheduleDate         int64 `json:"schedule_date"`
 		ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+		// allow_paid_stars — согласие на плату, если постят в платную группу.
+		AllowPaidStars int64 `json:"allow_paid_stars"`
 		// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки.
 		domain.WebPageInput
 	}
@@ -85,6 +88,7 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		msg, err := h.uc.Send(r.Context(), usecasechat.SendInput{
 			ChatID: chatID, SenderID: user.ID, Text: b.Text, Entities: b.Entities, ClientMsgID: b.ClientMsgID,
 			ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod, WebPage: b.WebPageInput,
+			AllowPaidStars: b.AllowPaidStars,
 		})
 		if err != nil {
 			writeSendError(w, err, "not found")
@@ -312,9 +316,11 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Text        string `json:"text"`
 		ClientMsgID string `json:"client_msg_id"`
+		// allow_paid_stars — согласие на плату, если группа обсуждения платная.
+		AllowPaidStars int64 `json:"allow_paid_stars"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	m, err := h.uc.PostComment(r.Context(), chatID, postID, user.ID, b.Text, b.ClientMsgID)
+	m, err := h.uc.PostComment(r.Context(), chatID, postID, user.ID, b.Text, b.ClientMsgID, b.AllowPaidStars)
 	if err != nil {
 		h.mapErr(w, err)
 		return

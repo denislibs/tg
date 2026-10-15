@@ -77,7 +77,6 @@ const NOT_UI: Record<string, string> = {
  * языке».
  */
 const DEBT: Record<string, number> = {
-  'src/client/realtime/storeProjection.ts': 1,
   'src/components/AddStorySheet.tsx': 13,
   'src/components/CodeBlock.tsx': 2,
   'src/components/EditStorySheet.tsx': 5,
