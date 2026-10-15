@@ -179,11 +179,12 @@ func (r *GroupRepo) SetPinned(ctx context.Context, chatID, userID int64, pinned 
 }
 
 // CountPinned — сколько диалогов пользователь закрепил в основном списке
-// (архив не считается: у него свой набор пинов, как папки tweb).
+// (архив не считается: у него свой набор пинов, как папки tweb; скрытая
+// «удалить чат» строка — тоже: её закреп не виден и лимит не ест).
 func (r *GroupRepo) CountPinned(ctx context.Context, userID int64) (int, error) {
 	var n int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT count(*) FROM chat_members WHERE user_id=$1 AND pinned_at IS NOT NULL AND NOT archived`,
+		`SELECT count(*) FROM chat_members WHERE user_id=$1 AND pinned_at IS NOT NULL AND NOT archived AND NOT dialog_hidden`,
 		userID).Scan(&n)
 	return n, err
 }

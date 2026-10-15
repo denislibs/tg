@@ -1052,17 +1052,23 @@ func (r *MessagesRepo) SetDestructOnRead(ctx context.Context, chatID, readerID, 
 // (Telegram пересчитывает unread при deleteMessages без revoke): ещё не
 // прочитанное входящее уходит из unread_count, его упоминание — из «@»,
 // непрочитанные реакции на своём — из ❤. Остальные участники не затронуты.
-// Повтор — no-op: false значит «уже скрыто» (или сообщения нет).
+// Повтор — no-op: false значит «уже скрыто» (или сообщения нет). Скрывается
+// только то, что зритель видит (messageVisibleTo). Вывод из клиента, не код tweb:
+// на невидимое сервер Telegram отвечает pts_count: 0, ничего не меняя (клиент
+// двигает pts по ответу, appMessagesManager.ts:9017-9044).
 func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var chatID int64
 	err := q.QueryRow(ctx,
 		`WITH ins AS (
-		   INSERT INTO message_hides (user_id, msg_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING msg_id)
+		   INSERT INTO message_hides (user_id, msg_id)
+		   SELECT $1::bigint, m.id FROM messages m
+		    WHERE m.id = $2::bigint AND `+messageVisibleTo("m", "$1::bigint")+`
+		   ON CONFLICT DO NOTHING RETURNING msg_id)
 		 SELECT m.chat_id FROM messages m WHERE m.id IN (SELECT msg_id FROM ins)`,
 		userID, msgID).Scan(&chatID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil // уже скрыто (или сообщения нет)
+		return false, nil // уже скрыто, невидимо зрителю (удалено у всех, под горизонтом очистки) или сообщения нет
 	}
 	if err != nil {
 		return false, err
