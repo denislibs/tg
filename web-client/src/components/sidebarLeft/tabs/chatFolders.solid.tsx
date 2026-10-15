@@ -16,14 +16,20 @@
  * колонки папок (`foldersSidebarContent/index.tsx:203-216`).
  *
  * Расхождения с оригиналом:
- *  1. (О-19) Порядок папок не перетаскивается: нет `updateDialogFiltersOrder` —
- *     у бэкенда только поле `pos`, ручки перестановки нет (`router.go`, папки:
- *     GET/POST/PUT/DELETE `/me/folders`). Поэтому нет `Sortable` (`:353-372`),
- *     класса `row-sortable` и ручки `row-sortable-icon` (`:116`, `:132-134`) —
- *     хвататься было бы не за что; нет и строки «Все чаты» (`:108-110`,
- *     `toggleAllChats` `:200-203`): у оригинала она видна только премиуму и
- *     только ради того, чтобы переставлять её среди папок, а также события
- *     `filter_order` (`:325-331`).
+ *  1. Порядок папок перетаскивается через `Sortable` (`:353-372`) с
+ *     `moveInDom: false` — список рисует `For` из модели, и перестановку
+ *     делает модель: `onSort` собирает `order` из строк (`:355-363`),
+ *     применяет его `foldersStore.applyOrder` сразу (у tweb строку двигает сам
+ *     `Sortable`, а `onUpdateDialogFilterOrder` приходит с ответом,
+ *     `filters.ts:424-433`) и шлёт `managers.folders.updateOrder`; при отказе
+ *     сервера список перечитывается (у tweb DOM остался бы переставленным).
+ *     Строка «Все чаты» (`:108-110`, `toggleAllChats` `:200-203`) есть только у
+ *     премиума, стоит на месте `appState.allChatsPos` (решение В-6) и несёт в
+ *     `order` id `0`; у не-премиум `0` из `order` вырезается (`:365-367`).
+ *     События `filter_order` (`:325-331`) нет — порядок приходит кадром
+ *     `updateDialogFilterOrder` в `foldersStore.applyOrder`, `For` двигает
+ *     строки сам. Подписка «Все чаты» — число чатов всех не-архивных диалогов
+ *     (`getFolderDialogs(0)`, `:91-97`).
  *  2. (О-20) Секции «Рекомендованные папки» (`FilterRecommended`, `:215-255`,
  *     `:398-402`) нет: нет `getSuggestedDialogFilters`. Прежний React-экран
  *     рисовал вместо неё два своих пресета — выдумка, в порт не перенесена.
@@ -61,6 +67,8 @@ import { renderStaticAssetFallback } from '@lib/lottie/lottieAssetFallback'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import Button from '@components/buttonTsx.solid'
 import Section from '@components/section.solid'
+import { IconTsx } from '@components/iconTsx.solid'
+import Sortable from '@helpers/dom/sortable'
 import Row from '@components/rowTsx.solid'
 import RadioFieldTsx from '@components/radioFieldTsx.solid'
 import type SidebarSlider from '@components/slider'
@@ -70,10 +78,11 @@ import { AppEditFolderTab, type AppChatFoldersTab } from '@components/solidJsTab
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { useFoldersStore } from '@stores/foldersStore'
+import { applyOrder, loadFolders, useFoldersStore } from '@stores/foldersStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { cachedChat, cachedPeer } from '@core/peerCache'
 import { isDialogArchived } from '@core/models'
+import { ALL_FOLDER_ID } from '@core/folderIds'
 import { dialogMatchesFolder } from '@core/folderFilter'
 import { isAnyGroup, isBroadcast } from '@core/peers/predicates'
 import type { Folder } from '@core/managers/foldersManager'
@@ -89,11 +98,14 @@ const SINGLE_FLAG_KEYS: [keyof Folder, LangPackKey][] = [
 
 const FLAG_FIELDS: (keyof Folder)[] = ['contacts', 'nonContacts', 'groups', 'broadcasts', 'bots', 'excludeMuted', 'excludeRead']
 
-/** tweb `renderFolder` `:66-103` — подпись строки папки (расхождение 5). */
-export function getFolderSubtitle(filter: Folder): (string | Node)[] | undefined {
+/**
+ * tweb `renderFolder` `:66-103` — подпись строки папки (расхождение 5).
+ * Без `filter` — строка «Все чаты»: без флагов, чаты считаются все не-архивные.
+ */
+export function getFolderSubtitle(filter: Folder | undefined): (string | Node)[] | undefined {
   const d: HTMLElement[] = []
-  const enabledFilters = FLAG_FIELDS.filter((key) => filter[key]).length
-  if(enabledFilters === 1) {
+  const enabledFilters = filter ? FLAG_FIELDS.filter((key) => filter[key]).length : 0
+  if(filter && enabledFilters === 1) {
     const found = SINGLE_FLAG_KEYS.find(([key]) => filter[key])
     if(found) {
       d.push(i18n(found[1]))
@@ -108,7 +120,7 @@ export function getFolderSubtitle(filter: Folder): (string | Node)[] | undefined
       if(isDialogArchived(dialog)) continue
       const chat = cachedChat(dialog.peerId)
       const muted = isDialogMuted(dialog, chat, notifySettings)
-      if(!dialogMatchesFolder(dialog, cachedPeer(dialog.peerId), filter, contactIds, muted)) continue
+      if(filter && !dialogMatchesFolder(dialog, cachedPeer(dialog.peerId), filter, contactIds, muted)) continue
       if(isAnyGroup(dialog.peerId, chat)) ++groups
       else if(isBroadcast(chat)) ++channels
       else ++chats
@@ -137,7 +149,24 @@ const ChatFolders = () => {
     (onChange) => useAppStateStore.subscribe((s, prev) => { if(s.folders !== prev.folders) onChange() }),
     () => useAppStateStore.getState().folders,
   )
-  const foldersHidden = createMemo(() => !folders().length)
+  const isPremium = subscribeExternal(
+    useChatsStore.subscribe,
+    () => !!useChatsStore.getState().me?.user.pFlags?.premium,
+  )
+  const allChatsPos = subscribeExternal(
+    (onChange) => useAppStateStore.subscribe((s, prev) => { if(s.allChatsPos !== prev.allChatsPos) onChange() }),
+    () => useAppStateStore.getState().allChatsPos,
+  )
+  // Строки списка: папки + «Все чаты» (`undefined`) на сохранённом месте — только
+  // у премиума (tweb `toggleAllChats` `:200-203`).
+  const rows = createMemo<(Folder | undefined)[]>(() => {
+    const list = folders()
+    if(!isPremium()) return list
+    const at = Math.min(allChatsPos(), list.length)
+    return [...list.slice(0, at), undefined, ...list.slice(at)]
+  })
+  const foldersHidden = createMemo(() => !rows().length)
+  let list!: HTMLDivElement
 
   const openEditFolder = (filter?: Folder) => {
     const initArgs = AppEditFolderTab.getInitArgs()
@@ -179,6 +208,23 @@ const ChatFolders = () => {
     })
 
     promiseCollector.collect(loadAnimationPromise)
+
+    // tweb :353-372 (расхождение 1)
+    new Sortable({
+      list,
+      middleware: tab.middlewareHelper.get(),
+      moveInDom: false,
+      onSort: (_prevIdx, _newIdx, { from, to }) => {
+        const order = rows().map((filter) => filter?.id ?? ALL_FOLDER_ID)
+        order.splice(to, 0, ...order.splice(from, 1))
+        // tweb :365-367
+        const managers = tab.managers!
+        const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
+        applyOrder(sent)
+        void managers.folders.updateOrder(sent).catch(() => loadFolders(managers, { overwrite: true }))
+      },
+      scrollable: tab.scrollable,
+    })
   })
 
   return (
@@ -195,21 +241,24 @@ const ChatFolders = () => {
         }}
       />
       <Section name="Filters" classList={{ hide: foldersHidden() }}>
-        <div>
-          <For each={folders()}>{(filter) => {
+        <div ref={list}>
+          <For each={rows()}>{(filter) => {
             const subtitle = getFolderSubtitle(filter)
             return (
               <Row
-                clickable={() => {
+                class="row-sortable"
+                // «Все чаты» без обработчика клика (tweb :149-155)
+                clickable={filter ? () => {
                   // tweb :169-172 — редактор получает папку, прочитанную на клике
                   const current = useAppStateStore.getState().folders.find((folder) => folder.id === filter.id)
                   if(current) openEditFolder(current)
-                }}
+                } : true}
               >
-                <Row.Title>{filter.title}</Row.Title>
+                <Row.Title>{filter ? filter.title : i18n('FilterAllChats')}</Row.Title>
                 <Show when={subtitle}>
                   <Row.Subtitle>{subtitle}</Row.Subtitle>
                 </Show>
+                <IconTsx icon="menu" class="row-sortable-icon" />
               </Row>
             )
           }}</For>

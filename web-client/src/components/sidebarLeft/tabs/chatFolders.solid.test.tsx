@@ -22,7 +22,8 @@ import type { Chat, User } from '@core/peers/peer'
 import type { Dialog } from '@core/models'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { useFoldersStore } from '@stores/foldersStore'
+import { applyOrder, useFoldersStore } from '@stores/foldersStore'
+import { briefProfile } from '@core/managers/authManager'
 import { useSettingsStore } from '@/settings'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { initialState } from '@core/state/state'
@@ -88,6 +89,8 @@ let folders: {
   create: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
   del: ReturnType<typeof vi.fn>
+  updateOrder: ReturnType<typeof vi.fn>
+  list: ReturnType<typeof vi.fn>
   listInvites: ReturnType<typeof vi.fn>
   createInvite: ReturnType<typeof vi.fn>
   revokeInvite: ReturnType<typeof vi.fn>
@@ -109,6 +112,8 @@ beforeEach(() => {
     create: vi.fn(async(input: Omit<Folder, 'id' | 'pos'>) => ({ ...input, id: 9, pos: 9 })),
     update: vi.fn(async(id: number, input: Omit<Folder, 'id' | 'pos'>) => ({ ...input, id, pos: id })),
     del: vi.fn(async() => {}),
+    updateOrder: vi.fn(async() => {}),
+    list: vi.fn(async() => ({ folders: [WORK, BOTS], allChatsPos: 0 })),
     listInvites: vi.fn(async(): Promise<FolderInvite[]> => []),
     createInvite: vi.fn(async(): Promise<FolderInvite> => ({ slug: 'new', url: '/addlist/new', title: '', peerIds: [-10] })),
     revokeInvite: vi.fn(async() => {}),
@@ -196,15 +201,15 @@ describe('вкладка «Папки» — разметка HEAD', () => {
     expect(sectionNames(root)).toEqual(['Folders', 'Folders view'])
   })
 
-  it('строки папок — по порядку pos, без ручки перетаскивания (О-19); подписи: один флаг — «All Bots», иначе счёт чатов', async() => {
+  it('строки папок — по порядку pos, с ручкой перетаскивания; подписи: один флаг — «All Bots», иначе счёт чатов', async() => {
     const tab = await openList()
     const section = tab.scrollable.container.querySelectorAll('.sidebar-left-section-container')[0]
     expect(section.classList.contains('hide')).toBe(false)
 
     const rows = [...section.querySelectorAll<HTMLElement>('.row')]
     expect(rows.map((row) => row.querySelector('.row-title')!.textContent)).toEqual(['Работа', 'Боты'])
-    expect(rows.every((row) => !row.classList.contains('row-sortable'))).toBe(true)
-    expect(section.querySelector('.row-sortable-icon')).toBeNull()
+    expect(rows.every((row) => row.classList.contains('row-sortable'))).toBe(true)
+    expect(rows.every((row) => row.querySelector(':scope > .row-sortable-icon') !== null)).toBe(true)
     expect(rows.map((row) => row.querySelector('.row-subtitle')?.textContent)).toEqual(['1 chat and 1 group', 'All Bots'])
   })
 
@@ -583,5 +588,102 @@ describe('выбор чатов папки (includedChats)', () => {
     expect(editor.scrollable.container.querySelectorAll('.folder-list-excluded ul.chatlist > .row')).toHaveLength(0)
     // изменение видно по галке
     expect(editor.header.querySelector('.btn-confirm')!.classList.contains('hide')).toBe(false)
+  })
+})
+
+// Ф7-З: порядок папок. Настоящий `Sortable` (мышь через `SwipeHandler`), геометрия
+// строк — заглушкой (happy-dom её не считает), как в `helpers/dom/sortable.test.ts`.
+describe('вкладка «Папки» — порядок (Ф7-З)', () => {
+  const ROW = 50
+
+  const mouse = (type: string, target: EventTarget, clientY: number) =>
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY }))
+
+  /** Перетащить строку `from` на место строки `to` (индексы среди строк списка). */
+  async function dragRow(tab: SliderSuperTab, from: number, to: number) {
+    const list = tab.scrollable.container.querySelector<HTMLElement>('.row-sortable')!.parentElement!
+    const rows = [...list.querySelectorAll<HTMLElement>(':scope > .row')]
+    rows.forEach((row) => {
+      row.getBoundingClientRect = () => {
+        const top = [...list.children].indexOf(row) * ROW
+        return { top, bottom: top + ROW, left: 0, right: 300, width: 300, height: ROW, x: 0, y: top, toJSON() {} } as DOMRect
+      }
+    })
+    const fromY = from * ROW + ROW / 2
+    const toY = to * ROW + ROW / 2
+    mouse('mousedown', rows[from], fromY)
+    mouse('mousemove', document, fromY)
+    await pause(0)
+    mouse('mousemove', document, toY)
+    mouse('mouseup', document, toY)
+    await settle()
+  }
+
+  const setPremium = (premium: boolean) => useChatsStore.getState().setMe(briefProfile({
+    _: 'user', id: ME, first_name: 'Me', ...(premium ? { pFlags: { premium: true as const } } : {}),
+  }))
+  const titles = (tab: SliderSuperTab) => rowTitles(tab.scrollable.container.querySelectorAll('.sidebar-left-section-container')[0])
+  const stateIds = () => useAppStateStore.getState().folders.map((f) => f.id)
+
+  it('не-премиум: нет строки «Все чаты»; перетаскивание шлёт updateOrder без 0 и сразу переставляет строки', async() => {
+    setPremium(false)
+    const tab = await openList()
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+
+    await dragRow(tab, 1, 0)
+
+    expect(folders.updateOrder).toHaveBeenCalledWith([BOTS.id, WORK.id])
+    expect(stateIds()).toEqual([BOTS.id, WORK.id])
+    expect(titles(tab)).toEqual(['Боты', 'Работа'])
+  })
+
+  it('премиум: строка «Все чаты» на сохранённом месте, с подписью-счётом, без перехода в редактор', async() => {
+    setPremium(true)
+    useAppStateStore.setState({ allChatsPos: 1 })
+    const tab = await openList()
+
+    expect(titles(tab)).toEqual(['Работа', 'All Chats', 'Боты'])
+    const section = tab.scrollable.container.querySelectorAll('.sidebar-left-section-container')[0]
+    const allRow = section.querySelectorAll<HTMLElement>('.row')[1]
+    expect(allRow.classList.contains('row-sortable')).toBe(true)
+    expect(allRow.querySelector('.row-sortable-icon')).not.toBeNull()
+    expect(allRow.querySelector('.row-subtitle')?.textContent).toBe('1 chat and 1 group')
+
+    click(allRow)
+    await pause(100)
+    expect(document.querySelector('.sidebar-slider > .tabs-tab.edit-folder-container')).toBeNull()
+  })
+
+  it('премиум: перетаскивание «Все чаты» шлёт 0 в order и запоминает её место', async() => {
+    setPremium(true)
+    useAppStateStore.setState({ allChatsPos: 1 })
+    const tab = await openList()
+
+    await dragRow(tab, 1, 2)
+
+    expect(folders.updateOrder).toHaveBeenCalledWith([WORK.id, BOTS.id, 0])
+    expect(useAppStateStore.getState().allChatsPos).toBe(2)
+    expect(titles(tab)).toEqual(['Работа', 'Боты', 'All Chats'])
+  })
+
+  it('отказ сервера — список перечитывается (откат перестановки)', async() => {
+    setPremium(false)
+    folders.updateOrder.mockRejectedValueOnce(new Error('500'))
+    const tab = await openList()
+
+    await dragRow(tab, 1, 0)
+
+    await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
+  })
+
+  it('эхо чужого порядка (updateDialogFilterOrder) переставляет строки без перерисовки вкладки', async() => {
+    setPremium(false)
+    const tab = await openList()
+
+    applyOrder([BOTS.id, WORK.id])
+    await settle()
+
+    expect(titles(tab)).toEqual(['Боты', 'Работа'])
   })
 })
