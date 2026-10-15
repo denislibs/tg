@@ -295,7 +295,7 @@ func TestPaidCharge_MessageAndStarReactionDoNotDeadlock(t *testing.T) {
 			return err
 		},
 		func() error {
-			_, _, _, err := p.uc.SendStarReaction(ctx, p.g1, p.postA.ID, p.idB, 1, false)
+			_, _, _, err := p.uc.SendStarReaction(ctx, p.g1, p.postA.ID, p.idB, 1, false, 0)
 			return err
 		})
 }
@@ -306,11 +306,11 @@ func TestStarReaction_OppositeDirectionsDoNotDeadlock(t *testing.T) {
 	ctx := context.Background()
 	race(t,
 		func() error {
-			_, _, _, err := p.uc.SendStarReaction(ctx, p.g2, p.postB.ID, p.idA, 1, false)
+			_, _, _, err := p.uc.SendStarReaction(ctx, p.g2, p.postB.ID, p.idA, 1, false, 0)
 			return err
 		},
 		func() error {
-			_, _, _, err := p.uc.SendStarReaction(ctx, p.g1, p.postA.ID, p.idB, 1, false)
+			_, _, _, err := p.uc.SendStarReaction(ctx, p.g1, p.postA.ID, p.idB, 1, false, 0)
 			return err
 		})
 }
