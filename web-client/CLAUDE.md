@@ -213,8 +213,12 @@ npx vite build --outDir ../client-build
   `downloadMediaURL`), вкладочных обогащений над операциями не осталось.
   Второй вход владельца — `workerCore.ts::onFrame`, который перехватывает
   `message_ack`/`message_error` (эфемерные, без `pts`) и применяет их один раз —
-  сырой кадр при этом летит дальше, у него остались потребители (звук отправки,
-  тост `paid_required`). Пути, идущие мимо WS-отправки, зовут владельца сами
+  сырой кадр при этом летит дальше (звук отправки); причина отказа (`reason`)
+  едет владельцу: `ALLOW_PAYMENT_REQUIRED_<N>` заводит запрос на повторную
+  оплату (`messages/repayRequestHandler.ts`, порт tweb `RepayRequestHandler`) —
+  `repayRequest` на неудавшемся бабле, плашка «Цена изменилась»
+  (`chat/priceChangedInterceptor`) и пункт меню «Resend». Пути, идущие мимо
+  WS-отправки, зовут владельца сами
   через `beforeSending` (`workerCore.ts`): пост канала (`channelsManager.post`,
   REST) и секретный чат (`secretManager.sendText/sendMedia`, по проводу
   шифртекст; шифрование и локальное превью — тоже в воркере, ключи живут там).

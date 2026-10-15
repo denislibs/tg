@@ -123,8 +123,10 @@ export function newStoriesManager({ rest }: { rest: Pick<RestClient, 'get' | 'po
     // атрибуцией. Возвращает число успешно отправленных.
     // История адресуется ПАРОЙ «пир автора + номер внутри него»: сам по себе
     // номер историю не адресует — у разных авторов они совпадают.
-    async share(authorId: number, id: number, peerIds: number[]): Promise<number> {
-      const r = await rest.post<number>(`/stories/${authorId}/${id}/share`, { peer_ids: peerIds })
+    async share(authorId: number, id: number, peerIds: number[], confirmedPaymentResult?: { starsAmount: number } | null): Promise<number> {
+      // allow_paid_stars — согласие на плату за ОДНО сообщение в каждый платный чат
+      // (tweb stories/share.ts:17 спрашивает его у каждого получателя отдельно)
+      const r = await rest.post<number>(`/stories/${authorId}/${id}/share`, { peer_ids: peerIds, allow_paid_stars: confirmedPaymentResult?.starsAmount || undefined })
       return r ?? 0
     },
     async view(authorId: number, id: number): Promise<void> { await rest.post(`/stories/${authorId}/${id}/view`, {}) },

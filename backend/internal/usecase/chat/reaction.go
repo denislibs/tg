@@ -390,6 +390,15 @@ func (i *Interactor) reactionsSeenBy(ctx context.Context, chatID, messageID, vie
 	return out, nil
 }
 
+// ReactionsSeenBy — полный агрегат реакций сообщения глазами зрителя (эмодзи-
+// чипы и платный чип вместе): тело, которым ответ платной ⭐-реакции заменяет
+// агрегат у клиента ЦЕЛИКОМ (tweb appReactionsManager.ts:966-972,
+// updateMessageReactions). Зритель должен читать чат — проверяет вызывающий
+// (ручка уже прошла SendStarReaction/StarReactionOf).
+func (i *Interactor) ReactionsSeenBy(ctx context.Context, chatID, messageID, viewerID int64) (domain.MessageReactions, error) {
+	return i.reactionsSeenBy(ctx, chatID, messageID, viewerID)
+}
+
 // chatKind — вид чата ОДНИМ вопросом для правил реакций. Неизвестен — пустая
 // строка, и правила ниже отвечают на неё «нельзя»: и флаг, и право УТВЕРЖДАЮТ
 // доступ, а утверждать его, не зная чата, нельзя.

@@ -111,7 +111,7 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, _, err := h.svc.UnlockPaidMedia(r.Context(), msgID, h.meID(r))
-	if errors.Is(err, domain.ErrPaidRequired) {
+	if errors.Is(err, domain.ErrBalanceTooLow) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
 	}
@@ -165,7 +165,7 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, _, err := h.svc.SendGift(r.Context(), h.meID(r), b.ToUserID, b.GiftID, b.Message, b.Anonymous)
-	if errors.Is(err, domain.ErrPaidRequired) {
+	if errors.Is(err, domain.ErrBalanceTooLow) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
 	}

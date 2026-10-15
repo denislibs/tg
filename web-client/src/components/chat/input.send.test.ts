@@ -223,6 +223,25 @@ describe('ChatInput: отправка', () => {
     expect(input.forwarding).toBeUndefined()
   })
 
+  // Ф7-Г (MC-06), tweb input.ts:4596-4604: согласие на плату спрашивается на ВСЕ сообщения
+  // отправки (текст + пересылка), цена одного уезжает пакетом в текст и в пересылку.
+  it('платный чат: согласие на текст и пересылку одним вопросом, цена — пакетом в оба вызова', async() => {
+    mounted = await mountInput()
+    const { input, managers, messages } = mounted
+    messages.set(3, message(3, 'раз'))
+    messages.set(4, message(4, 'два'))
+    const prepare = vi.spyOn(input.paidMessageInterceptor, 'prepareStarsForPayment').mockResolvedValue({ starsAmount: 5, canUndo: false })
+
+    input.initMessagesForward({ [10]: [3, 4] })
+    await vi.waitFor(() => expect(input.forwarding).toEqual({ [10]: [3, 4] }))
+    input.messageInputField.setValueSilently('подпись')
+    await input.sendMessage()
+
+    expect(prepare).toHaveBeenCalledWith(3)
+    expect(managers.messages.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: 'подпись', confirmedPaymentResult: { starsAmount: 5, canUndo: false } }))
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(PEER, 10, [3, 4], expect.objectContaining({ confirmedPaymentResult: { starsAmount: 5, canUndo: false } }))
+  })
+
   it('отказ пересылки (403/429/402) — тост, а не молчание', async() => {
     mounted = await mountInput()
     const { input, managers, messages } = mounted

@@ -14,8 +14,7 @@
 // умеет (отличия закроет 2C-24):
 //  1. подвал «Копировать ссылку / Отправить» мультивыбора (`createCopyLinkFooter`,
 //     :40-49) и тосты `toastKey*` (:88-108) — у вызывающего их нет;
-//  2. платные сообщения (`PaidMessagesInterceptor.prepareStarsForPayment`, :55-60)
-//     и треды/монофорумы получателя (`threadId`, `monoforumThreadId`) — у
+//  2. треды/монофорумы получателя (`threadId`, `monoforumThreadId`) — у
 //     `ForwardPicker` выбор только чатами;
 //  3. мультивыбор у `ForwardPicker` есть всегда (у оригинала — по `multiSelect`).
 import { createElement } from 'react'
@@ -24,6 +23,7 @@ import { openPopup } from '@stores/popupStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { startClient } from '@/client/bootstrap'
 import appImManager from '@lib/appImManager'
+import PaidMessagesInterceptor, { PAYMENT_REJECTED } from '@components/chat/paidMessagesInterceptor'
 
 export type ShareUrlOptions = {
   url: string,
@@ -40,21 +40,29 @@ function SharePicker({ options, onClose }: { options: ShareUrlOptions, onClose: 
   return createElement(ForwardPicker, {
     dialogs,
     onClose,
-    onPick: (peerIds: number[]) => {
+    onPick: async(peerIds: number[]) => {
       onClose()
       if(!peerIds.length) return
       const { managers } = startClient()
       const senderId = useChatsStore.getState().meId
-      peerIds.forEach((peerId, idx) => {
+      let sent = 0
+      // tweb `shareUrl.ts:55-60`: получатели по очереди — согласие на плату каждого
+      // платного чата спрашивается отдельным подтверждением
+      for(const [idx, peerId] of peerIds.entries()) {
+        const preparedPayment = await PaidMessagesInterceptor.prepareStarsForPayment({ messageCount: 1, peerId })
+        if(preparedPayment === PAYMENT_REJECTED) continue
+
         void managers.messages.sendText({
           peerId,
           text: options.url,
           clientMsgId: `share-${peerId}-${performance.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
+          confirmedPaymentResult: preparedPayment,
           optimistic: senderId != null ? { senderId } : undefined,
         })
-      })
+        sent++
+      }
 
-      if(peerIds.length === 1 && options.openAfter) {
+      if(sent && peerIds.length === 1 && options.openAfter) {
         void appImManager.setInnerPeer({ peerId: peerIds[0] })
       }
     },

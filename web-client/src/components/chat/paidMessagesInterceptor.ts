@@ -12,7 +12,7 @@
 //     `showUndoablePaidTooltip` даёт их отменить; резерв звёзд — `setReservedStars`.
 //     У нас бэкенд списывает плату сам в момент отправки
 //     (`backend/internal/usecase/chat/stars.go::chargePaidMessage`, нехватка — NACK
-//     `paid_required`), очереди нет — поэтому `canUndo` всегда `false`, и вместе с
+//     `BALANCE_TOO_LOW`; без согласия — `ALLOW_PAYMENT_REQUIRED_<N>`), очереди нет — поэтому `canUndo` всегда `false`, и вместе с
 //     предметом не перенесены `pendingUndoableMessage`, `MIN_UNDO_SENDING_PARAMS`,
 //     `canUndoMessageSending`, `triggerUndoableMessages`, `dispose` и `managers`
 //     конструктора (их читала только очередь).
@@ -29,6 +29,10 @@
 //     (`useAppStateStore`), а не `appStateManager.getState()` воркера.
 //  5. Имя пира в описании — узел `PeerTitle` (`chat/peerTitle.ts`) вместо
 //     `wrapPeerTitle`; его middleware гасится, когда попап закрыт.
+//  6. Необязательный второй аргумент `knownStarsAmount` у `prepareStarsForPayment` —
+//     цена одного сообщения из самого отказа сервера (`ALLOW_PAYMENT_REQUIRED_<N>`):
+//     повторная оплата (`chat/priceChangedInterceptor`) не должна зависеть от того, успела
+//     ли дойти обновлённая карточка чата (отказ идёт в сокет отправителя, карточка — рассылкой).
 import { i18n } from '@lib/langPack'
 import { getMiddleware } from '@helpers/middleware'
 import noop from '@helpers/noop'
@@ -82,9 +86,11 @@ export default class PaidMessagesInterceptor {
    * The starsAmount better be provided by this interceptor and then passed manually to the send method
    * to make sure we don't accidentally send stars in a case that might have not been handled
    */
-  public async prepareStarsForPayment(messageCount: number): Promise<PreparedPaymentResult> {
+  public async prepareStarsForPayment(messageCount: number, knownStarsAmount?: number): Promise<PreparedPaymentResult> {
     const { peerId } = this.chat
-    const starsAmount = getStarsAmount(peerId) // расхождение 2 шапки
+    // расхождение 2 шапки; `knownStarsAmount` — расхождение 6: цена из самого отказа сервера
+    // (`ALLOW_PAYMENT_REQUIRED_<N>`) вернее зеркала пиров, если карточка чата ещё не дошла
+    const starsAmount = knownStarsAmount ?? getStarsAmount(peerId)
 
     if(!starsAmount) return
 

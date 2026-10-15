@@ -291,9 +291,10 @@ func (s *Service) Repost(ctx context.Context, authorID, srcAuthorID, srcSeq int6
 // Share posts a story into each of the given chats as a regular media message
 // with an attribution caption (tweb inputMediaStory, lightweight variant). The
 // sharer must be able to see the story and it must be public (else domain.ErrForbidden); non-member
-// target chats are silently skipped. Returns how many messages were sent.
+// target chats are silently skipped. allowPaidStars — согласие на плату за
+// ОДНО сообщение в каждый платный чат (tweb sendMedia, allow_paid_stars). Returns how many messages were sent.
 // domain.ErrUnavailable when no message sender is wired.
-func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chatIDs []int64) (int, error) {
+func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chatIDs []int64, allowPaidStars int64) (int, error) {
 	if s.sender == nil {
 		return 0, domain.ErrUnavailable
 	}
@@ -324,7 +325,7 @@ func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chat
 		if chatID == 0 {
 			continue
 		}
-		err := s.sender.SendStoryShare(ctx, chatID, senderID, origin.MediaID, caption)
+		err := s.sender.SendStoryShare(ctx, chatID, senderID, origin.MediaID, caption, allowPaidStars)
 		switch {
 		case err == nil:
 			sent++

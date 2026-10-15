@@ -300,6 +300,11 @@ interface MessageCommon {
    *  удаления. У оригинала на этом месте `error: ApiError`, объекта ошибки у
    *  нас нет. */
   failed?: boolean
+  /** Запрос на повторную оплату (tweb `message.repayRequest`, schema_additional_params):
+   *  отправка отвергнута `ALLOW_PAYMENT_REQUIRED_<N>`, а повтор держит воркер.
+   *  `id` — ключ запроса для `messages.confirmRepayRequest`, `messageCount` —
+   *  сколько сообщений платить заново (пункт меню «Resend»). */
+  repayRequest?: { id: number; messageCount: number; starsAmount?: number }
   /** сообщение из секретного чата (после расшифровки `message` заполнен локально) */
   secret?: boolean
   /** E2E-медиа секретного чата — инжектит расшифровка воркера, не провод */
@@ -853,7 +858,7 @@ export interface MessageReactions {
  * `peerId`/`fromId` — знаковые ключи (объявлены клиентскими у самого
  * оригинала, `schema/schema_additional_params.json`); остальные три наши.
  */
-type MessageClientKeys = 'peerId' | 'fromId' | 'fwdFromId' | 'savedFrom' | 'failed' | 'localUrl' | 'transcription'
+type MessageClientKeys = 'peerId' | 'fromId' | 'fwdFromId' | 'savedFrom' | 'failed' | 'repayRequest' | 'localUrl' | 'transcription'
 
 /**
  * Проводное сообщение — ТОТ ЖЕ тип, что модель, минус клиентские параметры и с

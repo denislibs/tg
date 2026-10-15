@@ -25,9 +25,8 @@
 //   • `replyToMonoforumPeerId` — монофорумы (Telegram Direct Messages канала).
 //     Подсистемы монофорумов у нас нет ЦЕЛИКОМ (ни типа чата, ни `saved_peer_id`).
 //   • `updateStickersetOrder` (порядок паков), `savedReaction` (теги Saved
-//     Messages), `invertMedia` (медиа под текстом), `confirmedPaymentResult`
-//     (звёздная оплата отправки), `suggestedPost` — соответствующих полей нет ни
-//     в проводном кадре, ни в бэкенде.
+//     Messages), `invertMedia` (медиа под текстом), `suggestedPost` —
+//     соответствующих полей нет ни в проводном кадре, ни в бэкенде.
 //   • `peerId` — в оригинале часть пакета, у нас peerId явный аргумент каждого
 //     метода отправки (`SendArgs.peerId`), дублировать его пакетом незачем.
 //
@@ -62,6 +61,13 @@ export interface MessageSendingParams {
   scheduleDate?: number | null
   /** tweb `scheduleRepeatPeriod` — повтор отложенного (сек), :2742 */
   scheduleRepeatPeriod?: number | null
+  /** tweb `confirmedPaymentResult` (`ConfirmedPaymentResult`) — согласие на плату
+   *  за сообщение в платной группе. `starsAmount` — цена ОДНОГО сообщения
+   *  (`paidMessagesInterceptor.ts:84-113`); в кадре и запросах она умножается на
+   *  число сообщений запроса (`allow_paid_stars`, appMessagesManager.ts:2702,
+   *  :3752, :5634). `canUndo` (отложенная оплата с «Отменить») у нас всегда
+   *  `false` и в пакет не входит — расхождение 1 шапки `paidMessagesInterceptor.ts`. */
+  confirmedPaymentResult?: { starsAmount: number } | null
 }
 
 /** Пустой пакет — для путей, у которых собирать нечего (тесты, фолбэки). */
@@ -70,14 +76,14 @@ export const EMPTY_SENDING_PARAMS: MessageSendingParams = {}
 /** Ключи пакета — нужны и `splitSendingParams`, и скану-пину (`core/sendingParams.test.ts`). */
 export const SENDING_PARAM_KEYS = [
   'threadId', 'replyToMsgId', 'replyToQuote', 'replyToPeerId', 'silent', 'sendAsPeerId', 'effect',
-  'scheduleDate', 'scheduleRepeatPeriod',
+  'scheduleDate', 'scheduleRepeatPeriod', 'confirmedPaymentResult',
 ] as const satisfies readonly (keyof MessageSendingParams)[]
 
 /** Проводные поля, которые пакет ПОЛНОСТЬЮ покрывает: их нельзя передать мимо
  *  него. `Required` — потому что пакет их ВСЕГДА проставляет (пусто = явный
  *  null/false, а не «поля нет»); в самом `WireSendArgs` они опциональны. */
 export type SendingParamsWireFields =
-  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsPeerId' | 'scheduleDate' | 'scheduleRepeatPeriod'>>
+  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsPeerId' | 'scheduleDate' | 'scheduleRepeatPeriod' | 'allowPaidStars'>>
 
 /**
  * Пакет → проводные поля кадра `send_message`. Порт tweb `getInputReplyTo`
@@ -104,6 +110,8 @@ export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireF
     sendAsPeerId: p.sendAsPeerId ?? null,
     scheduleDate: p.scheduleDate || null,
     scheduleRepeatPeriod: p.scheduleRepeatPeriod || null,
+    // Цена ОДНОГО сообщения: кадр send_message несёт ровно одно сообщение.
+    allowPaidStars: p.confirmedPaymentResult?.starsAmount || null,
   }
 }
 
@@ -116,6 +124,6 @@ export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireF
 export function splitSendingParams<T extends MessageSendingParams>(
   o: T,
 ): { params: MessageSendingParams; rest: Omit<T, keyof MessageSendingParams> } {
-  const { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod, ...rest } = o
-  return { params: { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod }, rest }
+  const { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod, confirmedPaymentResult, ...rest } = o
+  return { params: { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod, confirmedPaymentResult }, rest }
 }

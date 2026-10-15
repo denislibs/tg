@@ -149,5 +149,5 @@ type EventPublisher interface {
 // Реализуется поверх chat-usecase (Interactor.SendStoryShare). Опционален: когда
 // nil, POST /stories/{id}/share отвечает domain.ErrUnavailable.
 type MessageSender interface {
-	SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error
+	SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string, allowPaidStars int64) error
 }

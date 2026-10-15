@@ -83,6 +83,7 @@
 @use "markup"; // :69
 @use "quote"; // :70
 @use "tooltip"; // :72 (подсказка `showTooltip` — `components/tooltip.solid.tsx`, Б-37)
+@use "chatToast"; // :73 (плашка под топбаром `showChatToast` — `components/chat/chatToast.solid.tsx`)
 @use "topbarSearch"; // :74
 @use "foldersSidebar"; // :75
 @use "animatedSuper"; // :77
