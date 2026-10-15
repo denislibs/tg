@@ -44,8 +44,10 @@ export function handleLivestreamFrame(evt: LivestreamFrame) {
   const { peer_id, action } = evt.d
   const active = action === 'started'
   store().setActive(peer_id, active)
-  // трансляция закончилась, а мы её смотрели — закрываем экран
+  // трансляция закончилась, а мы её смотрели — закрываем экран и выходим из
+  // множества участников на сервере (StopLivestream его не чистит): иначе зритель
+  // остался бы «участником», и видеочат считался бы идущим без админа (Б-9)
   if (!active && store().watchingPeerId === peer_id) {
-    store().setWatching(null)
+    leaveLivestream()
   }
 }

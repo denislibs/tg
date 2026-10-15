@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // Б-9: видеочат с нуля начинает только создатель/админ (tweb topbar.ts:350-361,
-// appImManager.ts:2343-2358: звонка нет и права нет → выход). Отказ виден
-// входящему кадром group_call_update {action: "rejected"}, остальным — тишина.
+// appImManager.ts:2343-2358: звонка нет и права нет → выход). Отказ — ErrForbidden;
+// кадр group_call_update {action: "rejected"} шлёт ws-слой только соединению,
+// приславшему вход.
 
 // groupCallFramesFor — разобранные group_call_update, доставленные пользователю.
 func groupCallFramesFor(t *testing.T, pub *fakePublisher, userID int64) []map[string]any {
@@ -44,12 +46,10 @@ func TestJoinGroupCall_NoCall_MemberCannotStart(t *testing.T) {
 	if ids, _ := e.calls.Participants(ctx, e.chatID); len(ids) != 0 {
 		t.Fatalf("рядовой попал в множество участников: %v", ids)
 	}
-	got := groupCallFramesFor(t, e.pub, callMember)
-	if len(got) != 1 || got[0]["action"] != "rejected" || got[0]["user_id"] != float64(callMember) {
-		t.Fatalf("входящему: %v, want один group_call_update rejected", got)
-	}
-	if _, ok := got[0]["peer_id"]; !ok {
-		t.Fatalf("в отказе нет peer_id: %v", got[0])
+	// Отказ — ответ транспорта одному соединению (ws), usecase кадров не шлёт:
+	// на других устройствах отказанного открытый звонок не должен рушиться.
+	if n := len(groupCallFramesFor(t, e.pub, callMember)); n != 0 {
+		t.Fatalf("usecase разослал отказ пользователю по всем устройствам: %d кадров", n)
 	}
 	if n := len(groupCallFramesFor(t, e.pub, callOwner)); n != 0 {
 		t.Fatalf("создателю пришло %d кадров group_call_update при чужом отказе", n)
@@ -130,5 +130,77 @@ func TestJoinGroupCall_NotMember_NotFound(t *testing.T) {
 	}
 	if n := len(groupCallFramesFor(t, e.pub, 99)); n != 0 {
 		t.Fatalf("не члену чата отдан кадр: %d", n)
+	}
+}
+
+// Сбой хранилища при проверке права — не отказ по праву: создателю не закрывают
+// звонок кадром rejected, ошибка идёт наружу как есть.
+type failingMemberGroups struct{ GroupRepo }
+
+var errBoom = errors.New("pool timeout")
+
+func (failingMemberGroups) GetMember(context.Context, int64, int64) (domain.Member, error) {
+	return domain.Member{}, errBoom
+}
+
+func TestJoinGroupCall_StorageErrorIsNotForbidden(t *testing.T) {
+	e := newCallEnv(t)
+	e.in.groups = failingMemberGroups{e.in.groups}
+	_, err := e.in.JoinGroupCall(context.Background(), e.chatID, callOwner)
+	if !errors.Is(err, errBoom) || errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("сбой GetMember: %v, want errBoom без ErrForbidden", err)
+	}
+}
+
+// Рядовой при пустом звонке — отказ не оставляет следов в сторе, и участники
+// в идущем звонке видят вход рядового как обычно.
+func TestJoinGroupCall_ActiveCall_MemberJoinFansOutOnce(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	e.pub.reset()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatal(err)
+	}
+	if got := groupCallFramesFor(t, e.pub, callOwner); len(got) != 1 || got[0]["action"] != "joined" {
+		t.Fatalf("создателю о входе рядового: %v", got)
+	}
+}
+
+// Зритель, вошедший при активном эфире первым, включает call_active (переход 0→1).
+func TestJoinGroupCall_LivestreamViewerFirst_AnnouncesCall(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.in.SetLivestreams(newFakeLivestreamRepo(), "rtmp://test/live")
+	if _, err := e.in.StartLivestream(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.advance(10 * time.Second)
+	before := len(e.chatUpdates(t, callOwner))
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(e.chatUpdates(t, callOwner)); n != before+1 {
+		t.Fatalf("первый зритель эфира: chat_update %d -> %d, want +1", before, n)
+	}
+}
+
+// Канал (вещательный) без В-S3 ведёт себя как группа: зритель эфира входит.
+func TestJoinGroupCall_Channel_LivestreamActive_SubscriberJoins(t *testing.T) {
+	i, fg, _ := newLivestreamTestInteractor(t)
+	i.SetGroupCalls(newFakeCallStore(newFakeClock()))
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	_ = fg.AddMember(ctx, ch, 8, domain.RoleSubscriber, 0)
+	if _, err := i.JoinGroupCall(ctx, ch, 8); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("подписчик без эфира: %v, want ErrForbidden", err)
+	}
+	if _, err := i.StartLivestream(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.JoinGroupCall(ctx, ch, 8); err != nil {
+		t.Fatalf("подписчик при активном эфире: %v", err)
 	}
 }

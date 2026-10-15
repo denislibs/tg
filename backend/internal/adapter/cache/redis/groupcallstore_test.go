@@ -306,8 +306,8 @@ func TestJoinIfActive_RaceWithLastLeave(t *testing.T) {
 		if lastLeft && len(ids) != 0 {
 			t.Fatalf("round %d: хозяин вышел последним, но в звонке %v", round, ids)
 		}
-		if !lastLeft && !anyJoined && len(ids) != 0 {
-			t.Fatalf("round %d: никто не вошёл, а множество %v", round, ids)
+		if !lastLeft && !anyJoined {
+			t.Fatalf("round %d: хозяин вышел не последним, но никто не вошёл", round)
 		}
 		for k, j := range results {
 			in := false

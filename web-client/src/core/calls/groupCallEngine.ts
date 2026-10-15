@@ -39,8 +39,15 @@ export interface GroupCallFrame {
   }
 }
 
-async function newPc(userId: number): Promise<RTCPeerConnection> {
-  const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' })
+// Поколение звонка: teardownCall его сдвигает, и newPc, ждавший iceServers() через
+// отказ входа или выход, не кладёт соединение в уже убранный звонок.
+let callGen = 0
+
+async function newPc(userId: number): Promise<RTCPeerConnection | null> {
+  const gen = callGen
+  const servers = await iceServers()
+  if (gen !== callGen) return null
+  const pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle' })
   localStream?.getTracks().forEach((t) => pc.addTrack(t, localStream!))
   pc.ontrack = (e) => {
     const stream = e.streams[0]
@@ -103,9 +110,9 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   for (const userId of existing) {
     if (userId === meId) continue
     const pc = await newPc(userId)
+    if (!pc) return // звонок убран (rejected / выход), пока шли офферы
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    // сервер мог отказать во входе (rejected), пока шли офферы: звонка уже нет
     if (store().peerId !== peerId) return
     signal(userId, { sdp: sdpJSON(pc.localDescription) })
   }
@@ -114,6 +121,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
 
 /** Локальная уборка звонка: соединения, микрофон/камера, стор. Кадров не шлёт. */
 function teardownCall() {
+  callGen++
   for (const userId of [...pcs.keys()]) closePeer(userId)
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
@@ -205,7 +213,8 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
     let pc = pcs.get(from)
     if (d.sdp) {
       if (d.sdp.type === 'offer') {
-        pc = pc ?? (await newPc(from))
+        pc = pc ?? (await newPc(from)) ?? undefined
+        if (!pc) return
         await pc.setRemoteDescription(d.sdp)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)

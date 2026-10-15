@@ -5,14 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendCallFrame = vi.fn()
 const toastNew = vi.fn()
+let iceGate: Promise<unknown> = Promise.resolve()
+let existingParticipants: number[] = []
 vi.mock('@components/toast', () => ({ toastNew: (...a: unknown[]) => toastNew(...a) }))
 
 vi.mock('../../client/bootstrap', () => ({
   startClient: () => ({
     managers: {
       realtime: { sendCallFrame: (...a: unknown[]) => sendCallFrame(...a) },
-      messages: { groupCallParticipants: async () => [] },
-      calls: { iceConfig: async () => ({ servers: [], ttlSeconds: 0 }) },
+      messages: { groupCallParticipants: async () => existingParticipants },
+      calls: { iceConfig: async () => { await iceGate; return { servers: [], ttlSeconds: 0 } } },
     },
   }),
 }))
@@ -44,6 +46,8 @@ beforeEach(async () => {
   created.length = 0
   sendCallFrame.mockReset()
   toastNew.mockReset()
+  iceGate = Promise.resolve()
+  existingParticipants = []
   vi.stubGlobal('RTCPeerConnection', FakePC)
   engine = await import('./groupCallEngine')
   store = await import('../../stores/groupCallStore')
@@ -119,5 +123,21 @@ describe('groupCallEngine: отказ входа (action = rejected)', () => {
     engine.handleGroupCallFrame(rejected(PEER, 1))
     expect(live.useLivestreamStore.getState().watchingPeerId).toBeNull()
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+  })
+
+  it('отказ, пока ждём ICE-конфиг для оффера: соединение не создаётся, звонок остаётся убранным', async () => {
+    let release!: () => void
+    iceGate = new Promise<void>((r) => { release = r })
+    existingParticipants = [2]
+
+    const joining = engine.joinGroupCall(PEER)
+    await vi.waitFor(() => expect(store.useGroupCallStore.getState().peerId).toBe(PEER))
+    engine.handleGroupCallFrame(rejected(PEER, 1))
+    release()
+    await joining
+
+    expect(created).toHaveLength(0)
+    expect(Object.keys(store.useGroupCallStore.getState().participants)).toHaveLength(0)
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_signal')).toHaveLength(0)
   })
 })

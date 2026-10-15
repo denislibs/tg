@@ -176,6 +176,17 @@ func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) (bool, err
 	return first, nil
 }
 
+func (m *memGroupCalls) JoinIfActive(ctx context.Context, chatID, userID int64) (bool, error) {
+	m.mu.Lock()
+	active := len(m.byID[chatID]) > 0
+	m.mu.Unlock()
+	if !active {
+		return false, nil
+	}
+	_, err := m.Join(ctx, chatID, userID)
+	return true, err
+}
+
 func (m *memGroupCalls) Leave(_ context.Context, chatID, userID int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
