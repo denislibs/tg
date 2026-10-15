@@ -90,6 +90,17 @@ describe('StickersManager: кадры своих устройств', () => {
     await next
   })
 
+  it('reset (смена сессии) сбрасывает кэш набора', async () => {
+    const { mgr, gets } = setup(async () => ({ set: makeStickerSet({ id: 5 }), documents: [] }))
+    mgr.onNewStickerSet({
+      _: 'updateNewStickerSet',
+      stickerset: { _: 'messages.stickerSet', set: makeStickerSet({ id: 5 }), packs: [], keywords: [], documents: [] },
+    })
+    mgr.reset()
+    await mgr.getStickerSet({ id: 5 })
+    expect(gets).toEqual(['/sticker-sets/id/5'])
+  })
+
   it('сбой чтения, обогнанного свежим кадром, не теряет список: повторное чтение объявляется', async () => {
     let n = 0
     const { mgr, calls } = setup(async () => {

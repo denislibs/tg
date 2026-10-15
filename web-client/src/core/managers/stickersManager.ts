@@ -110,9 +110,11 @@ export function newStickersManager({ rest, dispatch }: {
   // Перечитывание списков по кадрам журнала: одно чтение в полёте на список, кадр
   // во время чтения лишь помечает его устаревшим — после ответа читаем ещё раз и
   // объявляем только последний результат. Серия кадров (догонка после разрыва,
-  // частая отправка стикеров) стоит одного-двух запросов, а не по запросу на
-  // кадр; устаревший ответ не затирает свежий (tweb склеивает одновременные
-  // чтения: apiManagerMethods.ts:184-187, appGifsManager.ts:31-35).
+  // частая отправка стикеров) стоит одного-двух запросов.
+  // ОТСТУПЛЕНИЕ от tweb: при `overwrite` он шлёт запрос на каждый кадр и защищается
+  // от устаревшего ответа через `getNewPromise` (apiManagerMethods.ts:184-198,
+  // appStickersManager.ts:128-134, appGifsManager.ts:31-35); здесь запросы
+  // склеены ради трафика (ревью f6-stickers, п.1).
   const flights = new Map<string, { dirty: boolean; promise: Promise<void> }>()
   function refresh<T>(key: string, read: () => Promise<T>, publish: (v: T) => void): Promise<void> {
     const cur = flights.get(key)
@@ -239,10 +241,13 @@ export function newStickersManager({ rest, dispatch }: {
       const { set, documents } = update.stickerset
       const value = { set, stickers: saveAll(documents) }
       const at = Date.now()
+      for (const [k, v] of freshSets) if (at - v.at >= FRESH_SET_TTL_MS) freshSets.delete(k) // кэш не растёт
       freshSets.set(`id:${set.id}`, { at, value })
       freshSets.set(`sn:${set.short_name}`, { at, value })
       dispatch('stickers_installed', set)
     },
+    /** Смена сессии (выход/вход): кэш и полёты прошлого аккаунта не переживают её. */
+    reset(): void { freshSets.clear(); flights.clear() },
     /** tweb `onStickersUpdated(type, true)` (:128-134): перечитать и объявить. */
     onStickersUpdated(type: 'recent' | 'faved'): Promise<void> {
       return refresh(type, () => (type === 'recent' ? manager.recent() : manager.faved()),

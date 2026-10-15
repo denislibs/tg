@@ -458,6 +458,7 @@ func (i *Interactor) stickerSetStillInstalled(ctx context.Context, viewerID int6
 	v, err := i.setInstalled(ctx, viewerID, id)
 	if err != nil {
 		log.Printf("getDifference: stickers_new_set set=%d user=%d: %v", id, viewerID, err)
+		cache[id] = true // одна проба и одна строка лога на набор
 		return true
 	}
 	cache[id] = v
