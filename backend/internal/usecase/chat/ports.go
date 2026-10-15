@@ -643,6 +643,12 @@ type StarReactionRepo interface {
 	// Add накопительно добавляет delta звёзд от userID к messageID (upsert) и
 	// обновляет флаг anonymous; возвращает новый суммарный вклад пользователя.
 	Add(ctx context.Context, messageID, userID, delta int64, anonymous bool) (int64, error)
+	// Claim занимает ключ идемпотентности (userID, randomID) запроса «count звёзд на messageID»
+	// внутри транзакции вызывающего: true — ключ новый (платить), false — запрос уже
+	// проведён (повтор: не платить, отдать прежний результат). Тот же ключ с другим
+	// сообщением или числом звёзд — domain.ErrInvalid. Параллельный повтор ждёт первую
+	// транзакцию (уникальный ключ) и видит её итог. Старые ключи пользователя чистятся.
+	Claim(ctx context.Context, userID, randomID, messageID, count int64) (bool, error)
 	// AggregatesFor батч-загружает агрегат звёзд по сообщениям (Total) + личный
 	// вклад зрителя (Mine). Сообщения без платных реакций отсутствуют в мапе.
 	AggregatesFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64]domain.StarReactionAgg, error)
@@ -1068,6 +1074,9 @@ type PresenceQuery interface {
 // PollRepo хранит опросы и голоса.
 type PollRepo interface {
 	Create(ctx context.Context, p domain.Poll) (domain.Poll, error)
+	// Delete убирает опрос, созданный отправкой, которая не состоялась (сирота). Опрос,
+	// на который уже ссылается сообщение, не удаляется (внешний ключ) — ошибка игнорируется.
+	Delete(ctx context.Context, id int64) error
 	ByID(ctx context.Context, id int64) (domain.Poll, error)
 	// SetVotes заменяет голос пользователя целиком (пустой список = отзыв).
 	SetVotes(ctx context.Context, pollID, userID int64, optionIdxs []int) error
@@ -1080,6 +1089,8 @@ type PollRepo interface {
 // ChecklistRepo хранит чек-листы и отметки «выполнено».
 type ChecklistRepo interface {
 	Create(ctx context.Context, c domain.Checklist) (domain.Checklist, error)
+	// Delete — как PollRepo.Delete: убирает чек-лист несостоявшейся отправки.
+	Delete(ctx context.Context, id int64) error
 	ByID(ctx context.Context, id int64) (domain.Checklist, error)
 	// SetItems заменяет список пунктов целиком (при добавлении пунктов).
 	SetItems(ctx context.Context, checklistID int64, items []domain.ChecklistItem) error

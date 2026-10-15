@@ -129,27 +129,41 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 			return domain.Message{}, 0, err
 		}
 		if !unlocked[offer.OfferID] {
+			// Явная нехватка отказывает до транзакции (окончательную проверку делает списание).
+			if bal < price {
+				return domain.Message{}, 0, domain.ErrBalanceTooLow
+			}
 			var authorBal int64
-			var authorCredited bool
+			var authorCredited, charged bool
 			err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+				// Разблокировка занимается ПЕРВОЙ, в той же транзакции, что и списание: уникальный
+				// ключ (предложение, покупатель) сериализует одновременные запросы — проигравший
+				// ждёт коммита победителя и видит «уже оплачено» (false), не списывая второй раз.
+				// Проверка UnlockedByIDs выше — лишь быстрый путь без транзакции.
+				inserted, e := i.paidMedia.Unlock(ctx, offer.OfferID, userID)
+				if e != nil {
+					return e
+				}
+				if !inserted {
+					return nil // оплачено параллельным запросом
+				}
 				// Общий порядок блокировок строк балансов (moveStars).
 				b, ab, e := i.moveStars(ctx, userID, seller, price)
 				if e != nil {
-					return e // ErrBalanceTooLow — недостаточно звёзд
+					return e // ErrBalanceTooLow — недостаточно звёзд (откатывает и разблокировку)
 				}
-				bal = b
+				bal, charged = b, true
 				if seller != 0 && seller != userID {
 					authorBal, authorCredited = ab, true
-				}
-				if _, e := i.paidMedia.Unlock(ctx, offer.OfferID, userID); e != nil {
-					return e
 				}
 				return nil
 			})
 			if err != nil {
 				return domain.Message{}, 0, err
 			}
-			i.publishBalance(ctx, userID, bal)
+			if charged {
+				i.publishBalance(ctx, userID, bal)
+			}
 			if authorCredited {
 				i.publishBalance(ctx, seller, authorBal)
 			}

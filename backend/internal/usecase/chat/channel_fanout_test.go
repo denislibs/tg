@@ -534,7 +534,7 @@ func TestChannelBotEditAutodeleteStars_NoPerSubscriberFanout(t *testing.T) {
 	if _, err := e.i.TopUpStars(ctx, 8, 50); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := e.i.SendStarReaction(ctx, e.ch, post.ID, 8, 5, false); err != nil {
+	if _, _, _, err := e.i.SendStarReaction(ctx, e.ch, post.ID, 8, 5, false, 0); err != nil {
 		t.Fatalf("SendStarReaction: %v", err)
 	}
 	expired = []domain.Message{post}

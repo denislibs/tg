@@ -22,6 +22,13 @@ func newFakeChecklists() *fakeChecklists {
 	return &fakeChecklists{lists: map[int64]domain.Checklist{}, marks: map[int64]map[int]map[int64]bool{}}
 }
 
+func (f *fakeChecklists) Delete(_ context.Context, id int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.lists, id)
+	return nil
+}
+
 func (f *fakeChecklists) Create(_ context.Context, c domain.Checklist) (domain.Checklist, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
