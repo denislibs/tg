@@ -371,6 +371,12 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetIVProber(ivUC)
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
+	// Апдейты историй (появилась / правка / закреп / прочитана / удалена, своя
+	// реакция) — в журнал получателей, чтобы их находил getDifference после
+	// офлайна. Журнал без условия Redis, издатель — при наличии. Живой кадр без
+	// журнала (SetPublisher выше, в блоке Redis) остался одному случаю: автор
+	// после чужой реакции.
+	p.StoryUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Блок и правила приватности — в журнал своих устройств (без условия Redis).
