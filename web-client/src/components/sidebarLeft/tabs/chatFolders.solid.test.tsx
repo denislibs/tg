@@ -13,7 +13,7 @@
  * попап подтверждения, всплывашка, загрузка лотти (без WASM SIMD она и так
  * отклоняется — вкладка ставит статичный кадр) и геометрия.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
@@ -23,8 +23,9 @@ import type { Chat, User } from '@core/peers/peer'
 import type { Dialog } from '@core/models'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { applyOrder, useFoldersStore } from '@stores/foldersStore'
+import { useFoldersStore } from '@stores/foldersStore'
 import { briefProfile } from '@core/managers/authManager'
+import { registerRefetchSubscriber } from '@/client/realtime/refetchSubscriber'
 import { useSettingsStore } from '@/settings'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { initialState } from '@core/state/state'
@@ -597,6 +598,12 @@ describe('выбор чатов папки (includedChats)', () => {
 describe('вкладка «Папки» — порядок (Ф7-З)', () => {
   const ROW = 50
 
+  // Подписчик кадров порядка — настоящий (`client/realtime/refetchSubscriber.ts`),
+  // кадры диспатчатся в rootScope как их рассылает воркер.
+  beforeAll(() => {
+    registerRefetchSubscriber({ folders: { list: vi.fn() }, messages: { listPins: vi.fn() } } as unknown as Managers)
+  })
+
   const mouse = (type: string, target: EventTarget, clientY: number) =>
     target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY }))
 
@@ -687,7 +694,7 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     await dragRow(tab, 1, 0)
 
     await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
-    expect(stateIds()).toEqual([WORK.id, BOTS.id])
+    await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
     expect(titles(tab)).toEqual(['Работа', 'Боты'])
   })
 
@@ -708,8 +715,9 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     await vi.waitFor(() => expect(folders.updateOrder).toHaveBeenCalledTimes(2))
     expect(folders.updateOrder).toHaveBeenLastCalledWith([WORK.id, BOTS.id])
 
-    // эхо первой перестановки приходит после второй — строки на месте
+    // эхо первой перестановки приходит после второй — строки на месте, итог — последний кадр
     rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [BOTS.id, WORK.id] })
+    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [WORK.id, BOTS.id] })
     await settle()
     expect(titles(tab)).toEqual(['Работа', 'Боты'])
   })
@@ -718,7 +726,7 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     setPremium(false)
     const tab = await openList()
 
-    applyOrder([BOTS.id, WORK.id])
+    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [BOTS.id, WORK.id] })
     await settle()
 
     expect(titles(tab)).toEqual(['Боты', 'Работа'])

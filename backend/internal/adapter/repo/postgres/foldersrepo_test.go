@@ -227,8 +227,11 @@ func TestFoldersRepo_AllChatsPos(t *testing.T) {
 	if pos, err := r.AllChatsPos(ctx, owner); err != nil || pos != 0 {
 		t.Fatalf("default AllChatsPos = %d, %v; want 0", pos, err)
 	}
-	if err := r.SetAllChatsPos(ctx, owner, 2); err != nil {
-		t.Fatalf("SetAllChatsPos: %v", err)
+	if changed, err := r.SetAllChatsPos(ctx, owner, 2); err != nil || !changed {
+		t.Fatalf("SetAllChatsPos: changed=%v err=%v", changed, err)
+	}
+	if changed, err := r.SetAllChatsPos(ctx, owner, 2); err != nil || changed {
+		t.Fatalf("SetAllChatsPos то же место: changed=%v err=%v", changed, err)
 	}
 	if pos, _ := r.AllChatsPos(ctx, owner); pos != 2 {
 		t.Fatalf("AllChatsPos = %d; want 2", pos)

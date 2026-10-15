@@ -175,17 +175,16 @@ func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64)
 	return changed && err == nil, err
 }
 
-// SetAllChatsPos запоминает место «Все чаты» среди папок владельца.
-func (r *FoldersRepo) SetAllChatsPos(ctx context.Context, ownerID int64, pos int) error {
+// SetAllChatsPos запоминает место «Все чаты» среди папок владельца; true — если
+// оно изменилось. Условие в самом UPDATE: проверка «то же место» и запись под
+// одной блокировкой строки владельца, параллельные перестановки идут по очереди.
+func (r *FoldersRepo) SetAllChatsPos(ctx context.Context, ownerID int64, pos int) (bool, error) {
 	ct, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE users SET dialog_filters_all_pos=$2 WHERE id=$1`, ownerID, pos)
+		`UPDATE users SET dialog_filters_all_pos=$2 WHERE id=$1 AND dialog_filters_all_pos<>$2`, ownerID, pos)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if ct.RowsAffected() == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	return ct.RowsAffected() > 0, nil
 }
 
 // AllChatsPos — место «Все чаты» среди папок владельца (0 — первой).

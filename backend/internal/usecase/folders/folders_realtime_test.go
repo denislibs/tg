@@ -251,7 +251,7 @@ func TestReorder_WithoutAllChatsKeepsItsPos(t *testing.T) {
 	uc, repo, _ := setup()
 	ctx := context.Background()
 	ids := seedFolders(t, uc, 1, 2)
-	_ = repo.SetAllChatsPos(ctx, 1, 2)
+	_, _ = repo.SetAllChatsPos(ctx, 1, 2)
 	if err := uc.Reorder(ctx, 1, []int64{ids[1], ids[0]}); err != nil {
 		t.Fatalf("Reorder: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestReorder_NoOpWritesNothing(t *testing.T) {
 	uc.SetPublisher(pub)
 	ctx := context.Background()
 	ids := seedFolders(t, uc, 1, 2)
-	_ = repo.SetAllChatsPos(ctx, 1, 1)
+	_, _ = repo.SetAllChatsPos(ctx, 1, 1)
 	logged, framed := len(log.rows[1]), len(pub.frames[1])
 
 	for name, order := range map[string][]int64{

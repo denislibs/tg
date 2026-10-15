@@ -34,7 +34,8 @@ type Repo interface {
 	// чаты» среди папок (число папок перед ней, 0 — первой).
 	// Reorder возвращает true, если порядок изменился.
 	Reorder(ctx context.Context, ownerID int64, order []int64) (bool, error)
-	SetAllChatsPos(ctx context.Context, ownerID int64, pos int) error
+	// SetAllChatsPos возвращает true, если место изменилось.
+	SetAllChatsPos(ctx context.Context, ownerID int64, pos int) (bool, error)
 	AllChatsPos(ctx context.Context, ownerID int64) (int, error)
 
 	// Ссылки-приглашения в папку.
@@ -260,24 +261,19 @@ func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) 
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		changed := false
 		if allIdx >= 0 {
-			cur, err := i.repo.AllChatsPos(ctx, ownerID)
+			moved, err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx)
 			if err != nil {
 				return err
 			}
-			if cur != allIdx {
-				if err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx); err != nil {
-					return err
-				}
-				changed = true
-			}
+			changed = moved
 		}
-		moved, err := i.repo.Reorder(ctx, ownerID, folderIDs)
+		reordered, err := i.repo.Reorder(ctx, ownerID, folderIDs)
 		if err != nil {
 			return err
 		}
 		// Перестановка в тот же порядок (повтор запроса, перетаскивание на то же
 		// место) ничего не меняет: журнал и кадры не раздуваем.
-		if !changed && !moved {
+		if !changed && !reordered {
 			return nil
 		}
 		if i.updates == nil {

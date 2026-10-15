@@ -132,6 +132,6 @@ export function registerRefetchSubscriber(managers: Managers): void {
     void loadNotifySettings(managers)
     // Порядок папок и их состав живут журналом (`updateDialogFilterOrder`,
     // `folder_update`): строки, пропущенные за разрыв, уже не доиграть.
-    void loadFolders(managers, { overwrite: true }).catch(() => {})
+    void loadFolders(managers, { overwrite: true })
   })
 }

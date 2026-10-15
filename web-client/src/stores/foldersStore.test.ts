@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
 import {
-  applyFolderUpdate, applyOrder, applyOrderFrame, applyOwnOrder, forgetOwnOrder, loadFolders, restoreOrder, snapshotOrder,
-  useFoldersStore,
+  applyFolderUpdate, applyOrder, applyOrderFrame, loadFolders, sendOrder, useFoldersStore,
 } from './foldersStore'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
@@ -143,35 +142,81 @@ describe('foldersStore.applyOrder', () => {
     expect(useAppStateStore.getState().folders).toBe(before)
   })
 
-  it('эхо своей перестановки съедается один раз; чужой порядок применяется', () => {
-    applyOwnOrder([3, 1, 2])
-    expect(ids()).toEqual([3, 1, 2])
-    applyOwnOrder([2, 3, 1]) // вторая перестановка, пока эхо первой ещё в пути
-    expect(ids()).toEqual([2, 3, 1])
-
-    applyOrderFrame([3, 1, 2]) // эхо первой — не дёргает строки назад
-    expect(ids()).toEqual([2, 3, 1])
-    applyOrderFrame([2, 3, 1]) // эхо второй
-    expect(ids()).toEqual([2, 3, 1])
-
-    applyOrderFrame([1, 2, 3]) // с другого устройства
-    expect(ids()).toEqual([1, 2, 3])
-    applyOrderFrame([3, 1, 2]) // метка эха уже съедена — применяется как чужое
-    expect(ids()).toEqual([3, 1, 2])
+  const mgr = (updateOrder: (order: number[]) => Promise<void>, list = vi.fn().mockResolvedValue({ folders: [], allChatsPos: 0 })) => ({
+    folders: { list, updateOrder },
+    contacts: { list: () => Promise.resolve([]) },
+    dialogs: { setContactIds: async () => {} },
   })
 
-  it('отказ сервера: forgetOwnOrder + restoreOrder возвращают прежний порядок и место «Все чаты»', () => {
-    useAppStateStore.setState({ allChatsPos: 2 })
-    const snap = snapshotOrder()
-    applyOwnOrder([3, 0, 1, 2])
-    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+  it('своя перестановка применяется сразу, запросы идут по одному; кадры в полёте откладываются, применяется последний', async () => {
+    const finish: Array<() => void> = []
+    const updateOrder = vi.fn(() => new Promise<void>((resolve) => { finish.push(resolve) }))
+    const m = mgr(updateOrder)
 
-    forgetOwnOrder([3, 0, 1, 2])
-    restoreOrder(snap)
+    const first = sendOrder(m, [3, 1, 2])
+    const second = sendOrder(m, [2, 3, 1])
+    expect(ids()).toEqual([2, 3, 1])
+    await vi.waitFor(() => expect(finish).toHaveLength(1))
+    expect(updateOrder).toHaveBeenCalledTimes(1)
+
+    applyOrderFrame([3, 1, 2]) // эхо первой — строки не дёргаются
+    expect(ids()).toEqual([2, 3, 1])
+
+    finish[0]()
+    await first
+    await vi.waitFor(() => expect(finish).toHaveLength(2))
+    expect(updateOrder).toHaveBeenLastCalledWith([2, 3, 1])
+    applyOrderFrame([2, 3, 1]) // эхо второй — последнее, оно и есть итог
+    finish[1]()
+    await second
+
+    expect(ids()).toEqual([2, 3, 1])
+    applyOrderFrame([1, 2, 3]) // очередь пуста — чужая перестановка применяется сразу
+    expect(ids()).toEqual([1, 2, 3])
+  })
+
+  it('чужая перестановка, пришедшая после своего коммита, не теряется', async () => {
+    let finish: (() => void) | undefined
+    const m = mgr(() => new Promise<void>((resolve) => { finish = resolve }))
+
+    const sent = sendOrder(m, [3, 1, 2])
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    applyOrderFrame([2, 1, 3]) // с другого устройства, закоммичена после нашей
+    finish!()
+    await sent
+
+    expect(ids()).toEqual([2, 1, 3])
+  })
+
+  it('отказ сервера и недоступный список: возврат к подтверждённому порядку и месту «Все чаты»', async () => {
+    useAppStateStore.setState({ allChatsPos: 2 })
+    const m = mgr(() => Promise.reject(new Error('offline')), vi.fn().mockRejectedValue(new Error('offline')))
+
+    await sendOrder(m, [3, 0, 1, 2])
 
     expect(ids()).toEqual([1, 2, 3])
     expect(useAppStateStore.getState().allChatsPos).toBe(2)
-    applyOrderFrame([3, 0, 1, 2]) // метки нет — эхо не съедается
+  })
+
+  it('отказ первой перестановки при второй в очереди: итог — вторая, как на сервере', async () => {
+    const updateOrder = vi.fn()
+      .mockRejectedValueOnce(new Error('503'))
+      .mockResolvedValueOnce(undefined)
+    const m = mgr(updateOrder)
+
+    await Promise.all([sendOrder(m, [3, 1, 2]), sendOrder(m, [2, 3, 1])])
+
+    expect(updateOrder).toHaveBeenCalledTimes(2)
+    expect(m.folders.list).not.toHaveBeenCalled()
+    expect(ids()).toEqual([2, 3, 1])
+  })
+
+  it('успех первой и отказ второй: возврат к порядку первой (он на сервере)', async () => {
+    const m = mgr(vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('503')),
+      vi.fn().mockRejectedValue(new Error('offline')))
+
+    await Promise.all([sendOrder(m, [3, 1, 2]), sendOrder(m, [2, 3, 1])])
+
     expect(ids()).toEqual([3, 1, 2])
   })
 
