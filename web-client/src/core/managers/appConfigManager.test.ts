@@ -62,6 +62,13 @@ function setup(opts: { responses?: unknown[], kvInitial?: Record<string, unknown
 }
 
 describe('formatJSONValue (tl_utils.ts:791-806)', () => {
+  // Провод TL: декодер tweb-типа JSONValue (`tl_utils.ts:804-806`) уже сворачивает
+  // объект, и в менеджер приезжает плоский объект без `_` — он проходит как есть.
+  it('уже плоский объект (провод TL) возвращается как есть', () => {
+    const flat = { reactions_user_max_default: 1, premium_purchase_blocked: true }
+    expect(formatJSONValue(flat as never)).toBe(flat)
+  })
+
   it('jsonObject сворачивается в плоский объект, jsonNull — в null, скаляры — в value', () => {
     expect(formatJSONValue(obj({
       a: num(5),
@@ -158,14 +165,48 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
     await expect(mgr.getAppConfig()).resolves.toMatchObject({ hash: 111, dialogs_pinned_limit_default: 5 })
   })
 
-  it('отказ сети без кэша — пустой конфиг (ключи необязательны), и он НЕ кэшируется: следующий вызов идёт в сеть', async() => {
-    const { mgr, get, store } = setup({ responses: [new HttpError(500, 'x'), CFG_A] })
+  it('отказ сети без кэша — пустой конфиг (ключи необязательны), и он НЕ кэшируется: после паузы вызов идёт в сеть', async() => {
+    const { mgr, get, store, clock } = setup({ responses: [new HttpError(500, 'x'), CFG_A] })
 
     await expect(mgr.getAppConfig()).resolves.toEqual({})
     expect(store.store.has('appConfig')).toBe(false)
 
+    clock.now += 31e3
     await expect(mgr.getAppConfig()).resolves.toMatchObject({ hash: 111 })
     expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  // Каждый клик реакции и правый клик ждут конфиг: после отказа не шлём заведомо
+  // падающий запрос на каждый из них, пока не прошла пауза.
+  it('после отказа запрос не повторяется до конца паузы, overwrite её обходит', async() => {
+    const { mgr, get, clock } = setup({ responses: [new HttpError(500, 'x'), CFG_A] })
+    await mgr.getAppConfig()
+
+    clock.now += 10e3
+    await expect(mgr.getAppConfig()).resolves.toEqual({})
+    expect(get).toHaveBeenCalledTimes(1)
+
+    await expect(mgr.getAppConfig(true)).resolves.toMatchObject({ hash: 111 })
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('зависший запрос обрывается по потолку ожидания, а не держит вызывающего', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = setup()
+      get.mockImplementation(() => new Promise(() => {}))
+      const pending = mgr.getAppConfig()
+      await vi.advanceTimersByTimeAsync(5000)
+      await expect(pending).resolves.toEqual({})
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('запись кэша на диск не ждётся: ответ приходит, даже если IndexedDB не отвечает', async() => {
+    const { mgr, store } = setup({ responses: [CFG_A] })
+    ;(store.set as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {}))
+    await expect(mgr.getAppConfig()).resolves.toMatchObject({ hash: 111 })
   })
 })
 
@@ -208,9 +249,12 @@ describe('getConfig (apiManagerMethods.ts:310-322)', () => {
   })
 
   it('отказ сети — пустой конфиг, не кэшируется', async() => {
-    const { mgr, get } = setup({ responses: [new HttpError(500, 'x'), CONFIG] })
+    const { mgr, get, clock } = setup({ responses: [new HttpError(500, 'x'), CONFIG] })
 
     await expect(mgr.getConfig()).resolves.toEqual({})
+    await expect(mgr.getConfig()).resolves.toEqual({}) // пауза после отказа
+    expect(get).toHaveBeenCalledTimes(1)
+    clock.now += 31e3
     await expect(mgr.getConfig()).resolves.toMatchObject({ edit_time_limit: 172800 })
     expect(get).toHaveBeenCalledTimes(2)
   })

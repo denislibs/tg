@@ -39,7 +39,9 @@
  *  5. `premiumBlocked` (:348-351) — `appConfig.premium_purchase_blocked` из
  *     `managers.appConfig` (сервер отдаёт ключ по флагу DEV_PURCHASES,
  *     `backend/internal/domain/mthelp.go`), без кэша `apiManagerProxy` — кэш
- *     держит сам менеджер. Строки TON (`useStars(true)`, `hasTonTransactions`, :329-331,
+ *     держит сам менеджер. ОТСТУПЛЕНИЕ: конфиг не приехал совсем (пустой объект
+ *     без `hash`, REST отказал — у tweb транспорт повторяет запрос) считается
+ *     «покупка закрыта»: в проде сервер ручки покупки не монтирует. Строки TON (`useStars(true)`, `hasTonTransactions`, :329-331,
  *     :430-437) нет: ни баланса TON, ни его транзакций у бэкенда нет.
  *  6. Бизнес-бота (`getConnectedBot`, `chat_automation_update`, :279-298,
  *     :340-348, :356-362) нет: у бэкенда нет подключённых ботов — счётчик
@@ -245,7 +247,7 @@ const Settings = () => {
   // появляется вместе со вкладкой, либо не появляется вовсе.
   const [premiumBlocked, setPremiumBlocked] = createSignal(false)
   promiseCollector.collect(
-    managers.appConfig.getAppConfig().then((config) => setPremiumBlocked(!!config.premium_purchase_blocked)),
+    managers.appConfig.getAppConfig().then((config) => setPremiumBlocked(config.premium_purchase_blocked ?? config.hash === undefined)),
   )
   const stars = subscribeExternal(
     useAppStateStore.subscribe,

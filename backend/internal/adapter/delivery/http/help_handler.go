@@ -14,13 +14,14 @@ import (
 // сессии (`apiManagerMethods.ts:310-366`). Состояния у них нет — значения берутся
 // из domain/limits.go и флага DEV_PURCHASES, поэтому хэндлер без usecase.
 type HelpHandler struct {
-	// devPurchases — DEV_PURCHASES: dev-начисление звёзд и мок Premium
-	// смонтированы, покупки не заблокированы (appConfig `*_purchase_blocked`).
-	devPurchases bool
+	// appConfig собран один раз: значения неизменны всю жизнь процесса (лимиты —
+	// константы, флаги покупок — DEV_PURCHASES: dev-начисление звёзд и мок Premium
+	// смонтированы, покупки не заблокированы).
+	appConfig domain.HelpAppConfig
 }
 
 func NewHelpHandler(devPurchases bool) *HelpHandler {
-	return &HelpHandler{devPurchases: devPurchases}
+	return &HelpHandler{appConfig: domain.NewHelpAppConfig(domain.NewAppConfig(devPurchases))}
 }
 
 // AppConfig — `help.getAppConfig{hash}` → `help.appConfig` | `help.appConfigNotModified`.
@@ -29,12 +30,11 @@ func NewHelpHandler(devPurchases bool) *HelpHandler {
 // нет» (как `hash: 0` у tweb, `apiManagerMethods.ts:351`): отдаётся полный конфиг;
 // отказа нет, потому что ошибаться тут нечем.
 func (h *HelpHandler) AppConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := domain.NewHelpAppConfig(domain.NewAppConfig(h.devPurchases))
-	if got, err := strconv.ParseInt(r.URL.Query().Get("hash"), 10, 32); err == nil && int32(got) == cfg.Hash {
+	if got, err := strconv.ParseInt(r.URL.Query().Get("hash"), 10, 32); err == nil && int32(got) == h.appConfig.Hash {
 		writeJSON(w, http.StatusOK, domain.NewHelpAppConfigNotModified())
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	writeJSON(w, http.StatusOK, h.appConfig)
 }
 
 // Config — `help.getConfig` → `config`.

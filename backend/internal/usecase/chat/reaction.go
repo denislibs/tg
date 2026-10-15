@@ -14,7 +14,7 @@ import (
 // это не константа, а ключи конфига приложения (`reactions_user_max_default` /
 // `reactions_user_max_premium`, tweb apiManagerMethods.ts:375, читаются через
 // `getLimit('reactions')`); сервер отдаёт их из тех же констант
-// (adapter/delivery/http/help_handler.go), поэтому клиент берёт число из конфига,
+// (domain/mthelp.go::NewAppConfig), поэтому клиент берёт число из конфига,
 // а сервер остаётся источником истины: прямой POST мимо клиента иначе обходит
 // правило.
 //

@@ -1414,7 +1414,13 @@ export function createWorkerCore() {
     // `GET /sessions` упадёт, список останется до ближайшей успешной сверки.
     void tokens.ready().then(() => auth.me()).then(async (u) => {
       if (u && !me) setMe(u)
-      if (u) { await meReady; refreshAuthorizations() }
+      if (u) {
+        // Прогрев конфига приложения (tweb appMessagesManager.ts:757 зовёт его на старте):
+        // первое меню и первая реакция не ждут сети. Не падает — менеджер глотает отказы.
+        void appConfig.getAppConfig()
+        void appConfig.getConfig()
+        await meReady; refreshAuthorizations()
+      }
     }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {

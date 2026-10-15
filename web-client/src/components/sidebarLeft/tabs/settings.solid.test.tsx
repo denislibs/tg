@@ -101,10 +101,10 @@ const settle = () => pause(400)
 
 let host: InstalledSidebarLeft
 let list: ReturnType<typeof vi.fn<() => Promise<Auth[]>>>
-/** Что отдаёт конфиг приложения (`help.getAppConfig`): по умолчанию — ключей нет. */
-let appConfig: { premium_purchase_blocked?: boolean }
+/** Что отдаёт конфиг приложения (`help.getAppConfig`): по умолчанию — приехавший, без флага. */
+let appConfig: { premium_purchase_blocked?: boolean, hash?: number }
 
-const openWithConfig = (config: { premium_purchase_blocked?: boolean }) => {
+const openWithConfig = (config: { premium_purchase_blocked?: boolean, hash?: number }) => {
   appConfig = config
   return host.openTab(AppSettingsTab)
 }
@@ -118,7 +118,7 @@ beforeEach(() => {
   setAppStateSilent({ starsBalance: 0 })
 
   list = vi.fn<() => Promise<Auth[]>>(async() => [auth(0), auth(2)])
-  appConfig = {}
+  appConfig = { hash: 1 }
   const managers = {
     sessions: { list, terminate: vi.fn(), terminateOthers: vi.fn() },
     appConfig: { getAppConfig: vi.fn(async() => appConfig) },
@@ -205,8 +205,14 @@ describe('корень настроек — состав tweb', () => {
     expect(rowByTitleOrNull(tab, lang['Chat.Menu.SendGift'])).toBeNull()
   })
 
+  // Конфиг не приехал (пустой объект без hash): покупка считается закрытой.
+  it('конфига нет совсем — секции Premium нет', async() => {
+    const tab = await openWithConfig({})
+    expect(tab.scrollable.container.querySelectorAll('.sidebar-left-section-content')).toHaveLength(1)
+  })
+
   it('premium_purchase_blocked: false — секция на месте', async() => {
-    const tab = await openWithConfig({ premium_purchase_blocked: false })
+    const tab = await openWithConfig({ premium_purchase_blocked: false, hash: 1 })
     expect(sectionRows(tab, 1).map(titleOf)).toEqual([lang['Premium.Boarding.Title'], lang['Chat.Menu.SendGift']])
   })
 

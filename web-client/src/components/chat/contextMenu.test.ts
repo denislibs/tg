@@ -59,7 +59,7 @@ function message(id: number, extra: Partial<MyMessage> = {}): MyMessage {
     peerId: PEER,
     fromId: PEER,
     peer_id: { _: 'peerUser', user_id: PEER },
-    // свежее: правка в личке ограничена сроком (EDIT_TIME_LIMIT, tweb edit_time_limit)
+    // свежее: правка в личке ограничена сроком (`config.edit_time_limit`, tweb)
     date: Math.floor(Date.now() / 1000) - 3600 + id,
     message: `text ${id}`,
     ...extra,
