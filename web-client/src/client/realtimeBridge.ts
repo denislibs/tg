@@ -54,7 +54,7 @@ let started = false
 // плату / запрос на повторную оплату закрыт (tweb `apiUpdatesManager`/`appMessagesManager`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated', 'peer_unpinned_all']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'auto_delete_period_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated', 'peer_unpinned_all']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

@@ -853,8 +853,8 @@ export default class Chat extends EventListenerBase<{
 
   /**
    * tweb `:1629-1646`. `setAutoDeletePeriodFor` у нас — `privacy.setChatAutoDelete`;
-   * апдейта срока на проводе нет (`updatePeerHistoryTTL`), поэтому строка диалога
-   * перечитывается (`dialogs.refresh`), как делал прежний React-пункт.
+   * новый срок возвращается `updatePeerHistoryTTL` (в канале — снимком карточки):
+   * воркер сам правит строку диалога и объявляет `auto_delete_period_update`.
    */
   public openAutoDeleteMessagesCustomTimePopup() {
     showAutoDeleteMessagesCustomTimePopup({
@@ -868,7 +868,7 @@ export default class Chat extends EventListenerBase<{
 
   /** tweb `appPrivacyManager.setAutoDeletePeriodFor` — см. `openAutoDeleteMessagesCustomTimePopup`. */
   public setAutoDeletePeriod(period: number) {
-    return this.managers.privacy.setChatAutoDelete(this.peerId, period).then(() => this.managers.dialogs.refresh())
+    return this.managers.privacy.setChatAutoDelete(this.peerId, period)
   }
 
   /**

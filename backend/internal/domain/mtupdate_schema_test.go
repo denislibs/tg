@@ -162,6 +162,8 @@ func updateCases() []struct {
 		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
 		{"порядок папок", NewUpdateDialogFilterOrder([]int64{0, 3, 1})},
+		{"автоудаление включили", NewUpdatePeerHistoryTTL(NewPeerUser(9), 86400)},
+		{"автоудаление выключили", NewUpdatePeerHistoryTTL(NewPeerChannel(5), 0)},
 		{"набор установлен", NewUpdateNewStickerSet(NewMessagesStickerSet(
 			StickerSet{Underscore: StickerSetTag, ID: 5, Title: "Набор", ShortName: "pack"}, nil, nil))},
 		{"недавние стикеры", NewUpdateRecentStickers()},
@@ -284,6 +286,7 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		SendMessageUploadAudioActionTag,
 		UpdatePeerBlockedTag,
 		UpdatePrivacyTag,
+		UpdatePeerHistoryTTLTag,
 		UpdateNewStickerSetTag,
 		UpdateRecentStickersTag,
 		UpdateFavedStickersTag,
@@ -331,5 +334,19 @@ func TestUpdates_EmptyVectorStaysVector(t *testing.T) {
 	obj, _ := roundTripJSON(t, NewUpdateDeletePeerMessages(NewPeerUser(7), nil, 1)).(map[string]any)
 	if _, ok := obj["messages"].([]any); !ok {
 		t.Fatalf("messages = %#v, а обязан быть вектором", obj["messages"])
+	}
+}
+
+// «Автоудаление выключено» — отсутствие ключа ttl_period, а не нуль: у
+// updatePeerHistoryTTL параметр необязательный (flags.0?int), и кодек TL нулю в
+// нём не поверит. tweb кладёт `update.ttl_period` как есть (undefined).
+func TestUpdates_PeerHistoryTTLZeroIsAbsent(t *testing.T) {
+	off, _ := roundTripJSON(t, NewUpdatePeerHistoryTTL(NewPeerUser(7), 0)).(map[string]any)
+	if _, present := off["ttl_period"]; present {
+		t.Fatalf("у сброса появился ttl_period: %#v", off)
+	}
+	on, _ := roundTripJSON(t, NewUpdatePeerHistoryTTL(NewPeerUser(7), 86400)).(map[string]any)
+	if on["ttl_period"] != float64(86400) {
+		t.Fatalf("ttl_period = %#v, want 86400", on["ttl_period"])
 	}
 }

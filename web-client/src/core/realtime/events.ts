@@ -162,6 +162,10 @@ export const RT = {
   // рассылаются: имена нужны только полноте реестра `UPDATE_RT`.
   peerBlocked: 'rt:peer_blocked',
   privacy: 'rt:privacy',
+  // Срок автоудаления чата (Ф-6, f6-ttl): воркер переводит кадр в событие tweb
+  // `auto_delete_period_update` (rootScope.ts:271) и сам не рассылается: имя
+  // нужно только полноте реестра `UPDATE_RT`.
+  peerHistoryTTL: 'rt:peer_history_ttl',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -813,6 +817,14 @@ export interface PeerBlockedEvt { _: 'updatePeerBlocked'; pFlags?: { blocked?: t
  */
 export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: import('../managers/privacyManager').PrivacyRuleWire[] }
 /**
+ * updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
+ *
+ * Срок автоудаления чата сменился (личка и группа; у broadcast-канала срок
+ * едет снимком карточки, В-3 Ф-6). Отсутствие `ttl_period` — «выключено».
+ * Курсор едет в конверте.
+ */
+export interface PeerHistoryTTLEvt { _: 'updatePeerHistoryTTL'; peer: Peer; ttl_period?: number }
+/**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
  * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
@@ -871,6 +883,7 @@ export type Update =
   | DeleteScheduledMessagesEvt
   | PeerBlockedEvt
   | PrivacyEvt
+  | PeerHistoryTTLEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']

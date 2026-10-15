@@ -543,6 +543,24 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(isMuted(mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog)).toBe(true)
   })
 
+  it('applyTtlPeriod кладёт срок в строку диалога, нуль снимает ключ', async () => {
+    const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z')])
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyTtlPeriod(1, 86400)
+    expect(ops).toEqual([{ op: 'patch', peerId: 1, fields: { ttl_period: 86400 } }])
+    expect(mgr.getDialogOnly(1)?.ttl_period).toBe(86400)
+
+    ops.length = 0
+    mgr.applyTtlPeriod(1, 86400) // тот же срок — не публикуется
+    expect(ops).toEqual([])
+
+    mgr.applyTtlPeriod(1, 0)
+    expect(ops).toEqual([{ op: 'patch', peerId: 1, fields: { ttl_period: undefined } }])
+    expect(mgr.getDialogOnly(1)).not.toHaveProperty('ttl_period')
+  })
+
   it('applyArchived архивирует НОМЕРОМ ПАПКИ и сбрасывает пин (как на бэке)', async () => {
     const { mgr, ops } = setup([dialog(1, '2026-08-01T00:00:00Z', true)])
     await mgr.fillMirror()

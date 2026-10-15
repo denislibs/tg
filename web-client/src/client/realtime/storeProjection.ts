@@ -4,7 +4,7 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
-import { applyChatTheme, applyPeerBlocked, resetChatFullMirror } from '../../core/chatFullCache'
+import { applyChatTheme, applyPeerBlocked, applyTtlPeriod, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
@@ -190,6 +190,10 @@ const APPLY: Projector = {
   // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
   // здесь. Событие выводит воркер из кадра `updatePeerBlocked` (журнал либо местный апдейт после ответа `privacy.toggleBlock`).
   peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
+  // Срок автоудаления — тоже в полной карточке (`userFull`/`channelFull.ttl_period`,
+  // tweb `onUpdatePeerHistoryTTL` → `modifyCachedFullPeer`, appProfileManager.ts:1544-1548);
+  // строку диалога правит владелец в воркере, событие выводит он же.
+  auto_delete_period_update: (e) => { applyTtlPeriod(e.peerId, e.period) },
   // История чата очищена (tweb `flushHistory` → `dialog_flush`, `bubbles.ts:1144`):
   // окно зеркала пусто. Это делают ВСЕ вкладки, а не та, что нажала кнопку, —
   // воркер объявляет событие после ответа сервера.
