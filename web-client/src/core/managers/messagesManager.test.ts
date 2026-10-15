@@ -1231,6 +1231,15 @@ describe('MessagesManager — закреп: флаги, ответ Updates, «о
     expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBeUndefined()
   })
 
+  it('listPins: без темы — /pins без параметров, с темой — top_msg_id серверным номером', async () => {
+    const get = vi.fn(async () => ({ _: 'messages.messages', messages: [], users: [], chats: [] }))
+    const mgr = newMessagesManager({ rest: { get } as unknown as RestClient })
+    await mgr.listPins(1)
+    expect(get).toHaveBeenLastCalledWith('/chats/1/pins', undefined)
+    await mgr.listPins(1, cid(9))
+    expect(get).toHaveBeenLastCalledWith('/chats/1/pins', { top_msg_id: 9 })
+  })
+
   it('cacheUnpinAll: снимает pinned у всех закреплённых в окне', async () => {
     const { mgr, ops } = await setup({})
     mgr.cachePinned(pinUpdate([1, 3]))

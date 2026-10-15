@@ -99,8 +99,9 @@ export function newChatsManager({ rest, peers, messages, getFunnel, dialogs, bro
     // «Открепить все» — порт tweb `unpinAllMessages` (:6858-6893): `DELETE /chats/{peer}/pins`
     // отвечает `messages.affectedHistory`, ответ становится местным `updatePts` (:6860), при
     // `offset` запрос повторяется (:6890). Итог — локальный: `pFlags.pinned` в окнах чата
-    // (с темой — только её сообщения). Кэш закрепов вкладки и `peer_pinned_messages
-    // {unpinAll}` — на вкладке (`core/pinnedMessages.ts`): кэш живёт там.
+    // (с темой — только её сообщения). Кэш закрепов живёт на вкладках: всем вкладкам
+    // объявляется `peer_unpinned_all` (сброс кэша и `peer_pinned_messages {unpinAll}` —
+    // `client/realtime/refetchSubscriber.ts`).
     async unpinAllMessages(peerId: number, threadId?: number): Promise<boolean> {
       const query = threadId ? `?top_msg_id=${getServerMessageId(threadId)}` : ''
       let offset = 0
@@ -110,6 +111,7 @@ export function newChatsManager({ rest, peers, messages, getFunnel, dialogs, bro
         offset = r.offset
       } while (offset > 0)
       messages?.cacheUnpinAll(peerId, threadId)
+      broadcast?.('peer_unpinned_all', { peerId, threadId })
       return true
     },
 

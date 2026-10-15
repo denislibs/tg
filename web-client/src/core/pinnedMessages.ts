@@ -14,8 +14,8 @@
 //  2. Сами сообщения закрепов лежат в этом кэше (`getPinnedMessageByMid`): закреп может быть
 //     вне окна ленты, а хранилища сообщений пира, как `messagesStorage` tweb, на главном
 //     потоке нет — окно (`messagesMirror`) держит только загруженную страницу.
-//  3. Закрепы — на весь чат: `listPins` не знает темы форума, ключ с `threadId` различает
-//     только скрытие плашки (`hiddenPinnedMessages`).
+//  3. Закрепы темы/треда — `GET /chats/{id}/pins?top_msg_id=` (`listPins(peerId, threadId)`), как
+//     у tweb список потемный (ключ с `threadId`).
 //  4. Закрепное локальное состояние (кэш списка) живёт здесь, а сам запрос и локальный
 //     итог окон чата — в воркере: `managers.messages.pin/unpin` (ответ `Updates`) и
 //     `managers.chats.unpinAllMessages` (`affectedHistory` → местный `updatePts`).
@@ -30,7 +30,7 @@ import type { MyMessage } from './models'
 
 export type PinnedMessagesManagers = {
   messages: {
-    listPins(peerId: number): Promise<MyMessage[]>
+    listPins(peerId: number, threadId?: number): Promise<MyMessage[]>
     pin(peerId: number, msgId: number, flags?: { silent?: boolean, pm_oneside?: boolean }): Promise<void>
     unpin(peerId: number, msgId: number): Promise<void>
   }
@@ -66,7 +66,7 @@ function loadPinned(managers: PinnedMessagesManagers, peerId: PeerId, threadId?:
   if(p.promise) return p.promise
   else if(p.messages) return Promise.resolve(p)
 
-  const promise = p.promise = managers.messages.listPins(peerId).then((messages) => {
+  const promise = p.promise = (threadId ? managers.messages.listPins(peerId, threadId) : managers.messages.listPins(peerId)).then((messages) => {
     // сброшен кадром, пока шёл запрос, — ответ устарел, его место займёт новый запрос
     if(pinnedMessages[getPinnedMessagesKey(peerId, threadId)] !== p) {
       return loadPinned(managers, peerId, threadId)
@@ -175,15 +175,11 @@ export function updatePinnedMessage(managers: PinnedMessagesManagers, peerId: Pe
 }
 
 /**
- * tweb `:6858-6893`: запрос и `pFlags.pinned` окон — в воркере, здесь — итог на вкладке:
- * сброс кэша закрепов (`flushPinnedMessagesCache`, скрытие плашки не трогается) и
- * `peer_pinned_messages {unpinAll: true}`.
+ * tweb `:6858-6893`: запрос, `pFlags.pinned` окон и объявление вкладкам (`peer_unpinned_all` →
+ * сброс кэша закрепов и `peer_pinned_messages {unpinAll}`, `refetchSubscriber.ts`) — в воркере.
  */
 export async function unpinAllMessages(managers: UnpinAllManagers, peerId: PeerId, threadId?: number): Promise<boolean> {
-  await managers.chats.unpinAllMessages(peerId, threadId)
-  flushPinnedMessagesCache(peerId)
-  rootScope.dispatchEventSingle('peer_pinned_messages', { peerId, threadId, unpinAll: true })
-  return true
+  return managers.chats.unpinAllMessages(peerId, threadId)
 }
 
 /** tweb `:6784-6794` */

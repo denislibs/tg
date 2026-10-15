@@ -18,25 +18,27 @@ describe('chatsManager.unpinAllMessages', () => {
     const del = vi.fn(async (path: string) => { calls.push(`del ${path}`); return queue.shift() ?? answers[answers.length - 1] })
     const applyLocalPts = vi.fn((pts: number, count: number) => { calls.push(`pts ${pts}/${count}`) })
     const cacheUnpinAll = vi.fn((peerId: number, threadId?: number) => { calls.push(`local ${peerId}/${threadId ?? '-'}`); return [] })
+    const broadcast = vi.fn((event: string, payload: unknown) => { calls.push(`broadcast ${event} ${JSON.stringify(payload)}`) })
     const mgr = newChatsManager({
       rest: { del } as unknown as RestClient,
       getFunnel: () => ({ applyLocalPts }),
       messages: { cacheUnpinAll } as never,
+      broadcast,
     })
-    return { mgr, calls, del, applyLocalPts, cacheUnpinAll }
+    return { mgr, calls, del, applyLocalPts, cacheUnpinAll, broadcast }
   }
 
   it('один DELETE без top_msg_id, местный updatePts, затем локальное снятие закрепов', async () => {
     const { mgr, calls } = setup()
     await expect(mgr.unpinAllMessages(42)).resolves.toBe(true)
-    expect(calls).toEqual(['del /chats/42/pins', 'pts 13/1', 'local 42/-'])
+    expect(calls).toEqual(['del /chats/42/pins', 'pts 13/1', 'local 42/-', 'broadcast peer_unpinned_all {"peerId":42}'])
   })
 
   it('тема: top_msg_id — серверный номер, локальное снятие с клиентским threadId', async () => {
     const { mgr, calls } = setup()
     const threadId = generateMessageId(7)
     await mgr.unpinAllMessages(42, threadId)
-    expect(calls).toEqual(['del /chats/42/pins?top_msg_id=7', 'pts 13/1', `local 42/${threadId}`])
+    expect(calls).toEqual(['del /chats/42/pins?top_msg_id=7', 'pts 13/1', `local 42/${threadId}`, `broadcast peer_unpinned_all {"peerId":42,"threadId":${threadId}}`])
   })
 
   it('offset > 0 — запрос повторяется (tweb :6890), каждый ответ идёт в воронку, локально — один раз в конце', async () => {
@@ -56,13 +58,16 @@ describe('chatsManager.unpinAllMessages', () => {
   it('отказ сервера: воронка и окна не тронуты', async () => {
     const applyLocalPts = vi.fn()
     const cacheUnpinAll = vi.fn()
+    const broadcast = vi.fn()
     const mgr = newChatsManager({
       rest: { del: vi.fn(async () => { throw new Error('403') }) } as unknown as RestClient,
       getFunnel: () => ({ applyLocalPts }),
       messages: { cacheUnpinAll } as never,
+      broadcast,
     })
     await expect(mgr.unpinAllMessages(42)).rejects.toThrow('403')
     expect(applyLocalPts).not.toHaveBeenCalled()
     expect(cacheUnpinAll).not.toHaveBeenCalled()
+    expect(broadcast).not.toHaveBeenCalled()
   })
 })

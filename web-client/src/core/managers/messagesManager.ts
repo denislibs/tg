@@ -1509,8 +1509,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     onThreadRead,
 
-    async listPins(peerId: number): Promise<MyMessage[]> {
-      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
+    // С `threadId` — закрепы одной темы/треда (`top_msg_id`, номер корня на проводе).
+    async listPins(peerId: number, threadId?: number): Promise<MyMessage[]> {
+      const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`, threadId ? { top_msg_id: getServerMessageId(threadId) } : undefined)
       return decryptPage(await mapContainer(r))
     },
 
@@ -1921,15 +1922,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       if (!c) return []
       const forum = isForum(getPeer?.(peerId) as Chat | undefined)
       const ops: MessageOp[] = []
+      const changed: MyMessage[] = []
       for (const [id, m] of c) {
         if (!m.pFlags.pinned) continue
         if (threadId && getMessageThreadId(m, { isForum: forum }) !== threadId) continue
         const pFlags = { ...m.pFlags }
         delete pFlags.pinned
-        c.set(id, { ...m, pFlags })
-        void saveMessages(peerId, [c.get(id)!])
+        const next = { ...m, pFlags }
+        c.set(id, next)
+        changed.push(next)
         for (const key of opWindowsFor(peerId, id)) ops.push({ op: 'patch', key, msgId: id, fields: { pFlags } })
       }
+      if (changed.length) void saveMessages(peerId, changed)
       emitOps(ops)
       return ops
     },

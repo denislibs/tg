@@ -40,6 +40,8 @@ let started = false
 // `appMessagesManager.ts:6685`): вкладки опустошают окно чата.
 // `peer_pinned_deleted` — владелец сообщений (`messagesManager.evictAndBuildRemoveOps`)
 // при удалении: вкладка сбрасывает кэш закрепов (tweb `handleDeletedMessages` :14078).
+// `peer_unpinned_all` — менеджер чатов после «Открепить все» (`chats.unpinAllMessages`): вкладки
+// сбрасывают кэш закрепов и объявляют `peer_pinned_messages {unpinAll}` (tweb :6869-6888).
 // `notify_settings` — глобальные настройки уведомлений по типу чатов: кадр
 // `updateNotifySettings{notifyUsers…}` (воркер: `workerCore.ts::dispatch`) и
 // местный апдейт своего PUT (`notifyManager.updateNotifySettings`).
@@ -48,7 +50,7 @@ let started = false
 // плату / запрос на повторную оплату закрыт (tweb `apiUpdatesManager`/`appMessagesManager`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'peer_unpinned_all']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
