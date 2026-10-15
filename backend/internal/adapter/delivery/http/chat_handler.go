@@ -2357,8 +2357,14 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 	if body.RandomID != "" {
 		v, perr := strconv.ParseInt(body.RandomID.String(), 10, 64)
 		if perr != nil {
-			writeError(w, http.StatusBadRequest, "bad body")
-			return
+			// tweb кладёт (секунды << 32) | rand32: с 2038 года это выше MaxInt64 — TL long
+			// знаковый, берём то же 64-битное значение с заворачиванием
+			u, uerr := strconv.ParseUint(body.RandomID.String(), 10, 64)
+			if uerr != nil {
+				writeError(w, http.StatusBadRequest, "bad body")
+				return
+			}
+			v = int64(u)
 		}
 		randomID = v
 	}

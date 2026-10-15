@@ -24,6 +24,9 @@ func newFakeStarReactions() *fakeStarReactions {
 	return &fakeStarReactions{stars: map[int64]map[int64]int64{}, anon: map[int64]map[int64]bool{}}
 }
 
+// Claim фейка НЕ откатывается вместе с транзакцией (fakeTx без отката): ключ, занятый
+// запросом, который затем упал, остаётся. Семантику отката — ключ не ложится при ошибке —
+// проверяет тест на реальном Postgres (TestStarReaction_RolledBackAttemptDoesNotConsumeKey).
 func (f *fakeStarReactions) Claim(_ context.Context, userID, randomID, messageID, count int64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

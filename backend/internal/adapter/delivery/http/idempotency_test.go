@@ -210,3 +210,53 @@ func TestPollsChecklistsRepo_DeleteOrphanAndFKGuard(t *testing.T) {
 		t.Fatalf("опрос с сообщением пропал: %d", count("polls"))
 	}
 }
+
+// Ключ занимает только состоявшаяся оплата: если первый запрос откатился (не хватило звёзд),
+// повтор с тем же random_id — новая попытка, а не «уже проведено» (центральная гарантия:
+// ключ не ложится при откате транзакции; на фейках без отката это не проверить).
+func TestStarReaction_RolledBackAttemptDoesNotConsumeKey(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	uc := newChatUC(pool)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	tokenA, idA := signUp(t, h, pool, "+79990140031")
+	tokenB, idB := signUp(t, h, pool, "+79990140032")
+	peerA := itoa(createdPeerFrom(t, authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})))
+	peerB := itoa(createdPeerFrom(t, authedReq(t, h, http.MethodPost, "/chats", tokenB, map[string]int64{"user_id": idA})))
+	rec := authedReq(t, h, http.MethodPost, "/chats/"+peerA+"/messages", tokenA, map[string]any{"text": "post", "client_msg_id": "rb1"})
+	var sent struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sent)
+	path := "/chats/" + peerB + "/messages/" + itoa(sent.ID) + "/star_reaction"
+	body := map[string]any{"count": 2, "anonymous": false, "random_id": "7000000000000000042"}
+
+	if r := authedReq(t, h, http.MethodPost, "/stars/topup", tokenB, map[string]any{"amount": 1}); r.Code != http.StatusOK {
+		t.Fatalf("пополнение: %d", r.Code)
+	}
+	// параллельные дубли при нехватке: все отказывают, ключа в таблице нет
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if r := authedReq(t, h, http.MethodPost, path, tokenB, body); r.Code != http.StatusPaymentRequired {
+				t.Errorf("нехватка звёзд: %d %s, want 402", r.Code, r.Body.String())
+			}
+		}()
+	}
+	wg.Wait()
+	var keys int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM star_reaction_requests`).Scan(&keys); err != nil || keys != 0 {
+		t.Fatalf("после отката в таблице ключей %d строк (err %v), want 0", keys, err)
+	}
+	// пополнили — тот же ключ проходит как новая попытка и списывает один раз
+	if r := authedReq(t, h, http.MethodPost, "/stars/topup", tokenB, map[string]any{"amount": 10}); r.Code != http.StatusOK {
+		t.Fatalf("пополнение: %d", r.Code)
+	}
+	if r := authedReq(t, h, http.MethodPost, path, tokenB, body); r.Code != http.StatusOK {
+		t.Fatalf("повтор после пополнения: %d %s", r.Code, r.Body.String())
+	}
+	if got := decodeStars(t, authedReq(t, h, http.MethodGet, "/stars/balance", tokenB, nil)).Balance.Amount; got != 9 {
+		t.Fatalf("баланс %d, want 9 (11 − 2)", got)
+	}
+}

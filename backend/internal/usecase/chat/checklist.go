@@ -268,7 +268,9 @@ func (i *Interactor) dropOrphanChecklist(ctx context.Context, id *int64) {
 	if id == nil || i.checklists == nil {
 		return
 	}
-	if err := i.checklists.Delete(ctx, *id); err != nil {
+	// Контекст без отмены: обрыв запроса клиентом не должен оставлять сироту. У чек-листа нет
+	// отложенной постановки, а ссылка из сообщения защищена внешним ключом.
+	if err := i.checklists.Delete(context.WithoutCancel(ctx), *id); err != nil {
 		log.Printf("checklist %d: не удалён чек-лист несостоявшейся отправки: %v", *id, err)
 	}
 }

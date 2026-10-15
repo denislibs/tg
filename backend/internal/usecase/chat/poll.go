@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"log"
 	"slices"
 	"strings"
@@ -117,12 +118,12 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 	if err != nil {
 		// Send не состоялся (откат транзакции): созданная строка опроса — сирота. Ошибка
 		// Send — ТОЛЬКО до коммита, поэтому ссылок на опрос нет.
-		i.dropOrphanPoll(ctx, pollID)
+		i.dropOrphanPoll(ctx, pollID, in.ScheduleDate != 0, err)
 		return domain.Message{}, err
 	}
 	if pollID != nil && msg.PollID != nil && *msg.PollID != *pollID {
 		// Параллельный дубль принят раньше (дедуп по client_msg_id): наш опрос лишний.
-		i.dropOrphanPoll(ctx, pollID)
+		i.dropOrphanPoll(ctx, pollID, false, nil)
 	}
 	if in.ScheduleDate != 0 {
 		// Отложенное: ответ ручки — updateNewScheduledMessage (ScheduledUpdates
@@ -362,11 +363,19 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID, acto
 // dropOrphanPoll убирает строку опроса, созданную отправкой, которая не состоялась или
 // проиграла параллельному дублю. Сбой удаления не меняет исхода отправки (строка — сирота,
 // не ошибка пользователя).
-func (i *Interactor) dropOrphanPoll(ctx context.Context, id *int64) {
+//
+// Чистка идёт на контексте без отмены: обрыв запроса клиентом — самый частый отказ, и без
+// этого Delete падал бы вместе с Send. Исход отложенной постановки при ошибке ОТМЕНЫ/дедлайна
+// неизвестен (коммит мог пройти), а на опрос из JSONB строки очереди внешнего ключа нет, —
+// такой опрос не трогаем; у обычного сообщения опрос защищён внешним ключом messages.poll_id.
+func (i *Interactor) dropOrphanPoll(ctx context.Context, id *int64, scheduled bool, sendErr error) {
 	if id == nil || i.polls == nil {
 		return
 	}
-	if err := i.polls.Delete(ctx, *id); err != nil {
+	if scheduled && (errors.Is(sendErr, context.Canceled) || errors.Is(sendErr, context.DeadlineExceeded)) {
+		return
+	}
+	if err := i.polls.Delete(context.WithoutCancel(ctx), *id); err != nil {
 		log.Printf("poll %d: не удалён опрос несостоявшейся отправки: %v", *id, err)
 	}
 }
