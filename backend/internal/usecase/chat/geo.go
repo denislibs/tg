@@ -37,7 +37,8 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	// Правит тот, кто ещё вправе писать в этот чат: вышедшему, кикнутому и
 	// разжалованному админу устройство, которое продолжает слать точки,
 	// двигать чужой чат нельзя (CHAT_WRITE_FORBIDDEN, как у EditMessage).
-	if err := i.requireGeoWriter(ctx, chatID, userID); err != nil {
+	guest, err := i.requireGeoWriter(ctx, chatID, userID, cur.ThreadRootID)
+	if err != nil {
 		return domain.Message{}, err
 	}
 	// Остановленная и истёкшая трансляция не меняется: в схеме конец — это
@@ -49,11 +50,11 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	if heading != nil && (*heading < 0 || *heading > 359) {
 		heading = nil
 	}
-	// Та же точка — не правка (MESSAGE_NOT_MODIFIED у оригинала): не пишем
-	// строку журнала каждому участнику ради того, что не изменилось.
+	// Та же точка — не правка (MESSAGE_NOT_MODIFIED): не пишем строку журнала
+	// каждому участнику ради того, что не изменилось.
 	if !stopped && cur.GeoLat != nil && cur.GeoLng != nil && *cur.GeoLat == lat && *cur.GeoLng == lng &&
 		(heading == nil || (cur.GeoHeading != nil && *cur.GeoHeading == *heading)) {
-		return cur, nil
+		return domain.Message{}, domain.ErrMessageNotModified
 	}
 	broadcast := i.isBroadcast(ctx, chatID)
 	var msg domain.Message
@@ -75,7 +76,11 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 			channelPts, e = i.appendChannelUpdate(ctx, chatID, "edit_message", channelBody)
 			return e
 		}
-		edit, e = i.fanOutEdit(ctx, msg, msg.SenderID, msg.SenderID, nil)
+		var extra []int64
+		if guest {
+			extra = []int64{userID} // гость обсуждения: его устройствам кадр отдельно
+		}
+		edit, e = i.fanOutEdit(ctx, msg, msg.SenderID, msg.SenderID, extra)
 		return e
 	})
 	if err != nil {
@@ -91,26 +96,34 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 
 // requireGeoWriter — вправе ли userID сейчас писать в чат с live-локацией:
 // участник; в группе — с правом писать (как canEditMessage), в канале — с
-// правом публикации. Личка и «Избранное» — достаточно членства.
-func (i *Interactor) requireGeoWriter(ctx context.Context, chatID, userID int64) error {
+// правом публикации. Личка и «Избранное» — достаточно членства. Не участник
+// проходит только гостем обсуждения со своим комментарием в треде зеркала
+// (как messageForAction); guest — признак этого пути.
+func (i *Interactor) requireGeoWriter(ctx context.Context, chatID, userID int64, threadRoot *int64) (guest bool, err error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !ok {
-		return domain.ErrForbidden
+		if err := i.discussionGuestThread(ctx, chatID, userID, threadRoot, true); err != nil {
+			return false, err
+		}
+		if !i.canSendInGroup(ctx, chatID, userID) {
+			return false, domain.ErrForbidden
+		}
+		return true, nil
 	}
 	typ, err := i.chats.ChatType(ctx, chatID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	switch typ {
 	case domain.ChatTypeChannel:
-		return i.requireRight(ctx, chatID, userID, domain.RightPostMessages)
+		return false, i.requireRight(ctx, chatID, userID, domain.RightPostMessages)
 	case domain.ChatTypeGroup:
 		if !i.canSendInGroup(ctx, chatID, userID) {
-			return domain.ErrForbidden
+			return false, domain.ErrForbidden
 		}
 	}
-	return nil
+	return false, nil
 }

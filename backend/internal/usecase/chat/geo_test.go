@@ -288,8 +288,8 @@ func TestUpdateLiveLocation_SamePointIsNotAnEdit(t *testing.T) {
 	s.mu.Lock()
 	rows := len(s.updates[2])
 	s.mu.Unlock()
-	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 1, 2, nil, false); err != nil {
-		t.Fatal(err)
+	if _, err := in.UpdateLiveLocation(ctx, chat, live.ID, 1, 1, 2, nil, false); !errors.Is(err, domain.ErrMessageNotModified) {
+		t.Fatalf("та же точка: %v, want ErrMessageNotModified", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -317,10 +317,33 @@ func TestUpdateLiveLocation_NonMemberForbidden(t *testing.T) {
 	e.fg.mu.Unlock()
 	e.pub.reset()
 	before := len(e.userLog(3))
-	if _, err := e.i.UpdateLiveLocation(ctx, gid, live.ID, 2, 5, 5, nil, false); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("не участник: %v, want ErrForbidden", err)
+	if _, err := e.i.UpdateLiveLocation(ctx, gid, live.ID, 2, 5, 5, nil, false); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("не участник: %v, want ErrNotFound (чат чужой)", err)
 	}
 	if len(e.userLog(3)) != before || len(e.userFrames(3, "edit_message")) != 0 {
 		t.Fatal("правка не участника ушла участникам")
+	}
+}
+
+// Гость обсуждения (не участник группы) двигает свою live-локацию в треде
+// зеркала поста, как правит свой комментарий (messageForAction): правка идёт
+// участникам и его собственным устройствам.
+func TestUpdateLiveLocation_DiscussionGuest(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	root := f.mirror.ID
+	period := 900
+	live, err := f.i.Send(ctx, SendInput{ChatID: f.disc, SenderID: 8, Type: "geo", GeoLat: f64(1), GeoLng: f64(2), GeoLivePeriod: &period, ThreadRootID: &root})
+	if err != nil {
+		t.Fatalf("Send гостя: %v", err)
+	}
+	if _, err := f.i.UpdateLiveLocation(ctx, f.disc, live.ID, 8, 5, 6, nil, false); err != nil {
+		t.Fatalf("гость двигает свою точку: %v", err)
+	}
+	if len(f.journal(8, "edit_message")) != 1 || len(f.journal(9, "edit_message")) != 1 {
+		t.Fatal("правка точки гостя не дошла ни ему, ни участнику")
+	}
+	if ok, _ := f.i.chats.IsMember(ctx, f.disc, 8); ok {
+		t.Fatal("правка вступила гостя в группу")
 	}
 }
