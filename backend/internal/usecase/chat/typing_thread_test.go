@@ -128,6 +128,24 @@ func TestTyping_DiscussionGuest(t *testing.T) {
 	}
 }
 
+// Гость печатает только там, где может писать: с join_to_send группа требует
+// вступления, и «печатает» от него не уходит (tweb: нет права писать — нет
+// setTyping, canSendToPeer).
+func TestTyping_DiscussionGuest_JoinToSendForbidden(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	if err := f.fg.SetJoinToSend(ctx, f.disc, true); err != nil {
+		t.Fatal(err)
+	}
+	f.pub.reset()
+	if err := f.i.Typing(ctx, f.disc, 8, seqPtr(f.mirror.Seq), typingAct()); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("гость при join_to_send = %v, want ErrForbidden", err)
+	}
+	if f.pub.countFor(9) != 0 {
+		t.Fatal("печать гостя при join_to_send дошла участнику")
+	}
+}
+
 // Посторонний (не участник и не гость) не печатает ни в тред, ни вне него.
 func TestTyping_StrangerForbidden(t *testing.T) {
 	in, _, _, pub := newLoggedGroupInteractor()

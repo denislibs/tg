@@ -182,7 +182,12 @@ export const useChatsStore = create<ChatsState>((set) => ({
       if (!chat || !(userId in chat)) return {}
       const next = { ...chat }
       delete next[userId]
-      return { typing: { ...s.typing, [key]: next } }
+      // пустой набор — ключ уходит (tweb `delete this.typingsInPeer[key]`,
+      // appProfileManager.ts:1450-1452): ключей тем иначе копилось бы без предела
+      const typing = { ...s.typing }
+      if (Object.keys(next).length) typing[key] = next
+      else delete typing[key]
+      return { typing }
     }),
   // Task 3: applyNewMessage/applyRead/bumpUnreadReactions отсюда убраны — их
   // тела переехали в dialogsManager (см. докблок setPresence выше). Typing

@@ -3,12 +3,12 @@
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { getTypingsKey, useChatsStore } from '../../stores/chatsStore'
-import { applyPeerOps, isForumPeer, resetPeerMirror } from '../../core/peerCache'
+import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
 import { applyChatTheme, applyPeerBlocked, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { getMessageThreadId, mapMyMessage, mapSuggestedPost } from '../../core/models'
+import { mapSuggestedPost } from '../../core/models'
 import { generateMessageId } from '../../core/history/messageId'
 import { getPeerId } from '../../core/peers/peerId'
 import { useNotifyStore } from '../../stores/notifyStore'
@@ -255,16 +255,9 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    if (msg._ !== 'messageEmpty' && msg.from_id) {
-      // Сообщение в теме гасит и печать темы (под своим ключом), не только чата.
-      const fromId = getPeerId(msg.from_id)
-      store.clearTyping(getTypingsKey(peerId), fromId)
-      // (печать в треде бывает только у форума — core/realtime/realtime.ts::sendTyping)
-      if (isForumPeer(peerId)) {
-        const threadId = getMessageThreadId(mapMyMessage(msg), { isForum: true })
-        if (threadId) store.clearTyping(getTypingsKey(peerId, threadId), fromId)
-      }
-    }
+    // Печать темы (ключ с threadId) сообщением не гасится — только TTL, как в tweb
+    // (у оригинала гасит её сервер кадром sendMessageCancelAction, наш не шлёт).
+    if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(getTypingsKey(peerId), getPeerId(msg.from_id))
     // UI-реакции на новое сообщение (отметка прочтения — в самой ленте
     // `chat/bubbles.ts`, звук, нотификация) — отдельные подписчики rootScope
     // напрямую, без дублирующего тоста.

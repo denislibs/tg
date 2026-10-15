@@ -171,6 +171,9 @@ type Conn struct {
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
+	// typingLast — когда соединение последний раз пропустило «печатает» по
+	// ключу (пир, тред, вид действия): читает и пишет только горутина чтения.
+	typingLast map[typingKey]time.Time
 	// known — пиры, чьи карточки соединение уже отдало векторами кадров
 	// (withVectors). Трогает только горилла записи — без блокировок.
 	known knownPeers
@@ -527,6 +530,9 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
+		if !c.typingAllowed(d) {
+			return
+		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
 			_ = c.svc.Typing(ctx, chatID, c.userID, d.TopMsgID, domain.SendMessageActionByTag(d.Action.Underscore))
 		}
@@ -732,4 +738,34 @@ func sendNackReason(err error) string {
 		return "schedule_too_much"
 	}
 	return "failed"
+}
+
+// typingKey — что считается одним и тем же «печатает» для частотного предела.
+type typingKey struct {
+	peer   domain.PeerID
+	top    int64
+	action string
+}
+
+// typingMinInterval — чаще одного кадра в секунду на (пир, тред, действие) сокет
+// не пропускает: клиент tweb шлёт «печатает» не чаще раза в несколько секунд
+// (input.ts:3510), а каждый кадр — чтение из БД и веер по участникам.
+const typingMinInterval = time.Second
+
+// typingAllowed — предел частоты «печатает» на соединении. Таблица ограничена:
+// переполнение сбрасывает её целиком (худшее — один лишний кадр).
+func (c *Conn) typingAllowed(d typingData) bool {
+	k := typingKey{peer: d.PeerID, action: d.Action.Underscore}
+	if d.TopMsgID != nil {
+		k.top = *d.TopMsgID
+	}
+	now := time.Now()
+	if last, ok := c.typingLast[k]; ok && now.Sub(last) < typingMinInterval {
+		return false
+	}
+	if c.typingLast == nil || len(c.typingLast) >= 64 {
+		c.typingLast = make(map[typingKey]time.Time)
+	}
+	c.typingLast[k] = now
+	return true
 }

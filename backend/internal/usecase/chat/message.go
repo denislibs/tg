@@ -1417,18 +1417,25 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, topMsgSeq
 }
 
 // requireTypingGuest — не участник печатает как гость обсуждения: нужен номер
-// корня треда комментариев (discussionGuestThread, сам гейт — тот же, что у
-// отправки гостя). Любой отказ — domain.ErrForbidden: ответа на печать у клиента
-// нет (tweb setTyping возвращает Bool и не читает его).
+// корня треда комментариев, гейт тот же, что у отправки гостя
+// (requireDiscussionGuest: тред живого зеркала, чтение канала и join_to_send).
+// Печатать может только тот, кто может писать. Любой отказ — domain.ErrForbidden:
+// ответа на печать у клиента нет (tweb setTyping возвращает Bool и не читает его).
+//
+// Самая дешёвая отсечка — первой: чат без обсуждения (почти любой) отпадает
+// одним чтением, до перевода номера и чтения корня.
 func (i *Interactor) requireTypingGuest(ctx context.Context, chatID, userID, topMsgID int64) error {
-	if topMsgID == 0 {
+	if topMsgID == 0 || i.groups == nil {
+		return domain.ErrForbidden
+	}
+	if disc, err := i.groups.IsDiscussionGroup(ctx, chatID); err != nil || !disc {
 		return domain.ErrForbidden
 	}
 	root, err := i.ResolveThreadRootForSend(ctx, chatID, &topMsgID)
 	if err != nil || root == nil {
 		return domain.ErrForbidden
 	}
-	if err := i.discussionGuestThread(ctx, chatID, userID, root, false); err != nil {
+	if err := i.requireDiscussionGuest(ctx, chatID, userID, root); err != nil {
 		return domain.ErrForbidden
 	}
 	return nil

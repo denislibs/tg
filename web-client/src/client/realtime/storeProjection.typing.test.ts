@@ -4,7 +4,7 @@
 //
 // Пин держит именно вывод ключа: перепутать эти два места легко, а увидеть
 // последствие («печатает» садится не в тот чат) — только глазами.
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
 import { generateMessageId } from '../../core/history/messageId'
@@ -99,5 +99,31 @@ describe('storeProjection — «печатает»', () => {
     expect(Object.keys(useChatsStore.getState().typing).sort()).toEqual([
       `-5_${generateMessageId(5)}`, `-5_${generateMessageId(7)}`,
     ].sort())
+  })
+
+  // TTL тредового ключа гасит именно его (таймер по ключу+автору), ключ чата не трогает;
+  // опустевший набор уходит из стора вместе с ключом (tweb appProfileManager.ts:1450-1452).
+  it('TTL: тредовый ключ гаснет по таймеру и исчезает, ключ чата остаётся', () => {
+    vi.useFakeTimers()
+    try {
+      for (const top of [undefined, 12]) {
+        rootScope.dispatchEventSingle(RT.typing, {
+          _: 'updateChannelUserTyping',
+          channel_id: 5,
+          ...(top ? { top_msg_id: top } : {}),
+          from_id: { _: 'peerUser', user_id: 9 },
+          action: { _: 'sendMessageTypingAction' },
+        })
+        if (top === undefined) vi.advanceTimersByTime(4000)
+      }
+      // чат поставлен 4 с назад (гаснет через 2 с), тема — только что
+      vi.advanceTimersByTime(2500)
+      const keys = Object.keys(useChatsStore.getState().typing)
+      expect(keys).toEqual([`-5_${generateMessageId(12)}`])
+      vi.advanceTimersByTime(4000)
+      expect(useChatsStore.getState().typing).toEqual({})
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
