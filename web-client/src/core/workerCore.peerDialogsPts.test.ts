@@ -145,7 +145,7 @@ describe('createWorkerCore() — каждый кадр пер-юзерного �
       // Минимальное тело: обработчики владельцев терпят неполный кадр, нас
       // интересует только арифметика курсора на пути onFrame → воронка.
       const body = key === 'folder_update' ? {} : { _: key, ...bodies[key] }
-      try { inEnvelope ? capturedConnDeps!.onFrame(key, body, pts) : capturedConnDeps!.onFrame(key, { ...body, pts }) } catch (e) { stuck.push(`throw ${key}: ${String(e).slice(0, 80)}`) }
+      try { if (inEnvelope) capturedConnDeps!.onFrame(key, body, pts); else capturedConnDeps!.onFrame(key, { ...body, pts }) } catch (e) { stuck.push(`throw ${key}: ${String(e).slice(0, 80)}`) }
       if (cursor.get().pts !== pts) { stuck.push(`${key}: cursor ${cursor.get().pts}, ждали ${pts}`); pts = cursor.get().pts }
     }
     expect(stuck).toEqual([])
