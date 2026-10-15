@@ -20,7 +20,6 @@ import { useI18nStore } from '@/i18n'
 import { applyLang } from '@/test/lang'
 import Button from './button'
 import { ButtonMenuItem } from './buttonMenu'
-import CheckboxField from './checkboxField'
 import PopupElement from './popups/popupElement'
 import PopupPeer from './popups/popupPeer'
 import { toastNew, hideToast } from './toast'
@@ -60,11 +59,18 @@ describe('ванильные подписи показывают перевод,
     popup.forceHide()
   })
 
-  it('подпись чекбокса', () => {
+  it('подпись чекбокса попапа — в строке, а не в самом чекбоксе', () => {
     // `DeleteMessagesOptionAlso` = «Также удалить у %1$s»: имя подставляет СТРОКА,
     // а не вызывающий — раньше он склеивал префикс «Также удалить у» с именем сам.
-    const checkbox = new CheckboxField({ text: 'DeleteMessagesOptionAlso', textArgs: ['Майя'] })
-    expect(checkbox.label.querySelector('.checkbox-caption')!.textContent).toBe('Также удалить у Майя')
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-i18n-checkbox', {
+      titleLangKey: 'DeleteSingleMessagesTitle',
+      buttons: [{ langKey: 'Delete', callback: () => {} }],
+      checkboxes: [{ text: 'DeleteMessagesOptionAlso', textArgs: ['Майя'] }],
+    })
+    popup.show()
+    expect(document.querySelector('.popup-i18n-checkbox .popup-peer-checkbox-row .row-title')!.textContent)
+      .toBe('Также удалить у Майя')
+    popup.forceHide()
   })
 
   it('всплывашка', () => {

@@ -200,6 +200,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `REDIS_URL` | `redis://localhost:6379` | подключение Redis |
 | `DEV_OTP_CODE` | `12345` | OTP-код в dev-режиме |
 | `ACCOUNT_RESET_WAIT` | `168h` | окно ожидания сброса аккаунта («забыли пароль» без почты). Укорачивать только на стенде: в проде короче недели старт запрещён |
+| `DEV_PURCHASES` | `false` | dev-начисление звёзд и мок Premium без оплаты (`POST /stars/topup`, `/me/premium`, `/me/premium/checkout`). Включать только на стенде и в разработке: при `APP_ENV=production` старт запрещён |
 | `SEED_DEMO` | `false` | посев демо-стенда при старте: 20 профилей + каналы, группы, посты, опросы, закрепления и реакции (`internal/demoseed`) |
 | `MEDIA_URL_SECRET` | `dev-media-url-secret-change-me` | секрет подписи токенов скачивания медиа |
 | `MINIO_ENDPOINT` | `localhost:9000` | адрес MinIO |

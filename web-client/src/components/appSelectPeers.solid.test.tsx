@@ -163,7 +163,7 @@ describe('AppSelectPeers — разметка (дамп 14-left-30b)', () => {
     expect(r.classList.contains('selector-row-with-checkbox')).toBe(true)
     expect(r.classList.contains('row-with-checkbox-and-media')).toBe(false)
     const checkbox = r.lastElementChild as HTMLElement
-    expect([...checkbox.classList]).toEqual(['checkbox-field', 'checkbox-field-round', 'checkbox-without-caption'])
+    expect([...checkbox.classList]).toEqual(['checkbox-field', 'checkbox-field-round'])
     // подпись поля — имя пира (labelControl)
     const input = checkbox.querySelector('input')!
     expect(input.getAttribute('aria-labelledby')).toBe(r.querySelector('.peer-title')!.id)

@@ -47,7 +47,7 @@ describe('openDeleteMessageDialog — разметка (vanilla PopupPeer)', () 
     expect(document.querySelector('.popup-container')!.classList.contains('have-checkbox')).toBe(true)
     // Имя в подписи подставляет СТРОКА (`DeleteMessagesOptionAlso` = «Also delete for
     // %1$s»), а не вызывающий склейкой префикса с именем.
-    expect(document.querySelector('.checkbox-caption')!.textContent).toBe('Also delete for Maya')
+    expect(document.querySelector('.popup-peer-checkbox-row .row-title')!.textContent).toBe('Also delete for Maya')
     // аватар (peer.ts:46-54) — теперь строит сам PopupPeer из peerId
     expect(document.querySelector('.popup-header .avatar')).not.toBeNull()
   })

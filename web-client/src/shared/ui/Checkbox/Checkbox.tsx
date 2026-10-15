@@ -1,13 +1,10 @@
 // Чекбокс — разметка tweb `checkboxField.ts:134-155`:
-//   label.checkbox-field[.checkbox-field-round][.checkbox-without-caption][.checkbox-disabled]
+//   label.checkbox-field[.checkbox-field-round][.checkbox-disabled]
 //     > [div.c-ripple] + input.checkbox-field-input
 //     + .checkbox-box > .checkbox-box-border + .checkbox-box-background
 //                     + svg.checkbox-box-check > use[href="#check"]
-//     + [span.checkbox-caption]
-// Без `caption` подпись не рендерится и стоит `checkbox-without-caption`
-// (tweb вешает его, когда нет `options.text`); с `caption` строка целиком —
-// это и есть `.checkbox-field`, как в конфирме PopupPeer (peer.ts:84-92,
-// дамп `06-delete-popup.json`).
+// Подписи у чекбокса нет (tweb HEAD `checkboxField.ts:10-13`: «only ever the control»):
+// текст — `Row.Title` строки-хозяйки.
 // Вся анимация — CSS из `_checkbox.scss`: акцентный круг вкатывается
 // (transform: scale(0)→1, .2s ease-in-out), галочка дорисовывается через
 // stroke-dasharray (.1s с задержкой .15s). framer-motion больше не нужен.
@@ -40,8 +37,6 @@ export interface CheckboxProps {
    * display и margin задаёт партиал.
    */
   className?: string
-  /** подпись строки (tweb `span.checkbox-caption`); без неё — `checkbox-without-caption` */
-  caption?: ReactNode
   /** узел ripple (tweb `ripple(label)` при `withRipple`) — кладётся ПЕРВЫМ ребёнком */
   ripple?: ReactNode
   onPointerDown?: (e: PointerEvent<HTMLElement>) => void
@@ -58,7 +53,7 @@ export interface CheckboxProps {
 }
 
 export default function Checkbox({
-  checked, accent, ring, size, shape = 'round', disabled = false, className, caption, ripple, onPointerDown, onToggle,
+  checked, accent, ring, size, shape = 'round', disabled = false, className, ripple, onPointerDown, onToggle,
   asRadio = false, name,
 }: CheckboxProps) {
   const style = {
@@ -71,7 +66,6 @@ export default function Checkbox({
       className={classNames(
         'checkbox-field',
         shape === 'round' ? 'checkbox-field-round' : '',
-        caption == null ? 'checkbox-without-caption' : '',
         disabled ? 'checkbox-disabled' : '',
         className ?? s.root,
       )}
@@ -100,7 +94,6 @@ export default function Checkbox({
           <use href="#check" x="-1" />
         </svg>
       </div>
-      {caption != null && <span className="checkbox-caption">{caption}</span>}
     </label>
   )
 }

@@ -311,7 +311,7 @@ describe('DialogsContextMenu: действия', () => {
 
     const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
     expect(popup.querySelector('.popup-title')!.textContent).toBe('Delete chat')
-    expect(popup.querySelector('.checkbox-field')!.textContent).toContain('Also delete for')
+    expect(popup.querySelector('.popup-peer-checkbox-row .row-title')!.textContent).toContain('Also delete for')
     popup.querySelector<HTMLElement>('.popup-button.danger')!.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
     await settle()
 
