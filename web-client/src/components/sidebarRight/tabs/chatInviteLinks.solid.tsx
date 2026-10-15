@@ -41,8 +41,8 @@
  *     гасится в самом действии: у оригинала он улетает необработанным.
  *  8. Кольцо остатка (`:554-558`) собирается `createElementNS`, а не строкой
  *     разметки (правило репо, шапка `putPreloader.ts`); цвета — переменные
- *     темы `--green-color`/`--danger-color` (наш `customProperties.getProperty`
- *     берёт имя с `--`).
+ *     темы `green-color`/`danger-color` через `customProperties.getProperty`
+ *     (как у оригинала, префикс `--` добавляет он сам).
  *  9. Заставка: отказ лотти (нет WASM SIMD) — статичный кадр
  *     (`renderStaticAssetFallback`), как в `chatFolders.solid.tsx`.
  */
@@ -565,8 +565,8 @@ const ChatInviteLinks: Component = () => {
           const progress = Math.max(limitProgress ?? 0, timeProgress ?? 0)
 
           // расхождение 8
-          const color1 = hexToRgb(customProperties.getProperty('--green-color'))
-          const color2 = hexToRgb(customProperties.getProperty('--danger-color'))
+          const color1 = hexToRgb(customProperties.getProperty('green-color'))
+          const color2 = hexToRgb(customProperties.getProperty('danger-color'))
           const mixedColor = mixColors(color2, color1, progress)
           const hsla = rgbaToHsla(...mixedColor)
           hsla.s = Math.max(55, hsla.s)
