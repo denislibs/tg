@@ -61,7 +61,7 @@ func (h *FoldersHandler) mapErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	// Отказы, которые клиент различает по `error.text` (ApiError.type tweb):
-	// editFolder.tsx:480, :686-689 и sharedFolderInvite.tsx:212,
+	// editFolder.tsx:480, :690-696 и sharedFolderInvite.tsx:212,
 	// internalLinkProcessor.ts:1437.
 	case errors.Is(err, usecasefolders.ErrTooMany):
 		writeError(w, http.StatusBadRequest, "DIALOG_FILTERS_TOO_MUCH")

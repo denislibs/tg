@@ -483,3 +483,20 @@ func TestJoinInvite_FoldersFull_TooMany(t *testing.T) {
 		t.Fatalf("вступил в чаты при отказе: %v", chats.joined)
 	}
 }
+
+// Граница лимита: на MaxFoldersPerUser-1 папках вступление проходит (>=, не >).
+func TestJoinInvite_OneBelowLimit_Joins(t *testing.T) {
+	uc, repo, chats, slug := linkOnPublicChats(t)
+	ctx := context.Background()
+	for k := 0; k < domain.MaxFoldersPerUser-1; k++ {
+		if _, err := repo.Create(ctx, 2, domain.DialogFilter{Title: "f", IncludeChats: []int64{10}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := uc.JoinInvite(ctx, 2, slug, nil); err != nil {
+		t.Fatalf("JoinInvite = %v, want nil", err)
+	}
+	if len(chats.joined) != 2 {
+		t.Fatalf("joined = %v, ждали оба чата ссылки", chats.joined)
+	}
+}

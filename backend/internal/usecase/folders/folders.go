@@ -249,7 +249,7 @@ func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.DialogF
 // order как пришёл: клиент применяет его теми же правилами, что и сервер.
 func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) error {
 	// Длину не ограничиваем: папок у пользователя бывает больше лимита создания
-	// (вступление по ссылке лимит не проверяет), а чужие id и повторы отсекает
+	// (старые данные, гонка Count/Create в Create), а чужие id и повторы отсекает
 	// репозиторий. Пустой order — нечего переставлять.
 	if len(order) == 0 {
 		return nil
@@ -403,15 +403,6 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	if err != nil {
 		return err
 	}
-	// Вступление создаёт папку: при полном списке отказ приходит до вступления
-	// в чаты (tweb DIALOG_FILTERS_TOO_MUCH, sharedFolderInvite.tsx:212).
-	n, err := i.repo.Count(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if n >= domain.MaxFoldersPerUser {
-		return ErrTooMany
-	}
 	allowed := make(map[int64]bool, len(inv.ChatIDs))
 	for _, id := range inv.ChatIDs {
 		allowed[id] = true
@@ -437,6 +428,21 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	var created domain.DialogFilter
 	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		// Вступление создаёт папку: при полном списке отказ приходит до вступления
+		// в чаты (tweb DIALOG_FILTERS_TOO_MUCH, sharedFolderInvite.tsx:212-216).
+		// Строка владельца — замок: два вступления подряд не обойдут лимит
+		// (порядок блокировок тот же, что в Reorder: users → folders).
+		// Лимит проверяется до отбора чатов; ветки «ссылка уже принята» нет (Б-52).
+		if e := i.repo.LockOrder(ctx, userID); e != nil {
+			return e
+		}
+		n, e := i.repo.Count(ctx, userID)
+		if e != nil {
+			return e
+		}
+		if n >= domain.MaxFoldersPerUser {
+			return ErrTooMany
+		}
 		for _, id := range want {
 			ok, e := i.admissible(ctx, id, inv.OwnerID)
 			if e != nil {
