@@ -1,6 +1,6 @@
 -- +goose NO TRANSACTION
 -- +goose Up
--- idx_devices_user: devices ходят по user_id (ListByUser, CountByUser на горячем
+-- idx_devices_user: devices ходят по user_id (ListByUser, HasSessions на горячем
 -- пути входа, DeleteOthers/DeleteAll), а индексов кроме pkey и token_hash не
 -- было — Seq Scan. CONCURRENTLY: без SHARE-замка, иначе на время построения
 -- блокируются вход и UPDATE last_active (прецеденты 0142, 0162, 0164).

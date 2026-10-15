@@ -361,7 +361,7 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, de
 		Location:      ci.Location,
 	}
 	if !approved {
-		// Считаем ДО Create, иначе сама новая строка попала бы в счёт. Сбой чтения
+		// Проверяем ДО Create, иначе сама новая строка дала бы true. Сбой чтения
 		// — отказ входа, а не «сессий нет»: иначе сбой БД молча глушил бы
 		// уведомление о чужом входе.
 		has, err := i.devices.HasSessions(ctx, user.ID)

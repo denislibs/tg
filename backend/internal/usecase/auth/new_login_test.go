@@ -165,7 +165,7 @@ func TestMintSession_SecondSession_UnconfirmedAndEvent(t *testing.T) {
 func TestMintSession_ApprovedPaths_NotUnconfirmed(t *testing.T) {
 	f := newLoginFixture(t, "+79990050003")
 	ctx := context.Background()
-	before := f.devices.counts
+	before := f.devices.hasSessionsCalls
 
 	// QR: AcceptLoginToken выпускает сессию экспортёру.
 	out := f.qrLogin(t, "keyQR")
@@ -190,8 +190,8 @@ func TestMintSession_ApprovedPaths_NotUnconfirmed(t *testing.T) {
 		t.Fatal("веб-токен: сессия unconfirmed")
 	}
 	f.noRows(t)
-	if f.devices.counts != before {
-		t.Fatalf("HasSessions вызван %d раз на одобренных путях", f.devices.counts-before)
+	if f.devices.hasSessionsCalls != before {
+		t.Fatalf("HasSessions вызван %d раз на одобренных путях", f.devices.hasSessionsCalls-before)
 	}
 }
 
@@ -534,17 +534,32 @@ func TestTerminateOtherSessions_UnconfirmedEmitsRemoval(t *testing.T) {
 	}
 }
 
-// Потолок строк: самые свежие, остальные клиент отбросит по сроку.
+// Потолок строк: самые свежие неподтверждённые; истёкшая по сроку слот не занимает.
 func TestTerminateOtherSessions_RemovalRowsCapped(t *testing.T) {
 	f, cur, _ := confirmFixture(t)
+	fresh := map[float64]bool{}
 	for k := 0; k < maxRemovedPrompts+10; k++ {
-		addDevice(t, f, "hc-"+strconv.Itoa(k), true, sessionsNow.Add(-time.Duration(k+1)*time.Minute))
+		id := addDevice(t, f, "hc-"+strconv.Itoa(k), true, sessionsNow.Add(-time.Duration(k+1)*time.Minute))
+		if k < maxRemovedPrompts {
+			fresh[float64(id)] = true
+		}
 	}
+	expired := addDevice(t, f, "hc-expired", true, sessionsNow.Add(-8*24*time.Hour)) // флаг погас по сроку
 	if _, err := f.i.TerminateOtherSessions(context.Background(), f.user.ID, cur); err != nil {
 		t.Fatal(err)
 	}
-	if rows := f.log.of(f.user.ID); len(rows) != maxRemovedPrompts {
+	rows := f.log.of(f.user.ID)
+	if len(rows) != maxRemovedPrompts {
 		t.Fatalf("строк = %d, want %d", len(rows), maxRemovedPrompts)
+	}
+	for _, r := range rows {
+		h := r.body["hash"].(float64)
+		if !fresh[h] || h == float64(expired) {
+			t.Fatalf("в потолок попала не самая свежая сессия %v", h)
+		}
+		if _, has := r.body["pFlags"]; has || r.typ != "new_authorization" {
+			t.Fatalf("форма строки «убрать» нарушена: %+v", r)
+		}
 	}
 }
 

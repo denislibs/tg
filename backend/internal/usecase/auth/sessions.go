@@ -45,7 +45,7 @@ func (i *Interactor) evict(ctx context.Context, d domain.Device) {
 // клиент без общего воркера (вкладка без SharedWorker) о завершении не узнал бы. Строк не
 // больше maxRemovedPrompts (самые свежие): у аккаунта с сотнями неподтверждённых сессий
 // (агентские входы) полный набор — сотни последовательных записей внутри запроса. Остальные
-// клиент отбрасывает по сроку (7 суток) или по ответу списка сессий.
+// клиент отбрасывает по сроку (7 суток): сверка со списком сессий идёт только на старте и входе, фантомная плашка до тех пор даёт 404 (принято, PR).
 func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
 	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
 	if err != nil {
@@ -83,39 +83,51 @@ const ownSyncTimeout = 10 * time.Second
 // newAuthorizationRow — тип строки журнала updateNewAuthorization.
 const newAuthorizationRow = "new_authorization"
 
-// emitOwnSessions пишет строку журнала и шлёт кадр всем устройствам владельца
-// (общий путь ownsync). Мутация уже закоммичена: ошибка только в лог, вход или
-// завершение сессии остаются успешными.
+// emitOwnSessions — одна строка с собственным сроком ownSyncTimeout.
 func (i *Interactor) emitOwnSessions(ctx context.Context, userID int64, u domain.UpdateNewAuthorization) {
 	if i.emit == nil {
 		return
 	}
-	raw, err := json.Marshal(u)
-	if err != nil {
-		i.logf("ownsync: %s user=%d: %v", newAuthorizationRow, userID, err)
-		return
-	}
-	var body map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		i.logf("ownsync: %s user=%d: %v", newAuthorizationRow, userID, err)
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ownSyncTimeout)
 	defer cancel()
-	if err := i.emit.Emit(ctx, []int64{userID}, newAuthorizationRow, body); err != nil {
+	if err := i.emitRow(ctx, userID, u); err != nil {
 		i.logf("ownsync: %s user=%d: %v", newAuthorizationRow, userID, err)
 	}
 }
 
+// emitRow пишет строку журнала и шлёт кадр всем устройствам владельца (общий путь
+// ownsync) на контексте вызывающего.
+func (i *Interactor) emitRow(ctx context.Context, userID int64, u domain.UpdateNewAuthorization) error {
+	raw, err := json.Marshal(u)
+	if err != nil {
+		return err
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return err
+	}
+	return i.emit.Emit(ctx, []int64{userID}, newAuthorizationRow, body)
+}
+
 // emitPromptsRemoved снимает запросы «это вы?» об удалённых сессиях: по строке
 // updateNewAuthorization без unconfirmed на каждую удалённую неподтверждённую
-// (так приходят и update* Telegram). Строки, у которых
-// флаг уже погас по сроку, не трогаются — клиент их отбросил сам.
+// (так приходят и update* Telegram). Строки, у которых флаг уже погас по сроку, не
+// трогаются — клиент их отбросил сам. Пачка идёт под ОДНИМ сроком ownSyncTimeout и
+// обрывается на первой ошибке: при деградации хранилища запрос не висит N×срок.
 func (i *Interactor) emitPromptsRemoved(ctx context.Context, userID int64, removed []domain.Device) {
+	if i.emit == nil {
+		return
+	}
 	now := i.now()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ownSyncTimeout)
+	defer cancel()
 	for _, d := range removed {
-		if d.IsUnconfirmed(now) {
-			i.emitOwnSessions(ctx, userID, domain.NewUpdateNewAuthorizationRemoved(d.ID))
+		if !d.IsUnconfirmed(now) {
+			continue
+		}
+		if err := i.emitRow(ctx, userID, domain.NewUpdateNewAuthorizationRemoved(d.ID)); err != nil {
+			i.logf("ownsync: %s user=%d: %v", newAuthorizationRow, userID, err)
+			return
 		}
 	}
 }
