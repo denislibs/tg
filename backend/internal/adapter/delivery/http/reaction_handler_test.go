@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -49,5 +50,33 @@ func TestReact_Invalid_HTTP(t *testing.T) {
 	wantInvalid("не из списка", rec)
 	if rec = authedReq(t, h, http.MethodPost, path, tokenA, map[string]string{"emoji": "👍"}); rec.Code != http.StatusOK {
 		t.Fatalf("из списка: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Медленный режим: второе сообщение участника в окне — HTTP 420
+// SLOWMODE_WAIT_<N>, N — остаток окна (tweb appImManager.ts:551-565 берёт N из
+// error.type и показывает попап «Медленный режим»).
+func TestSlowmode_HTTP_Wait(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990170031")
+	tokenB, idB := signUp(t, h, pool, "+79990170032")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Slow", "member_ids": []int64{idB}})
+	gid := itoa(createdPeerID(t, rec))
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+gid+"/permissions", tokenA, map[string]int{"permissions": 31, "slowmode_seconds": 30}); rec.Code != http.StatusOK {
+		t.Fatalf("permissions: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenB, map[string]any{"text": "раз", "client_msg_id": "s1"}); rec.Code != http.StatusOK {
+		t.Fatalf("первое: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+gid+"/messages", tokenB, map[string]any{"text": "два", "client_msg_id": "s2"})
+	var e struct {
+		Code int    `json:"code"`
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	n := waitSeconds(e.Text)
+	if rec.Code != 420 || !strings.HasPrefix(e.Text, "SLOWMODE_WAIT_") || n < 28 || n > 30 {
+		t.Fatalf("второе: %d %s; want 420 SLOWMODE_WAIT_28..30", rec.Code, rec.Body.String())
 	}
 }
