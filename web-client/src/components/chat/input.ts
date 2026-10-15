@@ -218,7 +218,8 @@ import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
 import ReplyKeyboard from './replyKeyboard.solid'
 import ChatBotCommands from './botCommands'
-import type { BotCommand } from '@core/managers/botsManager'
+import type { BotCommand } from '@core/peers/peer'
+import { getProfileByPeerId } from '@/stores/fullPeers.solid'
 import getTextWidth from '@helpers/canvas/getTextWidth'
 import { FontFull } from '@config/font'
 import replaceContent from '@helpers/dom/replaceContent'
@@ -1579,9 +1580,12 @@ export default class ChatInput {
     const isBroadcast = isBroadcastPeer(peerId)
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
     const canPin = canPinMessage(peerId)
-    // расхождение 1 `chat/botCommands.ts`: команды и кнопка-меню — ручками, а не `userFull.bot_info`
+    // Команды — из `userFull.bot_info` (tweb `:2569`, `:2630-2634`); кнопка-меню
+    // пока ручкой `bots.menuButton`
     const botInfoPromise = isBot && botCommandsToggle ? Promise.all([
-      this.managers.bots.commands(toUserId(peerId)).catch((): BotCommand[] => []),
+      getProfileByPeerId(this.managers, peerId)
+        .then((full): BotCommand[] => full?._ === 'userFull' ? full.bot_info?.commands ?? [] : [])
+        .catch((): BotCommand[] => []),
       this.managers.bots.menuButton(toUserId(peerId)).catch(() => undefined),
     ]) : undefined
     const [
@@ -1772,7 +1776,7 @@ export default class ChatInput {
     })
   }
 
-  /** tweb `:2891-2925` — расхождение 1 `chat/botCommands.ts` (ручки вместо `bot_info`). */
+  /** tweb `:2891-2925` (кнопка-меню — отдельной ручкой, см. `finishPeerChange`). */
   private updateBotCommands(botInfo: { commands: BotCommand[], menuButton?: { text: string, url: string } }, skipAnimation?: boolean) {
     const toggle = this.botCommandsToggle!
     this.hasBotCommands = !!botInfo.commands.length

@@ -214,6 +214,20 @@ export function markFullPeerFetched(peerId: PeerId): void {
   expirations.set(peerId, Date.now() + PEER_FULL_TTL)
 }
 
+/**
+ * Порт `appProfileManager.getProfileByPeerId` (tweb `:294-297`, `getProfile`
+ * `:269-285`) для не-реактивных читателей (подсказки команд по «/» и кнопке
+ * команд): лежащая и не протухшая карточка отдаётся как есть, иначе — поход в
+ * сеть (тот же `requestFullPeer`, билет и TTL общие с `useFullPeer`). Команды
+ * ботов в лежащей карточке правят кадры (`applyBotCommands`), поэтому читатель
+ * не перечитывает её сам.
+ */
+export async function getProfileByPeerId(managers: Managers, peerId: PeerId): Promise<PeerFull | undefined> {
+  if (isFullPeerFresh(peerId)) return cachedPeerFull(peerId)
+  await requestFullPeer(managers, peerId, true)
+  return cachedPeerFull(peerId)
+}
+
 /** Гарантирует, что карточка peerId загружена и не протухла — не дублирует
  *  поход, если это уже сделал другой потребитель того же peerId (Solid или
  *  React, см. докблок файла). Публичная точка входа для React: `Chat.tsx`

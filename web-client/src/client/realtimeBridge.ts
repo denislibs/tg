@@ -50,9 +50,11 @@ let started = false
 // `insufficent_stars_for_message`/`fulfill_repaid_message` — воркер, менеджер сообщений
 // (`messages/repayRequestHandler.ts`): отправка в платный чат отвергнута без согласия на
 // плату / запрос на повторную оплату закрыт (tweb `apiUpdatesManager`/`appMessagesManager`).
+// `bot_commands` — кадр журнала `updateBotCommands` (воркер: `workerCore.ts::dispatch`;
+// tweb `onUpdateBotCommands`, `appProfileManager.ts:1560-1569`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated', 'bot_commands']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

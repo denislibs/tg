@@ -5,6 +5,7 @@ import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
+import type { BotCommand } from '../peers/peer'
 import type { ChannelParticipantWire, ChatInviteExported } from '../managers/groupsManager'
 import type { StickerPack, StickerSet } from '../managers/stickersManager'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND difference
@@ -157,6 +158,10 @@ export const RT = {
   // рассылаются: имена нужны только полноте реестра `UPDATE_RT`.
   peerBlocked: 'rt:peer_blocked',
   privacy: 'rt:privacy',
+  // Команды бота сменились (Ф-6, f6-bots): воркер переводит кадр в событие tweb
+  // `onUpdateBotCommands` {peerId, botId, commands} (`bot_commands`); имя нужно
+  // только полноте реестра `UPDATE_RT`.
+  botCommands: 'rt:bot_commands',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -797,6 +802,10 @@ export interface PeerBlockedEvt { _: 'updatePeerBlocked'; pFlags?: { blocked?: t
  * Ключ — конструктор схемы (`privacyKeyStatusTimestamp`), перевод в наш ключ —
  * `privacyKeyOfTag`. Курсор едет в конверте.
  */
+/** updateBotCommands#4d712f2e peer:Peer bot_id:long commands:Vector<BotCommand> = Update;
+ *  Параметра `pts` нет — курсор едет в конверте кадра. `peer` — личка с ботом
+ *  (`peerUser` бота) либо группа (`peerChannel`). */
+export interface BotCommandsEvt { _: 'updateBotCommands'; peer: Peer; bot_id: number; commands: BotCommand[] }
 export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: import('../managers/privacyManager').PrivacyRuleWire[] }
 /**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
@@ -856,6 +865,7 @@ export type Update =
   | DeleteScheduledMessagesEvt
   | PeerBlockedEvt
   | PrivacyEvt
+  | BotCommandsEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']

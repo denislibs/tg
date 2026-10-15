@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type BotCommandsEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -749,6 +749,15 @@ export function createWorkerCore() {
       const e = d as PrivacyEvt
       if (!localPrivacyUpdate) privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
       broadcast('privacy_update', e, meta)
+      return
+    }
+    // Команды бота (журнал `bot_commands`): tweb `onUpdateBotCommands`
+    // (`appProfileManager.ts:1560-1569`) берёт ключ пира из `update.peer`, бота —
+    // из `update.bot_id`. Карточка пира живёт на главном потоке — вкладка кладёт
+    // команды в закэшированную (`chatFullCache.applyBotCommands`), не перечитывая её.
+    if (pred === 'updateBotCommands') {
+      const e = d as BotCommandsEvt
+      broadcast('bot_commands', { peerId: getPeerId(e.peer), botId: e.bot_id, commands: e.commands }, meta)
       return
     }
     // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
