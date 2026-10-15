@@ -1185,8 +1185,8 @@ type StarsRepo interface {
 	// возвращает новый баланс. При недостатке средств — domain.ErrForbidden.
 	AddBalance(ctx context.Context, userID, delta int64) (int64, error)
 	// TakeUpTo атомарно снимает с баланса до max звёзд (не уводя в минус);
-	// возвращает новый баланс.
-	TakeUpTo(ctx context.Context, userID, max int64) (int64, error)
+	// возвращает, сколько снято на самом деле, и новый баланс.
+	TakeUpTo(ctx context.Context, userID, max int64) (taken, balance int64, err error)
 	// Catalog — доступные для покупки подарки (без распроданных сверху).
 	Catalog(ctx context.Context) ([]domain.StarGift, error)
 	// GiftByID — позиция каталога по id.
