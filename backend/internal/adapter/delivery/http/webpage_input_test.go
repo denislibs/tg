@@ -26,7 +26,7 @@ func TestWebPageInputDecodes(t *testing.T) {
 		media   *domain.InputMediaWebPage
 	}{
 		"edit": {edit.NoWebpage, edit.InvertMedia, edit.Media},
-		"send": {send.NoWebpage, send.InvertMedia, send.Media},
+		"send": {send.NoWebpage, send.InvertMedia, send.Media.WebPage},
 	} {
 		if !in.no || !in.inv || in.media == nil || in.media.Underscore != domain.InputMediaWebPageTag ||
 			in.media.URL != "https://a.example" || !in.media.PFlags["force_small_media"] {
@@ -35,5 +35,22 @@ func TestWebPageInputDecodes(t *testing.T) {
 	}
 	if edit.Text != "https://a.example" {
 		t.Errorf("text = %q", edit.Text)
+	}
+}
+
+// f6-contact (В-10): HTTP-тело отправки несёт визитку тем же ключом `media`,
+// что и кадр WS; клиентский user_id не принимается.
+func TestSendBody_ContactMedia(t *testing.T) {
+	raw := `{"type":"contact","media":{"_":"inputMediaContact","first_name":"Боб","last_name":"Иванов","phone_number":"+7","vcard":"v","user_id":777}}`
+	var send sendBody
+	if err := json.Unmarshal([]byte(raw), &send); err != nil {
+		t.Fatal(err)
+	}
+	c := send.Media.Contact
+	if c == nil || c.FirstName != "Боб" || c.LastName != "Иванов" || c.PhoneNumber != "+7" || c.Vcard != "v" {
+		t.Fatalf("визитка = %+v", c)
+	}
+	if wp := send.Media.WebPageInput(send.NoWebpage, send.InvertMedia); !wp.IsZero() {
+		t.Fatalf("визитка стала решением о превью: %+v", wp)
 	}
 }

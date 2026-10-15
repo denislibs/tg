@@ -156,3 +156,37 @@ func TestLoad_PublicLinkOrigins(t *testing.T) {
 		t.Errorf("завершающий «/» не снят: %q, %q", c.PublicLinkOrigin, c.AppOrigin)
 	}
 }
+
+// DEV_PURCHASES: dev-начисление звёзд и мок Premium (Б-10). По умолчанию закрыто,
+// в проде включить нельзя.
+func TestLoad_DevPurchases(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+
+	t.Setenv("DEV_PURCHASES", "")
+	if c, err := Load(); err != nil || c.DevPurchases {
+		t.Fatalf("по умолчанию DevPurchases = %v, %v; want false", c != nil && c.DevPurchases, err)
+	}
+	t.Setenv("DEV_PURCHASES", "true")
+	if c, err := Load(); err != nil || !c.DevPurchases {
+		t.Fatalf("DEV_PURCHASES=true → %v, %v", c != nil && c.DevPurchases, err)
+	}
+}
+
+func TestLoad_ProdRejectsDevPurchases(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod")
+
+	t.Setenv("DEV_PURCHASES", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("прод принял DEV_PURCHASES=true")
+	}
+	t.Setenv("DEV_PURCHASES", "")
+	if _, err := Load(); err != nil {
+		t.Fatalf("прод без DEV_PURCHASES отвергнут: %v", err)
+	}
+}

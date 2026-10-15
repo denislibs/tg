@@ -743,10 +743,15 @@ Send a message. Also delivered live over WS (`new_message`) to all members.
   - `media_id` (optional) must reference media **owned by the sender**.
   - `type: "geo"`: обязательны `geo_lat`/`geo_lng` (валидный диапазон координат);
     в DTO сообщения возвращается `geo: { lat, lng }`.
-  - `type: "contact"`: обязателен `contact_user_id` (существующий аккаунт); сервер
-    сам гидрирует снимок имени/телефона — в DTO приходит
-    `contact: { user_id, name, phone }`. Те же поля принимает WS `send_message`
-    и несёт фрейм `new_message`.
+  - `type: "contact"`: обязателен `media: { "_": "inputMediaContact", first_name,
+    last_name, phone_number, vcard }` — поля схемы 1:1 (tweb `getContactMediaInput`);
+    сервер имя и телефон сам не подставляет. `user_id` клиент не присылает (в схеме
+    `inputMediaContact` его нет, и клиентский id не принимается): сервер выводит его
+    по `phone_number` тем же поиском и правилом `added_by_phone`, что у «добавить
+    контакт по номеру»; не найден или скрыт — `0`. В сообщении вложение приходит как
+    `media: { "_": "messageMediaContact", phone_number, first_name, last_name, vcard,
+    user_id }`. Тот же ключ `media` принимает WS `send_message`. Лимиты полей: имя и
+    фамилия 256, телефон 64 руны, vcard 8192 руны (`too_long`/`invalid`).
 - 200 (the created or deduplicated message) — конструктор `message` схемы:
 ```json
 { "_": "message", "id": 5, "peer_id": { "_": "peerUser", "user_id": 2 },

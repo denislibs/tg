@@ -355,6 +355,16 @@ describe('«Устройства» — экран сессии и заверше
     expect(mine.querySelector('button')).toBeNull()
   })
 
+  it('«завершить все»: отказ FRESH_* — всплывашка RecentSessions.Error.FreshReset, список цел', async() => {
+    sessions.terminateOthers.mockRejectedValue(Object.assign(new Error('x'), { type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' }))
+    const tab = await open([current, other])
+
+    section(tab, lang.CurrentSession).querySelector<HTMLElement>('.sidebar-left-section-content > button')!.click()
+
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'RecentSessions.Error.FreshReset' }))
+    expect(tab.scrollable.container.querySelectorAll('.session-row')).toHaveLength(2)
+  })
+
   it('«завершить все» ответили false — всплывашка Error.AnError, список цел', async() => {
     sessions.terminateOthers.mockResolvedValue(false)
     const tab = await open([current, other])

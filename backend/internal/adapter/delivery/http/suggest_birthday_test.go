@@ -16,7 +16,7 @@ import (
 func TestSuggestBirthday_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil,
-		NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signUp(t, h, pool, "+79990000321")
 	tokenB, idB := signUp(t, h, pool, "+79990000322")
 

@@ -94,6 +94,8 @@ type DeviceRepo interface {
 	// отмечает активность. appVersion — версия сборки, которой клиент назвался
 	// В ЭТОМ запросе: пустая означает «не назвался», прежнюю она не затирает.
 	SessionByTokenHash(ctx context.Context, tokenHash, appVersion string) (domain.UserRecord, int64, error)
+	// Get — устройство пользователя по id; нет такого — domain.ErrNotFound.
+	Get(ctx context.Context, userID, deviceID int64) (domain.Device, error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Device, error)
 	Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error)
 	// DeleteOthers removes every device of the user except keepDeviceID and

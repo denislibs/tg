@@ -487,7 +487,7 @@ func TestCheckSendAllowed_NonTextIsMedia(t *testing.T) {
 		"опрос":    {PollID: &id},
 		"чек-лист": {ChecklistID: &id},
 		"гео":      {GeoLat: &lat, GeoLng: &lat},
-		"контакт":  {ContactUserID: &id},
+		"контакт":  {Contact: &domain.InputMediaContact{FirstName: "Х"}},
 	} {
 		in.ChatID, in.SenderID = g, 8
 		if err := i.checkSendAllowed(ctx, in); !errors.Is(err, domain.ErrForbidden) {

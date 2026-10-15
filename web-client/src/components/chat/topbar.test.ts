@@ -706,10 +706,10 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
   it('«Удалить»: у лички попап с «Also delete for…», у секретного чата — без него', async() => {
     const deleteItem = async() => Array.from((await openMenu(await open(makeChat({ peerId: ALICE, fullPeer: USER_FULL() })))).querySelectorAll<HTMLElement>('.btn-menu-item'))
       .find((el) => itemText(el) === t('ChatList.Context.DeleteChat'))!
-    const popupCheckbox = () => document.querySelector('.popup-delete-chat .checkbox-field')
+    const popupCheckbox = () => document.querySelector('.popup-delete-chat .popup-peer-checkbox-row')
     try {
       ;(await deleteItem()).click()
-      expect(popupCheckbox()?.textContent).toContain('Also delete for')
+      expect(popupCheckbox()?.querySelector('.row-title')?.textContent).toContain('Also delete for')
       document.querySelectorAll('.popup').forEach((el) => el.remove())
 
       useChatsStore.setState({ dialogs: [makeDialog({ peerId: ALICE, secret: true })] })

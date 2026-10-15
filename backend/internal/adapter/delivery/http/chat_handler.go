@@ -393,14 +393,13 @@ type sendBody struct {
 	GroupedID        int64   `json:"grouped_id"`
 	// сообщение в тред (форум-топик/комментарии): НОМЕР корневого сообщения
 	ThreadRootID *int64 `json:"thread_root_id"`
-	// гео-точка (type 'geo') / контакт (type 'contact')
+	// гео-точка (type 'geo')
 	GeoLat        *float64 `json:"geo_lat"`
 	GeoLng        *float64 `json:"geo_lng"`
 	GeoTitle      *string  `json:"geo_title"`
 	GeoAddress    *string  `json:"geo_address"`
 	GeoLivePeriod *int     `json:"geo_live_period"`
 	GeoHeading    *int     `json:"geo_heading"`
-	ContactUserID *int64   `json:"contact_user_id"`
 	// Платное медиа (Telegram paid media): цена доступа в звёздах. nil/<=0 — обычное
 	// медиа; применяется только к фото/видео с прикреплённым media_id.
 	PaidMediaPrice *int64 `json:"paid_media_price"`
@@ -409,9 +408,13 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
-	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
-	// (TL messages.sendMessage/sendMedia).
-	domain.WebPageInput
+	// no_webpage / invert_media — превью ссылки (TL messages.sendMessage/
+	// sendMedia). Ключ `media` — объединение InputMedia: inputMediaWebPage
+	// (решение о превью) или inputMediaContact (type 'contact', В-10: поля
+	// визитки от отправителя 1:1, user_id сервер выводит сам).
+	NoWebpage   bool             `json:"no_webpage"`
+	InvertMedia bool             `json:"invert_media"`
+	Media       domain.SendMedia `json:"media"`
 	// Отложенная отправка (schema schedule_date; 0x7FFFFFFE — «когда в сети»)
 	// и её повтор — поля отправки, как у оригинала (appMessagesManager.ts:2741-2742).
 	ScheduleDate         int64 `json:"schedule_date"`
@@ -466,13 +469,13 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: threadRoot,
-		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, ContactUserID: body.ContactUserID,
+		GeoLat:       body.GeoLat, GeoLng: body.GeoLng, Contact: body.Media.Contact,
 		GeoTitle: body.GeoTitle, GeoAddress: body.GeoAddress,
 		GeoLivePeriod: body.GeoLivePeriod, GeoHeading: body.GeoHeading,
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
-		WebPage:        body.WebPageInput,
+		WebPage:        body.Media.WebPageInput(body.NoWebpage, body.InvertMedia),
 		ScheduleDate:   body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 		AllowPaidStars: body.AllowPaidStars,
 	})
