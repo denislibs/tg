@@ -504,7 +504,6 @@ describe('PeersManager — своя карточка из user_update (onSelfUse
   })
 })
 
-
 // Смена `pFlags.contact` на карточке — повод двигать книгу контактов (tweb
 // saveApiUser :738-754 → onContactUpdated(userId, newContact, wasContact)).
 // Через `onContactToggle` менеджер сообщает об этом владельцу книги, не зная о нём.
