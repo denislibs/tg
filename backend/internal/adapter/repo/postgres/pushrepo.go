@@ -177,21 +177,3 @@ func (r *PushRepo) SenderName(ctx context.Context, userID int64) (string, error)
 	_ = querier(ctx, r.pool).QueryRow(ctx, `SELECT display_name FROM users WHERE id=$1`, userID).Scan(&name)
 	return name, nil
 }
-
-// UnreadBadge — бейдж иконки в пуше: непрочитанное тех чатов, что видны в
-// основном списке и не заглушены. Заглушённые и архивные (у tweb бейдж
-// приложения их не считает) в сумму не входят: иначе бейдж иконки больше
-// суммы бейджей списка. Группа обсуждения, в которой пользователь состоит, —
-// обычный чат списка (ChatsRepo.ListDialogs) и считается.
-func (r *PushRepo) UnreadBadge(ctx context.Context, userID int64) (int, error) {
-	var badge int
-	// Aggregate with COALESCE always returns one row; best-effort on error.
-	_ = querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT COALESCE(SUM(`+dialogUnreadCount("m", "c")+`),0)
-		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
-		   LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
-		  WHERE m.user_id=$1 AND NOT m.archived
-		    AND NOT `+chatMutedSQL(joinedNotify),
-		userID).Scan(&badge)
-	return badge, nil
-}

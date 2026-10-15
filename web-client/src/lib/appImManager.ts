@@ -69,8 +69,10 @@
 // 10. Звонки (блок H) — расхождения З1–З5 у секции `── H. Звонки ──`.
 // 11. `notificationBuild` (`:805-822`) — `client/uiNotifications.ts` спрашивает
 //     `appImManager.chat` сам; звук отправки (`:857-877`) — `soundSubscriber.ts`.
-// 12. Клик по системному уведомлению (`sw.js` → `open-chat`) открывает чат здесь
-//     (у tweb — `uiNotificationsManager` через `appImManager.setInnerPeer`).
+// 12. Клик по системному уведомлению (`sw.js` → `push-click`) принимается здесь
+//     (`onPushClick`; у tweb — `uiNotificationsManager.ts:354-400`). Ожидание пира —
+//     запросом карточки (`open` → `managers.peers.getPeers`), а не `topMessagesDeferred`;
+//     историй и мультиаккаунта нет. Пинг `push-ready` — `client/pushPing.ts`.
 // 13. Узел левой колонки — `#column-left` из документа, а не `appSidebarLeft.sidebarEl`:
 //     модуль класса колонки тянет за собой поиск и регистрирует custom elements при
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
@@ -105,6 +107,7 @@
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
 import MarkupTooltip from '@components/chat/markupTooltip'
 import { generateMessageId } from '@core/history/messageId'
+import { startPushPing } from '@/client/pushPing'
 import type { Middleware } from '@helpers/middleware'
 import I18n, { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
@@ -262,6 +265,9 @@ const langPackKeys: { [peerType in 'private' | 'chat' | 'multi' | 'pair']: Activ
 
 /** tweb `sidebarLeft/index.ts:110` */
 export const LEFT_COLUMN_ACTIVE_CLASSNAME = 'is-left-column-shown'
+
+/** Объект пуша из `push-click` (`sw.js`, tweb `PushNotificationObject.custom`): строки, как у tweb. */
+type PushClickPayload = { custom?: { peerId?: string, msg_id?: string } }
 
 /** tweb `:182-202` в объёме наших предметов (расхождения 8, 10 шапки). */
 export type ChatSetPeerOptions = {
@@ -476,11 +482,11 @@ export class AppImManager extends EventListenerBase<{
     // расхождение 12 шапки
     if('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
-        const d = e.data as { type?: string, chatId?: number } | null
-        if(d && d.type === 'open-chat' && d.chatId != null) {
-          void this.setInnerPeer({ peerId: d.chatId })
-        }
+        const d = e.data as { type?: string, payload?: PushClickPayload } | null
+        if(d?.type === 'push-click') void this.onPushClick(d.payload)
       })
+      // после подписки: сообщение, пришедшее до неё, SW держит до `push-ready`
+      startPushPing()
     }
 
     this.checkForLoginToken()
@@ -488,6 +494,24 @@ export class AppImManager extends EventListenerBase<{
     this.init()
     this.attachKeydownListener()
     this.attachCopyListener()
+  }
+
+  /**
+   * tweb `uiNotificationsManager.ts:354-400` (`push_notification_click`): адрес пуша —
+   * `custom.peerId` (знаковый ключ пира, его заполнил `fillPushObject` в `sw.js`) и
+   * `custom.msg_id` (серверный номер). Вкладка могла быть открыта только что и пира ещё
+   * не знать — `open` спрашивает карточку у владельца; пира нет и после запроса — выход.
+   */
+  private async onPushClick(payload?: PushClickPayload) {
+    const custom = payload?.custom
+    const peerId = Number(custom?.peerId)
+    if(!peerId) return // пуш без адреса (превью выключено — адрес всё равно есть; нет — старое задание)
+
+    try {
+      await this.open({ peerId, lastMsgId: Number(custom?.msg_id) || undefined })
+    } catch(err) {
+      console.error('push click error', err)
+    }
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────
