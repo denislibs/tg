@@ -130,3 +130,56 @@ func TestPeerDialogs_UnknownPeerIsAbsent_HTTP(t *testing.T) {
 		t.Fatalf("кривой ключ: %d; want 400", rec.Code)
 	}
 }
+
+// `state` ответа — `updates.state` ТОГО ЖЕ ящика, что отдаёт /updates/state:
+// tweb reloadConversation сверяет state.pts с локальным курсором и при
+// расхождении повторяет запрос через 500 мс (appMessagesManager.ts:6313-6319).
+// Без state на клиенте нечего сравнивать.
+func TestPeerDialogs_StateMatchesUpdatesState_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990000255")
+	_, idB := signUp(t, h, pool, "+79990000256")
+	if rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB}); rec.Code != http.StatusOK {
+		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+	}
+
+	type stateBody struct {
+		Underscore  string `json:"_"`
+		Pts         int64  `json:"pts"`
+		Date        int64  `json:"date"`
+		UnreadCount int    `json:"unread_count"`
+	}
+	rec := authedReq(t, h, http.MethodGet, "/updates/state", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /updates/state: %d %s", rec.Code, rec.Body.String())
+	}
+	var want stateBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &want); err != nil {
+		t.Fatalf("decode state: %v", err)
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/peer_dialogs?peers="+itoa(idB), tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /peer_dialogs: %d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		State *stateBody `json:"state"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.State == nil || got.State.Underscore != "updates.state" {
+		t.Fatalf("state = %+v; want updates.state", got.State)
+	}
+	if got.State.Pts != want.Pts || got.State.UnreadCount != want.UnreadCount {
+		t.Fatalf("state = %+v; want pts %d, unread_count %d (как /updates/state)", got.State, want.Pts, want.UnreadCount)
+	}
+
+	// Пустой запрос (ни одного известного пира) — state всё равно есть.
+	rec = authedReq(t, h, http.MethodGet, "/peer_dialogs?peers=-987654", tokenA, nil)
+	got.State = nil
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.State == nil || got.State.Underscore != "updates.state" {
+		t.Fatalf("пустой ответ: state = %+v; want updates.state", got.State)
+	}
+}

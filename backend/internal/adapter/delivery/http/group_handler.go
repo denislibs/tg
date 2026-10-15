@@ -1023,8 +1023,10 @@ func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 	}
 	// `messages.importChatInvite` оригинала: заявка — отказ с именем
 	// `INVITE_REQUEST_SENT` (tweb `joinChatInvite.tsx:122-124` показывает по нему
-	// тост), вступление — `Updates` с чатом в `chats[0]` (tweb
-	// `appChatInvitesManager.ts:92-104` открывает его). Вектор `updates` пуст:
+	// тост), вступление — `messages.chatInviteJoinResultOk{updates}` с чатом в
+	// `updates.chats[0]` (tweb `processChatInviteJoinResult`,
+	// `appChatsManager.ts:664-679`, затем `appChatInvitesManager.ts:92-104`
+	// открывает чат). Вектор `updates.updates` пуст:
 	// служебное «вступил(а) по ссылке» доезжает кадром WS, как у CreateGroup.
 	if requested {
 		writeError(w, http.StatusBadRequest, "INVITE_REQUEST_SENT")
@@ -1037,7 +1039,7 @@ func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 	}
 	updates := domain.NewUpdates(nil, nil, time.Now())
 	updates.Chats = []domain.Chat{c.ToChannel()}
-	writeJSON(w, http.StatusOK, updates)
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteJoinResultOk(updates))
 }
 
 func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {

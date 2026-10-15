@@ -363,6 +363,14 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 		}
 		peers = append(peers, domain.PeerID(v))
 	}
+	// `state` читается ДО строк: строки не старее курсора, который он описывает.
+	// Живой кадр между чтениями даёт state.pts < курсора клиента — клиент
+	// повторит запрос (tweb :6313-6319), а не примет устаревшую строку за свежую.
+	state, err := h.svc.UpdatesState(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		return
+	}
 	res, err := h.svc.PeerDialogs(r.Context(), h.meID(r), peers)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not get dialogs")
@@ -377,7 +385,7 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 	for _, m := range wire {
 		messages = append(messages, m)
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesPeerDialogs(res.Dialogs, messages, res.Chats, res.Users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesPeerDialogs(res.Dialogs, messages, res.Chats, res.Users, state))
 }
 
 type sendBody struct {
