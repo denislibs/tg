@@ -19,13 +19,15 @@ func sampleChannelStats() ChannelStats {
 	return ChannelStats{
 		Broadcast: true,
 		Summary: ChannelStatsSummary{
-			Members: 4, TotalViews: 30, TotalForwards: 6, TotalReactions: 3, PostsCount: 3, NotificationsOn: 3,
+			Members: 4, TotalViews: 30, TotalForwards: 6, TotalReactions: 3, PostsCount: 3, PostersCount: 2,
 		},
-		MembersGrowth: []StatPoint{{Day: statsDayAt("2026-09-01"), Value: 1}, {Day: statsDayAt("2026-09-03"), Value: 4}},
-		JoinedByDay:   []StatPoint{{Day: statsDayAt("2026-09-01"), Value: 1}, {Day: statsDayAt("2026-09-03"), Value: 3}},
-		ViewsByDay:    []StatPoint{{Day: statsDayAt("2026-09-02"), Value: 30}},
-		PostsByDay:    []StatPoint{{Day: statsDayAt("2026-09-02"), Value: 3}},
-		RecentPosts:   []RecentPost{{Seq: 7, Views: 10, Forwards: 2, Reactions: 1}},
+		Previous:        ChannelStatsSummary{Members: 2, TotalViews: 10, TotalForwards: 1, TotalReactions: 1, PostsCount: 2, PostersCount: 1},
+		NotificationsOn: 3,
+		MembersGrowth:   []StatPoint{{Day: statsDayAt("2026-09-01"), Value: 1}, {Day: statsDayAt("2026-09-03"), Value: 4}},
+		JoinedByDay:     []StatPoint{{Day: statsDayAt("2026-09-01"), Value: 1}, {Day: statsDayAt("2026-09-03"), Value: 3}},
+		ViewsByDay:      []StatPoint{{Day: statsDayAt("2026-09-02"), Value: 30}},
+		PostsByDay:      []StatPoint{{Day: statsDayAt("2026-09-02"), Value: 3}},
+		RecentPosts:     []RecentPost{{Seq: 7, Views: 10, Forwards: 2, Reactions: 1}},
 	}
 }
 
@@ -144,5 +146,46 @@ func TestStats_LineGraphSingleDay(t *testing.T) {
 	}
 	if data.Columns[1][1] != 0.0 || data.Columns[1][2] != 2.0 {
 		t.Fatalf("значения: %v", data.Columns[1])
+	}
+}
+
+// Окно 7 дней: `previous` есть у всех абсолютных полей, период — те же 7 дней;
+// `enabled_notifications` — по схеме без `previous`.
+func TestStats_WindowPreviousAndPeriod(t *testing.T) {
+	now := statsDayAt("2026-09-04").Add(10 * time.Hour)
+	b := sampleChannelStats().ToBroadcastWire(now)
+
+	if b.Period.MaxDate != now.Unix() || b.Period.MinDate != now.Add(-7*24*time.Hour).Unix() {
+		t.Fatalf("период канала: %+v", b.Period)
+	}
+	// Среднее на пост: текущее 30/3, 6/3, 3/3; предыдущее 10/2, 1/2, 1/2.
+	if b.Followers.Current != 4 || b.Followers.Previous != 2 {
+		t.Fatalf("followers: %+v", b.Followers)
+	}
+	if b.ViewsPerPost.Current != 10 || b.ViewsPerPost.Previous != 5 {
+		t.Fatalf("views_per_post: %+v", b.ViewsPerPost)
+	}
+	if b.SharesPerPost.Current != 2 || b.SharesPerPost.Previous != 0.5 {
+		t.Fatalf("shares_per_post: %+v", b.SharesPerPost)
+	}
+	if b.ReactionsPerPost.Current != 1 || b.ReactionsPerPost.Previous != 0.5 {
+		t.Fatalf("reactions_per_post: %+v", b.ReactionsPerPost)
+	}
+	if b.EnabledNotifications.Part != 3 || b.EnabledNotifications.Total != 4 {
+		t.Fatalf("enabled_notifications: %+v", b.EnabledNotifications)
+	}
+
+	m := sampleChannelStats().ToMegagroupWire(now)
+	if m.Period != b.Period {
+		t.Fatalf("период группы: %+v", m.Period)
+	}
+	if m.Members.Current != 4 || m.Members.Previous != 2 || m.Messages.Current != 3 || m.Messages.Previous != 2 {
+		t.Fatalf("members/messages: %+v %+v", m.Members, m.Messages)
+	}
+	if m.Posters.Current != 2 || m.Posters.Previous != 1 {
+		t.Fatalf("posters: %+v", m.Posters)
+	}
+	if m.Viewers.Current != 0 || m.Viewers.Previous != 0 {
+		t.Fatalf("viewers без данных: %+v", m.Viewers)
 	}
 }

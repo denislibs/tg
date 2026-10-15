@@ -2,16 +2,25 @@ package stats
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
+type summaryCall struct {
+	fromSeq, toSeq int64
+	at             time.Time
+}
+
 type fakeRepo struct {
 	typ          string
 	role         string
-	summary      domain.ChannelStatsSummary
+	seqBefore    func(maxSeq int64, t time.Time) int64
+	summaries    []summaryCall
+	summary      func(summaryCall) domain.ChannelStatsSummary
+	notifyOn     int64
 	members      []domain.StatPoint
 	recent       []domain.RecentPost
 	postExists   bool
@@ -25,8 +34,22 @@ func (f *fakeRepo) MemberRole(context.Context, int64, int64) (string, domain.Rig
 	}
 	return f.role, 0, nil
 }
-func (f *fakeRepo) Summary(context.Context, int64) (domain.ChannelStatsSummary, error) {
-	return f.summary, nil
+func (f *fakeRepo) SeqBefore(_ context.Context, _, maxSeq int64, t time.Time) (int64, error) {
+	if f.seqBefore == nil {
+		return 0, nil
+	}
+	return f.seqBefore(maxSeq, t), nil
+}
+func (f *fakeRepo) Summary(_ context.Context, _, fromSeq, toSeq int64, at time.Time) (domain.ChannelStatsSummary, error) {
+	c := summaryCall{fromSeq, toSeq, at}
+	f.summaries = append(f.summaries, c)
+	if f.summary == nil {
+		return domain.ChannelStatsSummary{}, nil
+	}
+	return f.summary(c), nil
+}
+func (f *fakeRepo) NotificationsOn(context.Context, int64, time.Time) (int64, error) {
+	return f.notifyOn, nil
 }
 func (f *fakeRepo) MembersByDay(context.Context, int64) ([]domain.StatPoint, error) {
 	return f.members, nil
@@ -133,5 +156,54 @@ func TestPostStatsViewsByDay(t *testing.T) {
 	}
 	if len(st.ViewsByDay) != 1 || st.ViewsByDay[0].Value != 5 {
 		t.Fatalf("ViewsByDay: %+v", st.ViewsByDay)
+	}
+}
+
+// Обзор — два окна по 7 дней: текущее (seq выше границы now−7d, участники на
+// now) и предыдущее (seq между now−14d и now−7d, участники на now−7d).
+func TestChannelStatsOverviewTwoWindows(t *testing.T) {
+	now := day("2026-10-14").Add(12 * time.Hour)
+	week := domain.StatsWindow
+	repo := &fakeRepo{
+		typ:  "channel",
+		role: domain.RoleCreator,
+		seqBefore: func(maxSeq int64, tm time.Time) int64 {
+			switch {
+			case tm.Equal(now.Add(-week)) && maxSeq == math.MaxInt64:
+				return 30
+			// Вторая граница ищется ниже первой — скан не заходит в текущее окно.
+			case tm.Equal(now.Add(-2*week)) && maxSeq == 30:
+				return 10
+			}
+			t.Fatalf("неожиданная граница %v", tm)
+			return 0
+		},
+		summary: func(c summaryCall) domain.ChannelStatsSummary {
+			if c.fromSeq == 30 {
+				return domain.ChannelStatsSummary{Members: 9, PostsCount: 4}
+			}
+			return domain.ChannelStatsSummary{Members: 7, PostsCount: 2}
+		},
+		notifyOn: 5,
+	}
+	uc := New(repo)
+	uc.now = func() time.Time { return now }
+
+	st, err := uc.ChannelStats(context.Background(), 1, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []summaryCall{
+		{fromSeq: 30, toSeq: math.MaxInt64, at: now},
+		{fromSeq: 10, toSeq: 30, at: now.Add(-week)},
+	}
+	if len(repo.summaries) != 2 || repo.summaries[0] != want[0] || repo.summaries[1] != want[1] {
+		t.Fatalf("окна: %+v, ожидалось %+v", repo.summaries, want)
+	}
+	if st.Summary.Members != 9 || st.Previous.Members != 7 || st.Summary.PostsCount != 4 || st.Previous.PostsCount != 2 {
+		t.Fatalf("Summary %+v, Previous %+v", st.Summary, st.Previous)
+	}
+	if !st.At.Equal(now) || st.NotificationsOn != 5 {
+		t.Fatalf("At %v, NotificationsOn %d", st.At, st.NotificationsOn)
 	}
 }

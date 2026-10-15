@@ -52,10 +52,10 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if st.Broadcast {
-		writeJSON(w, http.StatusOK, st.ToBroadcastWire(time.Now()))
+		writeJSON(w, http.StatusOK, st.ToBroadcastWire(st.At))
 		return
 	}
-	writeJSON(w, http.StatusOK, st.ToMegagroupWire(time.Now()))
+	writeJSON(w, http.StatusOK, st.ToMegagroupWire(st.At))
 }
 
 // PostStats — GET /chats/{chatID}/messages/{msgID}/stats. Статистика одного
