@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 70,
+      "version": 71,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -5351,6 +5351,10 @@
           "value": "Add Users or Groups..."
         },
         {
+          "key": "PrivacyP2PHeader",
+          "value": "Peer-to-Peer"
+        },
+        {
           "key": "PrivacyPhone",
           "value": "Phone Number"
         },
@@ -5437,6 +5441,10 @@
         {
           "key": "PrivacySettingsController.Nobody",
           "value": "Nobody"
+        },
+        {
+          "key": "PrivacySettingsController.P2p.Desc",
+          "value": "Disabling peer-to-peer will relay all calls through Telegram servers to avoid revealing your IP address, but may slightly decrease audio and video quality."
         },
         {
           "key": "PrivacySettingsController.Paid",
@@ -7526,7 +7534,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 69,
+      "version": 70,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11675,6 +11683,14 @@
         {
           "key": "PrivacySettingsController.PhoneCallDescription",
           "value": "Вы можете точно настроить, кто может Вам звонить."
+        },
+        {
+          "key": "PrivacyP2PHeader",
+          "value": "Peer-to-Peer"
+        },
+        {
+          "key": "PrivacySettingsController.P2p.Desc",
+          "value": "Если отключить peer-to-peer, все звонки будут проходить через серверы Telegram, чтобы не раскрывать Ваш IP-адрес, но качество звука и видео может немного снизиться."
         },
         {
           "key": "PrivacySettingsController.GroupDescription",

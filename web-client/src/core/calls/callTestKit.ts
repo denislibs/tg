@@ -116,14 +116,30 @@ export interface Side {
 /** Реле: как сервер, ставит from_user_id и отдаёт кадр адресату. `tamper` подменяет/задерживает. */
 export interface Net {
   sides: Map<number, Side>
+  /**
+   * Что реле-сервер ставит в `p2p_allowed` кадров call_request/call_accept (затирая присланное,
+   * как backend usecase/chat/phonecall.go): true/false; undefined — поле не ставится вовсе.
+   */
+  p2pAllowed: boolean | undefined
+  /** Ответ GET /calls/ice: по умолчанию STUN + TURN, как на стенде. */
+  iceServers: RTCIceServer[]
   /** Вернуть кадры, которые надо доставить в одном тике (пусто — кадр проглочен). */
   tamper?: (from: number, to: number, f: Frame) => Frame[]
   side(id: number): Promise<Side>
 }
 
 export function createNet(): Net {
+  // Как сервер: p2p_allowed ставится только в call_request и call_accept, присланное затирается.
+  const serverStamp = (data: Record<string, unknown>, type: string) => {
+    const out = { ...data }
+    delete out.p2p_allowed
+    if ((type === 'call_request' || type === 'call_accept') && net.p2pAllowed !== undefined) out.p2p_allowed = net.p2pAllowed
+    return out
+  }
   const net: Net = {
     sides: new Map(),
+    p2pAllowed: true,
+    iceServers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:turn.test:3478?transport=udp'], username: 'u', credential: 'c' }],
     async side(id) {
       vi.resetModules()
       const sent: Frame[] = []
@@ -140,12 +156,12 @@ export function createNet(): Net {
                 setImmediate(() => {
                   const peer = net.sides.get(to)
                   if (!peer) return
-                  for (const o of out) peer.engine.handleFrame({ t: o.type, d: { ...o.data, from_user_id: id } } as never)
+                  for (const o of out) peer.engine.handleFrame({ t: o.type, d: serverStamp({ ...o.data, from_user_id: id }, o.type) } as never)
                 })
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => ({ servers: [], ttlSeconds: 0 }) },
+            calls: { iceConfig: async () => ({ servers: net.iceServers, ttlSeconds: 3600 }) },
             peers: { getUsers: async () => [] },
           },
         }),

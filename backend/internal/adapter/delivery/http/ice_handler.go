@@ -15,7 +15,7 @@ import (
 // expiry timestamp and credential = base64(HMAC-SHA1(secret, username)), so no
 // long-lived TURN password ever reaches a client.
 type ICEHandler struct {
-	turnHost   string // empty → STUN only (same-network calls still work)
+	turnHost   string // empty → STUN only: звонок 1:1 в одной сети пойдёт, а групповой и звонок с запретом P2P (relay-only) не начнутся
 	turnSecret string
 	ttl        time.Duration
 }

@@ -49,6 +49,10 @@ export async function iceServers(): Promise<RTCIceServer[]> {
   } catch { /* бэк недоступен — деградация до STUN */ }
   return FALLBACK_ICE
 }
+/** Есть ли среди серверов хоть один TURN (`turn:`/`turns:`) — без него `relay` не собрать кандидатов. */
+export function hasTurnServer(servers: RTCIceServer[]): boolean {
+  return servers.some((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u) => /^turns?:/i.test(u)))
+}
 const RING_TIMEOUT_MS = 45_000 // tweb: 45s до missed
 
 const store = () => useCallStore.getState()
@@ -270,9 +274,18 @@ async function startRtc(withVideo: boolean, alive: () => boolean) {
   stopSound()
   playSound('voip_connecting')
 
+  // Политика ICE — по p2p_allowed звонка (tweb callInstance.ts:1283-1287: `isP2p ? 'all' : 'relay'`).
+  // Не `true` (в т.ч. поля нет) — закрываемся: relay. Без TURN relay не соберёт ни одного кандидата,
+  // поэтому звонок не начинается, а не переходит молча на 'all' (IP ушёл бы собеседнику).
+  const iceTransportPolicy: RTCIceTransportPolicy = call.p2pAllowed === true ? 'all' : 'relay'
   const servers = await iceServers()
   if (!alive()) return
-  pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', certificates: [ident.cert] })
+  if (iceTransportPolicy === 'relay' && !hasTurnServer(servers)) {
+    console.warn('[call] relay-only call without TURN server')
+    failE2E('after-answer')
+    return
+  }
+  pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', iceTransportPolicy, certificates: [ident.cert] })
 
   pc.onicecandidate = (e) => {
     if (e.candidate) sendFrame('call_signal', { ice: e.candidate.toJSON() })
@@ -675,6 +688,7 @@ export function handleFrame(evt: CallFrameEvt) {
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
       outgoing: false, video, phase: 'incoming',
+      p2pAllowed: d.p2p_allowed === true,
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })
@@ -718,7 +732,8 @@ export function handleFrame(evt: CallFrameEvt) {
       if (call.outgoing && call.phase === 'outgoing' && ident && dhPubRaw) { // call_request уже ушёл
         // 'connecting' сразу: кадры call_signal отвечающего, пришедшие, пока звено крутит
         // криптографию, должны встать в очередь за ним, а не быть отброшены фильтром по фазе
-        store().patch({ phase: 'connecting' })
+        // p2p_allowed звонка — из call_accept (серверное поле, tweb callInstance.ts:690-694)
+        store().patch({ phase: 'connecting', p2pAllowed: d.p2p_allowed === true })
         enqueue((alive) => onCallAccept(d, alive), true)
       }
       break

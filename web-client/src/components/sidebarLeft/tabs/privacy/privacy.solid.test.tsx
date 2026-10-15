@@ -28,6 +28,7 @@ import { privacyKeyTag, toPrivacyRules, type PrivacyKey, type PrivacyRule } from
 import { applyPrivacyUpdate, usePrivacyStore } from '@stores/privacyStore'
 import {
   AppAddMembersTab,
+  AppPrivacyCallsTab,
   AppPrivacyLastSeenTab,
   AppPrivacyPhoneNumberTab,
 } from '@components/solidJsTabs/tabs'
@@ -260,6 +261,42 @@ describe('«Номер телефона» — две секции', () => {
       rule('added_by_phone', { value: 'contacts' }),
       rule('phone_number', { value: 'nobody' }),
     ])
+  })
+})
+
+// tweb `privacy/calls.tsx:9-28`: вкладка «Звонки» — две секции подряд: «Кто может мне звонить»
+// (`inputPrivacyKeyPhoneCall`) и «Peer-to-Peer» (`inputPrivacyKeyPhoneP2P`), у второй своя
+// подпись `PrivacySettingsController.P2p.Desc` на все три значения. Правило P2P читает сервер
+// при каждом звонке (`p2p_allowed`): «никто» — все звонки только через TURN.
+describe('«Звонки» — две секции', () => {
+  it('Peer-to-Peer идёт второй секцией (после «Кто может мне звонить» с исключениями), подпись P2p.Desc, три значения', async() => {
+    const tab = await open(AppPrivacyCallsTab)
+    const calls = section(tab, lang.WhoCanCallMe)
+    const p2p = section(tab, lang.PrivacyP2PHeader)
+
+    const names = [...tab.scrollable.container.querySelectorAll('.sidebar-left-section-name')].map((e) => e.textContent)
+    expect(names).toEqual([lang.WhoCanCallMe, lang.PrivacyExceptions, lang.PrivacyP2PHeader, lang.PrivacyExceptions])
+    expect(calls.compareDocumentPosition(p2p) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(caption(calls).textContent).toBe(lang['PrivacySettingsController.PhoneCallDescription'])
+    expect(caption(p2p).textContent).toBe(lang['PrivacySettingsController.P2p.Desc'])
+    expect([...p2p.querySelectorAll('form > .row .row-title')].map((e) => e.textContent)).toEqual([
+      lang['PrivacySettingsController.Everbody'],
+      lang['PrivacySettingsController.MyContacts'],
+      lang['PrivacySettingsController.Nobody'],
+    ])
+    expect(checkedTitle(p2p)).toBe(lang['PrivacySettingsController.Everbody'])
+  })
+
+  it('закрытие пишет оба правила: calls и phone_p2p — каждое со своим выбором', async() => {
+    const tab = await open(AppPrivacyCallsTab)
+    row(section(tab, lang.PrivacyP2PHeader), lang['PrivacySettingsController.Nobody']).click()
+
+    await close(tab)
+    expect(setRule.mock.calls.map(([r]) => r).sort((a, b) => a.key.localeCompare(b.key))).toEqual([
+      rule('calls'),
+      rule('phone_p2p', { value: 'nobody' }),
+    ])
+    expect(usePrivacyStore.getState().rules.phone_p2p.value).toBe('nobody')
   })
 })
 
