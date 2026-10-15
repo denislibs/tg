@@ -197,7 +197,7 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
         navigate({ name: 'password', payload: { token: res.passwordToken, hint: res.hint } })
         return
       }
-      if (!res.user) throw new Error('неожиданный исход входа по ключу доступа')
+      if (!res.user) throw new Error('unexpected passkey login outcome')
       void toIm()
     } catch (err) {
       // tweb PasskeyLoginButton показывает тост и остаётся на карточке

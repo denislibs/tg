@@ -183,7 +183,7 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         return
       }
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
-      if (!res.passwordNeeded && !res.user) throw new Error('неожиданный исход входа по ключу доступа')
+      if (!res.passwordNeeded && !res.user) throw new Error('unexpected passkey login outcome')
       stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
       // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).
       if (res.passwordNeeded) {
