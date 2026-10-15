@@ -32,6 +32,16 @@ vi.mock('./managers/peersManager', async (importOriginal) => {
   }
 })
 
+type SyncDeps = Parameters<typeof import('./realtime/syncEngine').newSyncEngine>[0]
+let capturedSyncDeps: SyncDeps | null = null
+vi.mock('./realtime/syncEngine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./realtime/syncEngine')>()
+  return {
+    ...actual,
+    newSyncEngine: (deps: SyncDeps) => { capturedSyncDeps = deps; return actual.newSyncEngine(deps) },
+  }
+})
+
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 
@@ -115,6 +125,42 @@ describe('createWorkerCore(): контакты и теги «Избранног�
 
     expect(ops).toEqual([{ ops: [{ op: 'upsert', peers: [{ ...user, status }] }] }])
     expect(presence).toEqual([{ _: 'updateUserStatus', user_id: 7, status }])
+  })
+
+  // tweb appUsersManager.ts:68, :70 — таймер в 60 с и state_synchronized.
+  it('истёкший онлайн карточки гасится таймером 60 с', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'Date'] })
+    try {
+      vi.setSystemTime(new Date(1_000_000_000_000))
+      const { tab } = boot()
+      const ops: Array<{ ops: Array<{ peers: Array<{ status?: { _: string } }> }> }> = []
+      tab.on('rt:peer_op', (p) => ops.push(p as never))
+      const user = { _: 'user', id: 7, first_name: 'Егор', status: { _: 'userStatusOnline', expires: 1_000_000_010 } }
+      capturedConnDeps!.onFrame('user_update', { _: 'updateUserSnapshot', user })
+      await vi.advanceTimersByTimeAsync(0)
+      ops.length = 0
+
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(ops.flatMap((o) => o.ops.flatMap((op) => op.peers.map((p) => p.status?._)))).toEqual(['userStatusOffline'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('конец догона (state_synchronized) гасит истёкший онлайн карточки', async () => {
+    const { tab } = boot()
+    const ops: Array<{ ops: Array<{ peers: Array<{ status?: { _: string } }> }> }> = []
+    tab.on('rt:peer_op', (p) => ops.push(p as never))
+    const user = { _: 'user', id: 7, first_name: 'Егор', status: { _: 'userStatusOnline', expires: 1 } }
+    capturedConnDeps!.onFrame('user_update', { _: 'updateUserSnapshot', user })
+    await settle()
+    ops.length = 0
+
+    capturedSyncDeps!.onSyncEnd!()
+    await settle()
+
+    expect(ops.flatMap((o) => o.ops.flatMap((op) => op.peers.map((p) => p.status?._)))).toEqual(['userStatusOffline'])
   })
 
   it('updateSavedReactionTags → rt:saved_reaction_tags, воркер не падает', async () => {

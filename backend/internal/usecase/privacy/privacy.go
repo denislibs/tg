@@ -567,8 +567,11 @@ func (i *Interactor) ViewRules(ctx context.Context, viewerID int64, ids []int64)
 	rules := domain.UserViewRules{ViewerID: viewerID}
 	// Три правила — одним запросом, присутствие — одним конвейером: витрина
 	// доводит пачку, а не каждого по отдельности.
-	if maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
-		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen); err == nil {
+	maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
+		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen)
+	if err != nil {
+		log.Printf("[privacy] view rules viewer=%d ids=%d: %v", viewerID, len(ids), err)
+	} else {
 		rules.Photo = maps[domain.PrivacyProfilePhoto]
 		rules.Phone = maps[domain.PrivacyPhoneNumber]
 		rules.LastSeen = maps[domain.PrivacyLastSeen]
@@ -582,21 +585,18 @@ func (i *Interactor) ViewRules(ctx context.Context, viewerID int64, ids []int64)
 		}
 	}
 	if len(hidden) > 0 {
-		if blocked, err := i.repo.BlockedBy(ctx, viewerID, hidden); err == nil {
+		if blocked, err := i.repo.BlockedBy(ctx, viewerID, hidden); err != nil {
+			log.Printf("[privacy] view rules blocked viewer=%d ids=%d: %v", viewerID, len(hidden), err)
+		} else {
 			rules.Blocked = blocked
 		}
 	}
-	// Присутствие не подключено — о статусе ничего не известно: это
-	// userStatusEmpty, а не «офлайн с нулевым временем».
-	rules.Status = func(int64) domain.UserStatus { return domain.NewUserStatusEmpty() }
+	// Присутствие не подключено или не получено — о статусе ничего не известно, и
+	// поле карточки остаётся как есть: `userStatusEmpty` значит «давно», а не
+	// «не знаю», и клиент принял бы выдумку за статус.
 	if i.presence != nil {
 		statuses := i.presence.Statuses(ctx, ids)
-		rules.Status = func(id int64) domain.UserStatus {
-			if st, ok := statuses[id]; ok {
-				return st
-			}
-			return domain.NewUserStatusEmpty()
-		}
+		rules.Status = func(id int64) domain.UserStatus { return statuses[id] }
 	}
 	return rules
 }

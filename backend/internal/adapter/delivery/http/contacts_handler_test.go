@@ -151,7 +151,7 @@ func TestContactsCards_CarryStatus_HTTP(t *testing.T) {
 	privacyUC.SetPresence(onlineNow{})
 	contactsUC := newContactsUC(pool)
 	contactsUC.SetPrivacy(privacyUC)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil, false)
 
 	tokenA, idA := signInToken(t, h, "+79990000011")
 	tokenB, idB := signInToken(t, h, "+79990000012")
@@ -192,5 +192,57 @@ func TestContactsCards_CarryStatus_HTTP(t *testing.T) {
 	}
 	if got := statusOf(reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)); got != "userStatusEmpty" {
 		t.Fatalf("заблокировал: %q; want userStatusEmpty", got)
+	}
+}
+
+// Блок при открытом правиле last_seen («все»): блок закрывает всё, и контакт,
+// заблокировавший зрителя, виден со статусом «давно» (userStatusEmpty) — в
+// GET /contacts и в карточке из ответа DELETE /contacts/{id}, которая до этого
+// несёт обычный «в сети».
+func TestContactsCards_BlockWithOpenRule_HTTP(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
+	privacyUC.SetPresence(onlineNow{})
+	contactsUC := newContactsUC(pool)
+	contactsUC.SetPrivacy(privacyUC)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil, false)
+
+	tokenA, idA := signInToken(t, h, "+79990000021")
+	tokenB, idB := signInToken(t, h, "+79990000022")
+	add := func() {
+		t.Helper()
+		if rec := reqJSONAuth(t, h, http.MethodPost, "/contacts", map[string]any{"contact_id": idB, "first_name": "Егор"}, tokenA); rec.Code != http.StatusCreated {
+			t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	tagOf := func(card map[string]any) string {
+		st, _ := card["status"].(map[string]any)
+		tag, _ := st["_"].(string)
+		return tag
+	}
+
+	add()
+	rec := reqJSONAuth(t, h, http.MethodDelete, "/contacts/"+itoa(idB), nil, tokenA)
+	var del struct {
+		Users []map[string]any `json:"users"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &del); err != nil || rec.Code != http.StatusOK || len(del.Users) != 1 {
+		t.Fatalf("delete: %d %s (%v)", rec.Code, rec.Body.String(), err)
+	}
+	if got := tagOf(del.Users[0]); got != "userStatusOnline" {
+		t.Fatalf("карточка из Delete: статус %q; want userStatusOnline", got)
+	}
+
+	add()
+	if rec := reqJSONAuth(t, h, http.MethodPost, "/me/blocked", map[string]any{"user_id": idA}, tokenB); rec.Code != http.StatusOK {
+		t.Fatalf("block: %d %s", rec.Code, rec.Body.String())
+	}
+	book := decodeBook(t, reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA))
+	if len(book.Users) != 1 || tagOf(book.Users[0]) != "userStatusEmpty" {
+		t.Fatalf("GET /contacts после блока: %v; want userStatusEmpty", book.Users)
+	}
+	rec = reqJSONAuth(t, h, http.MethodDelete, "/contacts/"+itoa(idB), nil, tokenA)
+	if err := json.Unmarshal(rec.Body.Bytes(), &del); err != nil || len(del.Users) != 1 || tagOf(del.Users[0]) != "userStatusEmpty" {
+		t.Fatalf("карточка из Delete после блока: %s", rec.Body.String())
 	}
 }

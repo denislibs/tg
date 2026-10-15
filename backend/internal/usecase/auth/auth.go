@@ -72,8 +72,14 @@ type PartnersAmongFunc func(ctx context.Context, userID int64, candidates []int6
 // profile_photo: кадр user_update несёт конструктор `user`, а в нём photo, и
 // без проверки фото уехало бы мимо правила приватности. Не подключён — фото в
 // кадре нет вовсе (безопасная деградация: клиент дочитает карточку ручкой).
+//
+// ViewRules — правила карточки и присутствие глазами viewerID для пачки ids
+// (privacy.ViewRules): из них кадр user_update берёт СТАТУС. Кадр заменяет
+// карточку в кэше клиента целиком, и без `status` он стирал бы у получателя
+// живое присутствие.
 type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+	ViewRules(ctx context.Context, viewerID int64, ids []int64) domain.UserViewRules
 }
 
 // ContactViewer — как книги зрителей видят пользователя userID: viewerID →

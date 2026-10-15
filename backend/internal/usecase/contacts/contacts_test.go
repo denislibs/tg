@@ -541,16 +541,17 @@ func TestList_MatchesAddResponse(t *testing.T) {
 	}
 }
 
-// Правила приватности читаются ДО транзакции с замком курсора: сбой SQL внутри
-// неё переводит транзакцию в aborted, и строка журнала теряется.
-type orderEmitter struct {
-	inner  SnapshotEmitter
+// Правила читаются ПОСЛЕ взятия замка курсора владельца: блок, случившийся между
+// чтением правил и записью строки, иначе дал бы снимок с большим pts и
+// устаревшим статусом поверх более свежей строки пересчёта блока.
+type orderLog struct {
+	*fakeLog
 	events *[]string
 }
 
-func (o orderEmitter) EmitSnapshot(ctx context.Context, u int64, typ string, build func(context.Context) (map[string]any, error)) error {
-	*o.events = append(*o.events, "emit")
-	return o.inner.EmitSnapshot(ctx, u, typ, build)
+func (l orderLog) LockState(ctx context.Context, uid int64) error {
+	*l.events = append(*l.events, "lock")
+	return l.fakeLog.LockState(ctx, uid)
 }
 
 type orderPrivacy struct {
@@ -563,16 +564,16 @@ func (p orderPrivacy) ViewRules(ctx context.Context, v int64, ids []int64) domai
 	return p.fakePrivacy.ViewRules(ctx, v, ids)
 }
 
-func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
+func TestPublishContactCard_ReadsPrivacyUnderCursorLock(t *testing.T) {
 	i, _, log := newBookInteractor(t)
 	var events []string
-	i.SetEmitter(orderEmitter{inner: ownsync.New(log, nil, directTx{}), events: &events})
+	i.SetEmitter(ownsync.New(orderLog{log, &events}, nil, directTx{}))
 	i.SetPrivacy(orderPrivacy{events: &events})
 	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) < 2 || events[0] != "rules" || events[1] != "emit" {
-		t.Fatalf("порядок = %v; want правила до EmitSnapshot", events)
+	if len(events) != 2 || events[0] != "lock" || events[1] != "rules" {
+		t.Fatalf("порядок = %v; want правила после замка курсора", events)
 	}
 }
 
@@ -740,5 +741,41 @@ func TestMutationCards_CarryStatus(t *testing.T) {
 	}
 	if got := statusTag(c.User); got != domain.UserStatusEmptyTag {
 		t.Fatalf("заблокировал: %q; want userStatusEmpty", got)
+	}
+}
+
+// afterLock выполняет hook сразу после взятия замка курсора: «блок закоммитился,
+// пока мы ждали замок».
+type afterLock struct {
+	*fakeLog
+	hook func()
+}
+
+func (l afterLock) LockState(ctx context.Context, uid int64) error {
+	err := l.fakeLog.LockState(ctx, uid)
+	l.hook()
+	return err
+}
+
+// Гонка блок ↔ снимок: блок, ставший виден к моменту, когда мы взяли замок,
+// попадает в строку журнала (userStatusEmpty), а не «в сети», прочитанное раньше.
+func TestPublishContactCard_BlockBeforeLockIsInSnapshot(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	blocked := map[int64]bool{}
+	repo := statusRepo{hiddenBy: map[int64]bool{}, blockedBy: blocked}
+	// Правило last_seen закрывает блок (как VisibleMaps в БД): hiddenBy тот же ключ.
+	hidden := repo.hiddenBy
+	pr := privacy.New(repo)
+	pr.SetPresence(fixedPresence{cBob: domain.NewUserStatusOnline(time.Now().Add(time.Minute))})
+	i.SetPrivacy(pr)
+	i.SetEmitter(ownsync.New(afterLock{log, func() { blocked[cBob], hidden[cBob] = true, true }}, nil, directTx{}))
+	_ = book
+
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusEmptyTag {
+		t.Fatalf("строка журнала: статус %q; want userStatusEmpty (блок до замка)", got)
 	}
 }

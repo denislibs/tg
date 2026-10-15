@@ -102,3 +102,27 @@ func TestViewUsers_HiddenStatus_RuleIsRecently_BlockIsLongAgo(t *testing.T) {
 		t.Fatalf("скрыто блоком: %q; want userStatusEmpty", got)
 	}
 }
+
+type silentPresence struct{ countingPresence }
+
+func (silentPresence) Statuses(context.Context, []int64) map[int64]domain.UserStatus {
+	return map[int64]domain.UserStatus{} // Redis недоступен: статусов нет
+}
+
+// Присутствие не подключено или не получено — статус карточки не трогается:
+// userStatusEmpty значил бы «давно», а не «не знаю».
+func TestViewUsers_UnknownPresenceLeavesStatusAlone(t *testing.T) {
+	known := domain.NewUserStatusOnline(time.Now().Add(time.Minute))
+	for name, in := range map[string]*Interactor{
+		"без источника":   New(&mapsRepo{}),
+		"источник молчит": func() *Interactor { i := New(&mapsRepo{}); i.SetPresence(silentPresence{}); return i }(),
+	} {
+		u := domain.NewUser(2, domain.UserFlags{})
+		u.Status = known
+		users := []domain.UserReal{u}
+		in.ViewUsers(context.Background(), 1, users)
+		if users[0].Status == nil || users[0].Status.Tag() != domain.UserStatusOnlineTag {
+			t.Fatalf("%s: статус = %v; want нетронутый online", name, users[0].Status)
+		}
+	}
+}

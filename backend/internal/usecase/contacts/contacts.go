@@ -76,14 +76,14 @@ func (i *Interactor) SetEmitter(e SnapshotEmitter) { i.emit = e }
 func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int64, needCard bool) (domain.UserReal, error) {
 	var card domain.UserReal
 	built := false
-	// Правила приватности читаются ДО транзакции с замком: сбой SQL внутри
-	// транзакции переводит её в aborted, и «гасим фото и номер» стоило бы строки
-	// журнала. Правила замком курсора владельца не упорядочиваются: их смена —
-	// предмет f6-privacy, не этой строки.
-	rules := i.viewRules(ctx, ownerID, []int64{userID})
 	if i.emit != nil {
 		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
-			u, err := i.seenByOwner(ctx, ownerID, userID, rules)
+			// Правила читаются ВНУТРИ замка курсора владельца, а не до него: блок и
+			// смена last_seen пересчитывают статус отдельной строкой журнала
+			// (AnnounceUserTo / reannounce), и она встаёт в порядок замком. Правило,
+			// прочитанное до замка, могло бы устареть к моменту записи — снимок с
+			// большим pts затёр бы более свежий статус «давно» старым «недавно».
+			u, err := i.seenByOwner(ctx, ownerID, userID, i.viewRules(ctx, ownerID, []int64{userID}))
 			if err != nil {
 				return nil, err
 			}
@@ -97,7 +97,7 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	if built || !needCard {
 		return card, nil
 	}
-	return i.seenByOwner(ctx, ownerID, userID, rules)
+	return i.seenByOwner(ctx, ownerID, userID, i.viewRules(ctx, ownerID, []int64{userID}))
 }
 
 // viewRules — правила карточки `user` (фото, номер, статус) и присутствие для

@@ -491,24 +491,47 @@ describe('PeersManager — статус как поле карточки', () =>
     expect(ops).toEqual([])
   })
 
-  it('карточка без status не стирает известный статус; со status — заменяет', () => {
-    const mgr = newPeersManager({ rest: fakeRest([]).rest })
-    mgr.saveApiPeers({ users: [user(2, { status: online })] })
-
-    mgr.saveApiPeers({ users: [user(2, { first_name: 'Новое' })] })
-    expect(mgr.cachedPeer(2 as PeerId)).toMatchObject({ first_name: 'Новое', status: online })
-
-    mgr.saveApiPeers({ users: [user(2, { status: offline })] })
-    expect(mgr.cachedPeer(2 as PeerId)).toMatchObject({ status: offline })
+  // Равенство по СОДЕРЖИМОМУ: порядок ключей в объекте с сервера не должен
+  // рождать операцию.
+  it('setUserStatus: тот же статус с другим порядком ключей — без операции', async () => {
+    const { rest } = fakeRest([user(2, { status: { _: 'userStatusOffline', was_online: 5 } })])
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest, onPeerOps: (o) => ops.push(...o) })
+    await mgr.getUsers([2])
+    mgr.setUserStatus(2, { was_online: 5, _: 'userStatusOffline' })
+    expect(ops).toEqual([])
+    mgr.setUserStatus(2, { _: 'userStatusOffline', was_online: 6 })
+    expect(ops).toHaveLength(1)
   })
 
-  it('карточка без status не запускает присутствие', () => {
-    const statuses: unknown[] = []
-    const mgr = newPeersManager({ rest: fakeRest([]).rest, onUserStatus: (e) => statuses.push(e) })
+  // tweb `updateUsersStatuses`/`updateUserStatus` (appUsersManager.ts:990-1007).
+  it('degradeExpiredStatuses: истёкший онлайн → offline{was_online: expires}, живой и прочие не трогаем', () => {
+    const ops: PeerOp[] = []
+    const mgr = newPeersManager({ rest: fakeRest([]).rest, onPeerOps: (o) => ops.push(...o) })
+    mgr.saveApiPeers({ users: [
+      user(2, { status: { _: 'userStatusOnline', expires: 100 } }),
+      user(3, { status: { _: 'userStatusOnline', expires: 500 } }),
+      user(4, { status: offline }),
+      user(5),
+    ] })
+    ops.length = 0
+
+    mgr.degradeExpiredStatuses(200)
+
+    expect(mgr.cachedPeer(2 as PeerId)).toMatchObject({ status: { _: 'userStatusOffline', was_online: 100 } })
+    expect(mgr.cachedPeer(3 as PeerId)).toMatchObject({ status: { _: 'userStatusOnline', expires: 500 } })
+    expect(ops).toEqual([{ op: 'upsert', peers: [{ ...user(2), status: { _: 'userStatusOffline', was_online: 100 } }] }])
+    ops.length = 0
+    mgr.degradeExpiredStatuses(200) // повтор ничего не меняет
+    expect(ops).toEqual([])
+  })
+
+  // Отступление от оригинала убрано: у tweb `saveApiUser` заменяет карточку целиком.
+  it('карточка без status заменяет карточку целиком (как saveApiUser)', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
     mgr.saveApiPeers({ users: [user(2, { status: online })] })
-    statuses.length = 0
-    mgr.saveApiPeers({ users: [user(2)] })
-    expect(statuses).toEqual([])
+    mgr.saveApiPeers({ users: [user(2, { first_name: 'Новое' })] })
+    expect(mgr.cachedPeer(2 as PeerId)).toEqual(user(2, { first_name: 'Новое' }))
   })
 })
 

@@ -6,6 +6,7 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeUpdateLog — in-memory per-user update log (dense pts).
@@ -574,6 +575,58 @@ func TestAnnounceUser_RereadsRecordPerBatch(t *testing.T) {
 	for _, uid := range partners {
 		if len(log.payloads[uid]) != 1 {
 			t.Fatalf("партнёр %d получил %d строк", uid, len(log.payloads[uid]))
+		}
+	}
+}
+
+// statusPrivacy — PrivacyChecker с присутствием: online у всех, а у hiddenFrom
+// last_seen закрыт.
+type statusPrivacy struct{ hiddenFrom map[int64]bool }
+
+func (statusPrivacy) Check(context.Context, int64, int64, domain.PrivacyKey) (bool, error) {
+	return true, nil
+}
+
+func (p statusPrivacy) ViewRules(_ context.Context, viewer int64, ids []int64) domain.UserViewRules {
+	r := domain.UserViewRules{ViewerID: viewer, Photo: map[int64]bool{}, Phone: map[int64]bool{}, LastSeen: map[int64]bool{},
+		Status: func(int64) domain.UserStatus { return domain.NewUserStatusOnline(time.Now().Add(time.Minute)) }}
+	for _, id := range ids {
+		r.Photo[id], r.LastSeen[id] = true, !p.hiddenFrom[viewer]
+	}
+	return r
+}
+
+// Смена профиля: кадр и строка журнала несут статус автора глазами получателя.
+// Карточка без `status` стирала бы живое присутствие у каждого партнёра.
+func TestUserUpdate_CarriesStatusPerRecipient(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000004", "Боб", "")
+	log := newFakeUpdateLog()
+	pub := newFakeAuthPub()
+	i.SetUpdateLog(log)
+	i.SetPublisher(pub)
+	i.SetPrivacy(statusPrivacy{hiddenFrom: map[int64]bool{998: true}})
+	const friend, stranger int64 = 999, 998
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{friend, stranger}, nil })
+
+	if _, err := i.UpdateProfile(ctx, u.ID, ProfileInput{FirstName: "Боб2"}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64]string{friend: domain.UserStatusOnlineTag, stranger: domain.UserStatusRecentlyTag}
+	for uid, tag := range want {
+		var row struct {
+			User struct {
+				Status struct {
+					T string `json:"_"`
+				} `json:"status"`
+			} `json:"user"`
+		}
+		if err := json.Unmarshal(log.payloads[uid][0], &row); err != nil {
+			t.Fatal(err)
+		}
+		if row.User.Status.T != tag {
+			t.Fatalf("строка журнала %d: статус %q; want %q", uid, row.User.Status.T, tag)
 		}
 	}
 }

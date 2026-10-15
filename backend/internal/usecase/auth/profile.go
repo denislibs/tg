@@ -155,6 +155,13 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 	for _, uid := range recipients {
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
 			card := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid])
+			// Статус — глазами получателя (last_seen, блок, присутствие): тем же
+			// сборщиком, что у остальных витрин. Источника нет — поле не едет.
+			if i.privacy != nil {
+				cards := []domain.UserReal{card}
+				i.privacy.ViewRules(ctx, uid, []int64{u.ID}).Apply(cards)
+				card.Status = cards[0].Status
+			}
 			if uid == u.ID {
 				// Себе карточка с номером — как у tweb self (users.getUsers([inputUserSelf])):
 				// кадр заменяет карточку в кэше целиком, и без phone второе

@@ -1054,8 +1054,15 @@ export function createWorkerCore() {
     // synchronized — автомат витрины (Задача 3) переключает текст «Обновление…» на
     // время догона. Проводка проверена workerCore.connectionStatus.test.ts.
     onSyncStart: () => broadcast(RT.stateSynchronizing, null),
-    onSyncEnd: () => broadcast(RT.stateSynchronized, null),
+    onSyncEnd: () => {
+      broadcast(RT.stateSynchronized, null)
+      // tweb `state_synchronized` → `updateUsersStatuses` (`appUsersManager.ts:70`).
+      peers.degradeExpiredStatuses()
+    },
   })
+  // tweb `setInterval(this.updateUsersStatuses, 60000)` (`appUsersManager.ts:68`):
+  // истёкший онлайн карточки гасится даже без кадра offline.
+  setInterval(() => peers.degradeExpiredStatuses(), 60_000)
   // tweb `forceGetDifference` (:185-189): идущий догон не дублируется; новый —
   // сбрасывает придержанные кадры (tweb getDifference чистит pendingPtsUpdates).
   // Отказ глотаем: курсор не сдвинулся, следующий кадр с дырой или реконнект

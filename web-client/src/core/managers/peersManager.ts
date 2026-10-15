@@ -63,6 +63,17 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * `onPeerOps` опционален только ради юнит-тестов самого менеджера; в проде его
  * задаёт workerCore, и это покрыто отдельным пином — workerCore.test.ts.
  */
+/** Статусы равны по содержимому (`_`, `expires`/`was_online`, `by_me`); порядок ключей не важен. */
+function sameStatus(a: UserStatus | undefined, b: UserStatus): boolean {
+  if (!a || a._ !== b._) return false
+  if (a._ === 'userStatusOnline' && b._ === 'userStatusOnline') return a.expires === b.expires
+  if (a._ === 'userStatusOffline' && b._ === 'userStatusOffline') return a.was_online === b.was_online
+  if ('pFlags' in a || 'pFlags' in b) {
+    return !!(a as { pFlags?: { by_me?: true } }).pFlags?.by_me === !!(b as { pFlags?: { by_me?: true } }).pFlags?.by_me
+  }
+  return true
+}
+
 /**
  * `onUserStatus` — приёмник статуса из карточки: порт `saveUserStatus` внутри
  * `appUsersManager.saveApiUser` (tweb `appUsersManager.ts:700`). У оригинала
@@ -171,19 +182,6 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   }
 
   /**
-   * Карточка без `status` не стирает известный статус. У оригинала каждый
-   * `user` в ответе несёт статус (поля нет, только когда его вправду нет), и
-   * замена карточки целиком безопасна. Наши витрины его нет-нет да пропускают
-   * (карточка без `status` — «ничего не известно», а не «давно»), и замена
-   * целиком стирала бы живое присутствие, пришедшее кадром `updateUserStatus`
-   * (`setUserStatus`).
-   */
-  function keepKnownStatus(prev: User | Chat, next: User | Chat): User | Chat {
-    if (next._ !== 'user' || prev._ !== 'user' || next.status || !prev.status) return next
-    return { ...next, status: prev.status }
-  }
-
-  /**
    * Положить карточки в кэш. Возвращает подмножество `changed` — те, что
    * ЗАМЕНИЛИ уже лежавшие. Только на них зеркало и может разъехаться с
    * владельцем, поэтому объявлять надо ровно их.
@@ -215,7 +213,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
       }
       const key = peerKey(incoming)
       const prev = cache.get(key)
-      const peer = prev ? mergeApiChat(prev, keepKnownStatus(prev, incoming)) : incoming
+      const peer = prev ? mergeApiChat(prev, incoming) : incoming
       if (prev && same(prev, peer)) continue
       cache.set(key, peer)
       indexUsername(peer, prev)
@@ -401,10 +399,29 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   function setUserStatus(userId: number, status: UserStatus): void {
     const prev = cache.get(userId)
     if (!prev || prev._ !== 'user' || !status) return
-    if (JSON.stringify(prev.status) === JSON.stringify(status)) return
+    if (sameStatus(prev.status, status)) return
     const next: User = { ...prev, status }
     cache.set(userId, next)
     publish([next])
+  }
+
+  /**
+   * Истёкший онлайн → «был в сети» ровно в момент, до которого онлайн был
+   * подтверждён. Порт `appUsersManager.updateUsersStatuses` / `updateUserStatus`
+   * (`appUsersManager.ts:990-1007`): кадр offline может не доехать (вкладка
+   * спала, сокет рвался), и без этого карточка воркера держала бы «в сети»
+   * вечно. Зовётся таймером в 60 с и по окончании догона (`state_synchronized`,
+   * `:70`). Объявляет одну операцию на всех, у кого статус сменился.
+   */
+  function degradeExpiredStatuses(now = Math.floor(Date.now() / 1000)): void {
+    const changed: User[] = []
+    for (const [key, peer] of cache) {
+      if (peer._ !== 'user' || peer.status?._ !== 'userStatusOnline' || peer.status.expires >= now) continue
+      const next: User = { ...peer, status: { _: 'userStatusOffline', was_online: peer.status.expires } }
+      cache.set(key, next)
+      changed.push(next)
+    }
+    publish(changed)
   }
 
   /**
@@ -473,6 +490,6 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     return found
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, setUserStatus, cachedPeer, hydrateFromDisk, resolveUsername }
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, setUserStatus, degradeExpiredStatuses, cachedPeer, hydrateFromDisk, resolveUsername }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>
