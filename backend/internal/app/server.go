@@ -140,6 +140,7 @@ func registerServer(p serverParams) {
 	p.ChatUC.SetBoosts(pgadapter.NewBoostsRepo(p.Pool))
 	p.ChatUC.SetGiveaways(pgadapter.NewGiveawaysRepo(p.Pool))
 	p.ChatUC.SetPremiumRepo(pgadapter.NewPremiumRepo(p.Pool))
+	p.ChatUC.SetPremiumGiveaways(p.Cfg.DevPurchases)
 
 	// Предложка постов: участник предлагает пост, админ одобряет/отклоняет;
 	// одобренный публикуется каналным сообщением (отложенный — тикером ниже).

@@ -84,13 +84,17 @@ func (r *GiveawaysRepo) ParticipantIDs(ctx context.Context, id int64) ([]int64, 
 	return ids, rows.Err()
 }
 
-// Finish помечает розыгрыш завершённым и сохраняет победителей.
-func (r *GiveawaysRepo) Finish(ctx context.Context, id int64, winnerIDs []int64) error {
+// Finish закрывает АКТИВНЫЙ розыгрыш и сохраняет победителей. claimed=false —
+// строка уже закрыта (условный UPDATE: из параллельных читателей выигрывает один).
+func (r *GiveawaysRepo) Finish(ctx context.Context, id int64, winnerIDs []int64) (bool, error) {
 	b, err := json.Marshal(winnerIDs)
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = querier(ctx, r.pool).Exec(ctx,
-		`UPDATE giveaways SET status='finished', winner_ids=$2 WHERE id=$1`, id, string(b))
-	return err
+	tag, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE giveaways SET status='finished', winner_ids=$2 WHERE id=$1 AND status='active'`, id, string(b))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }

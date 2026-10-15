@@ -581,6 +581,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		msg.Checklist = preChecklist
 		msg.Giveaway = preGiveaway
 		msg.Gift = preGift
+		if msg.Giveaway == nil && msg.GiveawayID != nil && i.giveaways != nil {
+			// розыгрыш создан в этой же транзакции (prepare) — до неё id не было
+			if info, e := i.giveawayInfoFor(ctx, *msg.GiveawayID, 0); e == nil {
+				msg.Giveaway = &info
+			}
+		}
 		if msg.Gift == nil && msg.GiftID != nil && i.stars != nil {
 			// подарок выдан в этой же транзакции (prepare) — до неё id не было
 			if info, e := i.stars.GiftInfo(ctx, *msg.GiftID, 0); e == nil {

@@ -1181,8 +1181,10 @@ type GiveawayRepo interface {
 	IsParticipant(ctx context.Context, giveawayID, userID int64) (bool, error)
 	ParticipantCount(ctx context.Context, id int64) (int, error)
 	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)
-	// Finish помечает розыгрыш завершённым и сохраняет победителей.
-	Finish(ctx context.Context, id int64, winnerIDs []int64) error
+	// Finish помечает активный розыгрыш завершённым и сохраняет победителей.
+	// claimed=false — розыгрыш уже закрыт (параллельным читателем): призы
+	// выдаёт только тот, кто получил true.
+	Finish(ctx context.Context, id int64, winnerIDs []int64) (claimed bool, err error)
 }
 
 // SuggestedPostRepo хранит предложенные в канал посты (таблица suggested_posts).
