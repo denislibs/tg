@@ -12,6 +12,8 @@ type keyRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*tokenBucket
 	idle    time.Duration // через сколько простоя бакет можно выбросить
+	// now — часы лимитера; в тестах подменяются, чтобы «через минуту» не ждать.
+	now func() time.Time
 }
 
 type tokenBucket struct {
@@ -24,7 +26,7 @@ func newKeyRateLimiter() *keyRateLimiter { return newKeyRateLimiterIdle(limiterI
 // newKeyRateLimiterIdle — лимитер со своим сроком простоя ведра: для ключей,
 // которых заводят много и случайно (QR-вход), он короче общего.
 func newKeyRateLimiterIdle(idle time.Duration) *keyRateLimiter {
-	return &keyRateLimiter{buckets: map[string]*tokenBucket{}, idle: idle}
+	return &keyRateLimiter{buckets: map[string]*tokenBucket{}, idle: idle, now: time.Now}
 }
 
 // allow пропускает запрос по ключу с заданной скоростью (rps) и «ведром» (burst).
@@ -38,7 +40,7 @@ func (l *keyRateLimiter) allow(key string, rps, burst float64) bool {
 func (l *keyRateLimiter) allowWait(key string, rps, burst float64) (ok bool, waitSec int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := time.Now()
+	now := l.now()
 	b := l.buckets[key]
 	if b == nil {
 		l.sweep(now)

@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -11,9 +12,44 @@ import (
 
 // PasswordHandler — облачный пароль (Two-Step Verification):
 // GET/POST/DELETE /me/password.
-type PasswordHandler struct{ uc *usecaseauth.Interactor }
+//
+// Ручки, проверяющие пароль (Set/Verify/Remove), ограничены частотой ДО
+// сравнения — иначе с украденной сессией пароль подбирается со скоростью
+// сервера (Б-4). Лимитер в памяти процесса — допущение одного экземпляра,
+// как у AuthHandler; растущее ожидание и общий счётчик — М-1 (М1-5).
+type PasswordHandler struct {
+	uc      *usecaseauth.Interactor
+	limiter *keyRateLimiter
+}
 
-func NewPasswordHandler(uc *usecaseauth.Interactor) *PasswordHandler { return &PasswordHandler{uc: uc} }
+func NewPasswordHandler(uc *usecaseauth.Interactor) *PasswordHandler {
+	return &PasswordHandler{uc: uc, limiter: newKeyRateLimiter()}
+}
+
+// Ведра проверки пароля: сначала IP (как `pw-ip:` у check_password — 0.2 rps,
+// burst 5), затем пара «пользователь, сессия»: 5 попыток, дальше одна в минуту.
+// Ключ по сессии, а не по пользователю: сценарий Б-4 — украденная сессия, и
+// укравший, выбирая общее ведро пользователя, запирал бы владельцу смену
+// пароля из его собственной сессии.
+const (
+	pwUserRPS   = 1.0 / 60
+	pwUserBurst = 5
+)
+
+// allowCheck — пускает ли проверку пароля; при отказе уже написан 420
+// FLOOD_WAIT_<N> (tweb ждёт N секунд и повторяет, apiManager.ts:759-791).
+func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord) bool {
+	if ok, wait := h.limiter.allowWait("mepw-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
+		return false
+	}
+	deviceID, _ := DeviceIDFromContext(r.Context())
+	if ok, wait := h.limiter.allowWait(fmt.Sprintf("mepw-user:%d:%d", user.ID, deviceID), pwUserRPS, pwUserBurst); !ok {
+		writeFloodWait(w, wait)
+		return false
+	}
+	return true
+}
 
 // State — GET /me/password: {enabled, hint, email(маскированный)}.
 func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +65,9 @@ func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 // Set — POST /me/password {current_password?, new_password, hint, email}.
 func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	if !h.allowCheck(w, r, user) {
+		return
+	}
 	var b struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
@@ -55,6 +94,9 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 // перед входом в настройки 2FA.
 func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	if !h.allowCheck(w, r, user) {
+		return
+	}
 	var b struct {
 		Password string `json:"password"`
 	}
@@ -77,6 +119,9 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 // Remove — DELETE /me/password {current_password}.
 func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
+	if !h.allowCheck(w, r, user) {
+		return
+	}
 	var b struct {
 		CurrentPassword string `json:"current_password"`
 	}
