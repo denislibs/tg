@@ -125,4 +125,16 @@ describe('refetchSubscriber: удаление закреплённого сбр�
     expect(useAppStateStore.getState().hiddenPinnedMessages).toEqual({ [PEER]: 5 })
     expect(listener).toHaveBeenCalledWith({ peerId: PEER, pinned: false })
   })
+
+  it('«Открепить все» воркера (peer_unpinned_all): сброс кэша закрепов и peer_pinned_messages {unpinAll}, скрытие плашки цело', async () => {
+    listPins.mockResolvedValue(pinned(5, 7))
+    await getPinnedMessage(managers as never, PEER)
+    setAppState('hiddenPinnedMessages', { [PEER]: 7 })
+
+    rootScope.dispatchEventSingle('peer_unpinned_all', { peerId: PEER, threadId: 77 })
+
+    expect(getPinnedMessageByMid(PEER, 5)).toBeUndefined()
+    expect(listener).toHaveBeenCalledWith({ peerId: PEER, threadId: 77, unpinAll: true })
+    expect(useAppStateStore.getState().hiddenPinnedMessages[PEER]).toBe(7)
+  })
 })

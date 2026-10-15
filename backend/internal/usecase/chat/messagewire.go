@@ -103,7 +103,7 @@ func (i *Interactor) messagesWire(
 	if err != nil {
 		return nil, err
 	}
-	pinned, err := i.pinnedOf(ctx, ext)
+	pinned, err := i.pinnedOf(ctx, viewerID, ext)
 	if err != nil {
 		return nil, err
 	}
@@ -167,9 +167,10 @@ func (i *Interactor) viewerMentions(ctx context.Context, viewerID int64, msgs []
 	return i.chats.ViewerMentions(ctx, viewerID, ids)
 }
 
-// pinnedOf — какие сообщения пачки закреплены (pinned_messages), одним
-// запросом: ключ строки -> закреплено.
-func (i *Interactor) pinnedOf(ctx context.Context, msgs []domain.Message) (map[int64]bool, error) {
+// pinnedOf — какие сообщения пачки закреплены глазами viewerID (общий закреп
+// или его «только у себя»), одним запросом: ключ строки -> закреплено. viewerID
+// == 0 — зрителя нет (тело кадра одно на всех): только общие закрепы.
+func (i *Interactor) pinnedOf(ctx context.Context, viewerID int64, msgs []domain.Message) (map[int64]bool, error) {
 	if i.chats == nil || len(msgs) == 0 {
 		return nil, nil
 	}
@@ -182,7 +183,7 @@ func (i *Interactor) pinnedOf(ctx context.Context, msgs []domain.Message) (map[i
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return i.chats.PinnedIDs(ctx, ids)
+	return i.chats.PinnedIDs(ctx, viewerID, ids)
 }
 
 // repliesOf — тред сообщения из карты пачки. «Треда нет» — nil, а не пустой

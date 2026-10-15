@@ -108,7 +108,7 @@ func TestCounters_PinnedSkipsDeleted(t *testing.T) {
 	m2 := insertMsg(t, NewMessagesRepo(pool), chatID, a, "text", "новый закреп")
 	_ = chats.PinMessage(ctx, chatID, m1.ID, a)
 	_ = chats.PinMessage(ctx, chatID, m2.ID, a)
-	if p, _ := chats.PinnedIDs(ctx, []int64{m1.ID, m2.ID}); !p[m1.ID] || !p[m2.ID] {
+	if p, _ := chats.PinnedIDs(ctx, a, []int64{m1.ID, m2.ID}); !p[m1.ID] || !p[m2.ID] {
 		t.Fatalf("PinnedIDs = %v", p)
 	}
 	_, _ = msgs.SoftDelete(ctx, m2.ID)
