@@ -273,12 +273,77 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     expect(exportLoginToken.mock.calls.length).toBe(before)
   })
 
+  // QR подтвердили с телефона, пока открыт системный диалог WebAuthn: finish
+  // не зовём — второй вход выпустил бы лишнюю серверную сессию.
+  it('QR подтверждён, пока открыт диалог ключа: finish не зовётся', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    let release!: (v: unknown) => void
+    vi.mocked(webauthn.getPasskeyAssertion).mockReturnValue(new Promise((r) => { release = r }) as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn()
+    mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(webauthn.getPasskeyAssertion).toHaveBeenCalled())
+    rootScope.dispatchEventSingle(RT.loggedIn, { userId: 3 })
+    release({})
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(passkeyLoginFinish).not.toHaveBeenCalled()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
+  // Сбой опроса QR гасит `stopped`, но не значит «вход состоялся»: ключ доступа
+  // остаётся запасным путём, finish обязан вызываться.
+  it('после сбоя опроса QR вход ключом всё равно доходит до finish', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
+    const exportLoginToken = vi.fn().mockRejectedValue(new Error('boom'))
+    const { toIm } = mount({ exportLoginToken, passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(passkeyLoginFinish).toHaveBeenCalled())
+    await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
+  it('неожиданный исход (signUpRequired): тост, toIm не зван, цикл не остановлен', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ signUpRequired: true, signUpToken: 'x' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
   it('вход ключом доступа останавливает цикл (аналог user_auth у tweb)', async () => {
     const webauthn = await import('@core/webauthnBrowser')
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
     vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
-    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: {} })
-    const passkeyLoginFinish = vi.fn().mockResolvedValue({})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{"challenge":"AA"}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
     const { exportLoginToken, toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
     await vi.advanceTimersByTimeAsync(0)
     const before = exportLoginToken.mock.calls.length
@@ -286,6 +351,30 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     const buttons = [...host!.querySelectorAll('button')]
     buttons[buttons.length - 1].click()
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(exportLoginToken.mock.calls.length).toBe(before)
+    expect(webauthn.getPasskeyAssertion).toHaveBeenCalledWith({ publicKey: { challenge: 'AA' } })
+
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
+  // Б-2: облачный пароль — шаг пароля (tweb passkeyLoginButton.tsx:69-71), цикл
+  // экспорта больше не нужен, в мессенджер не пускаем.
+  it('вход ключом при облачном пароле: карточка пароля, цикл остановлен, toIm не зван', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ passwordNeeded: true, passwordToken: 't', hint: 'h' })
+    const { exportLoginToken, toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+    const before = exportLoginToken.mock.calls.length
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'password', payload: { token: 't', hint: 'h' } }))
+    expect(toIm).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(30_000)
     expect(exportLoginToken.mock.calls.length).toBe(before)

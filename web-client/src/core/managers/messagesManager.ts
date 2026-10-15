@@ -32,7 +32,7 @@ import canEditMessage from '../messages/canEditMessage'
 import { isForum } from '../peers/predicates'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
 import getUnreadReactions from '../messages/getUnreadReactions'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, ReactionEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
 import { editWebPageWireFields, type WebPageSendOptions } from './messages/webPage'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
@@ -222,7 +222,7 @@ export interface MessagesDeps {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload?: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping?: (peerId: number, action: SendMessageAction) => void
+  sendTyping?: (peerId: number, action: SendMessageAction, threadId?: number | null) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). */
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
   /** Сообщения, УДАЛЁННЫЕ из SSOT, — снимком до эвикции. Порт связки tweb
@@ -1801,33 +1801,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return opWindowsFor(peerId, mapped.id).map((key): MessageOp => ({ op: 'patch', key, msgId: mapped.id, fields }))
     },
 
-    // Live-обновление координат гео-трансляции → SSOT + операции по всем окнам.
-    //
-    // Кадр эфемерный (без pts, `transportFrames.ts:35` — предмет не портирован,
-    // #52), поэтому воронку он не проходит и в реестре CACHE его нет. Владельца
-    // это не отменяет: `workerCore.ts::onFrame` зовёт cacheGeoLive до
-    // PASS_THROUGH-трансляции и объявляет вернувшиеся операции — тем же приёмом,
-    // каким там уже применяются эфемерные `message_ack`/`message_error`.
-    // Раньше этот метод не вызывался ниоткуда (мёртвый код), а окно правил сырой
-    // кадр на витрине — то есть мимо операций и мимо зеркала.
-    cacheGeoLive(evt: GeoLiveUpdateEvt): MessageOp[] {
-      const id = generateMessageId(evt.id)
-      // Координаты приезжают ТЕМ ЖЕ конструктором, что и в сообщении, — кладём
-      // вложение целиком. Время обновления едет рядом (edit_date) и ложится в
-      // то же поле, что и у обычной правки: своего времени у гео в схеме нет.
-      const media = saveMessageMedia(evt.media)
-      let fields: MessageFields | null = null
-      patchMsg(evt.peer_id, (m) => m.id === id,
-        (m) => {
-          if (m._ !== 'message') return m
-          fields = { media, edit_date: evt.edit_date }
-          return { ...m, ...fields }
-        })
-      const f = fields
-      if (!f) return []
-      return opWindowsFor(evt.peer_id, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields: f }))
-    },
-
     // Догоняющее серверное превью ссылки → SSOT. Возвращает MessageOp[] — по одной
     // операции 'patch' на каждое окно чата, где сообщение видно (Stage 1B.3, Task 3).
     //
@@ -2072,17 +2045,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       if (sa.first.isEnd(SliceEnd.Bottom)) appendNewest(hkey(peerId), sa, m.id)
       return m
     },
-
-    // Live location: обновить координаты (или остановить трансляцию stopped=true).
-    async updateGeoLive(peerId: number, msgId: number, lat: number, lng: number, opts?: { heading?: number; stopped?: boolean }): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/geo_live`, {
-        lat, lng, heading: opts?.heading ?? null, stopped: opts?.stopped ?? false,
-      })
-      const m = await mapNet(r)
-      if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
-      return m
-    },
-
   }
   return api
 }

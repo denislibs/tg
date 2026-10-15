@@ -18,7 +18,7 @@ import { GENERAL_TOPIC_ID, generateMessageId } from '@core/history/messageId'
 import { RT } from '@core/realtime/events'
 import rootScope from '@lib/rootScope'
 import type { Dialog } from '@core/models'
-import { useChatsStore } from '@stores/chatsStore'
+import { getTypingsKey, useChatsStore } from '@stores/chatsStore'
 import appImManager from '@lib/appImManager'
 import appNavigationController from '@core/navigation/appNavigationController'
 import appSidebarLeft from '@components/sidebarLeft'
@@ -448,5 +448,48 @@ describe('живые события тем (Б-54)', () => {
     await openForum()
     topicOps([{ op: 'drop', peerId: FORUM_ID, id: generateMessageId(1) }])
     await vi.waitFor(() => expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([generateMessageId(2)]))
+  })
+})
+
+// Ф-6 f6-typing (VA2-05): «печатает» в теме — tweb forumTopics.ts:28-40,
+// base.ts:36-42. Набор лежит под ключом `peerId_threadId`; строка темы читает
+// только его, ключ чата и других тем её не задевают.
+describe('«печатает» в строке темы', () => {
+  const typingEntry = { 1: { action: { _: 'sendMessageTypingAction' as const }, at: Date.now() } }
+  const rowOf = (id: number) => topicRows().find((r) => r.dataset.threadId === '' + generateMessageId(id))!
+  const typingIn = (id: number) => rowOf(id).querySelector('.peer-typing-container .peer-typing-text')
+
+  it('печать в теме 1 видна строке темы 1 и не видна теме 2; по концу набора возвращается последнее сообщение', async () => {
+    await start([topic(1), topic(2)])
+    await openForum()
+
+    useChatsStore.setState({ typing: { [getTypingsKey(FORUM_ID, generateMessageId(1))]: typingEntry } })
+    await vi.waitFor(() => { flushFrames(); expect(typingIn(1)).not.toBeNull() })
+    expect(rowOf(1).querySelector('.dialog-subtitle .user-typing, .user-typing')).not.toBeNull()
+    expect(typingIn(2)).toBeNull()
+
+    useChatsStore.setState({ typing: {} })
+    await vi.waitFor(() => { flushFrames(); expect(typingIn(1)).toBeNull() })
+    expect(rowOf(1).textContent).toContain('текст 1')
+  })
+
+  it('печать чата (ключ без темы) строк тем не трогает', async () => {
+    await start([topic(1), topic(2)])
+    await openForum()
+
+    useChatsStore.setState({ typing: { [getTypingsKey(FORUM_ID)]: typingEntry } })
+    await settle()
+    flushFrames()
+    expect(typingIn(1)).toBeNull()
+    expect(typingIn(2)).toBeNull()
+  })
+
+  it('строка темы, собранная во время набора, рисует его сразу (без события)', async () => {
+    useChatsStore.setState({ typing: { [getTypingsKey(FORUM_ID, generateMessageId(2))]: typingEntry } })
+    await start([topic(1), topic(2)])
+    await openForum()
+
+    await vi.waitFor(() => { flushFrames(); expect(typingIn(2)).not.toBeNull() })
+    expect(typingIn(1)).toBeNull()
   })
 })

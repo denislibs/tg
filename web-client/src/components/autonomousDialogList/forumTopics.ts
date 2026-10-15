@@ -20,9 +20,10 @@
 //  3. `dialog_notify_settings` САМОГО форума (`:66-79`) — подписка на зеркала:
 //     мьют форума (диалог в `chatsStore`) или настройки по типам (`notifyStore`)
 //     пересчитывают бейджи всех строк.
-//  4. `peer_typings` с `threadId` (`:24-38`) — «печатает» в теме у нас не едет
-//     номером темы. `dialog_draft` темы (`:93-104`) едет операцией `update`
-//     (`forumTopicsStorage.applyDraft`): ветки `drop` у темы нет.
+//  4. `peer_typings` с `threadId` (`:28-40`) — подписка на набор в зеркале
+//     (`chatsStore.typing`, ключ `peerId_threadId`): сам набор тем ведёт проектор
+//     (`client/realtime/storeProjection.ts`). `dialog_draft` темы (`:93-104`) едет
+//     операцией `update` (`forumTopicsStorage.applyDraft`): ветки `drop` у темы нет.
 //  5. `getDialogFromElement` — его потребитель, меню строки темы, не портирован
 //     (бэклог Б-53); `placeholderOptions` (`:22-26`) — наш `DialogsPlaceholder`
 //     параметров не берёт (расхождение 4 базы).
@@ -35,7 +36,7 @@ import { cachedChat } from '@core/peerCache'
 import { RT } from '@core/realtime/events'
 import rootScope from '@lib/rootScope'
 import { getDialog, setUnreadMessagesN } from '@lib/appDialogsManager'
-import { useChatsStore } from '@stores/chatsStore'
+import { getTypingsKey, useChatsStore } from '@stores/chatsStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { AutonomousDialogListBase, type BaseConstructorArgs } from '@components/autonomousDialogList/base'
 
@@ -81,6 +82,24 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
       for(const op of ops) this.onTopicOp(op)
     })
 
+    // `peer_typings` с `threadId` (`:28-40`) — расхождение 4: строка темы живёт
+    // набором ПОД СВОИМ ключом; записи чата и других тем её не касаются.
+    const typingPrefix = getTypingsKey(this.peerId) + '_'
+    const typingUnsubscribe = useChatsStore.subscribe((state, prev) => {
+      if(state.typing === prev.typing) return
+      const keys = new Set([...Object.keys(prev.typing), ...Object.keys(state.typing)])
+      keys.forEach((key) => {
+        if(!key.startsWith(typingPrefix) || prev.typing[key] === state.typing[key]) return
+        const topic = this.topics.get(+key.slice(typingPrefix.length))
+        if(!topic) return
+        if(state.typing[key] && Object.keys(state.typing[key]).length) {
+          this.setTyping(topic)
+        } else {
+          this.unsetTyping(topic)
+        }
+      })
+    })
+
     // `dialog_notify_settings` форума (`:66-79`) — расхождение 3
     const notifyUnsubscribe = useNotifyStore.subscribe((state, prev) => {
       if(state.settings !== prev.settings) this.updateAllUnread()
@@ -92,6 +111,7 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
       if(dialog?.notify_settings !== prevDialog?.notify_settings) this.updateAllUnread()
     })
     this.middlewareHelper.get().onDestroy(() => {
+      typingUnsubscribe()
       notifyUnsubscribe()
       chatsUnsubscribe()
     })

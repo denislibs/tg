@@ -1,3 +1,6 @@
+# ТОЛЬКО ДЛЯ РАЗРАБОТКИ И СТЕНДА, не для прода: статичный OTP, дефолтные секреты
+# и DEV_PURCHASES=true (звёзды и Premium без оплаты). В проде задайте
+# APP_ENV=production и свои секреты - сервер с дефолтными значениями не стартует.
 services:
   postgres:
     image: postgres:16-alpine

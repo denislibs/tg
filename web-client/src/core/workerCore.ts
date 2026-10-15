@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt, type PresenceEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -277,7 +277,8 @@ export function createWorkerCore() {
     send: (a) => conn.sendMessage(a),
     upload: (a) => media.upload(a),
     cancelUpload: (id) => { void media.cancelUpload(id) },
-    sendTyping: (peerId, action) => conn.sendTyping(peerId, action),
+    // тред печати остаётся только у форума — tweb `setTyping` (:13873-13875)
+    sendTyping: (peerId, action, threadId) => conn.sendTyping(peerId, action, threadId && isForumPeer(peerId) ? threadId : undefined),
     uploadProgress: (id, loaded, total, done) => broadcast('media:upload_progress', { id, loaded, total, done }),
     // Пиры, приехавшие ПОПУТНО со списком сообщений (`users` контейнера
     // messages.Messages), — тем же приёмником, что у диалогов и звонков.
@@ -468,6 +469,8 @@ export function createWorkerCore() {
     // `contacts` объявлен ниже — стрелка дёргает его лениво.
     onContactToggle: (userId, isContact, wasContact) => contacts.onContactUpdated(userId, isContact, wasContact),
   })
+  // Пир-форум ли — тред печати (tweb `setTyping`) и прочтение тем.
+  const isForumPeer = (peerId: PeerId) => isForum(peers.cachedPeer(peerId) as Chat | undefined)
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
   // ПОСЛЕ успешного REST-ответа, см. groupsManager.ts::setMute/setPin/setArchive.
@@ -710,6 +713,10 @@ export function createWorkerCore() {
     // не заводить исключение в общей проводке (потребителей у него на витрине
     // сейчас нет).
     updateUserSnapshot:             (p) => peers.applyUserUpdate((p as UserUpdateEvt).user),
+    // Присутствие — поле карточки (tweb `appUsersManager.ts:90-102`): владелец
+    // карточек правит `status`, а стор присутствия получает тот же кадр
+    // широковещательно ниже. Карточки нет — выход.
+    updateUserStatus:               (p) => peers.setUserStatus((p as PresenceEvt).user_id, (p as PresenceEvt).status),
   }
 
   // Отражение апдейта в SSOT + broadcast (без арифметики pts — её делает
@@ -1050,8 +1057,15 @@ export function createWorkerCore() {
     // synchronized — автомат витрины (Задача 3) переключает текст «Обновление…» на
     // время догона. Проводка проверена workerCore.connectionStatus.test.ts.
     onSyncStart: () => broadcast(RT.stateSynchronizing, null),
-    onSyncEnd: () => broadcast(RT.stateSynchronized, null),
+    onSyncEnd: () => {
+      broadcast(RT.stateSynchronized, null)
+      // tweb `state_synchronized` → `updateUsersStatuses` (`appUsersManager.ts:83`).
+      peers.degradeExpiredStatuses()
+    },
   })
+  // tweb `setInterval(this.updateUsersStatuses, 60000)` (`appUsersManager.ts:81`):
+  // истёкший онлайн карточки гасится даже без кадра offline.
+  setInterval(() => peers.degradeExpiredStatuses(), 60_000)
   // tweb `forceGetDifference` (:185-189): идущий догон не дублируется; новый —
   // сбрасывает придержанные кадры (tweb getDifference чистит pendingPtsUpdates).
   // Отказ глотаем: курсор не сдвинулся, следующий кадр с дырой или реконнект
@@ -1163,18 +1177,6 @@ export function createWorkerCore() {
           : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id, (payload as MessageErrorEvt).reason)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
-      // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без
-      // pts, `transportFrames.ts:35`, предмет не портирован #52), поэтому в
-      // воронку и в реестр CACHE не попадает. Владельца это не отменяет:
-      // координаты живут в сообщении, а сообщением владеет messages —
-      // применяем РОВНО ОДИН РАЗ здесь и объявляем операцией. Прежде окно правил
-      // сырой кадр на витрине (storeProjection → applyGeoLive), то есть мимо
-      // операций и мимо зеркала, а `messages.cacheGeoLive` не звался ниоткуда.
-      // return НЕТ по той же причине, что и выше: сырой кадр летит дальше.
-      if (type === 'geo_live_update') {
-        const ops = messages.cacheGeoLive(payload as GeoLiveUpdateEvt)
-        if (ops.length) broadcast(RT.messageOp, { ops })
-      }
       // Сообщение личного чата: возможна E2E-расшифровка enc_body перед воронкой.
       // Пост канала сюда не доходит — он ушёл в канальную воронку выше, и
       // шифртекста у него не бывает (канал это публичный broadcast).
@@ -1275,7 +1277,10 @@ export function createWorkerCore() {
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
   // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
   // питает pull-снимок для позднего подписчика.
-  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads })
+  const realtime = newRealtime({
+    conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads,
+    isForumPeer,
+  })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

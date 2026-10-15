@@ -1,7 +1,7 @@
 // src/core/managers/peersManager.ts
 import { HttpError, type RestClient } from '../net/restClient'
 import { saveUsers as persistUsers, loadUsers, saveChats as persistChats, loadChats } from '../store/persist'
-import { peerKey, type Channel, type Chat, type User, type UserReal } from '../peers/peer'
+import { peerKey, type Channel, type Chat, type User, type UserReal, type UserStatus } from '../peers/peer'
 import { getPeerId, isUser, toUserId, type Peer } from '../peers/peerId'
 import type { PresenceEvt } from '../realtime/events'
 import type { InputMedia } from '@layer'
@@ -30,6 +30,17 @@ export type { Chat, User, UserReal }
 // Массив, а не по одной карточке, чтобы ответ на пачку ids доехал одним кадром
 // и лёг в зеркало одним пробуждением подписчиков.
 export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
+
+/** Статусы равны по содержимому (`_`, `expires`/`was_online`, `by_me`); порядок ключей не важен. */
+function sameStatus(a: UserStatus | undefined, b: UserStatus): boolean {
+  if (!a || a._ !== b._) return false
+  if (a._ === 'userStatusOnline' && b._ === 'userStatusOnline') return a.expires === b.expires
+  if (a._ === 'userStatusOffline' && b._ === 'userStatusOffline') return a.was_online === b.was_online
+  if ('pFlags' in a || 'pFlags' in b) {
+    return !!(a as { pFlags?: { by_me?: true } }).pFlags?.by_me === !!(b as { pFlags?: { by_me?: true } }).pFlags?.by_me
+  }
+  return true
+}
 
 /**
  * Владелец карточек пиров. Второго вывода нет: витрина (`core/peerCache.ts`) —
@@ -374,6 +385,47 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
   }
 
   /**
+   * Кадр `updateUserStatus` — порт обработчика `appUsersManager.ts:90-102`:
+   * статус известной карточки переписывается на пришедший (карточки нет —
+   * выход, `:92-95`). Статус — ПОЛЕ карточки, поэтому всё, что рисует подпись из
+   * кэша воркера (`appSelectPeers.wrapSubtitle`, `sortedUserList`,
+   * `appSearchSuper`), видит живое присутствие; стор присутствия
+   * (`chatsStore.presence`, шапка чата и истечение онлайна) получает тот же
+   * кадр отдельным путём.
+   *
+   * Объявляется операцией — зеркало главного потока (`peerCache`) держит ту же
+   * карточку. На диск не пишется: присутствие меняется чаще, чем стоит писать
+   * (персист карточки случается на ответах, которые её приносят).
+   */
+  function setUserStatus(userId: number, status: UserStatus): void {
+    const prev = cache.get(userId)
+    if (!prev || prev._ !== 'user' || !status) return
+    if (sameStatus(prev.status, status)) return
+    const next: User = { ...prev, status }
+    cache.set(userId, next)
+    publish([next])
+  }
+
+  /**
+   * Истёкший онлайн → «был в сети» ровно в момент, до которого онлайн был
+   * подтверждён. Порт `appUsersManager.updateUsersStatuses` / `updateUserStatus`
+   * (`appUsersManager.ts:990-1007`): кадр offline может не доехать (вкладка
+   * спала, сокет рвался), и без этого карточка воркера держала бы «в сети»
+   * вечно. Зовётся таймером в 60 с и по окончании догона (`state_synchronized`,
+   * `:70`). Объявляет одну операцию на всех, у кого статус сменился.
+   */
+  function degradeExpiredStatuses(now = Math.floor(Date.now() / 1000)): void {
+    const changed: User[] = []
+    for (const [key, peer] of cache) {
+      if (peer._ !== 'user' || peer.status?._ !== 'userStatusOnline' || peer.status.expires >= now) continue
+      const next: User = { ...peer, status: { _: 'userStatusOffline', was_online: peer.status.expires } }
+      cache.set(key, next)
+      changed.push(next)
+    }
+    publish(changed)
+  }
+
+  /**
    * Синхронное чтение кэша ВНУТРИ воркера — порт `appPeersManager.getPeer`
    * (`:87-91`). Нужно владельцу диалогов: вид чата больше не приезжает строкой
    * (решение Р8), и правило папок «группы/каналы» задаёт вопрос конструктору
@@ -461,6 +513,6 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     }
   }
 
-  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, cachedPeer, hydrateFromDisk, resolveUsername, getContactMediaInput }
+  return { getPeers, getUsers, saveApiPeers, fillMirror, applyUserUpdate, setUserStatus, degradeExpiredStatuses, cachedPeer, hydrateFromDisk, resolveUsername, getContactMediaInput }
 }
 export type PeersManager = ReturnType<typeof newPeersManager>

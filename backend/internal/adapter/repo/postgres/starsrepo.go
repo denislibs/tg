@@ -30,17 +30,27 @@ func (r *StarsRepo) Balance(ctx context.Context, userID int64) (int64, error) {
 }
 
 // AddBalance атомарно меняет баланс на delta (upsert). Недостаток средств при
-// списании → domain.ErrForbidden (баланс не уходит в минус).
+// списании → domain.ErrForbidden (баланс не уходит в минус). Списание у
+// пользователя без строки баланса - тоже недостаток: вставка новой строки с
+// отрицательным значением не проходит (иначе первое списание создавало бы долг).
 func (r *StarsRepo) AddBalance(ctx context.Context, userID, delta int64) (int64, error) {
 	var bal int64
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO user_stars (user_id, balance) VALUES ($1, $2)
-		 ON CONFLICT (user_id) DO UPDATE SET balance = user_stars.balance + $2
-		 WHERE user_stars.balance + $2 >= 0
-		 RETURNING balance`,
-		userID, delta).Scan(&bal)
+	var err error
+	if delta < 0 {
+		// Только UPDATE существующей строки: upsert вставил бы новую строку с
+		// отрицательным значением.
+		err = querier(ctx, r.pool).QueryRow(ctx,
+			`UPDATE user_stars SET balance = balance + $2
+			  WHERE user_id = $1 AND balance + $2 >= 0
+			  RETURNING balance`, userID, delta).Scan(&bal)
+	} else {
+		err = querier(ctx, r.pool).QueryRow(ctx,
+			`INSERT INTO user_stars (user_id, balance) VALUES ($1, $2)
+			 ON CONFLICT (user_id) DO UPDATE SET balance = user_stars.balance + $2
+			 RETURNING balance`, userID, delta).Scan(&bal)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		// конфликт был, но WHERE не прошёл (ушли бы в минус) — недостаточно звёзд
+		// строки нет или баланс ушёл бы в минус — недостаточно звёзд
 		return 0, domain.ErrForbidden
 	}
 	return bal, err

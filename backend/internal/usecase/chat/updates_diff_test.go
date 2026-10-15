@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -343,5 +344,64 @@ func TestUpdatesDifference_DropsStaleNewStickerSet(t *testing.T) {
 	in.SetStickerSetInstalled(func(context.Context, int64, int64) (bool, error) { return false, errors.New("db") })
 	if got := len(diffReal(t, in, user, 0).OtherUpdates); got != 2 {
 		t.Fatalf("при сбое проверки: other = %d, want 2", got)
+	}
+}
+
+// liveStatusPrivacy — ViewUsers отдаёт ТЕКУЩИЙ статус из карты.
+type liveStatusPrivacy struct {
+	stubPrivacy
+	now map[int64]domain.UserStatus
+}
+
+func (p liveStatusPrivacy) ViewUsers(_ context.Context, _ int64, users []domain.UserReal) {
+	for i := range users {
+		if st, ok := p.now[users[i].ID]; ok {
+			users[i].Status = st
+		}
+	}
+}
+
+// P0 №2: строка updateUserSnapshot замораживает статус на момент записи, а
+// разница выдаётся позже — статус заменяется текущим (у оригинала `users`
+// ответа собирается в момент запроса). Повторный запрос той же строки
+// (потерянный ответ, повтор клиента) отдаёт то же текущее значение; остальные
+// поля строки остаются как записаны.
+func TestUpdatesDifference_SnapshotRowCarriesCurrentStatus(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const viewer, contact int64 = 2, 7
+	frozen := `{"_":"updateUserSnapshot","user":{"_":"user","id":7,"first_name":"Егор","status":{"_":"userStatusOnline","expires":100}}}`
+	if _, err := in.updates.AppendUpdate(ctx, viewer, 1, 1, "user_update", json.RawMessage(frozen)); err != nil {
+		t.Fatal(err)
+	}
+	statusOf := func() (string, string) {
+		t.Helper()
+		d := diffReal(t, in, viewer, 0)
+		for _, raw := range d.OtherUpdates {
+			var body struct {
+				User struct {
+					First  string `json:"first_name"`
+					Status struct {
+						Tag string `json:"_"`
+					} `json:"status"`
+				} `json:"user"`
+			}
+			if json.Unmarshal(raw, &body) == nil && body.User.First == "Егор" {
+				return body.User.Status.Tag, body.User.First
+			}
+		}
+		t.Fatalf("строки снимка нет в разнице: %v", d.OtherUpdates)
+		return "", ""
+	}
+
+	// Без проверяющего приватности строка отдаётся как записана.
+	if got, _ := statusOf(); got != domain.UserStatusOnlineTag {
+		t.Fatalf("без проверяющего: %q; want замороженный online", got)
+	}
+	in.SetPrivacy(liveStatusPrivacy{now: map[int64]domain.UserStatus{contact: domain.NewUserStatusOffline(time.Unix(500, 0))}})
+	for n := 0; n < 2; n++ { // повтор запроса той же строки
+		if got, first := statusOf(); got != domain.UserStatusOfflineTag || first != "Егор" {
+			t.Fatalf("запрос %d: статус %q имя %q; want текущий offline, имя из строки", n, got, first)
+		}
 	}
 }

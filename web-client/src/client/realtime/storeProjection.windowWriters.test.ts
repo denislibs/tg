@@ -20,7 +20,7 @@ import { mirrorWindow, putMirrorPage, resetMessagesMirror, winKey } from '../../
 import { isChosen, myPaidStars } from '../../core/reactions/messageReactions'
 import type { MessageReal, MyMessage, RawMessage } from '../../core/models'
 import type { MessageMediaPoll, MessageMediaToDo } from '../../core/media/messageMedia'
-import type { EditMessageEvt, GeoLiveUpdateEvt, ReactionEvt } from '../../core/realtime/events'
+import type { EditMessageEvt, ReactionEvt } from '../../core/realtime/events'
 import type { Managers } from '../bootstrap'
 
 import { registerStoreProjection } from './storeProjection'
@@ -240,15 +240,20 @@ describe('окно сообщений: своё действие доезжае�
     expect(chips(cid(2))).toEqual([{ emoji: '👍', count: 1, mine: true }])
   })
 
-  it('cacheGeoLive(кадр) правит координаты в зеркале', async () => {
+  // F6-geo (В-1): движение live-локации — обычная правка. Сервер шлёт
+  // `updateEditMessage` с `messageMediaGeoLive` в сообщении (tweb
+  // bubbles.ts:10429-10470 updateGeo ← onMessageEdit), отдельного кадра
+  // `geo_live_update` больше нет.
+  it('cacheEdit(кадр с messageMediaGeoLive) правит координаты в зеркале', async () => {
     const { mgr } = await setup()
-    const evt: GeoLiveUpdateEvt = {
-      peer_id: CHAT,
-      id: getServerMessageId(cid(3)),
-      media: { _: 'messageMediaGeoLive', geo: { _: 'geoPoint', long: 30.5, lat: 50.4 }, period: 900 },
-      edit_date: 1_777_000_500,
+    const evt: EditMessageEvt = {
+      _: 'updateEditMessage',
+      message: makeRawMessage({
+        id: getServerMessageId(cid(3)), peerId: CHAT, fromId: 2, text: '', editDate: 1_777_000_500,
+        media: { _: 'messageMediaGeoLive', geo: { _: 'geoPoint', long: 30.5, lat: 50.4 }, period: 900 },
+      }),
     }
-    rootScope.dispatchEventSingle('rt:message_op', { ops: mgr.cacheGeoLive(evt) })
+    rootScope.dispatchEventSingle('rt:message_op', { ops: mgr.cacheEdit(evt) })
     const media = inMirror(cid(3))?.media
     expect(media?._).toBe('messageMediaGeoLive')
     expect(media?._ === 'messageMediaGeoLive' ? media.geo.lat : null).toBe(50.4)

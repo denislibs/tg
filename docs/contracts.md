@@ -89,6 +89,20 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 `POST /auth/check_password`, `POST /auth/password/recover/confirm` и
 `POST /auth/passkey/finish`.
 
+### POST /auth/passkey/begin · POST /auth/passkey/finish  · public
+Вход по ключу доступа (WebAuthn). Оба — с лимитом по IP; `finish` ещё и по
+пользователю (после успешной проверки подписи).
+- `begin` → 200 `{ "_": "auth.passkeyLoginOptions", "options": { "_": "dataJSON",
+  "data": "<строка JSON {\"publicKey\":{…}}>" }, "session": "<ключ церемонии>" }`.
+  Клиент разбирает `JSON.parse(options.data)` (tweb `passkeyLoginButton.tsx:38-41`).
+  `session` — наш параметр (ключ церемонии WebAuthn, живёт 2 мин, одноразовый);
+  на провод TL он не идёт, как `token` у `auth.authorization`.
+- `finish?session=&device=&platform=` (тело — assertion) → исход шага входа, как у
+  `sign_in`: при включённом облачном пароле `auth.passwordNeeded` (сессии нет,
+  дальше `POST /auth/check_password`), иначе `auth.authorization`. Ключ доступа
+  облачный пароль не отменяет (tweb `passkeyLoginButton.tsx:69-71`).
+- 400 `session expired`; 401 `passkey login failed`; 429 `too many requests`.
+
 ### POST /auth/export_login_token  · public
 Экспорт кода QR-входа (`auth.exportLoginToken`). Устройство, ещё не вошедшее,
 генерирует ключ входа (32 случайных байта) и шлёт его заголовком
@@ -1240,7 +1254,6 @@ MTProto, которых мы не портируем):
 | `t` | чего ждёт |
 |-----|-----|
 | `folder_update` | порта самой папки (`dialogFilter` несёт `TextWithEntities` и `Vector<InputPeer>`). Курсор кадр НЕСЁТ — это единственный логируемый кадр без конструктора |
-| `geo_live_update` | у оригинала кадра нет вовсе: движение точки это ПРАВКА сообщения |
 | `suggested_post_update` | порта `SuggestedPostInfo` |
 
 ### Delivery guarantees

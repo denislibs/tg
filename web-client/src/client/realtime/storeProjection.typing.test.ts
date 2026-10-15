@@ -4,9 +4,12 @@
 //
 // Пин держит именно вывод ключа: перепутать эти два места легко, а увидеть
 // последствие («печатает» садится не в тот чат) — только глазами.
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
+import { applyPeerOps } from '../../core/peerCache'
+import { makeRawMessage } from '../../core/messages/testMessage'
+import { generateMessageId } from '../../core/history/messageId'
 import { useChatsStore } from '../../stores/chatsStore'
 import type { Managers } from '../bootstrap'
 
@@ -41,5 +44,135 @@ describe('storeProjection — «печатает»', () => {
     expect(chat?.[9]?.action).toEqual({ _: 'sendMessageTypingAction' })
     // В чат с ключом самого канала (положительным) индикатор попасть не должен.
     expect(useChatsStore.getState().typing[5]).toBeUndefined()
+  })
+
+  // tweb appProfileManager.ts:1408-1420: печать кладётся ровно в ОДИН ключ
+  // `peerId[_threadId]`; threadId — клиентский номер (generateMessageId).
+  it('top_msg_id: печать в теме — только в тредовом ключе, ключ чата не задет', () => {
+    rootScope.dispatchEventSingle(RT.typing, {
+      _: 'updateChannelUserTyping',
+      channel_id: 5,
+      top_msg_id: 12,
+      from_id: { _: 'peerUser', user_id: 9 },
+      action: { _: 'sendMessageTypingAction' },
+    })
+
+    const state = useChatsStore.getState().typing
+    expect(state[`-5_${generateMessageId(12)}`]?.[9]?.action).toEqual({ _: 'sendMessageTypingAction' })
+    expect(state[-5]).toBeUndefined()
+  })
+
+  it('кадр без top_msg_id не попадает в тредовый ключ', () => {
+    rootScope.dispatchEventSingle(RT.typing, {
+      _: 'updateChannelUserTyping',
+      channel_id: 5,
+      from_id: { _: 'peerUser', user_id: 9 },
+      action: { _: 'sendMessageTypingAction' },
+    })
+
+    const keys = Object.keys(useChatsStore.getState().typing)
+    expect(keys).toEqual(['-5'])
+  })
+
+  it('личка: updateUserTyping с top_msg_id — тредовый ключ, не ключ чата', () => {
+    rootScope.dispatchEventSingle(RT.typing, {
+      _: 'updateUserTyping',
+      user_id: 7,
+      top_msg_id: 3,
+      action: { _: 'sendMessageTypingAction' },
+    })
+
+    const state = useChatsStore.getState().typing
+    expect(state[`7_${generateMessageId(3)}`]?.[7]).toBeDefined()
+    expect(state[7]).toBeUndefined()
+  })
+
+  it('печать в двух темах одного чата — независимые ключи', () => {
+    for (const top of [5, 7]) {
+      rootScope.dispatchEventSingle(RT.typing, {
+        _: 'updateChannelUserTyping',
+        channel_id: 5,
+        top_msg_id: top,
+        from_id: { _: 'peerUser', user_id: 9 },
+        action: { _: 'sendMessageTypingAction' },
+      })
+    }
+
+    expect(Object.keys(useChatsStore.getState().typing).sort()).toEqual([
+      `-5_${generateMessageId(5)}`, `-5_${generateMessageId(7)}`,
+    ].sort())
+  })
+
+  // TTL тредового ключа гасит именно его (таймер по ключу+автору), ключ чата не трогает;
+  // опустевший набор уходит из стора вместе с ключом (tweb appProfileManager.ts:1450-1452).
+  it('TTL: каждый ключ гаснет по своему таймеру, опустевший исчезает из стора', () => {
+    vi.useFakeTimers()
+    try {
+      for (const top of [undefined, 12]) {
+        rootScope.dispatchEventSingle(RT.typing, {
+          _: 'updateChannelUserTyping',
+          channel_id: 5,
+          ...(top ? { top_msg_id: top } : {}),
+          from_id: { _: 'peerUser', user_id: 9 },
+          action: { _: 'sendMessageTypingAction' },
+        })
+        if (top === undefined) vi.advanceTimersByTime(4000)
+      }
+      // чат поставлен 4 с назад (гаснет через 2 с), тема — только что
+      vi.advanceTimersByTime(2500)
+      const keys = Object.keys(useChatsStore.getState().typing)
+      expect(keys).toEqual([`-5_${generateMessageId(12)}`])
+      vi.advanceTimersByTime(4000)
+      expect(useChatsStore.getState().typing).toEqual({})
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // tweb onUpdateNewMessage (appMessagesManager.ts:10443-10478): входящее сообщение
+  // гасит печать автора ровно в ОДНОМ ключе - `peerId_threadId` сообщения, без
+  // треда - ключ чата.
+  describe('входящее сообщение гасит печать автора', () => {
+    const entry = { action: { _: 'sendMessageTypingAction' as const }, at: 0 }
+    const forum = { _: 'channel' as const, id: 5, title: 'Форум', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const, forum: true as const } }
+    const plain = { _: 'channel' as const, id: 6, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } }
+    const key = (peerId: number, top?: number) => `${peerId}${top ? '_' + generateMessageId(top) : ''}`
+    const send = (peerId: number, over: Record<string, unknown> = {}) => rootScope.dispatchEventSingle(RT.newMessage, {
+      _: 'updateNewMessage',
+      message: { ...makeRawMessage({ id: 40, peerId, fromId: 9, text: 'x' }), ...over },
+    } as never)
+
+    beforeEach(() => { applyPeerOps([{ op: 'upsert', peers: [forum, plain] }]) })
+
+    it('личка: ключ чата', () => {
+      useChatsStore.setState({ typing: { '9': { 9: entry } } })
+      send(9)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('форум, сообщение в теме: гаснет тредовый ключ, ключ чата не задет', () => {
+      useChatsStore.setState({ typing: { [key(-5, 12)]: { 9: entry }, [key(-5)]: { 9: entry } } })
+      send(-5, { reply_to: { _: 'messageReplyHeader', reply_to_msg_id: 12, reply_to_top_id: 12, pFlags: { forum_topic: true } } })
+      expect(Object.keys(useChatsStore.getState().typing)).toEqual([key(-5)])
+    })
+
+    it('форум, сообщение в General (без reply_to): гаснет ключ General', () => {
+      useChatsStore.setState({ typing: { [key(-5, 1)]: { 9: entry } } })
+      send(-5)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('обычная группа, сообщение без ответа: ключ чата', () => {
+      useChatsStore.setState({ typing: { [key(-6)]: { 9: entry } } })
+      send(-6)
+      expect(useChatsStore.getState().typing).toEqual({})
+    })
+
+    it('чужой автор и своё исходящее печать не гасят', () => {
+      useChatsStore.setState({ typing: { [key(-6)]: { 9: entry } } })
+      send(-6, { from_id: { _: 'peerUser', user_id: 8 } })
+      send(-6, { pFlags: { out: true } })
+      expect(Object.keys(useChatsStore.getState().typing)).toEqual([key(-6)])
+    })
   })
 })

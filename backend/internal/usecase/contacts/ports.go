@@ -55,12 +55,16 @@ type CloseFriendsRepo interface {
 }
 
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): батчем —
-// видимость аспекта key (телефоны в списке), точечно — может ли viewer добавить
-// owner по номеру. Опционален: без него фильтры/ограничения не применяются.
+// правила карточки пользователя (фото, номер, статус), точечно — может ли viewer
+// добавить owner по номеру. Опционален: без него фильтры/ограничения не применяются.
 type PrivacyChecker interface {
-	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
-	// VisibleMaps — VisibleMap по нескольким ключам ОДНИМ запросом.
-	VisibleMaps(ctx context.Context, viewerID int64, ownerIDs []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error)
+	// AccessRules — правила фото, номера и last_seen (и блок) пачки ids глазами
+	// viewerID, только из БД (privacy.AccessRules); при сбое — ошибка вместе с
+	// погашенными правилами.
+	AccessRules(ctx context.Context, viewerID int64, ids []int64) (domain.UserViewRules, error)
+	// PresenceOf — присутствие пачки ids (Redis, privacy.PresenceOf); nil —
+	// источника нет, nil из функции — присутствие пользователя не получено.
+	PresenceOf(ctx context.Context, ids []int64) func(int64) domain.UserStatus
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
 }
 

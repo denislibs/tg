@@ -12,7 +12,7 @@
 // серверном пространстве номеров, а владелец окна знает пир ключом и номер —
 // клиентским. Перепутанная граница — молчаливый промах по чужому сообщению.
 //
-// Приём — тот же, что в workerCore.geoLiveFrame.test.ts: частичный vi.mock
+// Приём — тот же, что в workerCore.scheduledFrames.test.ts: частичный vi.mock
 // connectionManager ради перехвата onFrame и частичный vi.mock messagesManager
 // (сама механика патча покрыта у владельца —
 // client/realtime/storeProjection.windowWriters.test.ts).

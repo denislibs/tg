@@ -2,14 +2,15 @@
 // воркера в Zustand-сторы (единственный источник истины для UI). Один из равноправных
 // подписчиков шины (рядом с soundSubscriber/notificationSubscriber); побочных эффектов
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
-import { useChatsStore } from '../../stores/chatsStore'
-import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
+import { getTypingsKey, useChatsStore } from '../../stores/chatsStore'
+import { applyPeerOps, isForumPeer, resetPeerMirror } from '../../core/peerCache'
 import { applyBotCommands, applyChatTheme, applyPeerBlocked, applyTtlPeriod, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
-import { mapSuggestedPost } from '../../core/models'
-import { getPeerId } from '../../core/peers/peerId'
+import { mapSuggestedPost, type RawMessageReal, type RawMessageService } from '../../core/models'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../../core/history/messageId'
+import { getPeerId, isAnyChat } from '../../core/peers/peerId'
 import { useNotifyStore } from '../../stores/notifyStore'
 import { applyPrivacyUpdate } from '../../stores/privacyStore'
 import { useBoostsStore } from '../../stores/boostsStore'
@@ -31,6 +32,23 @@ import { scheduleChatsReload } from './refetchSubscriber'
 // emits no "stopped typing" frame; the client re-sends every ~3s while active).
 const TYPING_TTL = 6000
 const typingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Клиентский номер треда ПРОВОДНОГО сообщения — `getMessageThreadId`
+ * (core/models.ts, tweb getMessageThreadId.ts:11-28) без полного разбора
+ * сообщения (`mapMyMessage` на каждый кадр): нужны только `reply_to`, служебка
+ * создания темы и `id`, номера на проводе серверные.
+ */
+function messageThreadId(msg: RawMessageReal | RawMessageService, isForum: boolean): number | undefined {
+  const replyTo = msg.reply_to
+  if (replyTo?._ === 'messageReplyHeader' && (!isForum || replyTo.pFlags?.forum_topic)) {
+    const id = replyTo.reply_to_top_id || replyTo.reply_to_msg_id
+    return id ? generateMessageId(id) : undefined
+  }
+  if (!isForum) return undefined
+  if (msg._ === 'messageService' && msg.action._ === 'messageActionTopicCreate') return generateMessageId(msg.id)
+  return GENERAL_TOPIC_ID
+}
 
 // Лента историй перечитывается ПАЧКОЙ: после офлайна getDifference переигрывает
 // десятки `updateStory` от авторов, которых в зеркале ещё нет, и без объединения
@@ -122,8 +140,7 @@ const APPLY: Projector = {
   // двойное применение (patch операцией ЗДЕСЬ + applyXUpdate той же строкой).
   // Этап «один писатель окна»: на эту же операцию переведено ВСЁ остальное, что
   // раньше правило окно из сырого кадра или из ответа ручки, —
-  // `edit_message` (messages.cacheEdit), `geo_live_update`
-  // (messages.cacheGeoLive, перехват эфемерного кадра в workerCore::onFrame),
+  // `edit_message` (messages.cacheEdit; им же едет и движение live-локации),
   // `reaction` вместе с платной ⭐-реакцией (messages.cacheReaction /
   // react/unreact / sendStarReaction), свой голос в опросе и отметка в
   // чек-листе (votePoll / toggleChecklistItem / addChecklistItems), «проверка
@@ -207,14 +224,13 @@ const APPLY: Projector = {
   // Правило приватности одного ключа (tweb `onUpdatePrivacy`, `appPrivacyManager.ts:12-19`):
   // зеркало одно — `privacyStore`, роль кэша `privacy[key]`.
   privacy_update: (e) => { applyPrivacyUpdate(e) },
-  // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
-  // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
-  // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки
-  // здесь были вторым, main-side применением тех же кадров — и вдобавок
-  // единственным: до зеркала главного потока (`core/history/messagesMirror.ts`)
-  // они не доезжали вовсе, поэтому императивная лента правки не видела.
-  // Гео-кадр эфемерный (без pts) и в реестр CACHE не попадает — владелец
-  // перехватывает его в `workerCore.ts::onFrame` рядом с `message_ack`.
+  // [RT.editMessage] здесь БОЛЬШЕ НЕТ: правку (в том числе координаты live-
+  // локации, tweb `updateEditMessage` → `bubbles.ts updateGeo`) применяет
+  // владелец окна (`messages.cacheEdit`) и объявляет её операцией
+  // `rt:message_op`. Строка здесь была вторым, main-side применением того же
+  // кадра — и вдобавок единственным: до зеркала главного потока
+  // (`core/history/messagesMirror.ts`) оно не доезжало вовсе, поэтому
+  // императивная лента правки не видела.
   // Новый баланс звёзд; удаление истории.
   // Баланс едет КОНСТРУКТОРОМ starsAmount: у оригинала звёзды дробные (nanos),
   // и «целое число звёзд» — частный случай, а не форма. Дробную часть витрина
@@ -261,7 +277,12 @@ export function registerStoreProjection(managers: Managers): void {
     // Чистка typing-индикатора отправителя на новом сообщении — эфемерика (см.
     // «Осторожно» #2 задачи 3), остаётся на main: раньше жила внутри
     // chatsStore.applyNewMessage, теперь вызывается отсюда напрямую.
-    if (msg._ !== 'messageEmpty' && msg.from_id) store.clearTyping(peerId, getPeerId(msg.from_id))
+    // 1:1 с tweb `onUpdateNewMessage` (appMessagesManager.ts:10443-10478): входящее
+    // сообщение пользователя гасит его печать ровно в ОДНОМ ключе —
+    // `peerId_threadId` сообщения (`getThreadKey`, :11903-11921), без треда — ключ чата.
+    if (msg._ !== 'messageEmpty' && msg.from_id && !msg.pFlags?.out && msg.from_id._ === 'peerUser') {
+      store.clearTyping(getTypingsKey(peerId, isAnyChat(peerId) ? messageThreadId(msg, isForumPeer(peerId)) : undefined), getPeerId(msg.from_id))
+    }
     // UI-реакции на новое сообщение (отметка прочтения — в самой ленте
     // `chat/bubbles.ts`, звук, нотификация) — отдельные подписчики rootScope
     // напрямую, без дублирующего тоста.
@@ -283,15 +304,19 @@ export function registerStoreProjection(managers: Managers): void {
     const peerId = t._ === 'updateUserTyping' ? t.user_id : getPeerId({ _: 'peerChannel', channel_id: t.channel_id })
     const userId = t._ === 'updateUserTyping' ? t.user_id : getPeerId(t.from_id)
     const action = t.action
-    store.setTyping(peerId, userId, action, Date.now())
-    const key = `${peerId}:${userId}`
-    const prev = typingTimers.get(key)
+    // Печать лежит ровно в ОДНОМ ключе `peerId[_threadId]` (tweb
+    // appProfileManager.ts:1408-1420); номер треда на проводе серверный,
+    // ключ строится клиентским.
+    const key = getTypingsKey(peerId, t.top_msg_id ? generateMessageId(t.top_msg_id) : undefined)
+    store.setTyping(key, userId, action, Date.now())
+    const timerKey = `${key}:${userId}`
+    const prev = typingTimers.get(timerKey)
     if (prev) clearTimeout(prev)
     typingTimers.set(
-      key,
+      timerKey,
       setTimeout(() => {
-        typingTimers.delete(key)
-        store.clearTyping(peerId, userId)
+        typingTimers.delete(timerKey)
+        store.clearTyping(key, userId)
       }, TYPING_TTL),
     )
   })

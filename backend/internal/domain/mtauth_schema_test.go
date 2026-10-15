@@ -24,6 +24,7 @@ func authCases() []struct {
 		{"без подсказки", NewAuthPasswordNeeded("pwtok", "")},
 		{"QR выпущен", NewAuthLoginToken([]byte{0xDE, 0xAD, 0xBE, 0xEF}, time.Unix(1787334148, 0))},
 		{"QR подтверждён", NewAuthLoginTokenSuccess(NewAuthAuthorization("s3cret", me))},
+		{"параметры входа по ключу", NewAuthPasskeyLoginOptions(`{"publicKey":{"challenge":"AA"}}`, "sess")},
 		{"маска почты", NewAuthPasswordRecovery("d****@e******.com")},
 		{"веб-токен", NewAuthWebAuthToken("web", time.Unix(1787334148, 0))},
 		{"страна определилась", NewHelpCountryCode("RU")},
@@ -101,5 +102,22 @@ func TestAuth_ConfirmedQRCarriesTheSameOutcome(t *testing.T) {
 	}
 	if _, has := decoded["session_token"]; has {
 		t.Error("session_token остался соседним ключом")
+	}
+}
+
+// Параметры входа по ключу — конструктор схемы `auth.passkeyLoginOptions`:
+// `options` — dataJSON со строкой JSON, `session` — наш параметр (раньше
+// ответ был безымянной картой с объектом options).
+func TestAuthPasskeyLoginOptions_WireShape(t *testing.T) {
+	decoded, ok := roundTripJSON(t, NewAuthPasskeyLoginOptions(`{"publicKey":{}}`, "s1")).(map[string]any)
+	if !ok {
+		t.Fatal("ответ не разобрался в объект")
+	}
+	if decoded["_"] != AuthPasskeyLoginOptionsTag || decoded["session"] != "s1" {
+		t.Fatalf("ответ = %v", decoded)
+	}
+	opts, _ := decoded["options"].(map[string]any)
+	if opts["_"] != DataJSONTag || opts["data"] != `{"publicKey":{}}` {
+		t.Fatalf("options = %v, ожидался dataJSON со строкой", decoded["options"])
 	}
 }

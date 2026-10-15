@@ -14,7 +14,7 @@ import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
   ChatRemovedEvt, ChannelEvt, ChannelTooLongEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
-  GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
+  WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt, DialogFilterOrderEvt,
   ViewsUpdateEvt, HistoryCountEvt,
@@ -127,7 +127,6 @@ export type BroadcastEvents = {
   [RT.groupCall]: [GroupCallFrame]
   [RT.livestream]: [LivestreamFrame]
   [RT.botCallbackAnswer]: [BotCallbackAnswerEvt]
-  [RT.geoLiveUpdate]: [GeoLiveUpdateEvt]
   [RT.secretRequest]: [{ peer_id: PeerId; initiator_id: number; responder_id: number }]
   [RT.secretAccept]: [{ peer_id: PeerId; state?: string; fingerprint?: string[] }]
   [RT.secretReject]: [{ peer_id: PeerId }]

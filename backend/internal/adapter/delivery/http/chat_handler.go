@@ -198,6 +198,7 @@ type geoLiveBody struct {
 
 // UpdateGeoLive — POST /chats/{chatID}/messages/{msgID}/geo_live: автор обновляет
 // координаты своей live-локации (watchPosition) или останавливает трансляцию.
+// Участникам правка уходит общим путём (edit_message с журналом), не отдельным кадром.
 func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -216,6 +217,9 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not a live location")
+		return
+	case errors.Is(err, domain.ErrMessageNotModified):
+		writeError(w, http.StatusBadRequest, "MESSAGE_NOT_MODIFIED")
 		return
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")

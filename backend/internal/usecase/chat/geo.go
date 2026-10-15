@@ -2,15 +2,21 @@ package chat
 
 import (
 	"context"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // UpdateLiveLocation обновляет координаты live-локации сообщения (автор шлёт их
 // периодически по watchPosition) или останавливает трансляцию (stopped=true).
-// Правит координаты + edited_at и рассылает фрейм geo_live_update участникам —
-// без записи в updates-лог (эфемерно; при переоткрытии история даёт актуальные
-// координаты). Только автор своего live-сообщения.
+//
+// Движение точки — ПРАВКА сообщения, как у оригинала (tweb: updateEditMessage
+// → bubbles.ts updateGeo, отдельного кадра у него нет): правит координаты и
+// edited_at, затем идёт общим путём правки с журналом — личка, группа и
+// «Избранное» раскладывают edit_message по журналам участников (fanOutEdit),
+// broadcast-канал пишет одну запись журнала канала (updateEditChannelMessage),
+// как EditMessage. Офлайн-участник получает новые координаты в getDifference.
+// Только автор своего live-сообщения.
 func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, userID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error) {
 	if lat < -90 || lat > 90 || lng < -180 || lng > 180 {
 		return domain.Message{}, domain.ErrForbidden
@@ -28,19 +34,96 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	if cur.SenderID != userID || isCopy(cur) {
 		return domain.Message{}, domain.ErrForbidden
 	}
-	if heading != nil && (*heading < 0 || *heading > 359) {
-		heading = nil
-	}
-	msg, err := i.msgs.UpdateGeoLive(ctx, msgID, lat, lng, heading, stopped)
+	// Правит тот, кто ещё вправе писать в этот чат: вышедшему, кикнутому и
+	// разжалованному админу устройство, которое продолжает слать точки,
+	// двигать чужой чат нельзя (CHAT_WRITE_FORBIDDEN, как у EditMessage).
+	guest, err := i.requireGeoWriter(ctx, chatID, userID, cur.ThreadRootID)
 	if err != nil {
 		return domain.Message{}, err
 	}
-	if i.publisher != nil {
-		members, err := i.chats.MemberIDs(ctx, chatID)
-		if err != nil {
-			return domain.Message{}, err
-		}
-		i.publishPeerFrame(ctx, chatID, members, 0, "geo_live_update", geoLiveUpdatePayload(msg))
+	// Остановленная и истёкшая трансляция не меняется: в схеме конец — это
+	// истечение срока (tweb geo.ts:178 isLiveExpired), а запоздавший тик не
+	// должен её «воскрешать»; сервер Telegram отвечает MESSAGE_NOT_MODIFIED.
+	if cur.GeoLiveStopped || !time.Now().Before(cur.CreatedAt.Add(time.Duration(*cur.GeoLivePeriod)*time.Second)) {
+		return domain.Message{}, domain.ErrMessageNotModified
 	}
+	if heading != nil && (*heading < 0 || *heading > 359) {
+		heading = nil
+	}
+	// Та же точка — не правка (MESSAGE_NOT_MODIFIED): не пишем строку журнала
+	// каждому участнику ради того, что не изменилось.
+	if !stopped && cur.GeoLat != nil && cur.GeoLng != nil && *cur.GeoLat == lat && *cur.GeoLng == lng &&
+		(heading == nil || (cur.GeoHeading != nil && *cur.GeoHeading == *heading)) {
+		return domain.Message{}, domain.ErrMessageNotModified
+	}
+	broadcast := i.isBroadcast(ctx, chatID)
+	var msg domain.Message
+	var channelBody map[string]any
+	var channelPts int64
+	var edit *editDelivery
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		m, e := i.msgs.UpdateGeoLive(ctx, msgID, lat, lng, heading, stopped)
+		if e != nil {
+			return e
+		}
+		// Правка заменяет сообщение на клиенте целиком (updateEditMessage):
+		// без гидрации она погасила бы реакции и ответы.
+		if msg, e = i.hydrateBroadcastMessage(ctx, m); e != nil {
+			return e
+		}
+		if broadcast {
+			channelBody = i.channelEditPayload(ctx, msg)
+			channelPts, e = i.appendChannelUpdate(ctx, chatID, "edit_message", channelBody)
+			return e
+		}
+		var extra []int64
+		if guest {
+			extra = []int64{userID} // гость обсуждения: его устройствам кадр отдельно
+		}
+		edit, e = i.fanOutEdit(ctx, msg, msg.SenderID, msg.SenderID, extra)
+		return e
+	})
+	if err != nil {
+		return domain.Message{}, err
+	}
+	if broadcast {
+		i.publishChannelUpdate(ctx, chatID, "edit_message", channelBody, channelPts, msg.SenderID)
+		return msg, nil
+	}
+	i.publishEdit(ctx, edit)
 	return msg, nil
+}
+
+// requireGeoWriter — вправе ли userID сейчас писать в чат с live-локацией:
+// участник; в группе — с правом писать (как canEditMessage), в канале — с
+// правом публикации. Личка и «Избранное» — достаточно членства. Не участник
+// проходит только гостем обсуждения со своим комментарием в треде зеркала
+// (как messageForAction); guest — признак этого пути.
+func (i *Interactor) requireGeoWriter(ctx context.Context, chatID, userID int64, threadRoot *int64) (guest bool, err error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		if err := i.discussionGuestThread(ctx, chatID, userID, threadRoot, true); err != nil {
+			return false, err
+		}
+		if !i.canSendInGroup(ctx, chatID, userID) {
+			return false, domain.ErrForbidden
+		}
+		return true, nil
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return false, err
+	}
+	switch typ {
+	case domain.ChatTypeChannel:
+		return false, i.requireRight(ctx, chatID, userID, domain.RightPostMessages)
+	case domain.ChatTypeGroup:
+		if !i.canSendInGroup(ctx, chatID, userID) {
+			return false, domain.ErrForbidden
+		}
+	}
+	return false, nil
 }

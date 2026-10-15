@@ -1,4 +1,4 @@
-import type { Passkey } from '@layer'
+import type { DataJSON, Passkey } from '@layer'
 import { HttpError, type RestClient } from '../net/restClient'
 import type { UserFull, UserReal, UsersUserFull } from '../peers/peer'
 import { getPeerPhotoId } from '../peers/peer'
@@ -243,8 +243,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
   // signImport/passkeyLoginFinish/exportLoginToken(success) — все семь путей входа
-  // заводят сессию через неё (вызовов persist() шесть: signIn и signImport
-  // делят общий toOutcome).
+  // заводят сессию через неё (вызовов persist() шесть: signIn, signImport и
+  // passkeyLoginFinish делят общий toOutcome).
   const persist = async (token: string, u: PeerProfile) => {
     await store.set(token)
     await upsertAccount({
@@ -341,8 +341,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   }
   // Шаг закончился ВЫДАННОЙ сессией. Отдельно от toOutcome, потому что у
   // половины путей входа другого исхода не бывает по построению: sign_up,
-  // check_password, подтверждение кода с почты и вход по ключу доступа — все
-  // они идут ПОСЛЕ того, как ветка уже выбрана.
+  // check_password и подтверждение кода с почты — все они идут ПОСЛЕ того, как
+  // ветка уже выбрана.
   const toSession = async (res: AuthAuthorizationWire): Promise<PeerProfile> => {
     if (res._ !== 'auth.authorization') throw new Error(`неожиданный исход входа: ${res._}`)
     const u = briefProfile(res.user)
@@ -350,8 +350,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     return u
   }
   // Разбор общего ответа шагов входа: сессия | облачный пароль | регистрация.
-  // Общий для sign_in и sign_import — ветку называет конструктор, а не набор
-  // признаков рядом.
+  // Общий для sign_in, sign_import и входа по ключу доступа — ветку называет
+  // конструктор, а не набор признаков рядом.
   const toOutcome = async (res: AuthAuthorizationWire): Promise<SignInOutcome> => {
     if (res._ === 'auth.passwordNeeded') {
       return { passwordNeeded: true, passwordToken: res.password_token, hint: res.hint ?? '' }
@@ -521,14 +521,19 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     async passkeyDelete(id: string): Promise<void> {
       await rest.del(`/me/passkeys/${id}`)
     },
-    async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
+    // `auth.initPasskeyLogin` → `auth.passkeyLoginOptions` (tweb
+    // `passkeyLoginButton.tsx:38-41`): `options` — dataJSON со строкой JSON
+    // `{"publicKey":{…}}`; `session` — наш параметр (ключ церемонии для finish).
+    async passkeyLoginBegin(): Promise<{ session: string; options: DataJSON }> {
       return rest.post('/auth/passkey/begin', {})
     },
-    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: PeerProfile }> {
-      return { user: await toSession(await rest.post<AuthAuthorizationWire>(
+    // Исход — тот же, что у остальных шагов входа: при облачном пароле
+    // `auth.passwordNeeded` (tweb `passkeyLoginButton.tsx:69-71`), иначе сессия.
+    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<SignInOutcome> {
+      return toOutcome(await rest.post<AuthAuthorizationWire>(
         `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
         assertion,
-      )) }
+      ))
     },
 
     /**

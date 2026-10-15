@@ -131,6 +131,8 @@ func (h *ChatHandler) giveawayErr(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
 		return false
+	case errors.Is(err, domain.ErrBalanceTooLow):
+		writeError(w, http.StatusBadRequest, "BALANCE_TOO_LOW")
 	case errors.Is(err, domain.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid giveaway")
 	case errors.Is(err, domain.ErrNotFound):
