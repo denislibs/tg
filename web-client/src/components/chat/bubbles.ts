@@ -78,6 +78,7 @@ import BatchProcessor, { type MiddlewareAwaiter } from '@helpers/batchProcessor'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import noop from '@helpers/noop'
 import getUnreadReactions from '@core/messages/getUnreadReactions'
+import isMentionUnread from '@core/messages/isMentionUnread'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import contextMenuController from '@helpers/contextMenuController'
@@ -239,9 +240,10 @@ export interface BubblesManagers extends PeerTitleManagers {
     unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
     /**
      * Порт `appMessagesManager.readMessages(peerId, mids)` — отметка
-     * УВИДЕННОГО СОДЕРЖИМОГО (tweb bubbles.ts:3417 из `readUnreaded('content')`).
-     * У нас — в объёме непрочитанных реакций: владелец воркера сбрасывает их
-     * ручкой `POST /chats/{peer}/reactions/read`, если у диалога горит ❤
+     * УВИДЕННОГО СОДЕРЖИМОГО (tweb bubbles.ts:3417 из `readUnreaded('content')`):
+     * непрочитанные упоминания и реакции. Владелец воркера читает содержимое
+     * упоминаний и сбрасывает «@»/❤ ручками `POST /chats/{peer}/mentions|
+     * reactions/read`, если у диалога или темы горит бейдж
      * (`core/managers/messages/reactionMethods.ts::readMessages`).
      *
      * Опциональна по той же причине, что `react`/`unreact`: без неё лента
@@ -2221,10 +2223,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const setUnreadObserver = !message.pFlags?.out && isUnreadByReadCursor(this.renderReadMaxSeq, maxBubbleMid)
       ? (element: HTMLElement) => this.setUnreadObserver('history', element, maxBubbleMid)
       : undefined
-    // tweb :7930, :8619-8621/:8629-8631 — наблюдатель СОДЕРЖИМОГО: моё
-    // сообщение с непрочитанной реакцией. Узел — сам бабл, номер — у
-    // сообщения, несущего реакции (`reactionsMessage`: главное альбома).
-    // Половина про упоминания (`unreadMention`) — см. секцию отметки прочтения.
+    // tweb :7929-7930, :8619-8621/:8629-8631 — наблюдатель СОДЕРЖИМОГО:
+    // непрочитанное упоминание или моё сообщение с непрочитанной реакцией. Узел
+    // — сам бабл, номер — у сообщения, несущего реакции (`reactionsMessage`:
+    // главное альбома).
+    const unreadMention = isMentionUnread(message)
     const unreadReactions = getUnreadReactions(message)
     const reactionsMid = (this.mainGroupedMessage(message) ?? message).id
 
@@ -2243,7 +2246,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if(message._ === 'messageService' && getMessageKind(message) === 'service') {
       const serviceBubble = this.renderServiceMessage(message)
       setUnreadObserver?.(serviceBubble)
-      if(unreadReactions) this.setUnreadObserver('content', serviceBubble, reactionsMid)
+      if(unreadMention || unreadReactions) this.setUnreadObserver('content', serviceBubble, reactionsMid)
       return serviceBubble
     }
 
@@ -2277,7 +2280,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       setUnreadObserver?.(bubble)
     }
 
-    if(unreadReactions) this.setUnreadObserver('content', bubble, reactionsMid)
+    if(unreadMention || unreadReactions) this.setUnreadObserver('content', bubble, reactionsMid)
 
     // ПОСТ КАНАЛА — порт всего блока tweb :7671-7691 одним куском, как в
     // оригинале: класс, кнопка «переслать» сбоку и наблюдение просмотров живут
@@ -5388,19 +5391,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // :3365-3440 (`readUnreaded`), :7456-7466 (`setUnreadObserver`).
   //
   // Наблюдатель ВТОРОГО типа — `'content'` (`unreadedContent`/
-  // `unreadedContentSeen`/`readContentPromise`) — портирован в объёме
-  // НЕПРОЧИТАННЫХ РЕАКЦИЙ (`getUnreadReactions(message)`): моё сообщение с
-  // непрочитанной реакцией, показавшись во вьюпорте, уходит пачкой в
-  // `messages.readMessages` (порт `appMessagesManager.readMessages`), и тот
-  // сбрасывает ❤ на сервере. Бейдж снимают кадры сервера, а не лента.
-  //
-  // Половина про УПОМИНАНИЯ (`isMentionUnread(message)`) не портирована: у
-  // оригинала она уходит в `messages.readMessageContents` (снятие
-  // `media_unread`) и follow-up `messages.readMentions` (сброс «@»). Первого
-  // факта у нас уже есть владелец — плеер (`core/mediaRead.ts::markMediaPlayed`
-  // ← `components/audio.ts`, WS `read_media`), и второй путь к нему здесь
-  // заводить нельзя; ручки второго (сброс «@» без движения горизонта) у
-  // сервера нет.
+  // `unreadedContentSeen`/`readContentPromise`): бабл с непрочитанным
+  // упоминанием (`isMentionUnread`) или моим сообщением с непрочитанной
+  // реакцией (`getUnreadReactions`), показавшись во вьюпорте, уходит пачкой в
+  // `messages.readMessages` (порт `appMessagesManager.readMessages`): упоминания
+  // — в `readMessageContents` и follow-up `readMentions`, реакции — в
+  // `readReactions` (`core/managers/messages/reactionMethods.ts`). Бейдж снимают
+  // ответ ручки и кадры сервера, а не лента.
   //
 
   /** Порт tweb :2289-2295. */
@@ -5525,12 +5522,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
         // tweb :2978 — `readHistory({peerId, maxId, threadId})`
         callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId, threadId })
       } else {
-        // tweb :3405-3417. Второе слагаемое оригинала (`isMentionUnread`) —
-        // см. комментарий секции.
+        // tweb :3405-3417
         const readContents: number[] = []
         for(const mid of this.unreadedContentSeen) {
           const message = this.getMessage(mid)
-          if(message && getUnreadReactions(message)) {
+          if(message && (isMentionUnread(message) || getUnreadReactions(message))) {
             readContents.push(mid)
           }
         }
@@ -6756,8 +6752,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     // tweb :1543, :1578-1580 — кадр реакций (у нас он приезжает правкой, см.
     // докблок) с непрочитанной реакцией ставит бабл под наблюдатель
-    // содержимого; уже стоящий не перевешивается (тот же гейт, :13456).
-    if (getUnreadReactions(message) && !this.unreadedContent.has(bubble)) {
+    // содержимого; уже стоящий не перевешивается (тот же гейт, :13456-13459).
+    if ((isMentionUnread(message) || getUnreadReactions(message)) && !this.unreadedContent.has(bubble)) {
       this.setUnreadObserver('content', bubble, message.id)
     }
 

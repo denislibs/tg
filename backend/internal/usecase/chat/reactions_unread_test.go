@@ -81,7 +81,7 @@ func TestMarkRead_ClearsUnreadReactions(t *testing.T) {
 	}
 
 	// явный сброс тоже обнуляет (ReadReactions) — идемпотентно
-	if err := in.ReadReactions(ctx, chatID, a); err != nil {
+	if _, err := in.ReadReactions(ctx, chatID, a, 0); err != nil {
 		t.Fatalf("ReadReactions: %v", err)
 	}
 	if d, _ := in.ListDialogs(ctx, a); d[0].UnreadReactionsCount != 0 {
@@ -224,7 +224,7 @@ func TestReactionFrames_PersonalBodiesAndReadReactions(t *testing.T) {
 
 	before := len(s.updates[a])
 	pub.reset()
-	if err := in.ReadReactions(ctx, chatID, a); err != nil {
+	if _, err := in.ReadReactions(ctx, chatID, a, 0); err != nil {
 		t.Fatalf("ReadReactions: %v", err)
 	}
 	if got := len(s.updates[a]) - before; got != 1 {

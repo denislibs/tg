@@ -428,6 +428,55 @@ func (r fakeChats) ReadReactions(_ context.Context, chatID, userID, uptoSeq int6
 	return out, nil
 }
 
+// inTopicLocked — сообщение в теме (nil — весь чат). General — без треда.
+func inTopicLocked(m domain.Message, topic *domain.TopicScope) bool {
+	switch {
+	case topic == nil:
+		return true
+	case topic.General:
+		return m.ThreadRootID == nil
+	default:
+		return m.ThreadRootID != nil && *m.ThreadRootID == topic.RootID
+	}
+}
+
+func (r fakeChats) ReadReactionsIn(_ context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]domain.Message, bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	more := false
+	for _, m := range r.s.messages[chatID] {
+		if m.SenderID != userID || !inTopicLocked(m, topic) {
+			continue
+		}
+		hit := false
+		for k, unread := range r.s.reactUnread {
+			if unread && k.msgID == m.ID {
+				hit = true
+			}
+		}
+		if !hit {
+			continue
+		}
+		if len(out) == limit {
+			more = true
+			break
+		}
+		for k, unread := range r.s.reactUnread {
+			if unread && k.msgID == m.ID {
+				r.s.reactUnread[k] = false
+			}
+		}
+		if r.s.seesLocked(userID, m) {
+			out = append(out, m)
+		}
+	}
+	r.s.recountReactionsLocked(chatID, userID)
+	return out, more, nil
+}
+
+func (r fakeChats) LockMember(context.Context, int64, int64) error { return nil }
+
 func (r fakeChats) UnarchiveUnmuted(_ context.Context, chatID int64, userIDs []int64) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -688,6 +737,34 @@ func (s *store) syncMentionsLocked(chatID, userID int64) int {
 		m.mentions = n
 	}
 	return n
+}
+
+func (r fakeChats) ClearMentionsIn(_ context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]int64, bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	byID := map[int64]domain.Message{}
+	for _, m := range r.s.messages[chatID] {
+		byID[m.ID] = m
+	}
+	var hit []*mentionRow
+	for i := range r.s.mentions {
+		m := &r.s.mentions[i]
+		if m.chatID == chatID && m.userID == userID && !m.read && inTopicLocked(byID[m.msgID], topic) {
+			hit = append(hit, m)
+		}
+	}
+	sort.Slice(hit, func(a, b int) bool { return hit[a].seq < hit[b].seq })
+	more := len(hit) > limit
+	if more {
+		hit = hit[:limit]
+	}
+	cleared := make([]int64, 0, len(hit))
+	for _, m := range hit {
+		m.read = true
+		cleared = append(cleared, m.seq)
+	}
+	r.s.syncMentionsLocked(chatID, userID)
+	return cleared, more, nil
 }
 
 func (r fakeChats) ReadMentions(_ context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
