@@ -164,6 +164,12 @@ function mapStarReaction(r: StarReactionWire): StarReactionInfo {
 // предыдущего состояния SSOT — то есть ровно владелец, до порождения операции.
 //
 // Эталон семантики слияния — core/reactions/messageReactions.test.ts.
+/** tweb `appReactionsManager.ts:960-964`: `bigInt(tsNow(true)).shiftLeft(32).or(random32)`. */
+export function newPaidReactionRandomId(): string {
+  const random32 = BigInt(Math.floor(Math.random() * 2 ** 32))
+  return ((BigInt(Math.floor(Date.now() / 1000)) << 32n) | random32).toString()
+}
+
 export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }: MessagesCtx) {
   /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
    *  читается ИЗ SSOT после применения — операция несёт то же значение, что
@@ -440,9 +446,14 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
     // Платная ⭐-реакция: списать count звёзд, начислить автору, накопить вклад.
     // Ответ — тот же КАДР, что приходит живым (updateMessageReactions с чипом
     // reactionPaid); баланс приезжает своим кадром updateStarsBalance.
-    async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean): Promise<StarReactionInfo> {
+    //
+    // `random_id` — ключ идемпотентности TL `messages.sendPaidReaction` (tweb
+    // `appReactionsManager.ts:960-970`): `(unix-секунды << 32) | случайные 32 бита`, на
+    // проводе десятичная строка. Сервер повтор с тем же ключом не списывает. Новый вызов —
+    // новый ключ (как у tweb); повтор потерянного запроса вызывающий шлёт с тем же `randomId`.
+    async sendStarReaction(peerId: number, msgId: number, count: number, anonymous: boolean, randomId: string = newPaidReactionRandomId()): Promise<StarReactionInfo> {
       const r = await rest.post<StarReactionWire>(
-        `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`, { count, anonymous })
+        `/chats/${peerId}/messages/${getServerMessageId(msgId)}/star_reaction`, { count, anonymous, random_id: randomId })
       peers?.saveApiPeers({ users: r.users })
       const info = mapStarReaction(r)
       applyStarToCache(peerId, getServerMessageId(msgId), info.total, info.mine)
