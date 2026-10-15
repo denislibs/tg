@@ -2344,17 +2344,30 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Count     int64 `json:"count"`
 		Anonymous bool  `json:"anonymous"`
+		// random_id — ключ идемпотентности (TL messages.sendPaidReaction, tweb
+		// appReactionsManager.ts:960-970): long, на проводе строка десятичного числа
+		// (JS не держит int64 числом). Нет ключа — старый клиент, идемпотентности нет.
+		RandomID json.Number `json:"random_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	agg, top, bal, err := h.svc.SendStarReaction(r.Context(), chatID, msgID, h.meID(r), body.Count, body.Anonymous)
+	var randomID int64
+	if body.RandomID != "" {
+		v, perr := strconv.ParseInt(body.RandomID.String(), 10, 64)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "bad body")
+			return
+		}
+		randomID = v
+	}
+	agg, top, bal, err := h.svc.SendStarReaction(r.Context(), chatID, msgID, h.meID(r), body.Count, body.Anonymous, randomID)
 	if errors.Is(err, domain.ErrBalanceTooLow) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
 	}
-	if errors.Is(err, domain.ErrBadReaction) {
+	if errors.Is(err, domain.ErrBadReaction) || errors.Is(err, domain.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "invalid star count")
 		return
 	}

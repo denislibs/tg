@@ -626,6 +626,12 @@ type StarReactionRepo interface {
 	// Add накопительно добавляет delta звёзд от userID к messageID (upsert) и
 	// обновляет флаг anonymous; возвращает новый суммарный вклад пользователя.
 	Add(ctx context.Context, messageID, userID, delta int64, anonymous bool) (int64, error)
+	// Claim занимает ключ идемпотентности (userID, randomID) запроса «count звёзд на messageID»
+	// внутри транзакции вызывающего: true — ключ новый (платить), false — запрос уже
+	// проведён (повтор: не платить, отдать прежний результат). Тот же ключ с другим
+	// сообщением или числом звёзд — domain.ErrInvalid. Параллельный повтор ждёт первую
+	// транзакцию (уникальный ключ) и видит её итог. Старые ключи пользователя чистятся.
+	Claim(ctx context.Context, userID, randomID, messageID, count int64) (bool, error)
 	// AggregatesFor батч-загружает агрегат звёзд по сообщениям (Total) + личный
 	// вклад зрителя (Mine). Сообщения без платных реакций отсутствуют в мапе.
 	AggregatesFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64]domain.StarReactionAgg, error)
