@@ -695,3 +695,62 @@ func TestPromoteNonMember_AndLeftCreator_HTTP(t *testing.T) {
 		t.Fatalf("после отправки: роль %q, ждали creator", role(idA))
 	}
 }
+
+// Б-5 (матрица контракта): участник с разрешением change_info (не админ) не
+// меняет и не стирает публичное имя группы. Название и описание правятся своими
+// ручками, имя — только ручкой типа: она у создателя и с проверкой формы имени.
+func TestMemberWithChangeInfo_CannotTouchPublicUsername_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990001081")
+	tokenB, idB := signUp(t, h, pool, "+79990001082")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{
+		"title": "Имя", "username": "f7d_pub_name", "is_public": true, "member_ids": []int64{idB}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	cid := itoa(createdPeerID(t, rec))
+	usernameNow := func() string {
+		var card struct {
+			Chats []struct {
+				Username string `json:"username"`
+			} `json:"chats"`
+		}
+		r := authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+		_ = json.Unmarshal(r.Body.Bytes(), &card)
+		if len(card.Chats) != 1 {
+			t.Fatalf("карточка: %s", r.Body.String())
+		}
+		return card.Chats[0].Username
+	}
+
+	// B — рядовой участник, дефолтные права группы дают ему change_info.
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/about", tokenB, map[string]any{"about": "от участника"}); rec.Code != http.StatusOK {
+		t.Fatalf("about участником: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/title", tokenB, map[string]any{"title": "Новое имя"}); rec.Code != http.StatusOK {
+		t.Fatalf("title участником: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := usernameNow(); got != "f7d_pub_name" {
+		t.Fatalf("публичное имя после правок участника = %q", got)
+	}
+	// Сменить или стереть имя участнику нельзя.
+	for _, body := range []map[string]any{
+		{"is_public": true, "username": "f7d_stolen"},
+		{"is_public": false, "username": ""},
+	} {
+		if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/type", tokenB, body); rec.Code != http.StatusForbidden {
+			t.Fatalf("тип группы участником %v: %d %s; ждали 403", body, rec.Code, rec.Body.String())
+		}
+	}
+	if got := usernameNow(); got != "f7d_pub_name" {
+		t.Fatalf("публичное имя после попыток участника = %q", got)
+	}
+	// Создатель: форма имени проверяется регэкспом.
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/type", tokenA, map[string]any{"is_public": true, "username": "a b!"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("негодное имя создателем: %d %s; ждали 400", rec.Code, rec.Body.String())
+	}
+	if got := usernameNow(); got != "f7d_pub_name" {
+		t.Fatalf("публичное имя после негодного = %q", got)
+	}
+}
