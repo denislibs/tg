@@ -790,8 +790,8 @@ func NewMessagesDialogsSlice(count int, dialogs []Dialog, messages []any, chats 
 //
 // `state` — тот же `updates.state`, что отдаёт `updates.getState`: единственный
 // потребитель у оригинала — повтор reloadConversation при разошедшемся pts
-// (appMessagesManager.ts:6313-6319). Читается ДО строк диалогов, чтобы строки
-// были не старее курсора, который он описывает.
+// (appMessagesManager.ts:6313-6319). Читается ДО строк диалогов: опоздавший
+// кадр даёт лишний повтор на клиенте, а не принятую за свежую старую строку.
 type MessagesPeerDialogs struct {
 	Underscore string   `json:"_"`
 	Dialogs    []Dialog `json:"dialogs"`

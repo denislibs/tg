@@ -66,10 +66,9 @@ type MessagesDialogs = {
  * Ответ `GET /peer_dialogs` — `messages.peerDialogs` (порт
  * `messages.getPeerDialogs`): строки ЗАПРОШЕННЫХ диалогов теми же векторами,
  * что у списка, плюс `state` (`updates.state`) — по нему `reloadConversation`
- * сверяет курсор апдейтов (tweb appMessagesManager.ts:6313-6319). `state`
- * необязателен только для ответа без него: тогда сверки нет.
+ * сверяет курсор апдейтов (tweb appMessagesManager.ts:6313-6319).
  */
-type MessagesPeerDialogs = Omit<MessagesDialogs, '_' | 'count'> & { _?: 'messages.peerDialogs'; state?: { pts: number } }
+type MessagesPeerDialogs = Omit<MessagesDialogs, '_' | 'count'> & { _?: 'messages.peerDialogs'; state: { pts: number } }
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
@@ -85,6 +84,7 @@ export interface DialogsDeps {
    * серверный pts растёт: сверка pts была бы бесконечным циклом. Поэтому она
    * только при `true`; иначе ответ применяется сразу, а догонка после
    * переподключения всё равно приведёт строку. Читается на КАЖДОЙ итерации.
+   * Без этой зависимости сверки нет вовсе.
    */
   isLiveSynced?: () => boolean
   /** Курсор канала из строки списка — порт tweb `addChannelState(channelId,
@@ -189,6 +189,9 @@ export interface DialogsDeps {
  * поток) схлопывалась в одну запись, а не открывала readwrite-транзакцию на
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
+
+/** Потолок повторов `messages.getPeerDialogs` при разошедшемся pts (см. `reloadConversation`). */
+const PEER_DIALOGS_PTS_RETRIES = 5
 
 export function newDialogsManager({ rest, getUpdatesPts, isLiveSynced, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState, onReadOutbox, addMissedDialogs }: DialogsDeps) {
   let items: DialogItem[] = []
@@ -740,8 +743,17 @@ export function newDialogsManager({ rest, getUpdatesPts, isLiveSynced, addChanne
   // запрос в полёте, — следующим. Ответ сливается как страница списка
   // (`dialogsStorage.applyDialogs` → наш `mergePage`).
   //
-  // Повтор при разошедшемся pts (:6313-6319) — порт с одним отступлением:
-  // сверка только при открытом WS и без догонки (`isLiveSynced`, см. DialogsDeps).
+  // Повтор при разошедшемся pts (:6313-6319) — порт с отступлениями:
+  //  1. сверка только при открытом WS и без догонки (`isLiveSynced`, см. DialogsDeps,
+  //     согласовано 2026-10-13);
+  //  2. не больше PEER_DIALOGS_PTS_RETRIES повторов, затем ответ применяется как есть
+  //     (у tweb цикла-потолка нет, но канал MTProto доставляет апдейты надёжно; наш
+  //     WS нет: кадр может потерять Redis-подписка или полный буфер сокета, а
+  //     упавшая разница глотается — без потолка строка опрашивалась бы вечно и
+  //     держала бы очередь перечитываний. Образец потолка в самом tweb —
+  //     CHANNEL_CUTOFF_RETRY_LIMIT, constants.ts:42). Ждёт подтверждения пользователя;
+  //  3. повтора при сдвиге отсечки канала (`cutoffChanged`, :6299-6324) нет —
+  //     отсечек каналов у нас нет.
   // Промиса на пира наружу нет — его ждущих у нас нет.
   const reloadPeers = new Set<number>()
   let reloadPromise: Promise<void> | null = null
@@ -757,12 +769,12 @@ export function newDialogsManager({ rest, getUpdatesPts, isLiveSynced, addChanne
       const gen = sessionGen
       try {
         let r: MessagesPeerDialogs
-        for (;;) {
+        for (let attempt = 0; ; attempt++) {
           r = await rest.get<MessagesPeerDialogs>('/peer_dialogs', { peers: peerIds.join(',') })
           if (gen !== sessionGen) return
           // tweb :6313-6319: `currentState.pts && currentState.pts !== state.pts`.
           const cursorPts = getUpdatesPts?.() ?? 0
-          if (!cursorPts || !r.state || cursorPts === r.state.pts || !(isLiveSynced?.() ?? true)) break
+          if (!cursorPts || cursorPts === r.state.pts || !(isLiveSynced?.() ?? false) || attempt >= PEER_DIALOGS_PTS_RETRIES) break
           await pause(500)
           if (gen !== sessionGen) return
         }

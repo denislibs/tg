@@ -363,9 +363,11 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 		}
 		peers = append(peers, domain.PeerID(v))
 	}
-	// `state` читается ДО строк: строки не старее курсора, который он описывает.
-	// Живой кадр между чтениями даёт state.pts < курсора клиента — клиент
-	// повторит запрос (tweb :6313-6319), а не примет устаревшую строку за свежую.
+	// `state` читается ДО строк. Кадр, закоммиченный между чтениями, даёт
+	// state.pts < курсора клиента — клиент повторит запрос (tweb :6313-6319), а не
+	// примет возможно устаревшую строку за свежую. Это не гарантия свежести:
+	// строки идут из кэша диалогов (ListDialogs, TTL 15 с, сброс после коммита),
+	// и в окне между коммитом и сбросом они могут отстать от state.
 	state, err := h.svc.UpdatesState(r.Context(), h.meID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not get dialogs")

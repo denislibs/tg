@@ -2,7 +2,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { newGlobalFunnel } from './globalFunnel'
 import { newCursor } from './cursor'
-import { CHANNEL_CURSOR, UPDATE_RT } from './updateCatalog'
 
 // Тот же приём, что и в cursor.test.ts: in-memory KV вместо настоящей IDB.
 function memStore() {
@@ -248,35 +247,5 @@ describe('globalFunnel.applyLocalPts — местный updatePts (tweb processL
     funnel.applyLocalPts(3, 3)
     expect(catchUp).toHaveBeenCalledTimes(1)
     expect(cursor.get().pts).toBe(0)
-  })
-})
-
-// Ф7-Ж: `reloadConversation` сверяет `state.pts` ответа `messages.getPeerDialogs` с
-// этим курсором и повторяет запрос, пока они не сойдутся (tweb
-// appMessagesManager.ts:6313-6319). Цикл кончается только если КАЖДЫЙ живой кадр
-// пер-юзерного журнала доводит курсор до своего pts — иначе строка диалога
-// перечитывалась бы каждые 500 мс вечно. Канальные кадры (`CHANNEL_CURSOR`) идут
-// в канальную воронку и этот курсор не двигают.
-describe('globalFunnel.applyUpdate — сходимость курсора для сверки pts (Ф7-Ж)', () => {
-  const userJournal = Object.keys(UPDATE_RT).filter((k) => !CHANNEL_CURSOR.has(k))
-
-  it('каждый конструктор пер-юзерного журнала: живой кадр cursor+1 доводит курсор до его pts', async () => {
-    expect(userJournal.length).toBeGreaterThan(30)
-    for (const key of userJournal) {
-      const h = harness()
-      await h.cursor.ready()
-      h.cursor.set(11, 1)
-      h.funnel.applyUpdate(key, 12, { _: key })
-      expect(h.cursor.get().pts, key).toBe(12)
-      expect(h.dispatched, key).toEqual([{ t: key, d: { _: key }, pts: 12, catchUp: false }])
-    }
-  })
-
-  it('серия разных конструкторов подряд: курсор равен pts последнего кадра', async () => {
-    const h = harness()
-    await h.cursor.ready()
-    userJournal.forEach((key, i) => h.funnel.applyUpdate(key, i + 1, { _: key }))
-    expect(h.cursor.get().pts).toBe(userJournal.length)
-    expect(h.catchUp).not.toHaveBeenCalled()
   })
 })

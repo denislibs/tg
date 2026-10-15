@@ -137,10 +137,16 @@ func TestPeerDialogs_UnknownPeerIsAbsent_HTTP(t *testing.T) {
 // Без state на клиенте нечего сравнивать.
 func TestPeerDialogs_StateMatchesUpdatesState_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
-	tokenA, _ := signUp(t, h, pool, "+79990000255")
-	_, idB := signUp(t, h, pool, "+79990000256")
-	if rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB}); rec.Code != http.StatusOK {
+	tokenA, idA := signUp(t, h, pool, "+79990000255")
+	tokenB, idB := signUp(t, h, pool, "+79990000256")
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenB, map[string]int64{"user_id": idA})
+	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+	}
+	// Сообщение от B пишет в журнал A строку (pts > 0) и непрочитанное (unread > 0):
+	// без этого и подставленный нулевой state совпал бы с настоящим.
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(createdPeerFrom(t, rec))+"/messages", tokenB, map[string]any{"text": "привет"}); rec.Code != http.StatusOK {
+		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 
 	type stateBody struct {
@@ -149,13 +155,17 @@ func TestPeerDialogs_StateMatchesUpdatesState_HTTP(t *testing.T) {
 		Date        int64  `json:"date"`
 		UnreadCount int    `json:"unread_count"`
 	}
-	rec := authedReq(t, h, http.MethodGet, "/updates/state", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/updates/state", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /updates/state: %d %s", rec.Code, rec.Body.String())
 	}
 	var want stateBody
 	if err := json.Unmarshal(rec.Body.Bytes(), &want); err != nil {
 		t.Fatalf("decode state: %v", err)
+	}
+
+	if want.Pts == 0 || want.UnreadCount == 0 {
+		t.Fatalf("/updates/state = %+v; ждали pts > 0 и unread_count > 0 после сообщения от собеседника", want)
 	}
 
 	rec = authedReq(t, h, http.MethodGet, "/peer_dialogs?peers="+itoa(idB), tokenA, nil)

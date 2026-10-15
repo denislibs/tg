@@ -2087,16 +2087,38 @@ describe('dialogsManager.reloadConversation: сверка state.pts (Ф7-Ж)', (
     } finally { vi.useRealTimers() }
   })
 
-  it('ответ без state (старый сервер) — применяется сразу, цикла нет', async () => {
+  it.each([
+    ['курсор клиента отстаёт: кадр потерян, разница не идёт', 12, 10],
+    ['курсор клиента впереди сервера (откат БД)', 10, 12],
+  ])('расхождение не лечится (%s) — потолок 5 повторов, затем ответ применяется', async (_name, cursor, server) => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => cursor, responses: [server] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(500 * 5)
+      expect(get).toHaveBeenCalledTimes(6)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(server))
+      // Очередь перечитываний не залипла: следующий вызов уходит новым запросом.
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(get).toHaveBeenCalledTimes(6)
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(7)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('isLiveSynced не передан — сверки нет, один запрос', async () => {
     vi.useFakeTimers()
     try {
       const get = vi.fn(async (path: string) => path === '/peer_dialogs'
-        ? { _: 'messages.peerDialogs', dialogs: [rawDialog(PEER, 7)], messages: [], chats: [], users: [] }
+        ? { _: 'messages.peerDialogs', dialogs: [rawDialog(PEER, 7)], messages: [], chats: [], users: [], state: state(7) }
         : container([]))
       const mgr = newDialogsManager({
         rest: { get } as never, onDialogOps: () => {}, loadCache: async () => [],
         loadState: async () => ({ pinnedOrders: {} }), peers: fakePeers(),
-        getUpdatesPts: () => 12, isLiveSynced: () => true,
+        getUpdatesPts: () => 12,
       })
       await mgr.fillMirror()
       get.mockClear()
