@@ -280,3 +280,138 @@ func TestSoftDeleteAndHide_RepeatReportsNoChange(t *testing.T) {
 		}
 	}
 }
+
+// F6 (Р-13): «удалить у себя» невидимого зрителю сообщения — (false, nil), без
+// строки скрытия и без вычета непрочитанного: удалённое у всех и лежащее под
+// горизонтом очистки в unread_count уже не входят.
+func TestHideForUser_InvisibleMessageIsNoop(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7654")
+	b := seedUser(t, pool, "+7655")
+	chatID := createPrivate(t, pool, a, b)
+	old := insertMsg(t, msgs, chatID, b, "text", "старое")
+	gone := insertMsg(t, msgs, chatID, b, "text", "удалённое")
+	live := insertMsg(t, msgs, chatID, b, "text", "живое")
+	for range 3 {
+		_, _ = chats.IncUnreadBulk(ctx, chatID, []int64{a})
+	}
+	if _, err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, a, old.Seq); err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := memberCounters(t, pool, chatID, a)
+
+	for _, id := range []int64{gone.ID, old.ID} {
+		if ok, err := msgs.HideForUser(ctx, a, id); err != nil || ok {
+			t.Fatalf("HideForUser(невидимое %d) = %v %v, want false nil", id, ok, err)
+		}
+	}
+	var hides int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM message_hides WHERE user_id = $1`, a).Scan(&hides); err != nil || hides != 0 {
+		t.Fatalf("строк скрытия %d (%v), want 0", hides, err)
+	}
+	if after, _, _ := memberCounters(t, pool, chatID, a); after != before {
+		t.Fatalf("unread %d -> %d: невидимое списало счётчик", before, after)
+	}
+	if ok, err := msgs.HideForUser(ctx, a, live.ID); err != nil || !ok {
+		t.Fatalf("HideForUser(видимое) = %v %v, want true nil", ok, err)
+	}
+}
+
+// F6 (Р-13, скрытая предыстория): сообщение до вступления участника при
+// history_for_new=false ему не видно — «удалить у себя» его не скрывает и не
+// вычитает unread_count (вступивший получает last_read_seq = 0, и вычет списал
+// бы то, что никогда не считалось).
+func TestHideForUser_HiddenPrehistoryIsNoop(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7658")
+	late := seedUser(t, pool, "+7659")
+	var chatID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, title, creator_id, history_for_new) VALUES ('group','Г',$1,false) RETURNING id`, owner).Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role, joined_at) VALUES ($1,$2,'creator', now() - interval '2 hours')`, chatID, owner); err != nil {
+		t.Fatal(err)
+	}
+	before := insertMsg(t, msgs, chatID, owner, "text", "до вступления")
+	if _, err := pool.Exec(ctx, `UPDATE messages SET created_at = now() - interval '1 hour' WHERE id = $1`, before.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role, joined_at) VALUES ($1,$2,'member', now())`, chatID, late); err != nil {
+		t.Fatal(err)
+	}
+	after := insertMsg(t, msgs, chatID, owner, "text", "после вступления")
+	_, _ = chats.IncUnreadBulk(ctx, chatID, []int64{late})
+	unread, _, _ := memberCounters(t, pool, chatID, late)
+
+	if ok, err := msgs.HideForUser(ctx, late, before.ID); err != nil || ok {
+		t.Fatalf("HideForUser(предыстория) = %v %v, want false nil", ok, err)
+	}
+	if now, _, _ := memberCounters(t, pool, chatID, late); now != unread {
+		t.Fatalf("unread %d -> %d: предыстория списала счётчик", unread, now)
+	}
+	if ok, err := msgs.HideForUser(ctx, late, after.ID); err != nil || !ok {
+		t.Fatalf("HideForUser(после вступления) = %v %v, want true nil", ok, err)
+	}
+}
+
+// F6 (Р-11): скрытие строки снимает закреп и архив только у скрываемого; строка,
+// вернувшаяся новым сообщением (ShowDialogs), не закреплена и не в архиве даже
+// если закреп пришёл с другого устройства уже после удаления; скрытая строка
+// не ест лимит закрепов.
+func TestDialogHidden_DropsAndResetsPinAndArchive(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	groups := NewGroupRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7660")
+	b := seedUser(t, pool, "+7661")
+	chatID := createPrivate(t, pool, a, b)
+	state := func(uid int64) (pinned, archived bool) {
+		if err := pool.QueryRow(ctx, `SELECT pinned_at IS NOT NULL, archived FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chatID, uid).Scan(&pinned, &archived); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET pinned_at = now(), archived = true WHERE chat_id = $1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := chats.SetDialogHidden(ctx, chatID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if p, ar := state(a); p || ar {
+		t.Fatalf("у скрывшего pinned=%v archived=%v, want false/false", p, ar)
+	}
+	if p, ar := state(b); !p || !ar {
+		t.Fatalf("у собеседника pinned=%v archived=%v: чужой диалог тронут", p, ar)
+	}
+
+	// Закреп с другого устройства уже после удаления: строка скрыта, лимит не ест.
+	if err := groups.SetPinned(ctx, chatID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := groups.CountPinned(ctx, a); err != nil || n != 0 {
+		t.Fatalf("CountPinned = %d %v, want 0: скрытая строка ест лимит", n, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET archived = true WHERE chat_id = $1 AND user_id = $2`, chatID, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := chats.ShowDialogs(ctx, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if p, ar := state(a); p || ar {
+		t.Fatalf("после возврата строки pinned=%v archived=%v, want false/false", p, ar)
+	}
+	if p, ar := state(b); !p || !ar {
+		t.Fatalf("ShowDialogs тронул видимую строку собеседника: pinned=%v archived=%v", p, ar)
+	}
+}
