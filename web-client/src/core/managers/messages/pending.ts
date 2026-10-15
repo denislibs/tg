@@ -242,6 +242,8 @@ export interface PendingCtx {
    *  и тесты без платных групп его не подключают — отказ оплаты тогда просто
    *  красная пометка. */
   repay?: RepayRequestHandler
+  /** Отказ сокетной отправки → `rt:message_send_error` с пиром бабла (NACK пира не несёт). */
+  sendError?: (peerId: number, type: string) => void
 }
 
 /** Период пинга «отправляет фото/файл…» (TTL приёмника — 6 с). */
@@ -670,6 +672,7 @@ export function newPendingMethods(ctx: PendingCtx) {
   const failPendingMessage = (clientMsgId: string, reason?: string): MessageOp[] => {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
+    if (reason) ctx.sendError?.(d.peerId, reason)
     // Отказ из-за недостаточного согласия на плату (`ALLOW_PAYMENT_REQUIRED_<N>`)
     // — не тупик: запрос на повторную оплату остаётся НА СООБЩЕНИИ (tweb
     // `onMessagesSendError` :5822), и повтор доступен после закрытия подсказки.

@@ -78,4 +78,7 @@ export interface MessagesCtx {
    *  `ALLOW_PAYMENT_REQUIRED_<N>` у опроса/чек-листа/пересылки заводит запрос,
    *  а не бросается. Опционален — без него отказ бросается как раньше. */
   repay?: RepayRequestHandler
+  /** Отказ HTTP-пути отправки (пересылка, опрос, чек-лист) → событие
+   *  `rt:message_send_error` (tweb `onMessagesSendError`, :5822). Опционален. */
+  reportSendError?: (peerId: number, err: unknown) => void
 }

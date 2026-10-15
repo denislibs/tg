@@ -101,7 +101,7 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
   `sign_in`: при включённом облачном пароле `auth.passwordNeeded` (сессии нет,
   дальше `POST /auth/check_password`), иначе `auth.authorization`. Ключ доступа
   облачный пароль не отменяет (tweb `passkeyLoginButton.tsx:69-71`).
-- 400 `session expired`; 401 `passkey login failed`; 429 `too many requests`.
+- 400 `session expired`; 401 `passkey login failed`; 420 `FLOOD_WAIT_<N>`.
 
 ### POST /auth/export_login_token  · public
 Экспорт кода QR-входа (`auth.exportLoginToken`). Устройство, ещё не вошедшее,

@@ -60,6 +60,7 @@ func (h *PublicHandler) Mount(r chi.Router) {
 	// Неизвестный путь хоста страниц читает человек в браузере: страница, а не
 	// JSON `METHOD_INVALID` корневого роутера (router.go).
 	r.NotFound(h.notFoundPage)
+	r.MethodNotAllowed(h.notFoundPage)
 	r.Get("/", h.Root)
 	r.Get("/{username}", h.Page)
 	r.Get("/{username}/photo", h.Photo)
@@ -74,7 +75,8 @@ func (h *PublicHandler) Mount(r chi.Router) {
 	r.Get("/addlist/{slug}", h.AddList)
 }
 
-// notFoundPage — HTML 404 для пути, которого у хоста страниц нет.
+// notFoundPage — HTML 404 для пути или метода, которых у хоста страниц нет (страницы
+// читает человек в браузере, а не клиент API).
 func (h *PublicHandler) notFoundPage(w http.ResponseWriter, _ *http.Request) {
 	h.render(w, http.StatusNotFound, pageView{
 		PageTitle: "Messenger", NoIndex: true, OGTitle: "Messenger",

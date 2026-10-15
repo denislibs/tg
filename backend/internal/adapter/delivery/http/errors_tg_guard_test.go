@@ -87,6 +87,59 @@ func TestHandlers_NoOnly500Outcome(t *testing.T) {
 	}
 }
 
+// Вторая форма той же ошибки: переключатель отказов usecase (`switch { case
+// errors.Is(…): … default: writeError(500) }`) — «неизвестный» отказ уходил 500, и
+// ErrSlowmodeWait/ErrPrivacy/плата из новых путей становились детерминированным
+// 500. Ветка default обязана идти через writeDomainError.
+func TestErrorSwitches_DefaultIsDomainError(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{
+		"writeDomainError":   true, // сам разборщик
+		"writeLangPackError": true, // свой закрытый перечень имён langpack.*
+		"ExportLoginToken":   true, // 500 — сбой hex-разбора, не отказ usecase
+	}
+	var bad []string
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, d := range f.Decls {
+				fd, ok := d.(*ast.FuncDecl)
+				if !ok || fd.Body == nil {
+					continue
+				}
+				ast.Inspect(fd.Body, func(n ast.Node) bool {
+					cc, ok := n.(*ast.CaseClause)
+					if !ok || cc.List != nil { // только default
+						return true
+					}
+					for _, st := range cc.Body {
+						ast.Inspect(st, func(m ast.Node) bool {
+							c, ok := m.(*ast.CallExpr)
+							if !ok || len(c.Args) < 2 {
+								return true
+							}
+							if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "writeError" {
+								if sel, ok := c.Args[1].(*ast.SelectorExpr); ok && sel.Sel.Name == "StatusInternalServerError" && !allowed[fd.Name.Name] {
+									bad = append(bad, fset.Position(c.Pos()).String())
+								}
+							}
+							return true
+						})
+					}
+					return true
+				})
+			}
+		}
+	}
+	sort.Strings(bad)
+	if len(bad) > 0 {
+		t.Fatalf("default-ветка отказов пишет 500 мимо writeDomainError:\n  %s", strings.Join(bad, "\n  "))
+	}
+}
+
 type notFoundReactions struct{}
 
 func (notFoundReactions) List(context.Context) ([]domain.AvailableReaction, error) {

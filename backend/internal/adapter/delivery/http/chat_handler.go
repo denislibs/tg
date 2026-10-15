@@ -151,7 +151,7 @@ func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "secret chat not found")
 	default:
-		writeError(w, http.StatusInternalServerError, "handshake failed")
+		writeDomainError(w, err, "handshake failed")
 	}
 	return true
 }
@@ -1585,15 +1585,8 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid checklist")
 		return
 	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
-	}
-	if writePaidError(w, err) {
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not send checklist")
+		writeSendError(w, err, "not a member of this chat")
 		return
 	}
 	writeMessage(w, r, h.svc, m)
@@ -1806,7 +1799,7 @@ func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
 	default:
-		writeError(w, http.StatusInternalServerError, "scheduled operation failed")
+		writeDomainError(w, err, "scheduled operation failed")
 	}
 }
 

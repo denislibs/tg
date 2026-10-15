@@ -39,7 +39,7 @@ function giveawayIdOf(media: MessageMedia): number | undefined {
   return media._ === 'messageMediaGiveaway' || media._ === 'messageMediaGiveawayResults' ? media.id : undefined
 }
 
-export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, applyScheduledUpdates, repay }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, applyScheduledUpdates, repay, reportSendError }: MessagesCtx) {
   // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
   // сервер, здесь остаются перевод номеров и уточнение служебного действия.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
@@ -83,6 +83,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
         // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
         // (tweb `tryRegisterRequest`): подсказка и «Resend» шлют опрос заново.
         if (registerHttpRepay(repay, err, { peerId, messageCount: 1, repay: (confirmedPaymentResult) => { void api.sendPoll(peerId, { ...p, confirmedPaymentResult }).catch(() => {}) } })) return undefined
+        reportSendError?.(peerId, err)
         throw err
       }
       // Отложенный опрос отвечает `Updates` (tweb `sendOther` → `processUpdateMessage`,
@@ -126,6 +127,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps,
         })
       } catch (err) {
         if (registerHttpRepay(repay, err, { peerId, messageCount: 1, repay: (confirmedPaymentResult) => { void api.sendChecklist(peerId, { ...c, confirmedPaymentResult }).catch(() => {}) } })) return undefined
+        reportSendError?.(peerId, err)
         throw err
       }
       return mapOne(r)

@@ -482,19 +482,16 @@ export class AppImManager extends EventListenerBase<{
 
     // Медленный режим: отказ отправки `SLOWMODE_WAIT_<N>` — попап с остатком
     // (tweb `:551-565`). Сервер называет ожидание кодом, N — секунды до конца окна.
-    rootScope.addEventListener(RT.messageError, ({ peer_id, reason }) => {
-      if(!reason.includes('SLOWMODE_WAIT')) return
+    rootScope.addEventListener(RT.messageSendError, ({ peerId, error }) => {
+      if(!error.type.includes('SLOWMODE_WAIT')) return
       const options = {
         titleLangKey: 'Slowmode' as const,
         descriptionLangKey: 'SlowModeHint' as const,
-        descriptionLangArgs: [wrapSlowModeLeftDuration(+reason.split('_').pop()!)],
+        descriptionLangArgs: [wrapSlowModeLeftDuration(+error.type.split('_').pop()!)],
         button: { langKey: 'OK' as const, isCancel: true },
       }
       // Закрытие кнопкой с isCancel отклоняет промис — это штатный исход, не сбой.
-      const popup = peer_id ?
-        confirmationPopup({ ...options, peerId: peer_id, managers: this.managers }) :
-        confirmationPopup(options)
-      popup.catch(() => {})
+      confirmationPopup({ ...options, peerId, managers: this.managers }).catch(() => {})
     })
 
     // расхождение 12 шапки

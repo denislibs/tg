@@ -76,7 +76,7 @@ func writeTerminateError(w http.ResponseWriter, err error, msg string) {
 	case errors.Is(err, domain.ErrNoCurrentSession):
 		writeError(w, http.StatusUnauthorized, "no session")
 	default:
-		writeError(w, http.StatusInternalServerError, msg)
+		writeDomainError(w, err, msg)
 	}
 }
 

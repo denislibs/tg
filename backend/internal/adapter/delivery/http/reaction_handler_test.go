@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+
+	"github.com/messenger-denis/backend/internal/domain"
 	"testing"
 )
 
@@ -78,5 +80,25 @@ func TestSlowmode_HTTP_Wait(t *testing.T) {
 	n := waitSeconds(e.Text)
 	if rec.Code != 420 || !strings.HasPrefix(e.Text, "SLOWMODE_WAIT_") || n < 28 || n > 30 {
 		t.Fatalf("второе: %d %s; want 420 SLOWMODE_WAIT_28..30", rec.Code, rec.Body.String())
+	}
+}
+
+// Переключатели отказов ручек отправки (комментарий к посту, правка отложенного,
+// группы, истории, папки) отдают ErrSlowmodeWait как 420, а не 500. Саму форму
+// охраняет TestErrorSwitches_DefaultIsDomainError; здесь — наблюдаемый код.
+func TestErrorMappers_SlowmodeWait(t *testing.T) {
+	wait := domain.ErrSlowmodeWait{Seconds: 12}
+	mappers := map[string]func(http.ResponseWriter, error){
+		"ChannelHandler.mapErr":    (&ChannelHandler{}).mapErr,
+		"ChatHandler.mapScheduled": (&ChatHandler{}).mapScheduledErr,
+		"GroupHandler.mapErr":      (&GroupHandler{}).mapErr,
+		"StoryHandler.mapErr":      (&StoryHandler{}).mapErr,
+	}
+	for name, fn := range mappers {
+		rec := httptest.NewRecorder()
+		fn(rec, wait)
+		if e := errText(t, rec); rec.Code != 420 || e != "SLOWMODE_WAIT_12" {
+			t.Errorf("%s: %d %q, want 420 SLOWMODE_WAIT_12", name, rec.Code, e)
+		}
 	}
 }

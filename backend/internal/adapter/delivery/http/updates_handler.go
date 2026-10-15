@@ -71,7 +71,7 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 	case errors.Is(err, domain.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid channel")
 	default:
-		writeError(w, http.StatusInternalServerError, "get channel difference failed")
+		writeDomainError(w, err, "get channel difference failed")
 	}
 }
 

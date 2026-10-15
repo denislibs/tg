@@ -441,7 +441,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		nack := func(reason string) {
 			f, _ := json.Marshal(map[string]any{
 				"t": "message_error",
-				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason, "peer_id": d.PeerID},
+				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason},
 			})
 			c.reply(f)
 		}

@@ -82,3 +82,14 @@ func TestRouter_PublicHost_NotFoundIsHTML(t *testing.T) {
 		t.Fatalf("публичная страница отдала JSON: %s", rec.Body.String())
 	}
 }
+
+// Хост страниц и неразрешённый метод отвечает HTML, а не JSON корня.
+func TestRouter_PublicHost_MethodNotAllowedIsHTML(t *testing.T) {
+	rec := doReq(t, notFoundRouter(), http.MethodPost, "/tme/alice", nil, nil)
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("= %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") || strings.Contains(rec.Body.String(), "METHOD_INVALID") {
+		t.Fatalf("Content-Type %q, тело %s", ct, rec.Body.String())
+	}
+}

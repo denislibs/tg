@@ -1,4 +1,4 @@
-// Ф7-И1 (MC-08): `message_error` с `SLOWMODE_WAIT_<N>` открывает попап «Медленный
+// Ф7-И1 (MC-08): `rt:message_send_error` (объявляет воркер) с `SLOWMODE_WAIT_<N>` открывает попап «Медленный
 // режим» с остатком (tweb `appImManager.ts:551-565`). Другие причины отказа попапа не
 // открывают.
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -72,9 +72,9 @@ beforeAll(() => {
 
 beforeEach(() => popup.confirmationPopup.mockClear())
 
-describe('message_error: медленный режим', () => {
+describe('rt:message_send_error: медленный режим', () => {
   it('SLOWMODE_WAIT_30 для пира — попап Slowmode/SlowModeHint с остатком и аватаром пира', () => {
-    rootScope.dispatchEvent(RT.messageError, { client_msg_id: 'c1', reason: 'SLOWMODE_WAIT_30', peer_id: 77 })
+    rootScope.dispatchEvent(RT.messageSendError, { peerId: 77, error: { type: 'SLOWMODE_WAIT_30' } })
 
     expect(popup.confirmationPopup).toHaveBeenCalledTimes(1)
     expect(popup.confirmationPopup).toHaveBeenCalledWith(expect.objectContaining({
@@ -86,16 +86,9 @@ describe('message_error: медленный режим', () => {
     }))
   })
 
-  it('отказ без peer_id (старый сервер) — попап без аватара', () => {
-    rootScope.dispatchEvent(RT.messageError, { client_msg_id: 'c1', reason: 'SLOWMODE_WAIT_5' })
-    const arg = (popup.confirmationPopup.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-    expect(arg.peerId).toBeUndefined()
-    expect(arg.descriptionLangArgs).toEqual(['left:5'])
-  })
-
   it('прочие причины (too_long, BALANCE_TOO_LOW) попапа медленного режима не открывают', () => {
     for (const reason of ['too_long', 'BALANCE_TOO_LOW', 'ALLOW_PAYMENT_REQUIRED_5', 'failed']) {
-      rootScope.dispatchEvent(RT.messageError, { client_msg_id: 'c1', reason, peer_id: 77 })
+      rootScope.dispatchEvent(RT.messageSendError, { peerId: 77, error: { type: reason } })
     }
     expect(popup.confirmationPopup).not.toHaveBeenCalled()
   })

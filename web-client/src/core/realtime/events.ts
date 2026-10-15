@@ -36,6 +36,10 @@ export const RT = {
   viewsUpdate: 'rt:views_update',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
+  // Отказ отправки, объявленный воркером: `{peerId, error:{type}}` (tweb `message_error`,
+  // appMessagesManager.ts:5822-5830). Один источник и для NACK сокета, и для HTTP-путей
+  // (пересылка, опрос, чек-лист). Потребитель — попап медленного режима (appImManager).
+  messageSendError: 'rt:message_send_error',
   // Пяти событий rt:pending_* больше нет: жизненный цикл неотправленного
   // сообщения переехал в менеджер воркера (core/managers/messages/pending.ts),
   // и наружу он объявляет только MessageOp (rt:message_op) — «бабл появился» это
@@ -907,8 +911,10 @@ export interface AckEvt {
 }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
-/** `peer_id` — пир отправки (tweb `message_error{peerId, error}`); нужен попапу медленного режима. */
-export interface MessageErrorEvt { client_msg_id: string; reason: string; peer_id?: number }
+export interface MessageErrorEvt { client_msg_id: string; reason: string }
+
+/** Отказ отправки пира `peerId` (tweb `message_error{peerId, error}`); `error.type` — имя TG. */
+export interface MessageSendErrorEvt { peerId: number; error: { type: string } }
 
 // Заявка на временный («неотправленный») бабл — вход
 // messages.beforeMessageSending (core/managers/messages/pending.ts). Событием это

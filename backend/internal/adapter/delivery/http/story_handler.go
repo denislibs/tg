@@ -60,7 +60,7 @@ func (h *StoryHandler) mapErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "unavailable")
 	default:
-		writeError(w, http.StatusInternalServerError, "server error")
+		writeDomainError(w, err, "server error")
 	}
 }
 
