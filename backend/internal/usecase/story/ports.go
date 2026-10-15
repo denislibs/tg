@@ -21,9 +21,10 @@ type StoryRepo interface {
 	IDBySeq(ctx context.Context, authorID, seq int64) (int64, error)
 
 	// SetRead двигает ГОРИЗОНТ прочтения зрителя у автора (только вперёд) и
-	// возвращает горизонт ПОСЛЕ применения. ReadHorizons отдаёт горизонты у
-	// перечисленных авторов; отсутствие автора в карте значит «не читал».
-	SetRead(ctx context.Context, viewerID, authorID, maxID int64) (int64, error)
+	// возвращает горизонт ПОСЛЕ применения и признак «сдвинулся» (false —
+	// повторный просмотр уже прочитанной истории). ReadHorizons отдаёт горизонты
+	// у перечисленных авторов; отсутствие автора в карте значит «не читал».
+	SetRead(ctx context.Context, viewerID, authorID, maxID int64) (horizon int64, moved bool, err error)
 	ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error)
 	ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error)
 	MarkViewed(ctx context.Context, storyID, viewerID int64) error
@@ -70,6 +71,9 @@ type StoryRepo interface {
 	// пагинацией по id (offsetID>0 — только id < offsetID). Pinned — закреплённые
 	// истории peer'а (в т.ч. истёкшие), отфильтрованные по видимости для viewer.
 	Archive(ctx context.Context, ownerID, limit, offsetID int64) ([]domain.StoryRecord, error)
+	// ArchiveCount — ВСЕГО историй в архиве владельца (без limit и offset):
+	// `stories.stories.count`.
+	ArchiveCount(ctx context.Context, ownerID int64) (int, error)
 	Pinned(ctx context.Context, peerID, viewerID int64) ([]domain.StoryRecord, error)
 
 	// ByID — одна история глазами зрителя (для кадра `updateStory`, который
@@ -134,8 +138,8 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// EventPublisher рассылает realtime-кадры историй адресатам (по образцу chat).
-// Опционален: когда nil, истории живут только через polling GET /stories.
+// EventPublisher рассылает живой кадр без журнала — `updateStory` автору после
+// чужой реакции (остальное идёт через ownsync). Опционален: когда nil, кадра нет.
 type EventPublisher interface {
 	PublishToUser(ctx context.Context, userID int64, frame []byte) error
 }

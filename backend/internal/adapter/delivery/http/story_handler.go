@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storyusecase "github.com/messenger-denis/backend/internal/usecase/story"
@@ -310,11 +311,11 @@ func (h *StoryHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	_, seq, ok := storyAddr(w, r)
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(r.Context(), seq, user.ID); err != nil {
+	if err := h.svc.Delete(r.Context(), authorID, seq, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -389,12 +390,12 @@ func (h *StoryHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	limit, _ := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
 	offsetID, _ := strconv.ParseInt(r.URL.Query().Get("offset_id"), 10, 64)
-	items, err := h.svc.Archive(r.Context(), user.ID, limit, offsetID)
+	items, total, err := h.svc.Archive(r.Context(), user.ID, limit, offsetID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewStoriesStories(storyItems(items, true), nil))
+	writeJSON(w, http.StatusOK, domain.NewStoriesStories(total, storyItems(items, true), nil))
 }
 
 // Pinned serves GET /stories/pinned?peer={userID} → a peer's pinned stories
@@ -410,14 +411,16 @@ func (h *StoryHandler) Pinned(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewStoriesStories(storyItems(items, peer == user.ID), nil))
+	// Закреплённые отдаются целиком, без limit: общий счёт — их число.
+	writeJSON(w, http.StatusOK, domain.NewStoriesStories(len(items), storyItems(items, peer == user.ID), nil))
 }
 
-// Pin serves POST /stories/{storyID}/pin body {pinned} — owner toggles the
-// profile-pin of a story.
+// Pin serves POST /stories/{peerID}/{storySeq}/pin body {pinned} — owner toggles
+// the profile-pin of a story. Ответ — `Vector<int>` номеров затронутых историй
+// (tweb stories.togglePinned, appStoriesManager.ts:845-877), здесь всегда один.
 func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	_, seq, ok := storyAddr(w, r)
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -428,19 +431,20 @@ func (h *StoryHandler) Pin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.SetPinned(r.Context(), seq, user.ID, b.Pinned); err != nil {
+	if err := h.svc.SetPinned(r.Context(), authorID, seq, user.ID, b.Pinned); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeJSON(w, http.StatusOK, []int{int(seq)})
 }
 
-// Edit serves PATCH /stories/{storyID} body {caption?, privacy?, allow_user_ids?}
-// — owner edits a story; caption/privacy are optional and omitted fields are
-// left unchanged.
+// Edit serves PATCH /stories/{peerID}/{storySeq} body {caption?, privacy?,
+// allow_user_ids?, media_areas?} — owner edits a story; omitted fields are left
+// unchanged. Ответ — контейнер `updates` с `updateStory` (tweb stories.editStory
+// → Updates, appStoriesManager.ts:829-834): история глазами автора.
 func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	_, seq, ok := storyAddr(w, r)
+	authorID, seq, ok := storyAddr(w, r)
 	if !ok {
 		return
 	}
@@ -454,11 +458,13 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.svc.EditStory(r.Context(), seq, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas); err != nil {
+	item, err := h.svc.EditStory(r.Context(), authorID, seq, user.ID, b.Caption, b.Privacy, b.AllowUserIDs, b.MediaAreas)
+	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	update := domain.NewUpdateStory(domain.NewPeer(domain.PeerID(authorID)), item)
+	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, []domain.UserReal{selfUser(user)}, time.Now()))
 }
 
 const statDayFmt = "2006-01-02"

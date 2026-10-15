@@ -49,14 +49,17 @@ func (r StoryRecord) ToStoryItem(owner bool) StoryItemReal {
 
 // storyViewsOf собирает `storyViews` — общий (не пер-зрительский) агрегат.
 //
+// Счёт просмотров (`views_count`) на строке есть только у автора (см.
+// StoryRecord.ViewsCount); остальным параметр едет нулём, как и прежде.
+//
 // Возвращает nil, когда рассказывать нечего: ни просмотров, ни реакций. У
 // оригинала `views` тоже необязателен, и «ноль просмотров» там выражается
 // отсутствием параметра, а не нулём внутри объекта.
 func storyViewsOf(r StoryRecord) *StoryViews {
-	if r.ReactionsCount == 0 && len(r.Reactions) == 0 {
+	if r.ViewsCount == 0 && r.ReactionsCount == 0 && len(r.Reactions) == 0 {
 		return nil
 	}
-	v := NewStoryViews(0, ReactionCountsOf(r.Reactions), r.ReactionsCount)
+	v := NewStoryViews(r.ViewsCount, ReactionCountsOf(r.Reactions), r.ReactionsCount)
 	return &v
 }
 

@@ -186,6 +186,20 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("edit story: %d %s", rec.Code, rec.Body.String())
 	}
+	// Ответ правки — контейнер `updates` с `updateStory` (tweb stories.editStory →
+	// Updates): история глазами автора, под её номером.
+	var edited struct {
+		Underscore string `json:"_"`
+		Updates    []struct {
+			Underscore string         `json:"_"`
+			Story      map[string]any `json:"story"`
+		} `json:"updates"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &edited)
+	if edited.Underscore != "updates" || len(edited.Updates) != 1 || edited.Updates[0].Underscore != "updateStory" ||
+		edited.Updates[0].Story["id"] != float64(posted) || edited.Updates[0].Story["caption"] != "edited" {
+		t.Fatalf("ответ правки не updates{updateStory}: %s", rec.Body.String())
+	}
 	// C (non-owner) cannot edit.
 	rec = authedReq(t, h, http.MethodPatch, "/stories/"+itoa(idA)+"/"+itoa(posted), tokenC, map[string]any{"caption": "hax"})
 	if rec.Code != http.StatusForbidden {
@@ -209,6 +223,12 @@ func TestStories_Lifecycle_HTTP(t *testing.T) {
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/pin", tokenA, map[string]any{"pinned": true})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("pin: %d %s", rec.Code, rec.Body.String())
+	}
+	// Ответ — Vector<int> номеров (tweb stories.togglePinned).
+	var pinnedIDs []int64
+	_ = json.Unmarshal(rec.Body.Bytes(), &pinnedIDs)
+	if len(pinnedIDs) != 1 || pinnedIDs[0] != posted {
+		t.Fatalf("ответ закрепа = %s; want [%d]", rec.Body.String(), posted)
 	}
 	rec = authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(posted)+"/pin", tokenC, map[string]any{"pinned": false})
 	if rec.Code != http.StatusForbidden {
@@ -705,5 +725,117 @@ func TestStories_MediaAreasRepostShare_HTTP(t *testing.T) {
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("C share: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// VA2-01 / Б-12: у Алисы и Боба по истории №1. Закрепить и править историю
+// №1 может только её автор, а путь «чужой автор + мой номер» — 403 и ничего не
+// меняет. Раньше номер уходил в сервис как внутренний ключ строки.
+func TestStories_PinEditDeleteAddressByAuthorAndSeq_HTTP(t *testing.T) {
+	h, pool := newStoryRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990000080")
+	tokenB, idB := signUp(t, h, pool, "+79990000081")
+
+	post := func(token, caption string) int64 {
+		rec := authedReq(t, h, http.MethodPost, "/media/upload", token, map[string]any{"mime": "image/jpeg", "size": 2048})
+		var m struct {
+			MediaID int64 `json:"media_id"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &m)
+		rec = authedReq(t, h, http.MethodPost, "/stories", token, map[string]any{"media_id": m.MediaID, "caption": caption, "privacy": "everyone"})
+		var seq int64
+		_ = json.Unmarshal(rec.Body.Bytes(), &seq)
+		return seq
+	}
+	seqA, seqB := post(tokenA, "alice"), post(tokenB, "bob")
+	if seqA != 1 || seqB != 1 {
+		t.Fatalf("номера историй: alice=%d bob=%d; want оба 1", seqA, seqB)
+	}
+
+	// Алиса закрепляет СВОЮ №1.
+	rec := authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/1/pin", tokenA, map[string]any{"pinned": true})
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[1]" {
+		t.Fatalf("pin: %d %s; want 200 [1]", rec.Code, rec.Body.String())
+	}
+	pinnedOf := func(token string, peer int64) int {
+		rec := authedReq(t, h, http.MethodGet, "/stories/pinned?peer="+itoa(peer), token, nil)
+		var l struct {
+			Count   int         `json:"count"`
+			Stories []wireStory `json:"stories"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &l)
+		return l.Count
+	}
+	if pinnedOf(tokenA, idA) != 1 {
+		t.Fatal("история Алисы не закреплена")
+	}
+	if pinnedOf(tokenB, idB) != 0 {
+		t.Fatal("закрепилась история Боба")
+	}
+
+	// Путь «Боб + номер 1» от имени Алисы — чужая история: 403, ничего не меняется.
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/stories/" + itoa(idB) + "/1/pin"},
+		{http.MethodPatch, "/stories/" + itoa(idB) + "/1"},
+		{http.MethodDelete, "/stories/" + itoa(idB) + "/1"},
+	} {
+		rec := authedReq(t, h, tc.method, tc.path, tokenA, map[string]any{"pinned": true, "caption": "hax"})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s %s от Алисы: %d %s; want 403", tc.method, tc.path, rec.Code, rec.Body.String())
+		}
+	}
+	rec = authedReq(t, h, http.MethodGet, "/stories", tokenB, nil)
+	own := decodeFeed(t, rec.Body.String())
+	if len(own.PeerStories) != 1 || own.PeerStories[0].Stories[0].Caption != "bob" {
+		t.Fatalf("история Боба изменилась или пропала: %s", rec.Body.String())
+	}
+}
+
+// Автор видит число просмотров (`views.views_count`), зритель — нет; архив
+// отдаёт общий счёт, а не длину страницы.
+func TestStories_ViewsCountForAuthorOnly_HTTP(t *testing.T) {
+	h, pool := newStoryRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990000082")
+	tokenB, idB := signUp(t, h, pool, "+79990000083")
+	tokenC, idC := signUp(t, h, pool, "+79990000084")
+
+	rec := authedReq(t, h, http.MethodPost, "/media/upload", tokenA, map[string]any{"mime": "image/jpeg", "size": 2048})
+	var m struct {
+		MediaID int64 `json:"media_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &m)
+	rec = authedReq(t, h, http.MethodPost, "/stories", tokenA, map[string]any{"media_id": m.MediaID, "caption": "x", "privacy": "everyone"})
+	var seq int64
+	_ = json.Unmarshal(rec.Body.Bytes(), &seq)
+	for _, other := range []int64{idB, idC} {
+		if rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": other}); rec.Code != http.StatusOK {
+			t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	for _, token := range []string{tokenB, tokenC} {
+		if rec := authedReq(t, h, http.MethodPost, "/stories/"+itoa(idA)+"/"+itoa(seq)+"/view", token, nil); rec.Code != http.StatusOK {
+			t.Fatalf("view: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	viewsCount := func(token string) (float64, bool) {
+		rec := authedReq(t, h, http.MethodGet, "/stories", token, nil)
+		for _, g := range decodeFeed(t, rec.Body.String()).PeerStories {
+			for _, st := range g.Stories {
+				if st.Views == nil {
+					return 0, false
+				}
+				v, ok := st.Views["views_count"].(float64)
+				return v, ok
+			}
+		}
+		t.Fatalf("истории нет в ленте: %s", rec.Body.String())
+		return 0, false
+	}
+	if n, ok := viewsCount(tokenA); !ok || n != 2 {
+		t.Fatalf("автор видит views_count=%v ok=%v; want 2", n, ok)
+	}
+	if n, ok := viewsCount(tokenB); ok && n != 0 {
+		t.Fatalf("зритель видит views_count=%v; want без счёта", n)
 	}
 }
