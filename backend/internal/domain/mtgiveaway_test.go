@@ -34,3 +34,22 @@ func TestGiveawayInfo_StarsUnit(t *testing.T) {
 		t.Fatalf("у проигравшего stars_prize = %d, want 0", st.StarsPrize)
 	}
 }
+
+// Крайние случаи итогов: без победителей stars остаётся общей суммой (форма
+// остаётся звёздной), unclaimed - все места; у premium stars нет.
+func TestGiveawayInfo_ResultsEdges(t *testing.T) {
+	g := GiveawayInfo{PrizeKind: "stars", Stars: 300, WinnersCount: 3, Status: "finished", PeerID: ToPeerID(1, true)}
+	res := g.ToMedia(1).(*MessageMediaGiveawayResults)
+	if res.WinnersCount != 0 || res.UnclaimedCount != 3 || res.Stars != 300 {
+		t.Fatalf("без победителей: %+v", res)
+	}
+	if st := g.ToState().(*GiveawayStateResults); st.StarsPrize != 0 || st.WinnersCount != 0 {
+		t.Fatalf("состояние без победителей: %+v", st)
+	}
+
+	p := GiveawayInfo{PrizeKind: "premium", Months: 3, WinnersCount: 2, Status: "finished", WinnerIDs: []int64{9}, PeerID: ToPeerID(1, true)}
+	pr := p.ToMedia(1).(*MessageMediaGiveawayResults)
+	if pr.Stars != 0 || pr.Months != 3 || pr.WinnersCount != 1 || pr.UnclaimedCount != 1 {
+		t.Fatalf("premium: %+v", pr)
+	}
+}
