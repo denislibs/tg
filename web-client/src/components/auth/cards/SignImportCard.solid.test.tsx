@@ -39,10 +39,14 @@ afterEach(() => {
   location.hash = ''
 })
 
-function mount(signImport: ReturnType<typeof vi.fn>, webAuthToken = 'wt-1') {
+function mount(
+  signImport: ReturnType<typeof vi.fn>,
+  webAuthToken = 'wt-1',
+  cancelWebToken: ReturnType<typeof vi.fn> = vi.fn(),
+) {
   const navigate = vi.fn()
   const toIm = vi.fn().mockResolvedValue(undefined)
-  const managers = { auth: { signImport } } as unknown as Managers
+  const managers = { auth: { signImport, cancelWebToken } } as unknown as Managers
   const ctx: AuthFlowContextValue = {
     managers,
     current: () => null,
@@ -62,7 +66,7 @@ function mount(signImport: ReturnType<typeof vi.fn>, webAuthToken = 'wt-1') {
     host,
   )
 
-  return { navigate, toIm }
+  return { navigate, toIm, cancelWebToken }
 }
 
 describe('SignImportCard.solid: обмен веб-токена на сессию', () => {
@@ -138,5 +142,46 @@ describe('SignImportCard.solid: сетевой отказ — НЕ вечный 
     mount(signImport)
 
     await vi.waitFor(() => expect(overrideHash).toHaveBeenCalledWith(''))
+  })
+})
+
+// tweb pages/cards/SignImportCard.tsx:46-60: токен, который мы не импортируем,
+// остаётся рабочим входом — любой отказ, кроме SESSION_PASSWORD_NEEDED, его
+// отменяет (auth.cancelWebTokenAuthorization).
+describe('SignImportCard.solid: отмена веб-токена при отказе импорта', () => {
+  it('отказ сервера — cancelWebToken(токен) и переход на signIn', async () => {
+    const signImport = vi.fn().mockResolvedValue({ error: 'failed' })
+    const { navigate, cancelWebToken } = mount(signImport, 'tok')
+
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'signIn' }))
+    expect(cancelWebToken).toHaveBeenCalledWith('tok')
+  })
+
+  it('web_auth_token_invalid — тоже отмена (дефолтная ветка tweb)', async () => {
+    const signImport = vi.fn().mockResolvedValue({ error: 'web_auth_token_invalid' })
+    const { cancelWebToken } = mount(signImport, 'tok')
+
+    await vi.waitFor(() => expect(cancelWebToken).toHaveBeenCalledWith('tok'))
+  })
+
+  it('сетевой отказ signImport — отмена', async () => {
+    const signImport = vi.fn().mockRejectedValue(new Error('net'))
+    const { cancelWebToken } = mount(signImport, 'tok')
+
+    await vi.waitFor(() => expect(cancelWebToken).toHaveBeenCalledWith('tok'))
+  })
+
+  it('passwordNeeded и успех — НЕ отмена', async () => {
+    const needed = vi.fn().mockResolvedValue({ passwordNeeded: true, passwordToken: 't', hint: '' })
+    const a = mount(needed)
+    await vi.waitFor(() => expect(a.navigate).toHaveBeenCalled())
+    expect(a.cancelWebToken).not.toHaveBeenCalled()
+    dispose?.()
+    host?.remove()
+
+    const ok = vi.fn().mockResolvedValue({ user: {} })
+    const b = mount(ok)
+    await vi.waitFor(() => expect(b.toIm).toHaveBeenCalled())
+    expect(b.cancelWebToken).not.toHaveBeenCalled()
   })
 })

@@ -60,3 +60,14 @@ func (i *Interactor) SignImport(ctx context.Context, rawToken, deviceName, platf
 	_ = i.steps.DeleteWebAuthToken(ctx, tokenHash)
 	return res, nil
 }
+
+// CancelWebAuthToken сжигает веб-токен, который клиент не стал импортировать
+// (tweb appAccountManager.ts:363-375 auth.cancelWebTokenAuthorization): иначе он
+// остался бы рабочим входом, а адрес с ним живёт в истории браузера. Неизвестный
+// и уже сгоревший токен — не ошибка.
+func (i *Interactor) CancelWebAuthToken(ctx context.Context, rawToken string) error {
+	if i.steps == nil {
+		return ErrLoginStepsUnavailable
+	}
+	return i.steps.DeleteWebAuthToken(ctx, domain.HashToken(rawToken))
+}

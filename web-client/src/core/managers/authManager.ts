@@ -473,6 +473,14 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       }
     },
 
+    // Токен, который клиент не стал импортировать, остаётся рабочим входом, а
+    // адрес с ним живёт в истории — сжигаем (tweb appAccountManager.ts:363-375,
+    // auth.cancelWebTokenAuthorization). Fire-and-forget: ошибки только в лог.
+    cancelWebToken(webAuthToken: string): void {
+      void rest.post('/auth/web_token/cancel', { web_auth_token: webAuthToken })
+        .catch((err) => console.error('web token cancellation error:', err))
+    },
+
     async checkPassword(passwordToken: string, password: string, device: string, platform: string): Promise<{ user: PeerProfile }> {
       return { user: await toSession(await rest.post<AuthAuthorizationWire>('/auth/check_password', {
         password_token: passwordToken, password, device, platform,

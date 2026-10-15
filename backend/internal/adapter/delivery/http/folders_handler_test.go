@@ -16,7 +16,7 @@ func TestFoldersOrder_HTTP(t *testing.T) {
 	repo := pgadapter.NewFoldersRepo(pool)
 	foldersUC := usecasefolders.New(repo, nil, pgadapter.NewTxManager(pool))
 	foldersUC.SetUpdateLog(pgadapter.NewUpdatesRepo(pool))
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, foldersUC, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, foldersUC, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 
 	tokenA, _ := signInToken(t, h, "+79990000001")
 	tokenB, _ := signInToken(t, h, "+79990000002")

@@ -58,6 +58,7 @@ func (i *Interactor) SavedDialogsPage(ctx context.Context, viewerID int64) (Save
 	// в строку, — снимок вместо ссылки.
 	userIDs := make([]int64, 0, len(rows))
 	var chats []domain.Chat
+	var cards []domain.ChatRecord
 	seen := make(map[int64]bool, len(rows))
 	for _, d := range rows {
 		if seen[int64(d.PeerID)] {
@@ -75,11 +76,15 @@ func (i *Interactor) SavedDialogsPage(ctx context.Context, viewerID int64) (Save
 				// клиент нарисует её фолбэком, как и любой пробел зеркала.
 				continue
 			}
-			ch := card.ToChannel()
-			chats = append(chats, ch)
+			cards = append(cards, card)
 		case d.PeerID != 0:
 			userIDs = append(userIDs, int64(d.PeerID))
 		}
+	}
+	// Состояние звонков источников — одной пачкой (клиент заменяет channel целиком).
+	i.FillCallState(ctx, cards)
+	for _, card := range cards {
+		chats = append(chats, card.ToChannel())
 	}
 	var users []domain.UserReal
 	if len(userIDs) > 0 && i.groups != nil {

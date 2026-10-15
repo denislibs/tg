@@ -115,7 +115,7 @@ describe('showDeleteMessagesPopup (tweb popups/deleteMessages.ts)', () => {
 
     expect(document.querySelector('.popup')!.classList.contains('popup-delete-chat')).toBe(true)
     expect(document.querySelector('.popup-title')!.textContent).toBe('Delete message')
-    expect(document.querySelector('.checkbox-caption')!.textContent).toBe('Also delete for Bob')
+    expect(document.querySelector('.popup-peer-checkbox-row .row-title')!.textContent).toBe('Also delete for Bob')
 
     click('.popup-buttons > button.danger')
 

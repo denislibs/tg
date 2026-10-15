@@ -46,6 +46,8 @@ type Interactor struct {
 	recFails   *failCounter       // счётчик неудачных кодов восстановления на password_token
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
 	resetWait time.Duration
+	// now — часы usecase (правило свежей сессии); в тестах подменяются.
+	now func() time.Time
 }
 
 // EventPublisher pushes a realtime WS frame to a user's connected sessions.
@@ -183,6 +185,7 @@ func New(users UserRepo, devices DeviceRepo, codes CodeRepo, pw PasswordRepo, st
 		users: users, devices: devices, codes: codes, pw: pw, steps: steps,
 		devCode: devCode, logf: logf,
 		pwFails: newFailCounter(), recFails: newFailCounter(),
+		now: time.Now,
 	}
 }
 
@@ -583,41 +586,4 @@ func (i *Interactor) hasPassword(ctx context.Context, userID int64) (bool, error
 		return false, err
 	}
 	return h != nil, nil
-}
-
-func (i *Interactor) ListSessions(ctx context.Context, userID int64) ([]domain.Device, error) {
-	return i.devices.ListByUser(ctx, userID)
-}
-
-func (i *Interactor) RevokeSession(ctx context.Context, userID, deviceID int64) (bool, error) {
-	tokenHash, found, err := i.devices.Delete(ctx, userID, deviceID)
-	if err != nil || !found {
-		return false, err
-	}
-	if i.cache != nil {
-		_ = i.cache.DelSession(ctx, tokenHash)
-	}
-	if i.revoker != nil {
-		_ = i.revoker.NotifyRevoked(ctx, deviceID)
-	}
-	return true, nil
-}
-
-// RevokeOtherSessions terminates every session of the user except the current
-// one ("Terminate All Other Sessions"): rows are deleted, cached sessions
-// evicted and each device's sockets closed. Returns how many were revoked.
-func (i *Interactor) RevokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
-	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
-	if err != nil {
-		return 0, err
-	}
-	for _, d := range removed {
-		if i.cache != nil {
-			_ = i.cache.DelSession(ctx, d.TokenHash)
-		}
-		if i.revoker != nil {
-			_ = i.revoker.NotifyRevoked(ctx, d.ID)
-		}
-	}
-	return len(removed), nil
 }

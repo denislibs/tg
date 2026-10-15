@@ -16,6 +16,15 @@ type TxManager interface {
 	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// PhoneResolver привязывает присланную визитку к аккаунту по номеру
+// (messageMediaContact.user_id, решение В-10). Реализует contacts-usecase тем же
+// поиском и правилом added_by_phone, что у «добавить контакт по номеру»; не
+// найден или скрыт правилом — ok=false без ошибки. Опционален: без него
+// user_id всегда 0.
+type PhoneResolver interface {
+	ResolvePhone(ctx context.Context, viewerID int64, phone string) (userID int64, ok bool, err error)
+}
+
 // ContactPhotoLookup reads the viewer's personal photos for contacts so the
 // dialog list can show them in place of the peer's real avatar (Telegram
 // personal_photo). Implemented by the contacts repo. Optional.
@@ -611,11 +620,12 @@ type ChannelRepo interface {
 
 type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]int64, error) // public only, ranked
-	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy).
+	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy); по имени —
+	// только свои (имя из книги или профильное), по @username — все.
 	SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error)
 	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
-	// участник, и пользователи из его контактов или с общим личным чатом
-	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
+	// участник, и пользователи из его контактов или с общим личным чатом,
+	// не скрытым им (dialog_hidden) (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
 	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// UserIDByUsername — пользователь по точному @имени без учёта регистра
@@ -844,8 +854,13 @@ type SendInput struct {
 	GeoAddress    *string
 	GeoLivePeriod *int
 	GeoHeading    *int
-	// Контакт (type 'contact'): имя/телефон гидрируются сервером по аккаунту.
-	ContactUserID *int64
+	// Контакт (type 'contact'): поля inputMediaContact от отправителя 1:1
+	// (ключ `media` тела). Телефон и имя сервер не подставляет; user_id по
+	// номеру выводит сам (PhoneResolver) — клиентского id вход не несёт.
+	Contact *domain.InputMediaContact
+	// contactUserID — аккаунт визитки, выведенный Send по номеру (nil — не
+	// найден или скрыт правилом). Не часть входа: ставит только Send.
+	contactUserID *int64
 	// Подарок (type 'gift'): ссылка на выданный подарок — только из SendGift.
 	GiftID *int64
 	// Клавиатура сообщения (inline/reply) — у ответов бота.
@@ -932,11 +947,41 @@ type SendInput struct {
 	webPage *domain.WebPagePreview
 }
 
-// GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
+// GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis)
+// и очередь снимков чата при смене состояния звонка.
+//
+// Join и Leave атомарны и сообщают о ПЕРЕХОДЕ: first — в звонке до вызова никого
+// не было, last — в нём после вызова никого не осталось. По признаку, а не по
+// отдельному Participants решается, нужен ли снимок chat_update: чтение и запись
+// двумя вызовами гонялись бы между собой.
+//
+// Снимки не чаще раза в окно на чат, и состояние переживает рестарт и несколько
+// реплик: ClaimSnapshot занимает окно (SET NX EX), занятое окно откладывает
+// снимок записью MarkSnapshotDirty, тик каждой реплики берёт созревшие записи в
+// аренду (LeaseDirtySnapshots) и закрывает их FinishDirtySnapshot после
+// публикации. Запись, которую арендатор не закрыл (упал), снова доступна по
+// истечении аренды.
 type GroupCallStore interface {
-	Join(ctx context.Context, chatID, userID int64) error
-	Leave(ctx context.Context, chatID, userID int64) error
+	Join(ctx context.Context, chatID, userID int64) (first bool, err error)
+	Leave(ctx context.Context, chatID, userID int64) (last bool, err error)
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
+	// ActiveAmong — подмножество chatIDs, где в звонке есть участники (одним
+	// запросом на пачку).
+	ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error)
+
+	// ClaimSnapshot занимает окно снимков чата на ttl; false — окно занято.
+	ClaimSnapshot(ctx context.Context, chatID int64, ttl time.Duration) (bool, error)
+	// MarkSnapshotDirty откладывает снимок чата до due. Уже отложенная запись с
+	// более ранним сроком не двигается (иначе непрерывный вход/выход откладывал
+	// бы снимок бесконечно); запись в аренде возвращается к сроку due.
+	MarkSnapshotDirty(ctx context.Context, chatID int64, due time.Time) error
+	// LeaseDirtySnapshots атомарно берёт в аренду до leaseUntil не больше limit
+	// записей, чей срок наступил к now. Каждую запись получает одна реплика.
+	LeaseDirtySnapshots(ctx context.Context, now, leaseUntil time.Time, limit int) ([]int64, error)
+	// FinishDirtySnapshot после публикации занимает окно на ttl и снимает
+	// запись, если аренда всё ещё наша (leaseUntil): запись, которую успели
+	// отложить заново, остаётся.
+	FinishDirtySnapshot(ctx context.Context, chatID int64, leaseUntil time.Time, ttl time.Duration) error
 }
 
 // PhoneCallStore — состояние идущих 1:1 звонков между call_request и концом
@@ -961,6 +1006,8 @@ type PhoneCallStore interface {
 type LivestreamRepo interface {
 	Get(ctx context.Context, chatID int64) (domain.Livestream, error) // domain.ErrNotFound, если трансляции не заводили
 	Upsert(ctx context.Context, ls domain.Livestream) error
+	// ActiveAmong — подмножество chatIDs, где эфир идёт (одним запросом на пачку).
+	ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error)
 }
 
 // TopicRepo хранит темы форум-групп.

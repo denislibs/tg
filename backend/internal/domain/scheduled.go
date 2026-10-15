@@ -94,10 +94,14 @@ type ScheduledParams struct {
 	// постановке (allow_paid_stars): повторы платят заново по нему. nil — строка
 	// поставлена до деплоя, повтор платит без проверки согласия, как раньше.
 	AllowPaidStars *int64 `json:"allow_paid_stars,omitempty"`
-	// ContactName/ContactPhone — снимок карточки контакта на момент постановки
-	// (только для отдачи ленты: при публикации Send гидрирует контакт заново).
-	ContactName  *string `json:"contact_name,omitempty"`
-	ContactPhone *string `json:"contact_phone,omitempty"`
+	// ContactName (first_name), ContactLastName, ContactPhone и ContactVcard —
+	// поля визитки, присланные отправителем при постановке (inputMediaContact).
+	// По ним лента отдаёт бабл, а при публикации Send собирает вход заново и
+	// выводит user_id по номеру тем же порядком, что и при обычной отправке.
+	ContactName     *string `json:"contact_name,omitempty"`
+	ContactLastName *string `json:"contact_last_name,omitempty"`
+	ContactPhone    *string `json:"contact_phone,omitempty"`
+	ContactVcard    *string `json:"contact_vcard,omitempty"`
 	// Fwd — отложенная ПЕРЕСЫЛКА (tweb `messages.forwardMessages{schedule_date}`,
 	// `appMessagesManager.ts:5652`): содержимое снято copyContent при
 	// постановке, здесь — атрибуция и то, что нужно доставке копии.
@@ -108,6 +112,17 @@ type ScheduledParams struct {
 	// если оно не успело, превью опубликованного сообщения. nil — ничего не
 	// решено (превью по первой ссылке текста).
 	WebPage *WebPageInput `json:"web_page,omitempty"`
+}
+
+// ContactInput — поля визитки снимка в форме входа отправки; nil — не визитка.
+func (p ScheduledParams) ContactInput() *InputMediaContact {
+	if p.ContactName == nil {
+		return nil
+	}
+	return &InputMediaContact{
+		FirstName: *p.ContactName, LastName: deref(p.ContactLastName),
+		PhoneNumber: deref(p.ContactPhone), Vcard: deref(p.ContactVcard),
+	}
 }
 
 // ScheduledFwd — снимок пересылки для отложенной копии.
@@ -152,7 +167,8 @@ func (m ScheduledMessage) Message() Message {
 		ReplyToPeerID: p.ReplyToPeerID,
 		GeoLat:        p.GeoLat, GeoLng: p.GeoLng, GeoTitle: p.GeoTitle, GeoAddress: p.GeoAddress,
 		GeoLivePeriod: p.GeoLivePeriod, GeoHeading: p.GeoHeading,
-		ContactUserID: p.ContactUserID, ContactName: p.ContactName, ContactPhone: p.ContactPhone,
+		ContactUserID: p.ContactUserID, ContactName: p.ContactName, ContactLastName: p.ContactLastName,
+		ContactPhone: p.ContactPhone, ContactVcard: p.ContactVcard,
 		Effect: p.Effect, SendAsChatID: p.SendAsChatID,
 		MediaSpoiler: p.MediaSpoiler && m.MediaID != nil,
 		WebPage:      m.WebPage,
