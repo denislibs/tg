@@ -261,3 +261,53 @@ func TestDeleteDialog_ReturnsAffectedHistoryOfActorOnly(t *testing.T) {
 		t.Fatalf("ответ = %+v, строк актора %d (pts %d), собеседника %d", res, rowsA, s.pts[a], rowsB)
 	}
 }
+
+// F6 (Р-11): удалённый диалог не возвращается закреплённым или в архиве.
+// Сам SQL сброса проверяет postgres-тест TestDialogHidden_DropsAndResetsPinAndArchive;
+// здесь — что DeleteDialog скрывает строку у нужных участников (фейк повторяет сброс). У tweb
+// `dropDialogFromFolders` (storages/dialogs.ts:1244-1273) снимает диалог из
+// закреплённых и из папки; пустая строка, вернувшаяся новым сообщением, встаёт
+// обычной (вывод из клиента: восстановить закреп не из чего).
+func TestDeleteDialog_DropsPinAndArchive(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "hi"})
+	for _, uid := range []int64{a, b} {
+		s.members[chatID][uid].pinned = true
+		s.members[chatID][uid].archived = true
+	}
+
+	if _, err := in.DeleteDialog(ctx, chatID, a, false); err != nil {
+		t.Fatal(err)
+	}
+	if m := s.members[chatID][a]; m.pinned || m.archived {
+		t.Fatalf("у удалившего остались pinned=%v archived=%v", m.pinned, m.archived)
+	}
+	if m := s.members[chatID][b]; !m.pinned || !m.archived {
+		t.Fatalf("без revoke собеседник тронут: pinned=%v archived=%v", m.pinned, m.archived)
+	}
+}
+
+func TestDeleteDialog_RevokeDropsPinAndArchiveOfPeerToo(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "hi"})
+	for _, uid := range []int64{a, b} {
+		s.members[chatID][uid].pinned = true
+		s.members[chatID][uid].archived = true
+	}
+
+	if _, err := in.DeleteDialog(ctx, chatID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if m := s.members[chatID][a]; m.pinned || m.archived {
+		t.Fatalf("у удалившего при revoke остались pinned=%v archived=%v", m.pinned, m.archived)
+	}
+	if m := s.members[chatID][b]; m.pinned || m.archived {
+		t.Fatalf("у собеседника при revoke остались pinned=%v archived=%v", m.pinned, m.archived)
+	}
+}
