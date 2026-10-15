@@ -66,8 +66,6 @@ func TestSetChatAutoDelete_PrivateLogsPeerHistoryTTLToBothSides(t *testing.T) {
 	in, s := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
-	cache := &spyDialogsCache{}
-	in.SetDialogsCache(cache)
 	ctx := context.Background()
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
@@ -75,17 +73,6 @@ func TestSetChatAutoDelete_PrivateLogsPeerHistoryTTLToBothSides(t *testing.T) {
 	if err := in.SetChatAutoDelete(ctx, chatID, a, 86400); err != nil {
 		t.Fatalf("SetChatAutoDelete: %v", err)
 	}
-	// Срок — поле строки списка чатов: снимок диалогов в кэше устарел у обоих.
-	cache.mu.Lock()
-	got := map[int64]bool{}
-	for _, id := range cache.invalidated {
-		got[id] = true
-	}
-	cache.mu.Unlock()
-	if !got[a] || !got[b] {
-		t.Fatalf("кэш диалогов сброшен у %v, want обоих", cache.invalidated)
-	}
-
 	for _, c := range []struct{ uid, other int64 }{{a, b}, {b, a}} {
 		rows := rowsOfType(t, s, c.uid, "peer_history_ttl")
 		if len(rows) != 1 {
@@ -202,5 +189,30 @@ func TestSetChatAutoDelete_BroadcastChannelPublishesSnapshot(t *testing.T) {
 	}
 	if body.ChatFull.FullChat.TTLPeriod != 86400 {
 		t.Fatalf("ttl_period в снимке = %d, want 86400: %s", body.ChatFull.FullChat.TTLPeriod, snap[0].Payload)
+	}
+}
+
+// Срок — поле строки списка чатов: снимок диалогов в кэше устарел у обоих
+// участников. Вызов без служебного сообщения — оно само сбрасывает кэш, и тест
+// не отличал бы запись из `dialogRowFrames` от его побочного эффекта.
+func TestPublishHistoryTTL_InvalidatesDialogsCacheOfEveryMember(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetPublisher(&fakePublisher{})
+	cache := &spyDialogsCache{}
+	in.SetDialogsCache(cache)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+
+	in.publishHistoryTTL(ctx, chatID, a, domain.ChatTypePrivate, 86400)
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	got := map[int64]bool{}
+	for _, id := range cache.invalidated {
+		got[id] = true
+	}
+	if !got[a] || !got[b] {
+		t.Fatalf("кэш диалогов сброшен у %v, want обоих", cache.invalidated)
 	}
 }
