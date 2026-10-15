@@ -1517,8 +1517,9 @@ func TestScheduled_RepeatRefundOnlyRejectedOccurrence(t *testing.T) {
 	}
 }
 
-// Владелец успел потратить полученное: автор получает возврат целиком,
-// с владельца снимается не больше его баланса.
+// Владелец успел потратить полученное: с владельца снимается не больше его
+// баланса, и автору возвращается ровно снятое (решение пользователя 2026-10-15:
+// иначе возврат печатал бы звёзды).
 func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
 	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
 	ctx := context.Background()
@@ -1534,8 +1535,8 @@ func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
 	}
 	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
 	_, _ = in.DispatchDueScheduled(ctx)
-	if b, _ := stars.Balance(ctx, 2); b != 20 {
-		t.Fatalf("автор %d, want 20", b)
+	if b, _ := stars.Balance(ctx, 2); b != 17 {
+		t.Fatalf("автор %d, want 17 (15 + снятые с владельца 2)", b)
 	}
 	if b, _ := stars.Balance(ctx, 1); b != 0 {
 		t.Fatalf("владелец %d, want 0", b)

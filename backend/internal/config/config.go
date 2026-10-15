@@ -128,8 +128,14 @@ func Load() (*Config, error) {
 	if appEnv == "" {
 		appEnv = "development"
 	}
-	if c.DevPurchases && appEnv != "production" && !devAppEnvs[appEnv] {
-		return nil, fmt.Errorf("APP_ENV=%q не распознано, а DEV_PURCHASES=true включает начисление звёзд без оплаты — задайте development или production", appEnv)
+	// DEV_PURCHASES (звёзды и Premium без оплаты) - только при ЯВНО заданном
+	// непрод-окружении: пустой или незнакомый APP_ENV (опечатка «prod», забытая
+	// переменная в проде) - отказ старта.
+	if c.DevPurchases && appEnv != "production" {
+		raw := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+		if !devAppEnvs[raw] {
+			return nil, fmt.Errorf("DEV_PURCHASES=true требует явного APP_ENV из development/dev/local/test (задано %q) — звёзды и Premium без оплаты", raw)
+		}
 	}
 	if appEnv == "production" {
 		var bad []string

@@ -15,7 +15,7 @@ import (
 	"github.com/messenger-denis/backend/internal/store/postgres"
 )
 
-// Б-10: розыгрыш не раздаёт звёзды и Premium из воздуха. Вклад stars × winners
+// Б-10: розыгрыш не раздаёт звёзды и Premium из воздуха. Вклад - общая сумма stars (tweb chat/giveaway.tsx:199)
 // списывается с создателя в транзакции создания, приз платится из вклада,
 // остаток возвращается, параллельные читатели закрывают розыгрыш один раз.
 
@@ -102,12 +102,12 @@ func TestCreateGiveaway_DebitsCreatorExactly(t *testing.T) {
 		t.Fatalf("topup: %d", rec.Code)
 	}
 
-	rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3})
+	rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
 	if b := starsBalance(t, h, owner); b != 700 {
-		t.Fatalf("баланс создателя = %d, want 700 (1000 - 100×3)", b)
+		t.Fatalf("баланс создателя = %d, want 700 (1000 - 300 общей суммы)", b)
 	}
 	if n := giveawayCount(t, pool); n != 1 {
 		t.Fatalf("розыгрышей = %d, want 1", n)
@@ -119,7 +119,7 @@ func TestCreateGiveaway_DebitsCreatorExactly(t *testing.T) {
 		t.Fatalf("строка кошелька: %q %d %v; ждали -300", kind, amount, err)
 	}
 	// Не хватает на второй (700 < 100×8 ... 800): отказ, баланс не тронут.
-	rec = createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 8})
+	rec = createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 800, "winners_count": 8})
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "BALANCE_TOO_LOW") {
 		t.Fatalf("второй розыгрыш: %d %s", rec.Code, rec.Body.String())
 	}
@@ -171,7 +171,7 @@ func TestGiveaway_PrizeFromDepositAndRefund(t *testing.T) {
 		t.Fatalf("join: %d", rec.Code)
 	}
 	rec := createGiveaway(t, h, owner, cid, map[string]any{
-		"prize_kind": "stars", "stars": 100, "winners_count": 3,
+		"prize_kind": "stars", "stars": 300, "winners_count": 3,
 		"until_date": time.Now().Add(2 * time.Second).UnixMilli(),
 	})
 	if rec.Code != http.StatusOK {
@@ -275,7 +275,7 @@ func TestCreateGiveaway_RetrySameClientMsgID(t *testing.T) {
 	cid := newGiveawayChannel(t, h, owner, "gvretry")
 	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
 	body := func() map[string]any {
-		return map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3, "client_msg_id": "gv-1"}
+		return map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3, "client_msg_id": "gv-1"}
 	}
 	first := createGiveaway(t, h, owner, cid, body())
 	second := createGiveaway(t, h, owner, cid, body())
@@ -320,7 +320,7 @@ func TestCreateGiveaway_ConcurrentSameClientMsgID(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			codes[n] = createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3, "client_msg_id": "gv-race"}).Code
+			codes[n] = createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3, "client_msg_id": "gv-race"}).Code
 		}()
 	}
 	wg.Wait()
@@ -340,7 +340,7 @@ func TestDeleteChannel_RefundsGiveawayDeposit(t *testing.T) {
 	owner, _ := signUp(t, h, pool, "+79990007615")
 	cid := newGiveawayChannel(t, h, owner, "gvdelete")
 	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
-	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3}); rec.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
 	if b := starsBalance(t, h, owner); b != 700 {
@@ -391,7 +391,7 @@ func TestGiveaway_FinishVsDeleteChannelPaysDepositOnce(t *testing.T) {
 	cid := newGiveawayChannel(t, h, owner, "gvfinishdel")
 	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
 	authedReq(t, h, http.MethodPost, "/channels/join", guest, map[string]any{"username": "gvfinishdel"})
-	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3}); rec.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
 	var gid int64
@@ -437,7 +437,7 @@ func TestDeleteChannel_NoDeadlockWithGiveawayCreate(t *testing.T) {
 	owner, ownerID := signUp(t, h, pool, "+79990007620")
 	cid := newGiveawayChannel(t, h, owner, "gvnodeadlock")
 	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
-	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 300, "winners_count": 3}); rec.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
 	lock, err := pool.Begin(t.Context())
@@ -459,5 +459,48 @@ func TestDeleteChannel_NoDeadlockWithGiveawayCreate(t *testing.T) {
 	}
 	if c := <-code; c >= 300 {
 		t.Fatalf("удаление канала = %d, want успех", c)
+	}
+}
+
+// stars - общая сумма: меньше одной звезды победителю нельзя; остаток от деления
+// и неразданные места возвращаются создателю.
+func TestGiveaway_TotalStarsSplitAndRemainder(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, _ := signUp(t, h, pool, "+79990007621")
+	guest, _ := signUp(t, h, pool, "+79990007622")
+	cid := newGiveawayChannel(t, h, owner, "gvsplit")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	authedReq(t, h, http.MethodPost, "/channels/join", guest, map[string]any{"username": "gvsplit"})
+
+	// 2 звезды на 3 победителей - меньше звезды каждому.
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 2, "winners_count": 3}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("stars < winners_count: %d %s; ждали 400", rec.Code, rec.Body.String())
+	}
+	// Выше общего потолка.
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 1_000_001, "winners_count": 3}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("выше потолка: %d; ждали 400", rec.Code)
+	}
+	if n := giveawayCount(t, pool); n != 0 {
+		t.Fatalf("розыгрышей после отказов = %d", n)
+	}
+	// 100 на 3 победителей: по 33, остаток 1; участник один.
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	if b := starsBalance(t, h, owner); b != 900 {
+		t.Fatalf("после вклада 100 баланс = %d, want 900", b)
+	}
+	var gid int64
+	if err := pool.QueryRow(t.Context(), `SELECT id FROM giveaways`).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	authedReq(t, h, http.MethodPost, "/giveaways/"+itoa(gid)+"/participate", guest, nil)
+	expireGiveaway(t, pool, gid)
+	authedReq(t, h, http.MethodGet, "/giveaways/"+itoa(gid), guest, nil)
+	if b := starsBalance(t, h, guest); b != 33 {
+		t.Fatalf("приз победителя = %d, want 33 (100 / 3)", b)
+	}
+	if b := starsBalance(t, h, owner); b != 967 {
+		t.Fatalf("баланс создателя = %d, want 967 (1000 - 100 + 67 возврата)", b)
 	}
 }
