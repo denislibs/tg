@@ -4,13 +4,12 @@
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Менеджеры — `getProxiedManagers()` (роль `rootScope.managers`), закрепная часть
-//     `appMessagesManager` — `core/pinnedMessages.ts` (его расхождения 1, 4): «Открепить
-//     все» откреплением по одному, `silent`/`pm_oneside` закрепления сервер не принимает —
-//     чекбоксы «Уведомить всех»/«Закрепить и для …» показываются, как у оригинала, но на
-//     запрос не влияют.
+//     `appMessagesManager` — `core/pinnedMessages.ts` (его расхождения 1, 4).
 //  2. `showPeerPopup('popup-delete-chat', …)` — `PopupElement.createPopup(PopupPeer, …)`,
 //     как у `popups/deleteDialog.ts` (ВРЕМЕННО до 2C-6). Заголовок пира в «Закрепить и для
 //     %1$s» — `PeerTitle` (роль `wrapPeerTitle`).
+//  3. У канала чекбоксов нет — `PopupPeer` зовёт колбэк кнопки без набора отмеченных
+//     (у tweb он всегда есть, пустой), поэтому `checked?.size`.
 import { getProxiedManagers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import type { FormatterArguments, LangPackKey } from '@lib/langPack'
@@ -38,8 +37,8 @@ export default async function showPinMessagePopup(
 
   const canUnpin = canPinMessage(peerId)
 
-  // расхождение 1: `silent`/`oneSide` — без предмета
-  const callback = () => {
+  // tweb `callback(e, checked, oneSide, silent)` :22-39
+  const callback = (oneSide?: boolean, silent?: boolean) => {
     setTimeout(() => { // * костыль, потому что document.elementFromPoint вернёт popup-peer пока он будет закрываться
       let promise: Promise<unknown>
       if(unpin && !mid) {
@@ -49,7 +48,7 @@ export default async function showPinMessagePopup(
           promise = hidePinnedMessages(managers, peerId, threadId)
         }
       } else {
-        promise = updatePinnedMessage(managers, peerId, mid, unpin)
+        promise = updatePinnedMessage(managers, peerId, mid, unpin, silent, oneSide)
       }
 
       if(onConfirm) {
@@ -78,16 +77,17 @@ export default async function showPinMessagePopup(
     buttons.push({
       langKey: buttonText,
       isDanger: true,
-      callback,
+      callback: () => callback(),
     })
   } else {
     title = 'PinMessageAlertTitle'
     const pinButtonText: LangPackKey = 'PinMessage'
 
     if(isAnyChat(peerId)) {
+      // :70 — «Уведомить всех» снят (у канала чекбокса нет) — закрепить без звука
       buttons.push({
         langKey: pinButtonText,
-        callback,
+        callback: (checked) => callback(false, !checked?.size),
       })
 
       if(isBroadcastPeer(peerId)) {
@@ -106,12 +106,13 @@ export default async function showPinMessagePopup(
       if(peerId === rootScope.myId) {
         buttons.push({
           langKey: pinButtonText,
-          callback,
+          callback: () => callback(),
         })
       } else {
+        // :94 — «Закрепить и для …» снят — закрепить только у себя (pm_oneside)
         buttons.push({
           langKey: pinButtonText,
-          callback,
+          callback: (checked) => callback(!checked?.size),
         })
 
         checkboxes.push({

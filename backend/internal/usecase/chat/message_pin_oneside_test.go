@@ -381,3 +381,54 @@ func TestSetPin_BroadcastResponse(t *testing.T) {
 		t.Fatalf("pts канала в ответе = %d/%d, want %d/1", u.Pts, u.PtsCount, pinPts)
 	}
 }
+
+// Группа: «открепить все» — одна строка с общим телом каждому участнику (одним
+// запросом в журнал), курсор каждого свой; ответ — pts актора.
+func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
+	fg := newFakeGroupRepo()
+	s := newStore()
+	fg.onCreate = func(id int64, typ string) {
+		s.mu.Lock()
+		s.chatType[id] = typ
+		s.mu.Unlock()
+	}
+	in := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
+	ctx := context.Background()
+	for _, id := range []int64{7, 8, 9} {
+		fg.users[id] = domain.UserReal{ID: id, FirstName: "U"}
+	}
+	chatID, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "один"})
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "два"})
+	for _, m := range []domain.Message{m1, m2} {
+		if _, err := in.SetPin(ctx, chatID, m.ID, 7, true, PinOpts{}); err != nil {
+			t.Fatalf("SetPin: %v", err)
+		}
+	}
+	before := map[int64]int{}
+	for _, uid := range []int64{7, 8, 9} {
+		before[uid] = len(pinRows(t, s, uid))
+	}
+	res, err := in.UnpinAll(ctx, chatID, 7, nil)
+	if err != nil {
+		t.Fatalf("UnpinAll: %v", err)
+	}
+	if res.PtsCount != 1 || res.Pts != s.pts[7] {
+		t.Fatalf("ответ = %+v, pts актора %d", res, s.pts[7])
+	}
+	for _, uid := range []int64{7, 8, 9} {
+		rows := pinRows(t, s, uid)
+		if len(rows) != before[uid]+1 {
+			t.Fatalf("у %d строк %d, want %d", uid, len(rows), before[uid]+1)
+		}
+		if last := rows[len(rows)-1]; !slices.Equal(pinSeqs(t, last), []int64{m1.Seq, m2.Seq}) || last["pFlags"] != nil {
+			t.Fatalf("строка %d = %v", uid, last)
+		}
+	}
+	if pins, _ := in.ListPins(ctx, chatID, 8); len(pins) != 0 {
+		t.Fatalf("у участника остались закрепы: %d", len(pins))
+	}
+}

@@ -8,6 +8,7 @@ import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
 import type { Chat } from '../peers/peer'
+import { toPeerId } from '../peers/peerId'
 import { SliceEnd } from '../history/slicedArray'
 import { makeRawMessage } from '../messages/testMessage'
 import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
@@ -1167,6 +1168,89 @@ describe('MessagesManager.cachePinned', () => {
 
     expect(mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [2], pFlags: { pinned: true } })).toEqual([])
     expect(mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [999], pFlags: { pinned: true } })).toEqual([])
+  })
+})
+
+// f6-pin: тело `messages.updatePinnedMessage` и разбор ответа `Updates` (tweb
+// appMessagesManager.ts:6838-6856: ответ идёт в `processUpdateMessage`), локальный итог
+// `unpinAllMessages` (:6869-6888).
+describe('MessagesManager — закреп: флаги, ответ Updates, «открепить все»', () => {
+  const peer = { _: 'peerUser' as const, user_id: 1 }
+  const pinUpdate = (messages: number[], pinned = true) =>
+    ({ _: 'updatePinnedMessages' as const, peer, messages, pts: 5, pts_count: 1, ...(pinned ? { pFlags: { pinned: true as const } } : {}) })
+
+  async function setup(answer: unknown, ids = [3, 2, 1], over: (id: number) => Record<string, unknown> = () => ({}), peerId = 1) {
+    const events: [string, unknown][] = []
+    const post = vi.fn(async () => answer)
+    const del = vi.fn(async () => answer)
+    const rest = {
+      get: async () => ({
+        messages: ids.map((id) => ({ ...makeRawMessage({ id, peerId, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z', ...over(id) }) })),
+        count: ids.length,
+      }),
+      post, del,
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+    await mgr.getHistory({ peerId, offsetId: 0, addOffset: 0, limit: 40 })
+    const ops = () => events.filter(([e]) => e === RT.messageOp).flatMap(([, p]) => (p as { ops: MessageOp[] }).ops)
+    return { mgr, post, del, ops }
+  }
+
+  it('pin: POST …/pin с серверным номером и только истинными флагами', async () => {
+    const { mgr, post } = await setup({ _: 'updates', updates: [pinUpdate([2])] })
+    await mgr.pin(1, cid(2), { silent: true, pm_oneside: true })
+    expect(post).toHaveBeenCalledWith('/chats/1/messages/2/pin', { silent: true, pm_oneside: true })
+    await mgr.pin(1, cid(2), { silent: false, pm_oneside: undefined })
+    expect(post).toHaveBeenLastCalledWith('/chats/1/messages/2/pin', {})
+    await mgr.pin(1, cid(2))
+    expect(post).toHaveBeenLastCalledWith('/chats/1/messages/2/pin', {})
+  })
+
+  it('ответ pin: updatePinnedMessages сразу помечает сообщение закреплённым; живой кадр следом — без операций', async () => {
+    const { mgr, ops } = await setup({ _: 'updates', updates: [pinUpdate([2])] })
+    await mgr.pin(1, cid(2))
+    expect(ops()).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { pFlags: { pinned: true } } }])
+    expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBe(true)
+    expect(mgr.cachePinned(pinUpdate([2]))).toEqual([])
+  })
+
+  it('ответ канала: updatePinnedChannelMessages приводится к паре того же канала', async () => {
+    const channelPeer = toPeerId(7, true)
+    const answer = { _: 'updates', updates: [{ _: 'updatePinnedChannelMessages', channel_id: 7, messages: [2], pts: 3, pts_count: 1, pFlags: { pinned: true } }] }
+    const { mgr, ops } = await setup(answer, [3, 2], () => ({}), channelPeer)
+    await mgr.pin(channelPeer, cid(2))
+    expect(ops()).toEqual([{ op: 'patch', key: String(channelPeer), msgId: cid(2), fields: { pFlags: { pinned: true } } }])
+  })
+
+  it('unpin: DELETE, ответ без бита снимает закреп', async () => {
+    const { mgr, del, ops } = await setup({ _: 'updates', updates: [pinUpdate([2], false)] })
+    mgr.cachePinned(pinUpdate([2]))
+    await mgr.unpin(1, cid(2))
+    expect(del).toHaveBeenCalledWith('/chats/1/messages/2/pin')
+    expect(ops()[ops().length - 1]).toEqual({ op: 'patch', key: '1', msgId: cid(2), fields: { pFlags: {} } })
+    expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBeUndefined()
+  })
+
+  it('cacheUnpinAll: снимает pinned у всех закреплённых в окне', async () => {
+    const { mgr, ops } = await setup({})
+    mgr.cachePinned(pinUpdate([1, 3]))
+    const out = mgr.cacheUnpinAll(1)
+    expect(out.map((o) => (o as { msgId: number }).msgId).sort((a, b) => a - b)).toEqual([cid(1), cid(3)].sort((a, b) => a - b))
+    expect(mgr.getMessageByPeer(1, cid(1))?.pFlags.pinned).toBeUndefined()
+    expect(mgr.getMessageByPeer(1, cid(3))?.pFlags.pinned).toBeUndefined()
+    expect(ops().filter((o) => o.op === 'patch' && (o.fields as { pFlags?: { pinned?: boolean } }).pFlags?.pinned === undefined).length).toBeGreaterThanOrEqual(2)
+    // повтор — снимать нечего
+    expect(mgr.cacheUnpinAll(1)).toEqual([])
+  })
+
+  it('cacheUnpinAll с threadId: другие треды не трогаются (tweb :6872-6882)', async () => {
+    // 3 и 2 — в треде с корнем 1, 1 — вне треда
+    const { mgr } = await setup({}, [3, 2, 1], (id) => (id === 1 ? {} : { threadRootId: 1 }))
+    mgr.cachePinned(pinUpdate([1, 2, 3]))
+    mgr.cacheUnpinAll(1, cid(1))
+    expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBeUndefined()
+    expect(mgr.getMessageByPeer(1, cid(3))?.pFlags.pinned).toBeUndefined()
+    expect(mgr.getMessageByPeer(1, cid(1))?.pFlags.pinned).toBe(true)
   })
 })
 

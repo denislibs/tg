@@ -3,7 +3,7 @@ import { HttpError, type RestClient } from '../net/restClient'
 import { clearPersistedChat } from '../store/persist'
 import type { Chat, UserReal } from '../peers/peer'
 import { getPeerId, type Peer } from '../peers/peerId'
-import { generateMessageId } from '../history/messageId'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { MyMessage, RawMyMessage } from '../models'
 import type { MessagesAffectedHistory } from '@layer'
 import type { GlobalFunnel } from '../realtime/globalFunnel'
@@ -18,8 +18,8 @@ export interface ChatsDeps {
   // строка списка держит только ССЫЛКИ. Оба опциональны по той же причине,
   // что у диалогов: тесты, которых контейнер не касается, их не задают.
   peers?: Pick<PeersManager, 'saveApiPeers'>
-  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'flushHistoryWindows'>
-  // Очистка и удаление истории (tweb `flushHistory`): ответ сервера двигает
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'flushHistoryWindows' | 'cacheUnpinAll'>
+  // Очистка и удаление истории (tweb `flushHistory`) и «Открепить все» (`unpinAllMessages`): ответ сервера двигает
   // курсор апдейтов как местный `updatePts`, затем сбрасываются окна чата и
   // строка диалога. Воронка создаётся ПОЗЖЕ менеджеров (`workerCore.ts`), поэтому
   // ленивая; все четыре опциональны — тесты, которых это не касается, их не задают.
@@ -94,6 +94,23 @@ export function newChatsManager({ rest, peers, messages, getFunnel, dialogs, bro
     async deleteHistory(peerId: number, revoke: boolean): Promise<void> {
       await flushHistory(peerId, revoke ? '?revoke=1' : '')
       dialogs?.applyRemoved(peerId)
+    },
+
+    // «Открепить все» — порт tweb `unpinAllMessages` (:6858-6893): `DELETE /chats/{peer}/pins`
+    // отвечает `messages.affectedHistory`, ответ становится местным `updatePts` (:6860), при
+    // `offset` запрос повторяется (:6890). Итог — локальный: `pFlags.pinned` в окнах чата
+    // (с темой — только её сообщения). Кэш закрепов вкладки и `peer_pinned_messages
+    // {unpinAll}` — на вкладке (`core/pinnedMessages.ts`): кэш живёт там.
+    async unpinAllMessages(peerId: number, threadId?: number): Promise<boolean> {
+      const query = threadId ? `?top_msg_id=${getServerMessageId(threadId)}` : ''
+      let offset = 0
+      do {
+        const r = await rest.del<MessagesAffectedHistory>(`/chats/${peerId}/pins${query}`)
+        getFunnel?.().applyLocalPts(r.pts, r.pts_count)
+        offset = r.offset
+      } while (offset > 0)
+      messages?.cacheUnpinAll(peerId, threadId)
+      return true
     },
 
     // Когда получатель прочитал исходящее сообщение в приватном чате

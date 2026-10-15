@@ -214,6 +214,27 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 		}
 		slices.Sort(members)
 		date := nowUnix()
+		// Группа: ключ пира один на всех, закрепов «только у себя» там нет — тело
+		// общее, строки пишутся одним запросом (а не по запросу на участника).
+		if addr.members == nil && len(oneSide) == 0 {
+			if len(shared) == 0 {
+				return nil
+			}
+			body := pinPayload(addr.forViewer(userID), shared, false)
+			payload, e := json.Marshal(body)
+			if e != nil {
+				return e
+			}
+			ptsMap, e := i.updates.AppendUpdateBulk(ctx, members, 1, date, "pin_message", payload)
+			if e != nil {
+				return e
+			}
+			for _, uid := range members {
+				bodies[uid] = body
+				ptsByUser[uid] = ptsMap[uid]
+			}
+			return nil
+		}
 		for _, uid := range members {
 			seqs := shared
 			if uid == userID && len(oneSide) > 0 {
