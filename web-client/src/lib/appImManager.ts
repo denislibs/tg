@@ -115,7 +115,7 @@ import { RT, type SendMessageAction } from '@core/realtime/events'
 import { cachedChat, cachedPeer, cachedUser } from '@core/peerCache'
 import { isAnyChat, isUser, toChatId, toPeerId } from '@core/peers/peerId'
 import { getParticipantPeerId } from '@core/peers/participant'
-import { useChatsStore } from '@stores/chatsStore'
+import { getTypingsKey, useChatsStore } from '@stores/chatsStore'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import EventListenerBase from '@helpers/eventListenerBase'
 import liteMode, { type LiteModeKey } from '@helpers/liteMode'
@@ -1739,10 +1739,12 @@ export class AppImManager extends EventListenerBase<{
     container?: HTMLElement,
     middleware: Middleware,
     managers: PeerTitleManagers,
+    /** `getPeerTypings(peerId, threadId)` (`:1216`): набор темы лежит под своим ключом */
+    threadId?: number,
   }) {
     // * asked for every dialog element that gets built, so the cheap check that
     // * answers "no" for almost every peer goes first
-    const typing = useChatsStore.getState().typing[peerId]
+    const typing = useChatsStore.getState().typing[getTypingsKey(peerId, options.threadId)]
     const allTypings = typing ?
       Object.entries(typing).map(([userId, entry]) => ({ userId: +userId, action: entry.action })) :
       []

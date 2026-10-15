@@ -434,21 +434,29 @@ func mediaReadPayload(peer domain.PeerID, seqs ...int64) map[string]any {
 // Отсюда и упрощение рассылки: тело одно на всех получателей, потому что
 // пер-зрительского в нём ничего нет. Прежде ключ пира приклеивался снаружи
 // каждому — как у кадров, где он и правда зависит от зрителя.
-func typingPayload(addr chatAddress, userID int64, act domain.SendMessageAction) map[string]any {
+//
+// topMsgID — серверный номер корня треда или темы (0 — вне треда: ключа нет).
+func typingPayload(addr chatAddress, userID, topMsgID int64, act domain.SendMessageAction) map[string]any {
+	var p map[string]any
 	// members != nil — личный чат или «Избранное»: у них пир это человек.
 	if addr.members != nil {
-		return map[string]any{
+		p = map[string]any{
 			"_":       domain.UpdateUserTypingTag,
 			"user_id": userID,
 			"action":  act,
 		}
+	} else {
+		p = map[string]any{
+			"_":          domain.UpdateChannelUserTypingTag,
+			"channel_id": addr.chatID,
+			"from_id":    domain.NewPeerUser(userID),
+			"action":     act,
+		}
 	}
-	return map[string]any{
-		"_":          domain.UpdateChannelUserTypingTag,
-		"channel_id": addr.chatID,
-		"from_id":    domain.NewPeerUser(userID),
-		"action":     act,
+	if topMsgID > 0 {
+		p["top_msg_id"] = topMsgID
 	}
+	return p
 }
 
 // draftPayload — тело кадра черновика.

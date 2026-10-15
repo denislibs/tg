@@ -61,6 +61,7 @@ import type { DialogsPage } from '@core/managers/dialogsManager'
 import type { Dialog } from '@core/models'
 import type { SavedDialog } from '@lib/appDialogsManager'
 import type { ForumTopic } from '@components/autonomousDialogList/forumTopics'
+import { isForumTopic } from '@core/dialogs/forumTopic'
 import { useChatsStore } from '@stores/chatsStore'
 
 /** tweb `:23` */
@@ -74,14 +75,15 @@ export const DIALOG_LOAD_COUNT = 20
  * Возвращает, осталась ли в строке активность, которую больше нечем нарисовать,
  * — тогда вызывающий обязан вернуть последнее сообщение.
  */
-export function setDialogTyping({ dom, peerId, middleware, managers }: {
+export function setDialogTyping({ dom, peerId, threadId, middleware, managers }: {
   dom: DialogDom,
   peerId: PeerId,
+  threadId?: number,
   middleware: Middleware,
   managers: PeerTitleManagers,
 }) {
   const oldTypingElement = dom.lastMessageSpan.querySelector<HTMLElement>('.peer-typing-container') ?? undefined
-  const newTypingElement = appImManager.getPeerTyping(peerId, { container: oldTypingElement, middleware, managers })
+  const newTypingElement = appImManager.getPeerTyping(peerId, { container: oldTypingElement, threadId, middleware, managers })
   if(newTypingElement) {
     if(!oldTypingElement) {
       replaceContent(dom.lastMessageSpan, newTypingElement)
@@ -335,6 +337,7 @@ export class AutonomousDialogListBase<T extends ListDialog = Dialog> {
     const needsLastMessage = setDialogTyping({
       dom: dialogElement.dom,
       peerId: dialog.peerId,
+      threadId: isForumTopic(dialog) ? dialog.id : undefined,
       middleware: dialogElement.middlewareHelper.get(),
       managers: this.managers,
     })

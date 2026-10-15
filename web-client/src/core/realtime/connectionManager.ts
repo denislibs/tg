@@ -4,6 +4,7 @@ import type { ConnState, SendMessageAction } from './events'
 import type { MessageEntity } from '../models'
 import type { FramePeers } from '../../protocol/frames'
 import type { WebPageWireFields } from '../managers/messages/webPage'
+import { getServerMessageId } from '../history/messageId'
 import type { InputMedia } from '@layer'
 
 export interface SendArgs { peerId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: number; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; /** визитка — `media: inputMediaContact` (tweb `getContactMediaInput`, appUsersManager.ts:977-988); `user_id` на провод не идёт: его выводит сервер по номеру (В-10) */ contact?: InputMedia.inputMediaContact; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsPeerId?: number | null; /** медиа скрыто спойлером — tweb sendFile({spoiler}) → inputMedia.pFlags.spoiler */ mediaSpoiler?: boolean; /** tweb `schedule_date` (unix-сек; 0x7FFFFFFE — «когда в сети»): отложенная отправка — поле кадра, а не своя ручка */ scheduleDate?: number | null; /** tweb `schedule_repeat_period` (сек) */ scheduleRepeatPeriod?: number | null; /** превью ссылки — `no_webpage`/`invert_media`/`media:inputMediaWebPage` (tweb `generateOutgoingWebPage`, appMessagesManager.ts:4882-4910, :2746) */ webPageFields?: WebPageWireFields; /** tweb `allow_paid_stars`: сумма звёзд, на которую отправитель согласился в платной группе, — цена ЭТОГО кадра (appMessagesManager.ts:2702); 0/нет — не согласен */ allowPaidStars?: number | null }
@@ -204,9 +205,14 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
       }
     },
     // Действие едет КОНСТРУКТОРОМ (у оригинала это messages.setTyping{peer,
-    // action}) — одна форма на обе стороны провода.
-    sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }) {
-      if (ws.isOpen()) ws.send('typing', { peer_id: peerId, action })
+    // action, top_msg_id}) — одна форма на обе стороны провода. Тред уходит
+    // СЕРВЕРНЫМ номером (tweb appMessagesManager.ts:13917-13921); нет треда —
+    // нет ключа.
+    sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }, threadId?: number | null) {
+      if (!ws.isOpen()) return
+      ws.send('typing', threadId
+        ? { peer_id: peerId, action, top_msg_id: getServerMessageId(threadId) }
+        : { peer_id: peerId, action })
     },
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.
