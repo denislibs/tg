@@ -1207,8 +1207,8 @@ func (r *ChatsRepo) PinMessageOneSide(ctx context.Context, chatID, msgID, userID
 	return err
 }
 
-// UnpinMessage снимает общий закреп и закреп «только у себя» userID одним
-// запросом; shared — общий закреп существовал, keptFor — другие пользователи с
+// UnpinMessage снимает общий закреп и закреп «только у себя» userID (один DELETE),
+// затем читает остальных с закрепом «только у себя»; shared — общий закреп существовал, keptFor — другие пользователи с
 // закрепом «только у себя» на это сообщение (он остаётся).
 func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID, userID int64) (bool, []int64, error) {
 	q := querier(ctx, r.pool)

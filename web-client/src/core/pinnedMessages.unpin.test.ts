@@ -48,7 +48,7 @@ describe('unpinAllMessages', () => {
     expect(listPins).toHaveBeenCalledWith(PEER, 77)
     resetPinnedMessagesCache()
     await getPinnedMessage(managers, PEER)
-    expect(listPins).toHaveBeenLastCalledWith(PEER)
+    expect(listPins).toHaveBeenLastCalledWith(PEER, undefined)
     expect(getPinnedMessageByMid(PEER, 7)).toBeDefined()
   })
 

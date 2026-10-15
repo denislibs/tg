@@ -188,8 +188,9 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 // appMessagesManager.ts:6858-6893): снимает все общие закрепы чата (с
 // topMsgSeq — только закрепы этого треда) и закрепы «только у себя» актора.
 //
-// Личка и группа: каждому участнику одна строка pin_message со всеми снятыми
-// номерами без бита pinned; закрепы «только у себя» — только актору. Ответ —
+// Личка и группа: каждому участнику одна строка pin_message со снятыми номерами
+// без бита pinned (у собеседника в личке — без тех, что у него закреплены «только
+// у себя»; если других нет, строки нет); закрепы «только у себя» — только актору. Ответ —
 // affectedHistory с курсором актора: pts его последней строки и их число.
 // Broadcast-канал: одна запись журнала канала; пер-юзерного курсора она не
 // двигает, поэтому ответ — текущий pts актора с pts_count 0 (applyLocalPts даёт
@@ -230,9 +231,7 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 			return nil
 		}
 		if broadcast {
-			if len(shared) == 0 {
-				return nil
-			}
+			// В канале закрепов «только у себя» не бывает: shared непуст.
 			channelBody = channelPinPayload(chatID, shared, false)
 			channelPts, e = i.appendChannelUpdate(ctx, chatID, "pin_message", channelBody)
 			return e
@@ -248,9 +247,6 @@ func (i *Interactor) UnpinAll(ctx context.Context, chatID, userID int64, topMsgS
 		// Группа: ключ пира один на всех, закрепов «только у себя» там нет — тело
 		// общее, строки пишутся одним запросом (а не по запросу на участника).
 		if addr.members == nil && len(oneSide) == 0 {
-			if len(shared) == 0 {
-				return nil
-			}
 			body := pinPayload(addr.forViewer(userID), shared, false)
 			payload, e := json.Marshal(body)
 			if e != nil {

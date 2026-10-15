@@ -7,7 +7,7 @@
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Живёт на главном потоке, а не в менеджере воркера: у нашего бэкенда нет поиска с
 //     фильтром `inputMessagesFilterPinned` (`offsetId`/`backLimit`/`offsetIdOffset`), есть
-//     только весь список закрепов чата — `GET /chats/{id}/pins` (`managers.messages.listPins`).
+//     только весь список закрепов чата или темы — `GET /chats/{id}/pins` (`managers.messages.listPins`).
 //     Список кэшируется здесь целиком; страница «вокруг номера» (`getPinnedHistory`) режется
 //     из него, поэтому её `count`/`offsetIdOffset` точные, а `loadedTop`/`loadedBottom`
 //     плашки сводятся с первой же загрузки.
@@ -66,7 +66,7 @@ function loadPinned(managers: PinnedMessagesManagers, peerId: PeerId, threadId?:
   if(p.promise) return p.promise
   else if(p.messages) return Promise.resolve(p)
 
-  const promise = p.promise = (threadId ? managers.messages.listPins(peerId, threadId) : managers.messages.listPins(peerId)).then((messages) => {
+  const promise = p.promise = managers.messages.listPins(peerId, threadId).then((messages) => {
     // сброшен кадром, пока шёл запрос, — ответ устарел, его место займёт новый запрос
     if(pinnedMessages[getPinnedMessagesKey(peerId, threadId)] !== p) {
       return loadPinned(managers, peerId, threadId)

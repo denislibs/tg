@@ -384,7 +384,9 @@ func TestSetPin_BroadcastResponse(t *testing.T) {
 
 // Группа: «открепить все» — одна строка с общим телом каждому участнику (одним
 // запросом в журнал), курсор каждого свой; ответ — pts актора.
-func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
+// groupPinEnv — группа 7 (владелец), 8, 9 с живым конвейером сообщений.
+func groupPinEnv(t *testing.T) (*Interactor, *store, int64) {
+	t.Helper()
 	fg := newFakeGroupRepo()
 	s := newStore()
 	fg.onCreate = func(id int64, typ string) {
@@ -401,6 +403,14 @@ func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
+	return in, s, chatID
+}
+
+// Группа: «открепить все» — одна строка с общим телом каждому участнику (одним
+// запросом в журнал), курсор каждого свой; ответ — pts актора.
+func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
+	in, s, chatID := groupPinEnv(t)
+	ctx := context.Background()
 	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "один"})
 	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "два"})
 	for _, m := range []domain.Message{m1, m2} {
@@ -430,6 +440,41 @@ func TestUnpinAll_GroupFansOutToAllMembers(t *testing.T) {
 	}
 	if pins, _ := in.ListPins(ctx, chatID, 8, nil); len(pins) != 0 {
 		t.Fatalf("у участника остались закрепы: %d", len(pins))
+	}
+}
+
+// SetPin в группе (bulk): каждому участнику одна строка pin_message со своим
+// pts, ответ актору — его pts.
+func TestSetPin_GroupBulkRowsPerMember(t *testing.T) {
+	in, s, chatID := groupPinEnv(t)
+	ctx := context.Background()
+	m, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "закрепи"})
+	upd, err := in.SetPin(ctx, chatID, m.ID, 7, true, PinOpts{})
+	if err != nil {
+		t.Fatalf("SetPin: %v", err)
+	}
+	for _, uid := range []int64{7, 8, 9} {
+		rows := pinRows(t, s, uid)
+		if len(rows) != 1 || !slices.Equal(pinSeqs(t, rows[0]), []int64{m.Seq}) || rows[0]["pFlags"] == nil {
+			t.Fatalf("у %d строки = %v", uid, rows)
+		}
+	}
+	var rowPts int64
+	for _, rec := range s.updates[7] {
+		if rec.Type == "pin_message" {
+			rowPts = rec.Pts
+		}
+	}
+	if u := upd.Updates[0].(domain.UpdatePinnedMessages); u.Pts != rowPts || !u.Pinned() {
+		t.Fatalf("ответ = %+v, pts строки актора %d", u, rowPts)
+	}
+	if _, err := in.SetPin(ctx, chatID, m.ID, 7, false, PinOpts{}); err != nil {
+		t.Fatalf("Unpin: %v", err)
+	}
+	for _, uid := range []int64{7, 8, 9} {
+		if rows := pinRows(t, s, uid); len(rows) != 2 || rows[1]["pFlags"] != nil {
+			t.Fatalf("у %d после снятия строки = %v", uid, rows)
+		}
 	}
 }
 
