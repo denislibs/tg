@@ -190,3 +190,50 @@ func TestLoad_ProdRejectsDevPurchases(t *testing.T) {
 		t.Fatalf("прод без DEV_PURCHASES отвергнут: %v", err)
 	}
 }
+
+// APP_ENV сравнивается без учёта регистра и пробелов: «Production » - прод, и
+// DEV_PURCHASES в нём запрещён, как и дефолтные секреты.
+func TestLoad_AppEnvNormalized(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod")
+
+	t.Setenv("APP_ENV", "Production ")
+	t.Setenv("DEV_PURCHASES", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal(`APP_ENV="Production " + DEV_PURCHASES принят`)
+	}
+	// fail-fast на дефолтных секретах тоже срабатывает на нормализованном значении.
+	t.Setenv("DEV_PURCHASES", "")
+	t.Setenv("MEDIA_URL_SECRET", "")
+	if _, err := Load(); err == nil {
+		t.Fatal(`APP_ENV="Production " не включил проверку дефолтных секретов`)
+	}
+}
+
+// Незнакомое окружение + DEV_PURCHASES=true - отказ старта (опечатка «prod»
+// не должна открывать дармовые звёзды).
+func TestLoad_UnknownAppEnvRejectsDevPurchases(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("DEV_PURCHASES", "true")
+
+	t.Setenv("APP_ENV", "prod")
+	if _, err := Load(); err == nil {
+		t.Fatal(`APP_ENV=prod + DEV_PURCHASES принят`)
+	}
+	for _, env := range []string{"", "  ", "development", "Dev", "test"} {
+		t.Setenv("APP_ENV", env)
+		if _, err := Load(); err != nil {
+			t.Fatalf("APP_ENV=%q + DEV_PURCHASES отвергнут: %v", env, err)
+		}
+	}
+	// Без флага незнакомое окружение стартует, как и раньше.
+	t.Setenv("DEV_PURCHASES", "")
+	t.Setenv("APP_ENV", "prod")
+	if _, err := Load(); err != nil {
+		t.Fatalf("APP_ENV=prod без флага отвергнут: %v", err)
+	}
+}

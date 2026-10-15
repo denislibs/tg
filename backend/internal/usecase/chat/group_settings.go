@@ -550,7 +550,23 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		// возвращаются (решение 2026-10-11), как при отказе публикации.
 		// Первым шагом: публикация держит строку очереди раньше журнала
 		// участников (user_state), тот же порядок исключает взаимную блокировку.
-		if e := i.refundScheduledOfChat(ctx, chatID, refunds); e != nil {
+		//
+		// Вклад незавершённых розыгрышей канала возвращается создателям: строки
+		// розыгрышей уходят каскадом вместе с чатом. Розыгрыши закрываются здесь же
+		// (захват строки), чтобы параллельное завершение не выплатило вклад второй раз;
+		// строки балансов берутся одним проходом вместе с возвратами за отложенные.
+		deposits, e := i.claimGiveawayDeposits(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		creators := make([]int64, 0, len(deposits))
+		for _, g := range deposits {
+			creators = append(creators, g.CreatorID)
+		}
+		if e := i.refundScheduledOfChat(ctx, chatID, refunds, creators...); e != nil {
+			return e
+		}
+		if e := i.creditGiveawayDeposits(ctx, deposits, refunds); e != nil {
 			return e
 		}
 		if i.updates != nil {
@@ -566,6 +582,10 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 				}
 				ptsByUser[uid] = pts
 			}
+		}
+		// Строка чата - последней, после балансов (порядок блокировок отправки).
+		if e := i.lockChatForDelete(ctx, chatID); e != nil {
+			return e
 		}
 		return i.groups.DeleteChat(ctx, chatID)
 	})

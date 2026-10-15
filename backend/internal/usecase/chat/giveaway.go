@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"errors"
+	"log"
 	"math/rand"
 	"time"
 
@@ -15,7 +17,13 @@ import (
 
 const (
 	maxGiveawayWinners = 100
-	giveawayMaxPeriod  = 7 * 24 * time.Hour
+	// giveawayMaxPeriod — appConfig giveaway_period_max = 604800 с (tweb
+	// popups/boostsViaGifts.tsx:173, дефолт 7 суток).
+	giveawayMaxPeriod = 7 * 24 * time.Hour
+	// maxGiveawayStars — потолок приза одному победителю; тот же, что у
+	// dev-пополнения (TopUpStars). Сумма вклада maxGiveawayStars × maxGiveawayWinners
+	// укладывается в int64 с огромным запасом.
+	maxGiveawayStars = 1_000_000
 )
 
 type CreateGiveawayInput struct {
@@ -28,8 +36,18 @@ type CreateGiveawayInput struct {
 	ClientMsgID       string
 }
 
+// SetPremiumGiveaways разрешает розыгрыши Premium. В tweb такой приз покупается
+// платёжной формой (boostsViaGifts.tsx), у нас оплаты нет, поэтому без флага
+// (DEV_PURCHASES) Premium-розыгрыш раздавал бы подписку бесплатно: создание
+// отказывает ErrForbidden. Розыгрыш звёзд оплачивается вкладом создателя.
+func (i *Interactor) SetPremiumGiveaways(enabled bool) { i.premiumGiveaways = enabled }
+
 // CreateGiveaway валидирует и публикует розыгрыш сообщением типа 'giveaway'
-// (создать может только админ канала с правом постинга).
+// (создать может только админ канала с правом постинга). Розыгрыш звёзд —
+// условное депонирование: вклад stars × winners_count списывается с создателя в
+// той же транзакции, что и сам розыгрыш с сообщением (нехватка —
+// ErrBalanceTooLow, откат без следа). Победителям уходит приз, остаток при
+// нехватке участников возвращается создателю (maybeFinishGiveaway).
 func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput) (domain.Message, error) {
 	if i.giveaways == nil {
 		return domain.Message{}, domain.ErrNotFound
@@ -48,10 +66,16 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 		if in.Months <= 0 {
 			return domain.Message{}, domain.ErrInvalid
 		}
+		if !i.premiumGiveaways {
+			return domain.Message{}, domain.ErrForbidden
+		}
 		in.Stars = 0
 	case "stars":
-		if in.Stars <= 0 {
+		if in.Stars <= 0 || in.Stars > maxGiveawayStars {
 			return domain.Message{}, domain.ErrInvalid
+		}
+		if i.stars == nil {
+			return domain.Message{}, domain.ErrNotFound
 		}
 		in.Months = 0
 	default:
@@ -61,24 +85,64 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 	if in.UntilDate.Before(now) || in.UntilDate.After(now.Add(giveawayMaxPeriod)) {
 		return domain.Message{}, domain.ErrInvalid
 	}
-	g, err := i.giveaways.Create(ctx, domain.Giveaway{
-		ChatID: in.ChatID, CreatorID: in.CreatorID, PrizeKind: in.PrizeKind,
-		Months: in.Months, Stars: in.Stars, WinnersCount: in.WinnersCount,
-		UntilDate: in.UntilDate, Status: "active",
-	})
-	if err != nil {
-		return domain.Message{}, err
-	}
+	// Розыгрыш, вклад и сообщение — одна транзакция Send (prepare): отказ на
+	// любом шаге не оставляет ни списанных звёзд, ни розыгрыша без сообщения.
+	var g domain.Giveaway
+	var bal int64
+	var prepared bool
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.CreatorID, Type: "giveaway",
-		ClientMsgID: in.ClientMsgID, GiveawayID: &g.ID,
+		ClientMsgID:            in.ClientMsgID,
 		paidConsentNotRequired: true, // у messages.* розыгрыша нет allow_paid_stars
+		prepare: func(ctx context.Context, send *SendInput) error {
+			var deposit int64
+			if in.PrizeKind == "stars" {
+				deposit = in.Stars * int64(in.WinnersCount)
+				b, _, e := i.moveStars(ctx, in.CreatorID, 0, deposit)
+				if e != nil {
+					return e
+				}
+				bal = b
+				if e := i.stars.RecordTx(ctx, in.CreatorID, -deposit, "giveaway_created", "Розыгрыш звёзд", nil); e != nil {
+					return e
+				}
+			}
+			created, e := i.giveaways.Create(ctx, domain.Giveaway{
+				ChatID: in.ChatID, CreatorID: in.CreatorID, PrizeKind: in.PrizeKind,
+				Months: in.Months, Stars: in.Stars, WinnersCount: in.WinnersCount,
+				UntilDate: in.UntilDate, Status: "active", Deposit: deposit,
+			})
+			if e != nil {
+				return e
+			}
+			g = created
+			send.GiveawayID = &g.ID
+			prepared = true
+			return nil
+		},
 	})
 	if err != nil {
+		// Параллельный повтор с тем же client_msg_id: проигравший упирается в
+		// уникальный индекс сообщения, его транзакция (вклад и розыгрыш) откатилась,
+		// а выигравший уже создал розыгрыш - отдаём принятое, как делает дедупликация Send.
+		if in.ClientMsgID != "" {
+			if prev, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.CreatorID, in.ClientMsgID); e == nil && prev.GiveawayID != nil {
+				if info, e := i.giveawayInfoFor(ctx, *prev.GiveawayID, in.CreatorID); e == nil {
+					prev.Giveaway = &info
+				}
+				return prev, nil
+			}
+		}
 		return domain.Message{}, err
 	}
-	if info, e := i.giveawayInfoFor(ctx, g.ID, in.CreatorID); e == nil {
-		msg.Giveaway = &info
+	if prepared && in.PrizeKind == "stars" {
+		i.publishBalance(ctx, in.CreatorID, bal)
+	}
+	// Повтор после потерянного ответа: Send вернул принятое сообщение без prepare.
+	if msg.GiveawayID != nil {
+		if info, e := i.giveawayInfoFor(ctx, *msg.GiveawayID, in.CreatorID); e == nil {
+			msg.Giveaway = &info
+		}
 	}
 	return msg, nil
 }
@@ -92,7 +156,10 @@ func (i *Interactor) ParticipateGiveaway(ctx context.Context, giveawayID, userID
 	if err != nil {
 		return domain.GiveawayInfo{}, err
 	}
-	g = i.maybeFinishGiveaway(ctx, g)
+	g, claimed := i.maybeFinishGiveaway(ctx, g)
+	if claimed {
+		i.publishGiveawayUpdate(ctx, g.ChatID, g.ID)
+	}
 	if g.Status != "active" {
 		return domain.GiveawayInfo{}, domain.ErrForbidden // розыгрыш завершён
 	}
@@ -120,43 +187,158 @@ func (i *Interactor) GetGiveaway(ctx context.Context, giveawayID, viewerID int64
 	if err != nil {
 		return domain.GiveawayInfo{}, err
 	}
-	before := g.Status
-	g = i.maybeFinishGiveaway(ctx, g)
-	if before == "active" && g.Status == "finished" {
+	g, claimed := i.maybeFinishGiveaway(ctx, g)
+	if claimed {
 		i.publishGiveawayUpdate(ctx, g.ChatID, giveawayID)
 	}
 	return i.giveawayInfoFor(ctx, giveawayID, viewerID)
 }
 
-// maybeFinishGiveaway разыгрывает победителей, если срок вышел (идемпотентно).
-func (i *Interactor) maybeFinishGiveaway(ctx context.Context, g domain.Giveaway) domain.Giveaway {
+// maybeFinishGiveaway разыгрывает победителей, если срок вышел. claimed=true -
+// розыгрыш закрыл именно этот вызов (только он публикует итоги); из параллельных
+// читателей закрывает ровно один (условный UPDATE в Finish).
+//
+// Призы и возврат считаются из внесённого вклада (Deposit), а не из параметров
+// розыгрыша: выплата не превышает внесённое. Розыгрыш без вклада (до введения
+// вклада) выплат не делает. Завершение и выплаты - одна транзакция.
+func (i *Interactor) maybeFinishGiveaway(ctx context.Context, g domain.Giveaway) (domain.Giveaway, bool) {
 	if g.Status != "active" || time.Now().Before(g.UntilDate) {
-		return g
+		return g, false
 	}
 	ids, err := i.giveaways.ParticipantIDs(ctx, g.ID)
 	if err != nil {
-		return g
+		return g, false
 	}
 	winners := pickWinners(ids, g.WinnersCount)
-	if err := i.giveaways.Finish(ctx, g.ID, winners); err != nil {
-		return g
+	if g.PrizeKind == "premium" && !i.premiumGiveaways {
+		winners = nil // приз не выдаётся - победителей нет (иначе «вы выиграли» без приза)
 	}
-	// Выдаём призы победителям.
-	for _, w := range winners {
+	balances := map[int64]int64{}
+	var claimed bool
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var e error
+		if claimed, e = i.giveaways.Finish(ctx, g.ID, winners); e != nil || !claimed {
+			return e
+		}
 		switch g.PrizeKind {
 		case "premium":
-			if i.premium != nil {
-				_ = i.premium.GrantPremium(ctx, w)
+			// Без оплаты Premium выдаётся только под DEV_PURCHASES (как и создание).
+			if i.premium != nil && i.premiumGiveaways {
+				for _, w := range winners {
+					if e := i.premium.GrantPremium(ctx, w); e != nil {
+						return e
+					}
+				}
 			}
 		case "stars":
-			if i.stars != nil {
-				_, _ = i.stars.AddBalance(ctx, w, g.Stars)
-			}
+			return i.payOutGiveawayStars(ctx, g, winners, balances)
 		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("giveaway %d: finish: %v", g.ID, err)
+		return g, false
+	}
+	if !claimed {
+		// Розыгрыш закрыл параллельный читатель - отдаём актуальную строку.
+		if cur, e := i.giveaways.ByID(ctx, g.ID); e == nil {
+			return cur, false
+		}
+		return g, false
+	}
+	for uid, b := range balances {
+		i.publishBalance(ctx, uid, b)
 	}
 	g.Status = "finished"
 	g.WinnerIDs = winners
-	return g
+	return g, true
+}
+
+// payOutGiveawayStars платит призы победителям из вклада и возвращает остаток
+// (неразданные места) создателю. Внутри транзакции завершения; строки балансов
+// берутся по возрастанию user_id (общий порядок блокировок).
+func (i *Interactor) payOutGiveawayStars(ctx context.Context, g domain.Giveaway, winners []int64, balances map[int64]int64) error {
+	if i.stars == nil || g.Deposit <= 0 {
+		return nil
+	}
+	paid := int64(len(winners)) * g.Stars
+	if paid > g.Deposit {
+		return domain.ErrInvalid // вклад меньше призов: строка не из этого кода
+	}
+	if e := i.lockBalances(ctx, append([]int64{g.CreatorID}, winners...)...); e != nil {
+		return e
+	}
+	for _, w := range winners {
+		b, e := i.stars.AddBalance(ctx, w, g.Stars)
+		if e != nil {
+			return e
+		}
+		if e := i.stars.RecordTx(ctx, w, g.Stars, "giveaway_prize", "Приз розыгрыша", nil); e != nil {
+			return e
+		}
+		balances[w] = b
+	}
+	// Победителей меньше, чем мест: неразданный вклад возвращается создателю.
+	if unspent := g.Deposit - paid; unspent > 0 {
+		b, e := i.stars.AddBalance(ctx, g.CreatorID, unspent)
+		if e != nil {
+			return e
+		}
+		if e := i.stars.RecordTx(ctx, g.CreatorID, unspent, "giveaway_refund", "Возврат неразданных звёзд розыгрыша", nil); e != nil {
+			return e
+		}
+		balances[g.CreatorID] = b
+	}
+	return nil
+}
+
+// claimGiveawayDeposits закрывает незавершённые звёздные розыгрыши удаляемого
+// чата и возвращает их вклады (захват строк: параллельное завершение не
+// выплатит тот же вклад второй раз). Внутри транзакции удаления.
+func (i *Interactor) claimGiveawayDeposits(ctx context.Context, chatID int64) ([]domain.Giveaway, error) {
+	if i.giveaways == nil || i.stars == nil {
+		return nil, nil
+	}
+	return i.giveaways.ClaimActiveStarsByChat(ctx, chatID)
+}
+
+// errGiveawayRaced - розыгрыш создан между захватом и блокировкой чата при
+// удалении: транзакция откатывается, повтор запроса возвращает и этот вклад.
+var errGiveawayRaced = errors.New("giveaway created while the chat was being deleted, retry")
+
+// lockChatForDelete - последний шаг перед удалением чата (после балансов):
+// блокирует строку чата и убеждается, что новых звёздных розыгрышей не появилось.
+func (i *Interactor) lockChatForDelete(ctx context.Context, chatID int64) error {
+	if i.giveaways == nil || i.stars == nil {
+		return nil
+	}
+	if err := i.giveaways.LockChat(ctx, chatID); err != nil {
+		return err
+	}
+	late, err := i.giveaways.ClaimActiveStarsByChat(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if len(late) > 0 {
+		return errGiveawayRaced
+	}
+	return nil
+}
+
+// creditGiveawayDeposits возвращает захваченные вклады создателям; строки их
+// балансов уже взяты вызывающим (общий проход lockBalances).
+func (i *Interactor) creditGiveawayDeposits(ctx context.Context, rows []domain.Giveaway, balances map[int64]int64) error {
+	for _, g := range rows {
+		b, e := i.stars.AddBalance(ctx, g.CreatorID, g.Deposit)
+		if e != nil {
+			return e
+		}
+		if e := i.stars.RecordTx(ctx, g.CreatorID, g.Deposit, "giveaway_refund", "Возврат вклада розыгрыша: канал удалён", nil); e != nil {
+			return e
+		}
+		balances[g.CreatorID] = b
+	}
+	return nil
 }
 
 // pickWinners выбирает не более n случайных победителей из участников.
