@@ -21,13 +21,15 @@ func (f fakeBots) CommandsFor(context.Context, int64, int64, int64, bool, string
 func (f fakeBots) CommandsForBots(context.Context, []int64, int64, int64, bool, string) (map[int64][]domain.BotCommand, error) {
 	return nil, nil
 }
-func (f fakeBots) BotChats(context.Context, int64, int) ([]domain.BotChat, error) { return nil, nil }
-func (f fakeBots) CountChatMembers(context.Context, []int64, int) (int, error)    { return 0, nil }
+func (f fakeBots) BotChats(context.Context, int64, []string, int) ([]domain.BotChat, error) {
+	return nil, nil
+}
+func (f fakeBots) CountChatMembers(context.Context, []int64, int64, int) (int, error) { return 0, nil }
 func (f fakeBots) ChatRecipients(context.Context, int64, []int64) ([]domain.BotRecipient, error) {
 	return nil, nil
 }
-func (f fakeBots) ChatMemberCommands(context.Context, int64, int64) (map[int64][]domain.BotCommand, error) {
-	return nil, nil
+func (f fakeBots) GroupLists(context.Context, int64, []int64) (domain.BotGroupLists, error) {
+	return domain.BotGroupLists{}, nil
 }
 func (f fakeBots) ChatBotIDs(context.Context, int64, int) ([]int64, error) { return nil, nil }
 

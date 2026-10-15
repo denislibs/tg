@@ -47,23 +47,25 @@ type Interactor struct {
 	// botCommandsLimit — предел получателей updateBotCommands на одно изменение
 	// (0 — botCommandsFanoutLimit); тесты ставят малое число.
 	botCommandsLimit int
-	botMedia         BotMediaStore
-	botHTTP          BotHTTP
-	botAPIView       BotAPIView
-	translator       Translator
-	secret           SecretRepo
-	stickers         StickerAccess
-	reactionCat      ReactionCatalogAccess
-	preview          LinkPreviewer
-	ivProbe          IVProber
-	setInstalled     SetInstalledFunc
-	boosts           BoostRepo
-	giveaways        GiveawayRepo
-	suggested        SuggestedPostRepo
-	premium          PremiumRepo
-	contactPics      ContactPhotoLookup
-	presence         PresenceQuery
-	botHub           *botPendingHub
+	// botFanouts — идущие рассылки updateBotCommands по ботам (botcommands.go).
+	botFanouts   botFanoutRuns
+	botMedia     BotMediaStore
+	botHTTP      BotHTTP
+	botAPIView   BotAPIView
+	translator   Translator
+	secret       SecretRepo
+	stickers     StickerAccess
+	reactionCat  ReactionCatalogAccess
+	preview      LinkPreviewer
+	ivProbe      IVProber
+	setInstalled SetInstalledFunc
+	boosts       BoostRepo
+	giveaways    GiveawayRepo
+	suggested    SuggestedPostRepo
+	premium      PremiumRepo
+	contactPics  ContactPhotoLookup
+	presence     PresenceQuery
+	botHub       *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
 	peerAddrs *peerAddrCache
 	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).

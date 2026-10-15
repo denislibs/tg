@@ -58,6 +58,40 @@ type BotChat struct {
 	Type   string // ChatTypePrivate | ChatTypeGroup | ChatTypeChannel | ...
 }
 
+// BotGroupLists — списки команд бота (язык "") для набора групп, прочитанные
+// одним запросом: безадресные скоупы, списки чата и записи chat_member. Из них
+// Resolve собирает тело для рядового и для админа по приоритету Bot API без
+// запросов на каждую группу.
+type BotGroupLists struct {
+	Global map[string][]BotCommand           // default, all_group_chats, all_chat_administrators
+	Chat   map[int64]map[string][]BotCommand // chatID -> chat | chat_administrators
+	Member map[int64]map[int64][]BotCommand  // chatID -> userID -> chat_member
+}
+
+// Resolve — список для участника без собственной записи chat_member:
+// группа: chat_administrators(chat) [админ] → chat(chat) → all_chat_administrators
+// [админ] → all_group_chats → default.
+func (l BotGroupLists) Resolve(chatID int64, staff bool) []BotCommand {
+	try := func(cs []BotCommand) bool { return len(cs) > 0 }
+	if staff {
+		if cs := l.Chat[chatID][BotScopeChatAdministrator]; try(cs) {
+			return cs
+		}
+	}
+	if cs := l.Chat[chatID][BotScopeChat]; try(cs) {
+		return cs
+	}
+	if staff {
+		if cs := l.Global[BotScopeAllChatAdmins]; try(cs) {
+			return cs
+		}
+	}
+	if cs := l.Global[BotScopeAllGroupChats]; try(cs) {
+		return cs
+	}
+	return l.Global[BotScopeDefault]
+}
+
 // BotRecipient — участник чата бота, которому уходит updateBotCommands.
 type BotRecipient struct {
 	ChatID int64

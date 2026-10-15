@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -113,12 +114,26 @@ func (r *BotAPIRepo) RegenToken(ctx context.Context, botID int64) (string, error
 	return token, err
 }
 
-// SetCommands заменяет список команд бота для скоупа (с адресом) и языка. Пустой
-// список — то же, что DeleteCommands (Bot API: пустой setMyCommands сбрасывает скоуп).
-// Замена атомарна: без внешней транзакции берётся своя.
-func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) error {
-	return r.inTx(ctx, func(q Querier) error {
-		if err := deleteCommands(ctx, q, botID, scope, lang); err != nil {
+// SetCommands заменяет список команд бота для скоупа (с адресом) и языка и
+// отвечает, изменилось ли что-то: тот же список повторно (рестарт бота) ничего не
+// пишет. Пустой список — то же, что DeleteCommands (Bot API: пустой setMyCommands
+// сбрасывает скоуп). Запись и сравнение — под advisory-замком бота в одной
+// транзакции (своей, если внешней нет): два параллельных вызова одного скоупа
+// выстраиваются в очередь и не смешивают строки.
+func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) (bool, error) {
+	var changed bool
+	err := r.inTx(ctx, func(q Querier) error {
+		if err := lockBotCommands(ctx, q, botID); err != nil {
+			return err
+		}
+		old, err := readCommands(ctx, q, botID, scope, lang)
+		if err != nil {
+			return err
+		}
+		if slices.Equal(old, cmds) || (len(old) == 0 && len(cmds) == 0) {
+			return nil
+		}
+		if _, err := deleteCommands(ctx, q, botID, scope, lang); err != nil {
 			return err
 		}
 		for i, c := range cmds {
@@ -129,21 +144,59 @@ func (r *BotAPIRepo) SetCommands(ctx context.Context, botID int64, scope domain.
 				return err
 			}
 		}
+		changed = true
 		return nil
 	})
+	return changed, err
 }
 
-// DeleteCommands снимает список бота для ровно этого скоупа и языка.
-func (r *BotAPIRepo) DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) error {
-	return deleteCommands(ctx, querier(ctx, r.pool), botID, scope, lang)
+// DeleteCommands снимает список бота для ровно этого скоупа и языка; changed —
+// список был.
+func (r *BotAPIRepo) DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) (bool, error) {
+	var changed bool
+	err := r.inTx(ctx, func(q Querier) error {
+		if err := lockBotCommands(ctx, q, botID); err != nil {
+			return err
+		}
+		n, err := deleteCommands(ctx, q, botID, scope, lang)
+		changed = n > 0
+		return err
+	})
+	return changed, err
 }
 
-func deleteCommands(ctx context.Context, q Querier, botID int64, scope domain.BotCommandScope, lang string) error {
-	_, err := q.Exec(ctx,
+// lockBotCommands — замок записи команд одного бота до конца транзакции.
+func lockBotCommands(ctx context.Context, q Querier, botID int64) error {
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('bot_commands:' || $1::bigint::text, 0))`, botID)
+	return err
+}
+
+func readCommands(ctx context.Context, q Querier, botID int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error) {
+	rows, err := q.Query(ctx,
+		`SELECT command, description FROM bot_commands
+		  WHERE bot_id = $1 AND scope = $2 AND scope_chat_id = $3 AND scope_user_id = $4 AND language_code = $5
+		  ORDER BY sort`, botID, scope.Norm(), scope.ChatID, scope.UserID, lang)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.BotCommand
+	for rows.Next() {
+		var c domain.BotCommand
+		if err := rows.Scan(&c.Command, &c.Description); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func deleteCommands(ctx context.Context, q Querier, botID int64, scope domain.BotCommandScope, lang string) (int64, error) {
+	tag, err := q.Exec(ctx,
 		`DELETE FROM bot_commands
 		  WHERE bot_id = $1 AND scope = $2 AND scope_chat_id = $3 AND scope_user_id = $4 AND language_code = $5`,
 		botID, scope.Norm(), scope.ChatID, scope.UserID, lang)
-	return err
+	return tag.RowsAffected(), err
 }
 
 // inTx выполняет fn в транзакции ctx, а без неё — в собственной.

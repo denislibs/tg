@@ -1223,16 +1223,16 @@ type BotRepo interface {
 	CommandsFor(ctx context.Context, botID, chatID, viewerID int64, isAdmin bool, lang string) ([]domain.BotCommand, error)
 	// CommandsForBots — то же для набора ботов одним запросом (карточка группы).
 	CommandsForBots(ctx context.Context, botIDs []int64, chatID, viewerID int64, isAdmin bool, lang string) (map[int64][]domain.BotCommand, error)
-	// BotChats — личные чаты и группы бота (не больше limit): адресаты
-	// updateBotCommands. Каналы-вещание и «Избранное» сюда не входят.
-	BotChats(ctx context.Context, botID int64, limit int) ([]domain.BotChat, error)
-	// CountChatMembers — число участников этих чатов, обрезанное пределом limit.
-	CountChatMembers(ctx context.Context, chatIDs []int64, limit int) (int, error)
-	// ChatRecipients — участники этих чатов, кроме самого бота.
+	// BotChats — чаты бота заданных видов (types: ChatTypePrivate, ChatTypeGroup),
+	// не больше limit: адресаты updateBotCommands.
+	BotChats(ctx context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error)
+	// CountChatMembers — число получателей (участники, кроме бота) в этих чатах,
+	// обрезанное пределом limit.
+	CountChatMembers(ctx context.Context, chatIDs []int64, botID int64, limit int) (int, error)
+	// ChatRecipients — участники этих чатов, кроме самого бота и других ботов.
 	ChatRecipients(ctx context.Context, botID int64, chatIDs []int64) ([]domain.BotRecipient, error)
-	// ChatMemberCommands — все записи скоупа chat_member бота в чате (язык ""),
-	// по пользователям: одна выборка на чат.
-	ChatMemberCommands(ctx context.Context, botID, chatID int64) (map[int64][]domain.BotCommand, error)
+	// GroupLists — списки бота (язык "") для набора групп одним запросом.
+	GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error)
 	// ChatBotIDs — боты-участники чата (не больше limit).
 	ChatBotIDs(ctx context.Context, chatID int64, limit int) ([]int64, error)
 }
@@ -1249,8 +1249,10 @@ type BotAPIRepo interface {
 	SetWebhook(ctx context.Context, botID int64, url string) error
 	SetMenuButton(ctx context.Context, botID int64, text, url string) error
 	RegenToken(ctx context.Context, botID int64) (string, error)
-	SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) error
-	DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) error
+	// SetCommands/DeleteCommands отвечают, изменилось ли хранимое: рассылка
+	// updateBotCommands — только при изменении.
+	SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) (bool, error)
+	DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) (bool, error)
 	CommandsScoped(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error)
 	// профиль и inline-настройки
 	SetProfile(ctx context.Context, botID int64, description, about *string) error

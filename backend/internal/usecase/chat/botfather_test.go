@@ -85,13 +85,13 @@ func (f *fakeBotAPI) RegenToken(_ context.Context, id int64) (string, error) {
 	f.bots[id] = b
 	return b.Token, nil
 }
-func (f *fakeBotAPI) SetCommands(_ context.Context, id int64, _ domain.BotCommandScope, _ string, cmds []domain.BotCommand) error {
+func (f *fakeBotAPI) SetCommands(_ context.Context, id int64, _ domain.BotCommandScope, _ string, cmds []domain.BotCommand) (bool, error) {
 	f.commands[id] = cmds
-	return nil
+	return true, nil
 }
-func (f *fakeBotAPI) DeleteCommands(_ context.Context, id int64, _ domain.BotCommandScope, _ string) error {
+func (f *fakeBotAPI) DeleteCommands(_ context.Context, id int64, _ domain.BotCommandScope, _ string) (bool, error) {
 	delete(f.commands, id)
-	return nil
+	return true, nil
 }
 func (f *fakeBotAPI) CommandsScoped(_ context.Context, id int64, _ domain.BotCommandScope, _ string) ([]domain.BotCommand, error) {
 	return f.commands[id], nil

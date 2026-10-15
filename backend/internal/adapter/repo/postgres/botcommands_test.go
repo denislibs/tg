@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -75,7 +76,7 @@ func newBotFixture(t *testing.T) botFixture {
 
 func (f botFixture) set(t *testing.T, scope domain.BotCommandScope, lang string, c []domain.BotCommand) {
 	t.Helper()
-	if err := f.api.SetCommands(context.Background(), f.bot, scope, lang, c); err != nil {
+	if _, err := f.api.SetCommands(context.Background(), f.bot, scope, lang, c); err != nil {
 		t.Fatalf("SetCommands(%+v): %v", scope, err)
 	}
 }
@@ -188,8 +189,11 @@ func TestBotCommands_DeleteTouchesOnlyItsScope(t *testing.T) {
 	f.set(t, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, "", cmds("x"))
 	f.set(t, domain.BotCommandScope{Type: "chat", ChatID: f.chatY}, "", cmds("y"))
 
-	if err := f.api.DeleteCommands(ctx, f.bot, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, ""); err != nil {
-		t.Fatal(err)
+	if changed, err := f.api.DeleteCommands(ctx, f.bot, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, ""); err != nil || !changed {
+		t.Fatalf("DeleteCommands: changed=%v err=%v", changed, err)
+	}
+	if changed, _ := f.api.DeleteCommands(ctx, f.bot, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, ""); changed {
+		t.Fatal("повторный DeleteCommands сообщил об изменении")
 	}
 	if got := f.view(t, f.chatX, f.alice, false, ""); !reflect.DeepEqual(got, []string{"start"}) {
 		t.Fatalf("X после удаления: %v; want [start]", got)
@@ -225,7 +229,7 @@ func TestBotCommands_CommandsForBotsBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.set(t, domain.BotCommandScope{Type: "all_group_chats"}, "", cmds("one"))
-	if err := f.api.SetCommands(ctx, other.BotID, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, "", cmds("two")); err != nil {
+	if _, err := f.api.SetCommands(ctx, other.BotID, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, "", cmds("two")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.bots.CommandsForBots(ctx, []int64{f.bot, other.BotID}, f.chatX, f.alice, false, "")
@@ -263,7 +267,7 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, err := f.bots.BotChats(ctx, f.bot, 10)
+	all, err := f.bots.BotChats(ctx, f.bot, []string{"private", "group"}, 10)
 	if err != nil || len(all) != 3 {
 		t.Fatalf("BotChats: %v %v; want 3 чата", all, err)
 	}
@@ -274,17 +278,29 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 	if types[pm] != "private" || types[f.chatX] != "group" {
 		t.Fatalf("типы чатов: %v", types)
 	}
-	capped, _ := f.bots.BotChats(ctx, f.bot, 2)
+	if only, _ := f.bots.BotChats(ctx, f.bot, []string{"private"}, 10); len(only) != 1 || only[0].ChatID != pm {
+		t.Fatalf("BotChats только лички: %v", only)
+	}
+	capped, _ := f.bots.BotChats(ctx, f.bot, []string{"private", "group"}, 2)
 	if len(capped) != 2 {
 		t.Fatalf("BotChats с пределом 2 вернул %d", len(capped))
 	}
 
 	ids := []int64{f.chatX, f.chatY, pm}
-	if n, err := f.bots.CountChatMembers(ctx, ids, 100); err != nil || n != 4+3+2 {
-		t.Fatalf("CountChatMembers = %d %v; want 9", n, err)
+	// Считаются получатели: сам бот не в счёте.
+	if n, err := f.bots.CountChatMembers(ctx, ids, f.bot, 100); err != nil || n != 3+2+1 {
+		t.Fatalf("CountChatMembers = %d %v; want 6", n, err)
 	}
-	if n, _ := f.bots.CountChatMembers(ctx, ids, 5); n != 5 {
-		t.Fatalf("счёт с пределом 5 = %d; want 5", n)
+	if n, _ := f.bots.CountChatMembers(ctx, ids, f.bot, 4); n != 4 {
+		t.Fatalf("счёт с пределом 4 = %d; want 4", n)
+	}
+	// Другой бот в чате — не получатель.
+	other, err := f.api.CreateBot(ctx, f.admin, "Второй", "cmd_bot_two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, f.chatX, other.BotID); err != nil {
+		t.Fatal(err)
 	}
 
 	rec, err := f.bots.ChatRecipients(ctx, f.bot, ids)
@@ -302,21 +318,36 @@ func TestBotChats_LimitAndMembers(t *testing.T) {
 		t.Fatalf("получатели: %+v", rec)
 	}
 
-	// Записи chat_member бота по чату — одной выборкой, сгруппированы по пользователю.
+	// Списки бота для набора групп — одной выборкой: безадресные, списки чата и
+	// записи chat_member; чужой чат и чужой язык в выборку не попадают.
+	f.set(t, domain.BotCommandScope{Type: "default"}, "", cmds("def"))
+	f.set(t, domain.BotCommandScope{Type: "chat", ChatID: f.chatX}, "", cmds("x"))
+	f.set(t, domain.BotCommandScope{Type: "chat_administrators", ChatID: f.chatX}, "", cmds("x_adm"))
 	f.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: f.chatX, UserID: f.bob}, "", cmds("b1", "b2"))
 	f.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: f.chatX, UserID: f.alice}, "", cmds("a1"))
 	f.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: f.chatY, UserID: f.alice}, "", cmds("other"))
 	f.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: f.chatX, UserID: f.admin}, "ru", cmds("ru_only"))
-	byUser, err := f.bots.ChatMemberCommands(ctx, f.bot, f.chatX)
+	lists, err := f.bots.GroupLists(ctx, f.bot, []int64{f.chatX})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(byUser) != 2 || !reflect.DeepEqual(names(byUser[f.bob]), []string{"b1", "b2"}) || !reflect.DeepEqual(names(byUser[f.alice]), []string{"a1"}) {
-		t.Fatalf("chat_member записи: %v", byUser)
+	mem := lists.Member[f.chatX]
+	if len(mem) != 2 || !reflect.DeepEqual(names(mem[f.bob]), []string{"b1", "b2"}) || !reflect.DeepEqual(names(mem[f.alice]), []string{"a1"}) {
+		t.Fatalf("chat_member записи: %v", mem)
+	}
+	if len(lists.Member[f.chatY]) != 0 {
+		t.Fatal("записи чужого чата попали в выборку")
+	}
+	if !reflect.DeepEqual(names(lists.Global["default"]), []string{"def"}) {
+		t.Fatalf("default: %v", lists.Global)
+	}
+	if !reflect.DeepEqual(names(lists.Resolve(f.chatX, false)), []string{"x"}) ||
+		!reflect.DeepEqual(names(lists.Resolve(f.chatX, true)), []string{"x_adm"}) {
+		t.Fatalf("Resolve: рядовой %v, админ %v", lists.Resolve(f.chatX, false), lists.Resolve(f.chatX, true))
 	}
 
 	bots, err := f.bots.ChatBotIDs(ctx, f.chatX, 50)
-	if err != nil || !reflect.DeepEqual(bots, []int64{f.bot}) {
+	if err != nil || !reflect.DeepEqual(bots, []int64{f.bot, other.BotID}) {
 		t.Fatalf("боты чата: %v %v", bots, err)
 	}
 }
@@ -362,5 +393,66 @@ func TestMigration0176_ScopeAddress(t *testing.T) {
 	}
 	if err := storepostgres.Migrate(url); err != nil {
 		t.Fatalf("повторный накат: %v", err)
+	}
+}
+
+// Параллельные замены списка одного скоупа выстраиваются под замком бота: в
+// таблице остаётся ровно один из записанных списков целиком, без смеси и без
+// нарушения первичного ключа.
+func TestBotCommands_ConcurrentSetKeepsOneWholeList(t *testing.T) {
+	f := newBotFixture(t)
+	ctx := context.Background()
+	lists := [][]domain.BotCommand{cmds("a", "b"), cmds("c"), cmds("a", "d", "e"), cmds("f", "g")}
+	var wg sync.WaitGroup
+	errs := make(chan error, 8*len(lists))
+	for round := 0; round < 8; round++ {
+		for _, l := range lists {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := f.api.SetCommands(ctx, f.bot, domain.BotCommandScope{Type: "default"}, "", l)
+				errs <- err
+			}()
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("параллельный SetCommands: %v", err)
+		}
+	}
+	got := f.view(t, 0, f.alice, false, "")
+	ok := false
+	for _, l := range lists {
+		ok = ok || reflect.DeepEqual(got, names(l))
+	}
+	if !ok {
+		t.Fatalf("после гонки в таблице смесь: %v", got)
+	}
+}
+
+// Повтор того же списка — не изменение; смена порядка — изменение.
+func TestBotCommands_SetReportsChanged(t *testing.T) {
+	f := newBotFixture(t)
+	ctx := context.Background()
+	set := func(c []domain.BotCommand) bool {
+		changed, err := f.api.SetCommands(ctx, f.bot, domain.BotCommandScope{Type: "default"}, "", c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return changed
+	}
+	if !set(cmds("a", "b")) {
+		t.Fatal("первая запись не объявлена изменением")
+	}
+	if set(cmds("a", "b")) {
+		t.Fatal("тот же список объявлен изменением")
+	}
+	if !set(cmds("b", "a")) {
+		t.Fatal("смена порядка не объявлена изменением")
+	}
+	if set(nil) != true || set(nil) {
+		t.Fatal("пустой список: первый снимает (изменение), второй нет")
 	}
 }

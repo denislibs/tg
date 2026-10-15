@@ -118,16 +118,16 @@ func commandScopeOrder(chatID, viewerID int64, isAdmin bool) []string {
 	return append(order, domain.BotScopeAllGroupChats, domain.BotScopeDefault)
 }
 
-// BotChats — личные чаты и группы, где состоит бот (не больше limit). Каналы-
-// вещание, «Избранное» и секретные чаты не входят: команд там не показывают, а
-// без отбора в запросе они съедали бы предел рассылки.
+// BotChats — чаты бота заданных видов (types: 'private', 'group'), не больше
+// limit. Каналы-вещание, «Избранное» и секретные чаты не входят: команд там не
+// показывают, а без отбора в запросе они съедали бы предел рассылки.
 // План: idx_chat_members_user (user_id) + Nested Loop по chats_pkey.
-func (r *BotRepo) BotChats(ctx context.Context, botID int64, limit int) ([]domain.BotChat, error) {
+func (r *BotRepo) BotChats(ctx context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT m.chat_id, c.type
 		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
-		  WHERE m.user_id = $1 AND c.type IN ('private', 'group')
-		  LIMIT $2`, botID, limit)
+		  WHERE m.user_id = $1 AND c.type = ANY($2)
+		  LIMIT $3`, botID, types, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -143,28 +143,29 @@ func (r *BotRepo) BotChats(ctx context.Context, botID int64, limit int) ([]domai
 	return out, rows.Err()
 }
 
-// CountChatMembers — число строк chat_members в этих чатах, но не больше limit
-// (счёт обрывается на пределе: сверху он не нужен).
-func (r *BotRepo) CountChatMembers(ctx context.Context, chatIDs []int64, limit int) (int, error) {
+// CountChatMembers — число получателей в этих чатах (участники, кроме самого
+// бота), обрезанное пределом limit: счёт обрывается на пределе, сверху он не нужен.
+func (r *BotRepo) CountChatMembers(ctx context.Context, chatIDs []int64, botID int64, limit int) (int, error) {
 	if len(chatIDs) == 0 {
 		return 0, nil
 	}
 	var n int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT count(*) FROM (SELECT 1 FROM chat_members WHERE chat_id = ANY($1) LIMIT $2) t`,
-		chatIDs, limit).Scan(&n)
+		`SELECT count(*) FROM (SELECT 1 FROM chat_members WHERE chat_id = ANY($1) AND user_id <> $2 LIMIT $3) t`,
+		chatIDs, botID, limit).Scan(&n)
 	return n, err
 }
 
-// ChatRecipients — участники этих чатов, кроме самого бота, с признаком «создатель
-// или админ».
+// ChatRecipients — участники этих чатов, кроме самого бота и других ботов (им
+// карточку с командами никто не читает), с признаком «создатель или админ».
 func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int64) ([]domain.BotRecipient, error) {
 	if len(chatIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, role IN ('creator','admin')
-		   FROM chat_members WHERE chat_id = ANY($1) AND user_id <> $2`, chatIDs, botID)
+		`SELECT m.chat_id, m.user_id, m.role IN ('creator','admin')
+		   FROM chat_members m JOIN users u ON u.id = m.user_id AND NOT u.is_bot
+		  WHERE m.chat_id = ANY($1) AND m.user_id <> $2`, chatIDs, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -180,36 +181,60 @@ func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int
 	return out, rows.Err()
 }
 
-// ChatMemberCommands — все списки бота со скоупом chat_member в этом чате (язык
-// ""), по пользователям: одна выборка на чат вместо запроса на участника.
-func (r *BotRepo) ChatMemberCommands(ctx context.Context, botID, chatID int64) (map[int64][]domain.BotCommand, error) {
+// GroupLists — списки бота (язык "") для набора групп ОДНИМ запросом:
+// безадресные скоупы, chat/chat_administrators этих групп и записи chat_member.
+// Приоритет раскладывает domain.BotGroupLists.Resolve — запроса на группу нет.
+func (r *BotRepo) GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error) {
+	out := domain.BotGroupLists{
+		Global: map[string][]domain.BotCommand{},
+		Chat:   map[int64]map[string][]domain.BotCommand{},
+		Member: map[int64]map[int64][]domain.BotCommand{},
+	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT scope_user_id, command, description FROM bot_commands
-		  WHERE bot_id = $1 AND scope = 'chat_member' AND scope_chat_id = $2 AND language_code = ''
-		  ORDER BY scope_user_id, sort, command`, botID, chatID)
+		`SELECT scope, scope_chat_id, scope_user_id, command, description FROM bot_commands
+		  WHERE bot_id = $1 AND language_code = ''
+		    AND ((scope_chat_id = 0 AND scope_user_id = 0 AND scope IN ('default','all_group_chats','all_chat_administrators'))
+		      OR (scope IN ('chat','chat_administrators') AND scope_chat_id = ANY($2) AND scope_user_id = 0)
+		      OR (scope = 'chat_member' AND scope_chat_id = ANY($2)))
+		  ORDER BY sort, command`, botID, chatIDs)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	defer rows.Close()
-	out := map[int64][]domain.BotCommand{}
 	for rows.Next() {
 		var (
-			uid  int64
-			c, d string
+			scope        string
+			chatID, user int64
+			c            domain.BotCommand
 		)
-		if err := rows.Scan(&uid, &c, &d); err != nil {
-			return nil, err
+		if err := rows.Scan(&scope, &chatID, &user, &c.Command, &c.Description); err != nil {
+			return out, err
 		}
-		out[uid] = append(out[uid], domain.BotCommand{Command: c, Description: d})
+		switch scope {
+		case domain.BotScopeChatMember:
+			if out.Member[chatID] == nil {
+				out.Member[chatID] = map[int64][]domain.BotCommand{}
+			}
+			out.Member[chatID][user] = append(out.Member[chatID][user], c)
+		case domain.BotScopeChat, domain.BotScopeChatAdministrator:
+			if out.Chat[chatID] == nil {
+				out.Chat[chatID] = map[string][]domain.BotCommand{}
+			}
+			out.Chat[chatID][scope] = append(out.Chat[chatID][scope], c)
+		default:
+			out.Global[scope] = append(out.Global[scope], c)
+		}
 	}
 	return out, rows.Err()
 }
 
 // ChatBotIDs — боты-участники чата (карточка группы), в порядке вступления.
+// Обход со стороны ботов (idx_users_bots, 0176), а не по всем участникам: на
+// чате в сотни тысяч человек это несколько чтений chat_members_pkey.
 func (r *BotRepo) ChatBotIDs(ctx context.Context, chatID int64, limit int) ([]int64, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT m.user_id FROM chat_members m JOIN users u ON u.id = m.user_id
-		  WHERE m.chat_id = $1 AND u.is_bot
+		`SELECT m.user_id FROM users u JOIN chat_members m ON m.chat_id = $1 AND m.user_id = u.id
+		  WHERE u.is_bot
 		  ORDER BY m.joined_at, m.user_id LIMIT $2`, chatID, limit)
 	if err != nil {
 		return nil, err

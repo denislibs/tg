@@ -493,7 +493,9 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 			log.Printf("privacy: bot_info bot=%d: %v", targetID, err)
 		} else {
 			full.BotInfo = info
-			full.About = about
+			if about != "" { // служебному боту без учётки о себе нечего сказать: остаётся био
+				full.About = about
+			}
 		}
 	}
 	if u.Birthday != nil && check(domain.PrivacyBirthday) {

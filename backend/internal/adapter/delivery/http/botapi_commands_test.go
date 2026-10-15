@@ -209,12 +209,65 @@ func TestBotAPI_CommandScopeValidation(t *testing.T) {
 }
 
 func TestParseCommandScope_KeepsAddress(t *testing.T) {
-	got := parseCommandScope(json.RawMessage(`{"type":"chat_member","chat_id":7,"user_id":9}`))
+	got, err := parseCommandScope(json.RawMessage(`{"type":"chat_member","chat_id":7,"user_id":9}`))
 	want := domain.BotCommandScope{Type: "chat_member", ChatID: 7, UserID: 9}
-	if got != want {
-		t.Fatalf("parseCommandScope = %+v; want %+v", got, want)
+	if err != nil || got != want {
+		t.Fatalf("parseCommandScope = %+v %v; want %+v", got, err, want)
 	}
-	if got := parseCommandScope(nil); got.Norm() != "default" || !got.Valid() {
-		t.Fatalf("без scope: %+v", got)
+	// chat_id строкой-числом (Bot API допускает String) тоже читается.
+	if got, err := parseCommandScope(json.RawMessage(`{"type":"chat","chat_id":"7"}`)); err != nil || got.ChatID != 7 {
+		t.Fatalf("chat_id строкой: %+v %v", got, err)
+	}
+	if got, err := parseCommandScope(nil); err != nil || got.Norm() != "default" || !got.Valid() {
+		t.Fatalf("без scope: %+v %v", got, err)
+	}
+	for _, bad := range []string{`{"type":"chat","chat_id":"@group"}`, `[]`, `"x"`, `{"type":1}`} {
+		if _, err := parseCommandScope(json.RawMessage(bad)); err == nil {
+			t.Errorf("%s принят", bad)
+		}
+	}
+}
+
+// Нечитаемый scope или commands — 400, а не молчаливый default / пустой список
+// (иначе испорченный deleteMyCommands снял бы список default и разослал это всем).
+func TestBotAPI_BadCommandParamsAreRejected(t *testing.T) {
+	e := newBotAPIEnv(t, "+79990000634")
+	ctx := context.Background()
+	if code, _ := e.call(t, "setMyCommands", map[string]any{"commands": []map[string]string{{"command": "start", "description": "Старт"}}}); code != 200 {
+		t.Fatalf("setMyCommands: %d", code)
+	}
+	var n int
+	count := func() int {
+		if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM bot_commands WHERE bot_id = $1 AND scope = 'default'`, e.bot).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// scope строкой с битым JSON и со строковым chat_id вида @имя.
+	for name, body := range map[string]map[string]any{
+		"scope строкой-мусором": {"scope": "{not json"},
+		"chat_id как @имя":      {"scope": map[string]any{"type": "chat", "chat_id": "@group"}},
+	} {
+		if code, _ := e.call(t, "deleteMyCommands", body); code != http.StatusBadRequest {
+			t.Errorf("%s: код %d; want 400", name, code)
+		}
+	}
+	if count() != 1 {
+		t.Fatal("испорченный deleteMyCommands снял default")
+	}
+	// setMyCommands без commands и с нечитаемым commands.
+	if code, _ := e.call(t, "setMyCommands", map[string]any{}); code != http.StatusBadRequest {
+		t.Errorf("setMyCommands без commands: %d; want 400", code)
+	}
+	if code, _ := e.call(t, "setMyCommands", map[string]any{"commands": "не массив"}); code != http.StatusBadRequest {
+		t.Errorf("setMyCommands commands строкой: %d; want 400", code)
+	}
+	if count() != 1 {
+		t.Fatal("испорченный setMyCommands стёр default")
+	}
+	// Объект, присланный строкой с JSON (form-стиль), читается.
+	if code, res := e.call(t, "setMyCommands", map[string]any{"commands": `[{"command":"two","description":"Два"}]`}); code != 200 {
+		t.Fatalf("commands JSON-строкой: %d %v", code, res)
 	}
 }

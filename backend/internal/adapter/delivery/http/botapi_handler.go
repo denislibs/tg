@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -85,6 +86,9 @@ type bodyParams struct {
 	}
 }
 
+// botCommandsBodyLimit — потолок тела методов команд (100 команд по ≤256 символов — десятки КБ).
+const botCommandsBodyLimit = 256 << 10
+
 func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	method := chi.URLParam(r, "method")
@@ -102,6 +106,10 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if !h.limiter.allow("bot:"+strconv.FormatInt(bot.BotID, 10), 30, 60) {
 		botErr(w, http.StatusTooManyRequests, "Too Many Requests: retry later")
 		return
+	}
+	if strings.HasSuffix(method, "MyCommands") {
+		// Список команд копируется в журнал каждого получателя: тело ограничено.
+		r.Body = http.MaxBytesReader(w, r.Body, botCommandsBodyLimit)
 	}
 	p := bodyParams{body: decodeBody(r), query: r.URL.Query()}
 
@@ -125,20 +133,35 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		_ = h.svc.BotSetWebhook(r.Context(), bot, "")
 		botOK(w, true)
 	case "setMyCommands":
-		scope, lang := parseCommandScope(p.raw("scope")), p.str("language_code")
-		if err := h.svc.BotSetCommands(r.Context(), bot, scope, lang, parseCommands(p.raw("commands"))); err != nil {
+		scope, err := scopeParam(p)
+		cmds, cerr := commandsParam(p)
+		if err != nil || cerr != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope or commands")
+			return
+		}
+		if err := h.svc.BotSetCommands(r.Context(), bot, scope, p.str("language_code"), cmds); err != nil {
 			botErr(w, botCommandsErrCode(err), "setMyCommands failed")
 			return
 		}
 		botOK(w, true)
 	case "deleteMyCommands":
-		if err := h.svc.BotDeleteCommands(r.Context(), bot, parseCommandScope(p.raw("scope")), p.str("language_code")); err != nil {
+		scope, err := scopeParam(p)
+		if err != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope")
+			return
+		}
+		if err := h.svc.BotDeleteCommands(r.Context(), bot, scope, p.str("language_code")); err != nil {
 			botErr(w, botCommandsErrCode(err), "deleteMyCommands failed")
 			return
 		}
 		botOK(w, true)
 	case "getMyCommands":
-		cmds, err := h.svc.BotGetCommands(r.Context(), bot, parseCommandScope(p.raw("scope")), p.str("language_code"))
+		scope, serr := scopeParam(p)
+		if serr != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope")
+			return
+		}
+		cmds, err := h.svc.BotGetCommands(r.Context(), bot, scope, p.str("language_code"))
 		if err != nil {
 			botErr(w, botCommandsErrCode(err), "getMyCommands failed")
 			return
@@ -596,36 +619,101 @@ func parseInlineResults(raw json.RawMessage) []domain.InlineResult {
 	return out
 }
 
+// jsonParam — значение параметра-объекта Bot API: JSON-телом, строкой с JSON
+// внутри (form/query) либо из query. Отсутствие параметра — ok == false, raw nil.
+func jsonParam(p bodyParams, key string) (raw json.RawMessage, present bool) {
+	if v, ok := p.body[key]; ok {
+		raw = v
+	} else if q := p.query.Get(key); q != "" {
+		raw = json.RawMessage(q)
+	} else {
+		return nil, false
+	}
+	var inner string
+	if json.Unmarshal(raw, &inner) == nil { // объект, присланный строкой
+		raw = json.RawMessage(inner)
+	}
+	return raw, true
+}
+
+// commandsParam: BotCommand[] → domain.BotCommand[]. Нет параметра или он нечитаем —
+// ошибка: прежнее «молча пусто» теперь означало бы «снять скоуп».
+func commandsParam(p bodyParams) ([]domain.BotCommand, error) {
+	raw, ok := jsonParam(p, "commands")
+	if !ok {
+		return nil, errBadParam
+	}
+	return parseCommands(raw)
+}
+
+// scopeParam: нет параметра — default; есть, но нечитаем — ошибка (иначе
+// deleteMyCommands с испорченным scope снял бы default и разослал это всем).
+func scopeParam(p bodyParams) (domain.BotCommandScope, error) {
+	raw, ok := jsonParam(p, "scope")
+	if !ok {
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}, nil
+	}
+	return parseCommandScope(raw)
+}
+
+var errBadParam = errors.New("bad parameter")
+
 // parseCommands: Telegram BotCommand[] → domain.BotCommand[].
-func parseCommands(raw json.RawMessage) []domain.BotCommand {
+func parseCommands(raw json.RawMessage) ([]domain.BotCommand, error) {
 	var cmdsIn []struct {
 		Command     string `json:"command"`
 		Description string `json:"description"`
 	}
-	_ = json.Unmarshal(raw, &cmdsIn)
+	if err := json.Unmarshal(raw, &cmdsIn); err != nil {
+		return nil, errBadParam
+	}
 	cmds := make([]domain.BotCommand, 0, len(cmdsIn))
 	for _, c := range cmdsIn {
 		cmds = append(cmds, domain.BotCommand{Command: c.Command, Description: c.Description})
 	}
-	return cmds
+	return cmds, nil
 }
 
 // parseCommandScope: BotCommandScope Bot API {type, chat_id?, user_id?} → наш
-// скоуп (пустой или нечитаемый = default). chat_id — внутренний номер чата, как у
-// sendMessage; адрес без типа, нужного ему, отсеивает usecase (Valid).
-func parseCommandScope(raw json.RawMessage) domain.BotCommandScope {
+// скоуп. chat_id — внутренний номер чата, как у sendMessage, числом или строкой-
+// числом; адрес без нужного типу — отсеивает usecase (Valid). Нечитаемое — ошибка.
+func parseCommandScope(raw json.RawMessage) (domain.BotCommandScope, error) {
 	if len(raw) == 0 {
-		return domain.BotCommandScope{Type: domain.BotScopeDefault}
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}, nil
 	}
 	var s struct {
-		Type   string `json:"type"`
-		ChatID int64  `json:"chat_id"`
-		UserID int64  `json:"user_id"`
+		Type   string          `json:"type"`
+		ChatID json.RawMessage `json:"chat_id"`
+		UserID json.RawMessage `json:"user_id"`
 	}
-	if json.Unmarshal(raw, &s) != nil {
-		return domain.BotCommandScope{Type: domain.BotScopeDefault}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return domain.BotCommandScope{}, errBadParam
 	}
-	return domain.BotCommandScope{Type: s.Type, ChatID: s.ChatID, UserID: s.UserID}
+	num := func(v json.RawMessage) (int64, error) {
+		if len(v) == 0 {
+			return 0, nil
+		}
+		var n int64
+		if json.Unmarshal(v, &n) == nil {
+			return n, nil
+		}
+		var str string
+		if json.Unmarshal(v, &str) == nil {
+			if n, err := strconv.ParseInt(str, 10, 64); err == nil {
+				return n, nil
+			}
+		}
+		return 0, errBadParam
+	}
+	chatID, err := num(s.ChatID)
+	if err != nil {
+		return domain.BotCommandScope{}, err
+	}
+	userID, err := num(s.UserID)
+	if err != nil {
+		return domain.BotCommandScope{}, err
+	}
+	return domain.BotCommandScope{Type: s.Type, ChatID: chatID, UserID: userID}, nil
 }
 
 // parseReplyTo: reply_parameters.message_id, а у старой формы —

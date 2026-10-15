@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"sort"
 	"sync"
 	"testing"
@@ -23,7 +24,7 @@ type botCmdWorld struct {
 	lists   map[botCmdKey][]domain.BotCommand
 	chats   map[int64]string           // chatID -> тип
 	members map[int64]map[int64]string // chatID -> userID -> роль (боты тоже)
-	// fetches — выборки команд (CommandsFor*, ChatMemberCommands) по чатам.
+	// fetches — выборки команд: по чатам (CommandsFor*) и GroupLists (ключ -1).
 	fetches map[int64]int
 }
 
@@ -106,12 +107,12 @@ func (f fakeBotRepo) CommandsForBots(_ context.Context, botIDs []int64, chatID, 
 	return out, nil
 }
 
-func (f fakeBotRepo) BotChats(_ context.Context, botID int64, limit int) ([]domain.BotChat, error) {
+func (f fakeBotRepo) BotChats(_ context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	var ids []int64
 	for chatID, ms := range f.w.members {
-		if _, ok := ms[botID]; ok {
+		if _, ok := ms[botID]; ok && slices.Contains(types, f.w.chats[chatID]) {
 			ids = append(ids, chatID)
 		}
 	}
@@ -126,12 +127,16 @@ func (f fakeBotRepo) BotChats(_ context.Context, botID int64, limit int) ([]doma
 	return out, nil
 }
 
-func (f fakeBotRepo) CountChatMembers(_ context.Context, chatIDs []int64, limit int) (int, error) {
+func (f fakeBotRepo) CountChatMembers(_ context.Context, chatIDs []int64, botID int64, limit int) (int, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	n := 0
 	for _, id := range chatIDs {
-		n += len(f.w.members[id])
+		for uid := range f.w.members[id] {
+			if uid != botID {
+				n++
+			}
+		}
 	}
 	return min(n, limit), nil
 }
@@ -142,7 +147,7 @@ func (f fakeBotRepo) ChatRecipients(_ context.Context, botID int64, chatIDs []in
 	var out []domain.BotRecipient
 	for _, id := range chatIDs {
 		for uid, role := range f.w.members[id] {
-			if uid == botID {
+			if uid == botID || f.w.isBot[uid] {
 				continue
 			}
 			out = append(out, domain.BotRecipient{ChatID: id, UserID: uid, Staff: role == domain.RoleCreator || role == domain.RoleAdmin})
@@ -151,14 +156,36 @@ func (f fakeBotRepo) ChatRecipients(_ context.Context, botID int64, chatIDs []in
 	return out, nil
 }
 
-func (f fakeBotRepo) ChatMemberCommands(_ context.Context, botID, chatID int64) (map[int64][]domain.BotCommand, error) {
+func (f fakeBotRepo) GroupLists(_ context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
-	f.w.fetches[chatID]++
-	out := map[int64][]domain.BotCommand{}
+	f.w.fetches[-1]++
+	out := domain.BotGroupLists{
+		Global: map[string][]domain.BotCommand{},
+		Chat:   map[int64]map[string][]domain.BotCommand{},
+		Member: map[int64]map[int64][]domain.BotCommand{},
+	}
 	for k, cs := range f.w.lists {
-		if k.bot == botID && k.scope.Type == domain.BotScopeChatMember && k.scope.ChatID == chatID && k.lang == "" && len(cs) > 0 {
-			out[k.scope.UserID] = cs
+		if k.bot != botID || k.lang != "" || len(cs) == 0 {
+			continue
+		}
+		switch k.scope.Type {
+		case domain.BotScopeDefault, domain.BotScopeAllGroupChats, domain.BotScopeAllChatAdmins:
+			out.Global[k.scope.Type] = cs
+		case domain.BotScopeChat, domain.BotScopeChatAdministrator:
+			if slices.Contains(chatIDs, k.scope.ChatID) {
+				if out.Chat[k.scope.ChatID] == nil {
+					out.Chat[k.scope.ChatID] = map[string][]domain.BotCommand{}
+				}
+				out.Chat[k.scope.ChatID][k.scope.Type] = cs
+			}
+		case domain.BotScopeChatMember:
+			if slices.Contains(chatIDs, k.scope.ChatID) {
+				if out.Member[k.scope.ChatID] == nil {
+					out.Member[k.scope.ChatID] = map[int64][]domain.BotCommand{}
+				}
+				out.Member[k.scope.ChatID][k.scope.UserID] = cs
+			}
 		}
 	}
 	return out, nil
@@ -184,27 +211,33 @@ type fakeCmdAPI struct {
 	failSet error
 }
 
-func (f *fakeCmdAPI) SetCommands(_ context.Context, id int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) error {
+func (f *fakeCmdAPI) SetCommands(_ context.Context, id int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) (bool, error) {
 	if f.failSet != nil {
-		return f.failSet
+		return false, f.failSet
 	}
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	scope.Type = scope.Norm()
-	if len(cmds) == 0 {
-		delete(f.w.lists, botCmdKey{id, scope, lang})
-		return nil
+	k := botCmdKey{id, scope, lang}
+	if slices.Equal(f.w.lists[k], cmds) || (len(f.w.lists[k]) == 0 && len(cmds) == 0) {
+		return false, nil
 	}
-	f.w.lists[botCmdKey{id, scope, lang}] = cmds
-	return nil
+	if len(cmds) == 0 {
+		delete(f.w.lists, k)
+		return true, nil
+	}
+	f.w.lists[k] = cmds
+	return true, nil
 }
 
-func (f *fakeCmdAPI) DeleteCommands(_ context.Context, id int64, scope domain.BotCommandScope, lang string) error {
+func (f *fakeCmdAPI) DeleteCommands(_ context.Context, id int64, scope domain.BotCommandScope, lang string) (bool, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	scope.Type = scope.Norm()
-	delete(f.w.lists, botCmdKey{id, scope, lang})
-	return nil
+	k := botCmdKey{id, scope, lang}
+	_, had := f.w.lists[k]
+	delete(f.w.lists, k)
+	return had, nil
 }
 
 func (f *fakeCmdAPI) CommandsScoped(_ context.Context, id int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error) {
@@ -312,6 +345,7 @@ func (e *botCmdEnv) set(t *testing.T, scope domain.BotCommandScope, lang string,
 	if err := e.in.BotSetCommands(context.Background(), e.bot, scope, lang, list); err != nil {
 		t.Fatalf("BotSetCommands: %v", err)
 	}
+	e.in.bg.Wait() // рассылка идёт в фоне
 }
 
 func TestSetMyCommands_PrivatePartnerGetsUpdate(t *testing.T) {
@@ -365,6 +399,7 @@ func TestSetMyCommands_BotFatherPathNotifiesToo(t *testing.T) {
 	}
 	e.in.botFatherReply(ctx, chatID, 1, "/setcommands")
 	e.in.botFatherReply(ctx, chatID, 1, "start - запустить")
+	e.in.bg.Wait()
 
 	rows := e.rows(t, 7)
 	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"start"}) {
@@ -384,16 +419,84 @@ func TestSetMyCommands_GroupBodiesByRole(t *testing.T) {
 	e.set(t, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat")
 
 	chatPeer := domain.ToPeerID(200, true)
-	want := map[int64][]string{1: {"adm"}, 2: {"adm"}, 3: {"chat"}, 4: {"for4"}, 5: {"chat"}}
+	// Админы видят chat_administrators, рядовые — chat; у пользователя 4 своя
+	// запись chat_member важнее изменившегося скоупа: ему кадр не нужен.
+	want := map[int64][]string{1: {"adm"}, 2: {"adm"}, 3: {"chat"}, 5: {"chat"}}
 	for uid, cmds := range want {
 		rows := e.rows(t, uid)
 		if len(rows) != 1 || rows[0].Peer != chatPeer || !reflect.DeepEqual(rows[0].Cmds, cmds) {
 			t.Errorf("пользователь %d: %+v; want peerChannel(200) %v", uid, rows, cmds)
 		}
 	}
-	// Не больше трёх выборок команд на чат: (а), (б) и записи chat_member.
-	if n := e.w.fetches[200]; n > 3 {
-		t.Fatalf("выборок команд на чат: %d; want <= 3", n)
+	if n := len(e.rows(t, 4)); n != 0 {
+		t.Errorf("пользователь с записью chat_member получил %d строк; want 0", n)
+	}
+	// Одна выборка списков на все группы бота, а не запрос на чат.
+	if n := e.w.fetches[-1]; n != 1 {
+		t.Fatalf("выборок GroupLists: %d; want 1", n)
+	}
+	if n := e.w.fetches[200]; n != 0 {
+		t.Fatalf("запросов команд на чат: %d; want 0", n)
+	}
+
+	// Тело (в): смена записи chat_member — ровно одному её владельцу.
+	e.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "", "for4_v2")
+	for _, uid := range []int64{1, 2, 3, 5} {
+		if n := len(e.rows(t, uid)); n != 1 {
+			t.Errorf("пользователь %d получил лишнюю строку после chat_member другого: %d", uid, n)
+		}
+	}
+	rows := e.rows(t, 4)
+	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"for4_v2"}) {
+		t.Fatalf("пользователь 4: %+v; want [for4_v2]", rows)
+	}
+
+	// Сменился список админов — рядовые (3, 5) не получают ничего.
+	e.set(t, domain.BotCommandScope{Type: "chat_administrators", ChatID: 200}, "", "adm2")
+	for _, uid := range []int64{3, 5} {
+		if n := len(e.rows(t, uid)); n != 1 {
+			t.Errorf("рядовой %d получил строку на смену списка админов: %d", uid, n)
+		}
+	}
+	if rows := e.rows(t, 1); len(rows) != 2 || !reflect.DeepEqual(rows[1].Cmds, []string{"adm2"}) {
+		t.Fatalf("админ 1: %+v; want вторая строка [adm2]", rows)
+	}
+}
+
+// Тот же список повторно (рестарт бота) и deleteMyCommands несуществующего
+// скоупа — не изменение: ни строк журнала, ни кадров.
+func TestSetMyCommands_UnchangedSendsNothing(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	e.set(t, domain.BotCommandScope{}, "", "start")
+	e.set(t, domain.BotCommandScope{}, "", "start")
+	if n := len(e.rows(t, 7)); n != 1 {
+		t.Fatalf("повторный setMyCommands дал строку: %d; want 1", n)
+	}
+	if err := e.in.BotDeleteCommands(context.Background(), e.bot, domain.BotCommandScope{Type: "all_private_chats"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	e.in.bg.Wait()
+	if n := len(e.rows(t, 7)); n != 1 {
+		t.Fatalf("deleteMyCommands несуществующего скоупа дал строку: %d; want 1", n)
+	}
+}
+
+// Параллельные изменения одного бота сворачиваются: рассылка одна, повторный
+// проход по свежему состоянию — последним у получателя остаётся актуальный список.
+func TestSetMyCommands_ConcurrentChangesEndOnLatest(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	ctx := context.Background()
+	for _, c := range []string{"a", "b", "c", "d", "e"} {
+		if err := e.in.BotSetCommands(ctx, e.bot, domain.BotCommandScope{}, "", []domain.BotCommand{{Command: c}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.in.bg.Wait()
+	rows := e.rows(t, 7)
+	if len(rows) == 0 || !reflect.DeepEqual(rows[len(rows)-1].Cmds, []string{"e"}) {
+		t.Fatalf("последняя строка получателя: %+v; want [e]", rows)
 	}
 }
 
@@ -430,7 +533,7 @@ func TestSetMyCommands_LanguageSpecificListIsNotBroadcast(t *testing.T) {
 	if len(e.rows(t, 7)) != 0 {
 		t.Fatal("список для языка ru разослан пользователям без языка")
 	}
-	if n := e.w.fetches[0]; n != 0 {
+	if n := e.w.fetches[0] + e.w.fetches[-1]; n != 0 {
 		t.Fatalf("лишние выборки команд: %d", n)
 	}
 }
@@ -466,6 +569,7 @@ func TestDeleteMyCommands_FallsBackAndNotifies(t *testing.T) {
 	if err := e.in.BotDeleteCommands(context.Background(), e.bot, domain.BotCommandScope{Type: "all_private_chats"}, ""); err != nil {
 		t.Fatal(err)
 	}
+	e.in.bg.Wait()
 	rows := e.rows(t, 7)
 	if len(rows) != 2 || !reflect.DeepEqual(rows[1].Cmds, []string{"start"}) {
 		t.Fatalf("после deleteMyCommands: %+v; want вторая строка [start]", rows)
@@ -482,6 +586,36 @@ func TestSetMyCommands_StoreFailureSendsNothing(t *testing.T) {
 	err := e.in.BotSetCommands(context.Background(), e.bot, domain.BotCommandScope{}, "", []domain.BotCommand{{Command: "a"}})
 	if err == nil || len(e.rows(t, 7)) != 0 {
 		t.Fatalf("err=%v rows=%d; want ошибка и ни одной строки", err, len(e.rows(t, 7)))
+	}
+}
+
+func TestSetMyCommands_ListValidation(t *testing.T) {
+	e := newBotCmdEnv(t)
+	long := make([]byte, 257)
+	for i := range long {
+		long[i] = 'x'
+	}
+	many := make([]domain.BotCommand, 101)
+	for i := range many {
+		many[i] = domain.BotCommand{Command: "c" + string(rune('a'+i%26)) + string(rune('a'+i/26))}
+	}
+	for name, cmds := range map[string][]domain.BotCommand{
+		"заглавные":        {{Command: "Start"}},
+		"пробел":           {{Command: "a b"}},
+		"пустое имя":       {{Command: ""}},
+		"длинное имя":      {{Command: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+		"длинное описание": {{Command: "ok", Description: string(long)}},
+		"дубль":            {{Command: "a"}, {Command: "a"}},
+		"больше ста":       many,
+	} {
+		if err := e.in.BotSetCommands(context.Background(), e.bot, domain.BotCommandScope{}, "", cmds); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("%s: err = %v; want ErrInvalid", name, err)
+		}
+	}
+	for _, lang := range []string{"RU", "rus", "r1", "r"} {
+		if err := e.in.BotSetCommands(context.Background(), e.bot, domain.BotCommandScope{}, lang, []domain.BotCommand{{Command: "a"}}); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("язык %q: err = %v; want ErrInvalid", lang, err)
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -295,6 +296,10 @@ func (i *Interactor) bfStepSetCommands(ctx context.Context, chatID, ownerID int6
 		return
 	}
 	if err := i.setBotCommands(ctx, botID, domain.BotCommandScope{}, "", cmds); err != nil {
+		if errors.Is(err, domain.ErrInvalid) {
+			i.bfSend(ctx, chatID, "Имя команды — 1-32 символа: строчные латинские буквы, цифры и «_», без повторов; описание — до 256 символов; не больше 100 команд.", nil)
+			return
+		}
 		i.bfSend(ctx, chatID, "Не удалось сохранить команды.", nil)
 		return
 	}
