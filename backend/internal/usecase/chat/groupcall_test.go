@@ -187,7 +187,27 @@ func TestJoinGroupCall_LivestreamViewerFirst_AnnouncesCall(t *testing.T) {
 	}
 }
 
-// Канал (вещательный) без В-S3 ведёт себя как группа: зритель эфира входит.
+// В-S3 (решение пользователя 2026-10-15): в вещательном канале видеочат открыт
+// только создателю/админам, пока нет SFU (В-М17) — даже если звонок идёт.
+func TestJoinGroupCall_Broadcast_SubscriberRejected(t *testing.T) {
+	i, fg, _ := newLivestreamTestInteractor(t)
+	i.SetGroupCalls(newFakeCallStore(newFakeClock()))
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	_ = fg.AddMember(ctx, ch, 8, domain.RoleSubscriber, 0)
+	if _, err := i.JoinGroupCall(ctx, ch, 7); err != nil {
+		t.Fatalf("создатель канала начинает видеочат: %v", err)
+	}
+	if _, err := i.JoinGroupCall(ctx, ch, 8); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("подписчик при идущем видеочате канала: %v, want ErrForbidden", err)
+	}
+	if ids, _ := i.groupCalls.Participants(ctx, ch); len(ids) != 1 || ids[0] != 7 {
+		t.Fatalf("участники = %v, want [создатель]", ids)
+	}
+}
+
+// Зритель эфира канала входит, пока эфир активен (это не mesh), и перестаёт
+// входить после его конца.
 func TestJoinGroupCall_Channel_LivestreamActive_SubscriberJoins(t *testing.T) {
 	i, fg, _ := newLivestreamTestInteractor(t)
 	i.SetGroupCalls(newFakeCallStore(newFakeClock()))
@@ -202,5 +222,14 @@ func TestJoinGroupCall_Channel_LivestreamActive_SubscriberJoins(t *testing.T) {
 	}
 	if _, err := i.JoinGroupCall(ctx, ch, 8); err != nil {
 		t.Fatalf("подписчик при активном эфире: %v", err)
+	}
+	// Идущий звонок (зритель внутри) эфир не заменяет: после остановки эфира и
+	// выхода зрителя новый подписчик — снова отказ.
+	_ = fg.AddMember(ctx, ch, 9, domain.RoleSubscriber, 0)
+	if err := i.StopLivestream(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.JoinGroupCall(ctx, ch, 9); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("подписчик после конца эфира, зритель ещё внутри: %v, want ErrForbidden", err)
 	}
 }

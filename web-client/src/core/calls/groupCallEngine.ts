@@ -149,7 +149,7 @@ function handleJoinRejected(peerId: number) {
   if (!inCall && !watching) return // отказ запоздал: мы уже вышли
   if (inCall) teardownCall()
   if (watching) live.setWatching(null)
-  toastNew({ langPackKey: 'Error.AnError' })
+  toastNew({ langPackKey: 'VoiceChat.Chat.Ended' }) // tweb appImManager.ts:2372
 }
 
 export function toggleGroupMic() {

@@ -105,7 +105,7 @@ describe('groupCallEngine: отказ входа (action = rejected)', () => {
     expect(stopped).toHaveLength(1)
     expect(engine.getLocalStream()).toBeNull()
     expect(sendCallFrame).not.toHaveBeenCalled()
-    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'VoiceChat.Chat.Ended' })
   })
 
   it('отказ не затирает список участников идущего звонка', async () => {
@@ -129,7 +129,7 @@ describe('groupCallEngine: отказ входа (action = rejected)', () => {
     live.useLivestreamStore.getState().setWatching(PEER)
     engine.handleGroupCallFrame(rejected(PEER, 1))
     expect(live.useLivestreamStore.getState().watchingPeerId).toBeNull()
-    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'VoiceChat.Chat.Ended' })
   })
 
   it('отказ, пока ждём ICE-конфиг для оффера: соединение не создаётся, звонок остаётся убранным', async () => {

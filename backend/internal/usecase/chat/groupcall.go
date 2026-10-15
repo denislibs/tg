@@ -61,14 +61,28 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 }
 
 // admitToGroupCall вносит пользователя в звонок по правилам Б-9. first —
-// переход 0→1, joined=false — вход запрещён. Сначала JoinIfActive (проверка
-// «звонок идёт» и вход — один скрипт Redis, иначе последний вышедший оставил бы
-// пустой звонок, а не-админ вошёл бы в него; на частом пути — ни одного запроса
-// в БД). Звонка нет — открыть его может админ либо любой при активном эфире.
+// переход 0→1, joined=false — вход запрещён. В группе сначала JoinIfActive
+// (проверка «звонок идёт» и вход — один скрипт Redis, иначе последний вышедший
+// оставил бы пустой звонок, а не-админ вошёл бы в него; на частом пути — ни
+// одного запроса в БД). Звонка нет — открыть его может админ либо любой при
+// активном эфире.
+//
+// ОТСТУПЛЕНИЕ ОТ TWEB (В-S3, решение пользователя 2026-10-15): в вещательном
+// канале JoinIfActive пропускается — идущий видеочат открыт только
+// создателю/админам, подписчика пускает лишь активный эфир. tweb пускает
+// подписчика слушателем через SFU (components/chat/topbar.ts:387-392); SFU у нас
+// нет, и подписчик стал бы полноправным участником mesh (O(N²) потоков). Снимется
+// с В-М17.
 func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64) (first, joined bool, err error) {
-	joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
-	if err != nil || joined {
-		return false, joined, err
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return false, false, err
+	}
+	if typ != domain.ChatTypeChannel {
+		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
+		if err != nil || joined {
+			return false, joined, err
+		}
 	}
 	allowed, err := i.isCallAdmin(ctx, chatID, userID)
 	if err != nil {
