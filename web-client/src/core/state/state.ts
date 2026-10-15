@@ -12,6 +12,13 @@ export interface AppState {
   version: number
   /** папки-фильтры (tweb `filtersArr`) */
   folders: Folder[]
+  /**
+   * место «Все чаты» среди папок: число папок перед ней в порядке
+   * `messages.updateDialogFiltersOrder` (0 — первой). У tweb «Все чаты» —
+   * обычный фильтр в `filtersArr` со своим `localId`; у нас её нет в
+   * `folders`, поэтому место хранится отдельным ключом (решение В-6, Ф7-З).
+   */
+  allChatsPos: number
   /** свёрнутые пользователем пин-плашки: ключ `getPinnedMessagesKey(peerId, threadId)` → msgId
    *  (tweb `hiddenPinnedMessages`) */
   hiddenPinnedMessages: Record<string, number>
@@ -67,6 +74,7 @@ export const STATE_VERSION = 2
 export const STATE_INIT: AppState = {
   version: STATE_VERSION,
   folders: [],
+  allChatsPos: 0,
   hiddenPinnedMessages: {},
   recentSearch: [],
   recentlyClosedChats: [],
