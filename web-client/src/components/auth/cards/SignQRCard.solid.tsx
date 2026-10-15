@@ -169,9 +169,15 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
     setPasskeyBusy(true)
     try {
       const { session, options } = await managers.auth.passkeyLoginBegin()
-      const assertion = await getPasskeyAssertion(options)
-      await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
-      stopped = true // вход состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
+      const assertion = await getPasskeyAssertion(JSON.parse(options.data))
+      const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      if (!res.passwordNeeded && !res.user) throw new Error('неожиданный исход входа по ключу доступа')
+      stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
+      // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).
+      if (res.passwordNeeded) {
+        navigate({ name: 'password', payload: { token: res.passwordToken, hint: res.hint } })
+        return
+      }
       void toIm()
     } catch (err) {
       // Разбор — общий на обе карточки, см. `../passkeyLoginError.ts`

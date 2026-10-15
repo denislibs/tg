@@ -277,8 +277,8 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     const webauthn = await import('@core/webauthnBrowser')
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
     vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
-    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: {} })
-    const passkeyLoginFinish = vi.fn().mockResolvedValue({})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{"challenge":"AA"}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ user: {} })
     const { exportLoginToken, toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
     await vi.advanceTimersByTimeAsync(0)
     const before = exportLoginToken.mock.calls.length
@@ -286,6 +286,30 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     const buttons = [...host!.querySelectorAll('button')]
     buttons[buttons.length - 1].click()
     await vi.waitFor(() => expect(toIm).toHaveBeenCalled())
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(exportLoginToken.mock.calls.length).toBe(before)
+    expect(webauthn.getPasskeyAssertion).toHaveBeenCalledWith({ publicKey: { challenge: 'AA' } })
+
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
+  // Б-2: облачный пароль — шаг пароля (tweb passkeyLoginButton.tsx:69-71), цикл
+  // экспорта больше не нужен, в мессенджер не пускаем.
+  it('вход ключом при облачном пароле: карточка пароля, цикл остановлен, toIm не зван', async () => {
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ passwordNeeded: true, passwordToken: 't', hint: 'h' })
+    const { exportLoginToken, toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+    const before = exportLoginToken.mock.calls.length
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'password', payload: { token: 't', hint: 'h' } }))
+    expect(toIm).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(30_000)
     expect(exportLoginToken.mock.calls.length).toBe(before)

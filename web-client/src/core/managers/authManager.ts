@@ -1,4 +1,4 @@
-import type { Passkey } from '@layer'
+import type { DataJSON, Passkey } from '@layer'
 import { HttpError, type RestClient } from '../net/restClient'
 import type { UserFull, UserReal, UsersUserFull } from '../peers/peer'
 import { getPeerPhotoId } from '../peers/peer'
@@ -513,14 +513,19 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     async passkeyDelete(id: string): Promise<void> {
       await rest.del(`/me/passkeys/${id}`)
     },
-    async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
+    // `auth.initPasskeyLogin` → `auth.passkeyLoginOptions` (tweb
+    // `passkeyLoginButton.tsx:38-41`): `options` — dataJSON со строкой JSON
+    // `{"publicKey":{…}}`; `session` — наш параметр (ключ церемонии для finish).
+    async passkeyLoginBegin(): Promise<{ session: string; options: DataJSON }> {
       return rest.post('/auth/passkey/begin', {})
     },
-    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<{ user: PeerProfile }> {
-      return { user: await toSession(await rest.post<AuthAuthorizationWire>(
+    // Исход — тот же, что у остальных шагов входа: при облачном пароле
+    // `auth.passwordNeeded` (tweb `passkeyLoginButton.tsx:69-71`), иначе сессия.
+    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<SignInOutcome> {
+      return toOutcome(await rest.post<AuthAuthorizationWire>(
         `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
         assertion,
-      )) }
+      ))
     },
 
     /**

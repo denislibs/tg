@@ -17,11 +17,10 @@
  * Молча не гасится НИЧЕГО — в том числе отмена системного диалога WebAuthn.
  *
  * Что из этого есть у нас:
- *   • `SESSION_PASSWORD_NEEDED` — предмета НЕТ: наш `/auth/passkey/finish`
- *     выдаёт сессию без второго фактора
- *     (`backend/internal/usecase/auth/password.go:101-109`,
- *     `MintPasskeySession` — «второй фактор не спрашивается, как в Telegram»),
- *     то есть до карточки пароля этот путь не доходит в принципе;
+ *   • `SESSION_PASSWORD_NEEDED` — у нас это не отказ, а успешный ответ
+ *     `auth.passwordNeeded` (общий шаг пароля, как у `sign_in` и `sign_import`):
+ *     его разбирают сами карточки (переход на карточку пароля), сюда он не
+ *     доходит;
  *   • `PASSKEY_CREDENTIAL_NOT_FOUND` — отличить НЕЧЕМ: бэкенд отвечает одним
  *     `401 «passkey login failed»` на любой отказ проверки
  *     (`backend/internal/adapter/delivery/http/passkey_handler.go:244-247`),
