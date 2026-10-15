@@ -1399,7 +1399,7 @@ export function createWorkerCore() {
     // Тем же хвостом — сверка запросов «это вы?» со списком сессий (tweb `user_auth` на
     // старте уже вошедшего аккаунта, appAccountManager.ts:112-120): флаг `unconfirmed`
     // сессий, пока вкладки не работали, приезжает только списком. После `markMeReady`:
-    // он ставится в конце цепочки `persistScope` выше, а State должен читаться уже в скоупе токена.
+    // гейт снимает и `setMe`, так что скоуп State к этому моменту почти всегда уже выставлен, но не гарантированно: окно — один RTT показа запросов прошлого аккаунта, ответ списка его исправляет.
     void tokens.ready().then(() => auth.me()).then(async (u) => {
       if (u && !me) setMe(u)
       if (u) { await meReady; refreshAuthorizations() }

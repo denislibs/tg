@@ -512,41 +512,25 @@ func TestTerminateSession_ExpiredUnconfirmedEmitsNothing(t *testing.T) {
 	f.noRows(t)
 }
 
-// «Завершить все прочие»: по строке на каждую неподтверждённую.
-func TestTerminateOtherSessions_UnconfirmedEmitsRemovalPerSession(t *testing.T) {
-	f, cur, target := confirmFixture(t)
+// «Завершить все прочие»: строк «убрать» нет — остаётся одна вызывающая сессия, её клиент
+// очищает список сам (tweb :441-451); сотни неподтверждённых не порождают сотни записей.
+func TestTerminateOtherSessions_UnconfirmedEmitsNothing(t *testing.T) {
+	f, cur, _ := confirmFixture(t)
 	ctx := context.Background()
-	// Вторая неподтверждённая и одна подтверждённая.
-	second, err := f.devices.Create(ctx, domain.Device{UserID: f.user.ID, Name: "B", Platform: "web", TokenHash: "h-2", Unconfirmed: true})
-	if err != nil {
-		t.Fatal(err)
+	for i, h := range []string{"h-2", "h-3"} {
+		d, err := f.devices.Create(ctx, domain.Device{UserID: f.user.ID, Name: "B", Platform: "web", TokenHash: h, Unconfirmed: i == 0})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dd := f.devices.byID[d.ID]
+		dd.CreatedAt = sessionsNow.Add(-time.Hour)
+		f.devices.byID[d.ID] = dd
 	}
-	d := f.devices.byID[second.ID]
-	d.CreatedAt = sessionsNow.Add(-time.Hour)
-	f.devices.byID[second.ID] = d
-	plain, err := f.devices.Create(ctx, domain.Device{UserID: f.user.ID, Name: "C", Platform: "web", TokenHash: "h-3"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	d = f.devices.byID[plain.ID]
-	d.CreatedAt = sessionsNow.Add(-time.Hour)
-	f.devices.byID[plain.ID] = d
-
 	n, err := f.i.TerminateOtherSessions(ctx, f.user.ID, cur)
 	if err != nil || n != 3 {
 		t.Fatalf("n=%d err=%v, want 3", n, err)
 	}
-	rows := f.log.of(f.user.ID)
-	if len(rows) != 2 {
-		t.Fatalf("строк = %d, want 2 (по одной на неподтверждённую): %+v", len(rows), rows)
-	}
-	got := map[float64]bool{}
-	for _, r := range rows {
-		got[r.body["hash"].(float64)] = true
-	}
-	if !got[float64(target)] || !got[float64(second.ID)] {
-		t.Fatalf("hash в строках = %v, want %d и %d", got, target, second.ID)
-	}
+	f.noRows(t)
 }
 
 // Выход самой неподтверждённой сессии (POST /auth/logout) — тоже снимает запрос.

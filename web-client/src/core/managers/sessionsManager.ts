@@ -64,11 +64,6 @@ export type UnconfirmedAuthorization = {
 /** tweb `authorizationAutoconfirmPeriod.ts:1`, секунды. */
 export const DEFAULT_AUTHORIZATION_AUTOCONFIRM_PERIOD = 7 * 24 * 60 * 60
 
-/** tweb `authorizationAutoconfirmPeriod.ts:3-5`. */
-export function normalizeAuthorizationAutoconfirmPeriod(period?: number) {
-  return period !== undefined && period > 0 ? period : DEFAULT_AUTHORIZATION_AUTOCONFIRM_PERIOD
-}
-
 /**
  * Первые сутки сессия не просматривает другие (tweb `appAccountManager.ts:71-77`):
  * и `resetAuthorization`, и `changeAuthorizationSettings` отвечают FRESH_*_FORBIDDEN.
@@ -147,7 +142,7 @@ export function newSessionsManager({ rest, state, broadcast }: SessionsDeps) {
   let mutationVersion = 0
   let clearVersion = 0
   let mutations = new Map<string, UnconfirmedAuthorizationMutation>()
-  const authorizationAutoconfirmPeriod = normalizeAuthorizationAutoconfirmPeriod() // расхождение 2
+  const authorizationAutoconfirmPeriod = DEFAULT_AUTHORIZATION_AUTOCONFIRM_PERIOD // расхождение 2
   let expirationTimeout: ReturnType<typeof setTimeout> | undefined
   /** Поколение аккаунта: ответ и чтение State прошлого поколения не применяются. */
   let generation = 0
@@ -371,7 +366,9 @@ export function newSessionsManager({ rest, state, broadcast }: SessionsDeps) {
      * Кадр, пришедший до чтения State, ждёт его (tweb `pendingUpdates`, `:93-106`).
      */
     processNewAuthorizationUpdate(update: NewAuthorizationEvt): void {
-      void ensureLoaded().then(() => applyNewAuthorizationUpdate(update), () => {})
+      const gen = generation
+      // Кадр сокета прошлого аккаунта после смены аккаунта не применяется.
+      void ensureLoaded().then(() => { if(gen === generation) applyNewAuthorizationUpdate(update) }, () => {})
     },
 
     /** Запросы, которые показывает плашка: при свежей текущей сессии список пуст (`:201-209`). */

@@ -39,7 +39,11 @@ func (i *Interactor) evict(ctx context.Context, d domain.Device) {
 // revokeOtherSessions terminates every session of the user except the current
 // one ("Terminate All Other Sessions"): rows are deleted, cached sessions
 // evicted and each device's sockets closed. Returns how many were revoked.
-// Запросы «это вы?» об удалённых неподтверждённых сессиях снимаются.
+// Строк «убрать» запросы об удалённых сессиях НЕ порождают (как и DeleteAll): живой
+// после этого остаётся одна вызывающая сессия, её клиент очищает список сам
+// (tweb resetAuthorizations, appAccountManager.ts:441-451), а у аккаунта с сотнями
+// неподтверждённых сессий (агентские входы) это были бы сотни последовательных
+// записей журнала внутри запроса.
 func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDeviceID int64) (int, error) {
 	removed, err := i.devices.DeleteOthers(ctx, userID, currentDeviceID)
 	if err != nil {
@@ -48,7 +52,6 @@ func (i *Interactor) revokeOtherSessions(ctx context.Context, userID, currentDev
 	for _, d := range removed {
 		i.evict(ctx, d)
 	}
-	i.emitPromptsRemoved(ctx, userID, removed)
 	return len(removed), nil
 }
 

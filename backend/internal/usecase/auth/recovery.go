@@ -128,6 +128,8 @@ func (i *Interactor) ConfirmPasswordRecovery(ctx context.Context, rawPasswordTok
 	if err != nil {
 		return SignInResult{}, err
 	}
+	// approved не берём: восстановление по почте — путь при угнанной почте, его вход всегда
+	// спрашивается (решение М1-3 по ревью, контракт).
 	res, err := i.mintSession(ctx, user, deviceName, platform, false)
 	if err != nil {
 		return SignInResult{}, err

@@ -459,6 +459,18 @@ describe('reset на смене аккаунта', () => {
     expect(broadcast).not.toHaveBeenCalledWith('unconfirmed_authorizations_update', [expect.objectContaining({ hash: 20 })])
   })
 
+  it('кадр, пришедший после смены аккаунта до чтения State, не применяется', async() => {
+    const { manager, resolveState } = makeManager({ deferState: true })
+    const pending = manager.getUnconfirmedAuthorizations()
+    manager.processNewAuthorizationUpdate(makeUpdate(2, true)) // кадр сокета «Алисы»
+    manager.reset() // вошёл «Боб»
+    resolveState()
+    await pending.catch(() => {})
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(await manager.getUnconfirmedAuthorizations()).toEqual([])
+  })
+
   it('таймер срока прошлого аккаунта погашен', async() => {
     const { manager, broadcast } = makeManager({
       saved: [{ hash: 1, date: NOW - PERIOD + 5, device: 'Safari', location: 'Dubai' }],
