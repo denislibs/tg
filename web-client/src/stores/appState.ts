@@ -40,6 +40,14 @@ export function setAppState<K extends keyof AppState>(key: K, value: AppState[K]
   void writer?.stateKey(key, value).catch(() => {})
 }
 
+/** Несколько ключей одной записью в память (один проход подписчиков) + персист каждого. */
+export function setAppStates(patch: Partial<AppState>): void {
+  useAppStateStore.setState(patch)
+  for (const key of Object.keys(patch) as (keyof AppState)[]) {
+    void writer?.stateKey(key, patch[key]).catch(() => {})
+  }
+}
+
 /** Гидрация с диска: только память (tweb setAppStateSilent). */
 export function setAppStateSilent(patch: Partial<AppState>): void {
   useAppStateStore.setState(patch)

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
-import { applyFolderUpdate, loadFolders, useFoldersStore } from './foldersStore'
+import {
+  applyFolderUpdate, applyOrder, loadFolders, updateOrder, useFoldersStore,
+} from './foldersStore'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
 
@@ -23,7 +25,7 @@ beforeEach(() => {
 describe('foldersStore', () => {
   it('загрузка с сети кладёт папки в State (и персистит)', async () => {
     await loadFolders({
-      folders: { list: () => Promise.resolve([folder]) },
+      folders: { list: () => Promise.resolve({ folders: [folder], allChatsPos: 0 }) },
       contacts: { list: () => Promise.resolve([]) },
       dialogs: { setContactIds: async () => {} },
     })
@@ -76,5 +78,115 @@ describe('foldersStore', () => {
 
     expect(useAppStateStore.getState().folders).toEqual([folder])
     expect(useFoldersStore.getState().selectedId).toBe(7)
+  })
+})
+
+// Ф7-З: порядок папок — `updateDialogFilterOrder` (tweb filters.ts:179-199) и свой
+// `messages.updateDialogFiltersOrder` (:424-433) сходятся в одном `applyOrder`.
+describe('foldersStore.applyOrder', () => {
+  const mk = (id: number, pos: number): Folder => ({ ...folder, id, title: 'f' + id, pos })
+  const ids = () => useAppStateStore.getState().folders.map((f) => f.id)
+
+  beforeEach(() => {
+    useAppStateStore.setState({ folders: [mk(1, 0), mk(2, 1), mk(3, 2)] })
+  })
+
+  it('applyOrder([3,1,2]) переставляет папки и перенумеровывает pos', () => {
+    applyOrder([3, 1, 2])
+
+    expect(ids()).toEqual([3, 1, 2])
+    expect(useAppStateStore.getState().folders.map((f) => f.pos)).toEqual([0, 1, 2])
+    expect(stateKey).toHaveBeenCalledWith('folders', expect.any(Array))
+  })
+
+  it('неперечисленные папки идут в хвост в прежнем порядке; неизвестные id игнорируются', () => {
+    applyOrder([3, 99])
+
+    expect(ids()).toEqual([3, 1, 2])
+  })
+
+  it('applyOrder([1, 0, 2]) ставит allChatsPos = 1 (индекс 0 в order)', () => {
+    applyOrder([1, 0, 2])
+
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+    expect(ids()).toEqual([1, 2, 3])
+    expect(stateKey).toHaveBeenCalledWith('allChatsPos', 1)
+  })
+
+  it('без 0 в order allChatsPos не меняется (не-премиум вырезает 0)', () => {
+    useAppStateStore.setState({ allChatsPos: 2 })
+
+    applyOrder([2, 1, 3])
+
+    expect(useAppStateStore.getState().allChatsPos).toBe(2)
+  })
+
+  it('перестановка премиума с «Все чаты» пишет и папки, и место — одним проходом подписчиков', () => {
+    let notified = 0
+    const off = useAppStateStore.subscribe(() => { ++notified })
+
+    applyOrder([3, 0, 1, 2])
+    off()
+
+    expect(notified).toBe(1)
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+    expect(ids()).toEqual([3, 1, 2])
+  })
+
+  it('applyOrder([]) ничего не меняет и не пишет на диск', () => {
+    const before = useAppStateStore.getState().folders
+    stateKey.mockClear()
+
+    applyOrder([])
+
+    expect(useAppStateStore.getState().folders).toBe(before)
+    expect(stateKey).not.toHaveBeenCalled()
+  })
+
+  it('updateOrder: порядок применяется только после ответа сервера', async () => {
+    let finish!: () => void
+    const m = { folders: { updateOrder: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } }
+
+    const done = updateOrder(m, [3, 0, 1, 2])
+    expect(ids()).toEqual([1, 2, 3])
+    expect(useAppStateStore.getState().allChatsPos).toBe(0)
+
+    finish()
+    await done
+
+    expect(m.folders.updateOrder).toHaveBeenCalledWith([3, 0, 1, 2])
+    expect(ids()).toEqual([3, 1, 2])
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+  })
+
+  it('updateOrder: отказ сервера — исключение вызывающему, порядок не меняется', async () => {
+    const m = { folders: { updateOrder: vi.fn().mockRejectedValue(new Error('500')) } }
+
+    await expect(updateOrder(m, [3, 1, 2])).rejects.toThrow('500')
+
+    expect(ids()).toEqual([1, 2, 3])
+  })
+
+  it('тот же порядок повторно — ни записи на диск, ни новых ссылок (эхо своего действия)', () => {
+    applyOrder([3, 1, 2])
+    const after = useAppStateStore.getState().folders
+    stateKey.mockClear()
+
+    applyOrder([3, 1, 2])
+
+    expect(useAppStateStore.getState().folders).toBe(after)
+    expect(stateKey).not.toHaveBeenCalled()
+  })
+})
+
+describe('loadFolders: место «Все чаты»', () => {
+  it('ответ сервера кладёт allChatsPos в State', async () => {
+    await loadFolders({
+      folders: { list: () => Promise.resolve({ folders: [folder], allChatsPos: 1 }) },
+      contacts: { list: () => Promise.resolve([]) },
+      dialogs: { setContactIds: async () => {} },
+    })
+
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
   })
 })
