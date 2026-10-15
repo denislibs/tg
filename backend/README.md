@@ -146,6 +146,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 - **Push:** `GET /push/vapid_public_key`, `POST /push/subscribe`
 - **Истории:** `POST|GET /stories`, `POST /stories/{id}/view`, `GET /stories/{id}/viewers`, `DELETE /stories/{id}`
 - **Контакты:** `POST|GET /contacts`, `DELETE /contacts/{userID}`
+- **Конфиг приложения:** `GET /help/app_config?hash=` (help.getAppConfig: применяемые сервером лимиты и флаги покупок; `help.appConfigNotModified` при совпавшем `hash`), `GET /help/config` (help.getConfig) — значения из `internal/domain/limits.go`
 
 Полный перечень с телами запросов — в OpenAPI (`GET /swagger`) и [`../docs/contracts.md`](../docs/contracts.md).
 
