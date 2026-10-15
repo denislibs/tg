@@ -25,3 +25,28 @@ func TestChatRecordToChannel_HiddenIsHonestMin(t *testing.T) {
 		t.Fatalf("читаемый чужой чат: %+v, want полную форму с left", full)
 	}
 }
+
+// MC-13: pFlags.creator живёт независимо от left (tweb hasRights.ts:6-7,
+// :25-27). Вышедший создатель получает карточку с creator и left сразу; чужой
+// вышедший — только left.
+func TestChatRecordToChannel_LeftCreator(t *testing.T) {
+	c := ChatRecord{ID: 5, Type: ChatTypeGroup, Title: "Г", ViewerID: 7, CreatorID: 7, MyRole: ""}
+	ch := c.ToChannel()
+	if !ch.PFlags["creator"] || !ch.PFlags["left"] {
+		t.Fatalf("вышедший создатель: pFlags = %v, ждали creator и left", ch.PFlags)
+	}
+	if ch.AdminRights == nil {
+		t.Fatal("вышедший создатель без admin_rights: клиент не покажет «Изменить»")
+	}
+
+	other := ChatRecord{ID: 5, Type: ChatTypeGroup, Title: "Г", ViewerID: 8, CreatorID: 7, MyRole: ""}
+	if o := other.ToChannel(); o.PFlags["creator"] || !o.PFlags["left"] || o.AdminRights != nil {
+		t.Fatalf("вышедший не-создатель: pFlags = %v admin=%v", o.PFlags, o.AdminRights)
+	}
+
+	// Состав без зрителя (min-снимок chat_update): создателя в нём нет.
+	snap := ChatRecord{ID: 5, Type: ChatTypeGroup, Title: "Г", CreatorID: 7}
+	if s := snap.ToChannel(); s.PFlags["creator"] {
+		t.Fatalf("min-снимок без зрителя несёт creator: %v", s.PFlags)
+	}
+}

@@ -19,6 +19,7 @@ import type {
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt,
   ViewsUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
+  PrivacyEvt,
   ReadDiscussionEvt,
 } from '@core/realtime/events'
 import type { Dialog, MyMessage } from '@core/models'
@@ -337,6 +338,11 @@ export type BroadcastEvents = {
   // (`notifyManager.updateNotifySettings`). Пер-чатные идут `rt:dialog_op`.
   // Подписчики — `notifyStore` (проектор) и вкладка «Уведомления и звуки».
   'notify_settings': [NotifyTypeUpdate]
+  // tweb rootScope.ts:166 `privacy_update` (`Update.updatePrivacy`): правило одного
+  // ключа сменилось — с другого устройства (журнал `privacy_update`) либо местный
+  // апдейт после своего PUT (`privacyManager.setRule`). Подписчик — проектор
+  // (`stores/privacyStore.ts`).
+  'privacy_update': [PrivacyEvt]
 }
 
 export type BroadcastEventsListeners = {

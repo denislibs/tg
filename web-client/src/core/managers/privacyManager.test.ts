@@ -125,30 +125,95 @@ describe('privacyManager', () => {
     expect(res).toEqual({ count: 7, peerIds: [9, 5] })
   })
 
-  // Порт `appUsersManager.toggleBlock` (tweb :520-536) + `onUpdatePeerBlocked`
-  // (`appProfileManager.ts:1506-1532`): после ответа сервера — событие
-  // `peer_block` с `blocked` из `pFlags` (`true` или отсутствует).
-  it('toggleBlock: блокировка — POST, разблокировка — DELETE; после ответа — событие peer_block', async () => {
+  // Порт `appUsersManager.toggleBlock` (tweb :520-536): после ответа сервера —
+  // МЕСТНЫЙ апдейт `updatePeerBlocked`, из которого воркер разводит `peer_block`
+  // (`onUpdatePeerBlocked`, `appProfileManager.ts:1506-1532`): `blocked` в
+  // `pFlags` есть только при блокировке.
+  it('toggleBlock: блокировка — POST, разблокировка — DELETE; после ответа — местный updatePeerBlocked', async () => {
     const post = vi.fn(async () => ({ _: 'boolTrue' }))
     const del = vi.fn(async () => ({ _: 'boolTrue' }))
-    const onPeerBlock = vi.fn()
-    const mgr = newPrivacyManager({ rest: { post, del } as unknown as RestClient, onPeerBlock })
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({ rest: { post, del } as unknown as RestClient, processLocalUpdate })
 
     await mgr.toggleBlock(9, true)
     expect(post).toHaveBeenCalledWith('/me/blocked', { user_id: 9 })
-    expect(onPeerBlock).toHaveBeenLastCalledWith({ peerId: 9, blocked: true })
+    expect(processLocalUpdate).toHaveBeenLastCalledWith({
+      _: 'updatePeerBlocked', peer_id: { _: 'peerUser', user_id: 9 }, pFlags: { blocked: true },
+    })
 
     await mgr.toggleBlock(9, false)
     expect(del).toHaveBeenCalledWith('/me/blocked/9')
-    expect(onPeerBlock).toHaveBeenLastCalledWith({ peerId: 9, blocked: undefined })
+    const last = processLocalUpdate.mock.lastCall![0]
+    expect(last).toEqual({ _: 'updatePeerBlocked', peer_id: { _: 'peerUser', user_id: 9 } })
+    expect(last).not.toHaveProperty('pFlags')
   })
 
-  it('toggleBlock: отказ сервера — без события', async () => {
+  it('toggleBlock: отказ сервера — без апдейта', async () => {
     const post = vi.fn(async () => { throw new Error('user not found') })
-    const onPeerBlock = vi.fn()
-    const mgr = newPrivacyManager({ rest: { post } as unknown as RestClient, onPeerBlock })
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({ rest: { post } as unknown as RestClient, processLocalUpdate })
 
     await expect(mgr.toggleBlock(9, true)).rejects.toThrow()
-    expect(onPeerBlock).not.toHaveBeenCalled()
+    expect(processLocalUpdate).not.toHaveBeenCalled()
+  })
+
+  // Порт `appPrivacyManager.setPrivacy` (:30-56): после ответа — местный
+  // `updatePrivacy{key, rules}`, по которому воркер обновляет кэш и шлёт
+  // `privacy_update`.
+  it('setRule: после ответа — местный updatePrivacy с ключом-конструктором и вектором правил', async () => {
+    const saved = { key: 'last_seen' as const, value: 'nobody' as const, allowUserIds: [7], denyUserIds: [] }
+    const put = vi.fn(async () => rules(saved))
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({ rest: { put } as unknown as RestClient, processLocalUpdate })
+
+    const res = await mgr.setRule(saved)
+
+    expect(res).toEqual(saved)
+    expect(processLocalUpdate).toHaveBeenCalledTimes(1)
+    expect(processLocalUpdate).toHaveBeenCalledWith({
+      _: 'updatePrivacy',
+      key: { _: 'privacyKeyStatusTimestamp' },
+      rules: toPrivacyRules(saved),
+    })
+  })
+
+  it('setRule: отказ сервера — без апдейта', async () => {
+    const put = vi.fn(async () => { throw new Error('bad rule') })
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({ rest: { put } as unknown as RestClient, processLocalUpdate })
+
+    await expect(mgr.setRule({ key: 'about', value: 'nobody', allowUserIds: [], denyUserIds: [] })).rejects.toThrow()
+    expect(processLocalUpdate).not.toHaveBeenCalled()
+  })
+
+  // Наш сервер шлёт кадр и инициатору (у Telegram он приходит в ответе). Если
+  // кадр этого ключа успел прийти, пока шёл PUT, он НЕ старее ответа (или
+  // новее — от другого устройства): местный апдейт затёр бы его.
+  it('setRule: кадр этого ключа пришёл во время запроса — местный апдейт пропускается', async () => {
+    const saved = { key: 'last_seen' as const, value: 'nobody' as const, allowUserIds: [], denyUserIds: [] }
+    let version = 0
+    const put = vi.fn(async () => { version++; return rules(saved) })
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({
+      rest: { put } as unknown as RestClient, processLocalUpdate, frameVersion: () => version,
+    })
+
+    const res = await mgr.setRule(saved)
+
+    expect(res).toEqual(saved) // ответ вызывающему возвращается в любом случае
+    expect(processLocalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('toggleBlock: кадр этого пира пришёл во время запроса — местный апдейт пропускается', async () => {
+    let version = 0
+    const post = vi.fn(async () => { version++; return { _: 'boolTrue' } })
+    const processLocalUpdate = vi.fn()
+    const mgr = newPrivacyManager({
+      rest: { post } as unknown as RestClient, processLocalUpdate, frameVersion: () => version,
+    })
+
+    await mgr.toggleBlock(9, true)
+
+    expect(processLocalUpdate).not.toHaveBeenCalled()
   })
 })
