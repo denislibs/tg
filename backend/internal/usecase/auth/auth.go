@@ -44,6 +44,9 @@ type Interactor struct {
 	contacts   ContactViewer      // optional: имя из книги получателя в кадре user_update
 	pwFails    *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails   *failCounter       // счётчик неудачных кодов восстановления на password_token
+	// authorLocks — замок на владельца карточки (по id): строки user_update
+	// одного пользователя пишутся последовательно, см. sendUserUpdate.
+	authorLocks keyedLock
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
 	resetWait time.Duration
 	// now — часы usecase (правило свежей сессии); в тестах подменяются.
@@ -67,13 +70,20 @@ type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
 // выборки всех партнёров.
 type PartnersAmongFunc func(ctx context.Context, userID int64, candidates []int64) ([]int64, error)
 
-// PrivacyChecker отвечает, видит ли viewer аспект key владельца ownerID
-// (usecase/privacy) — тот же шов, что у presence. Здесь нужен ровно для
-// profile_photo: кадр user_update несёт конструктор `user`, а в нём photo, и
-// без проверки фото уехало бы мимо правила приватности. Не подключён — фото в
-// кадре нет вовсе (безопасная деградация: клиент дочитает карточку ручкой).
+// PrivacyChecker — шов к usecase/privacy. Check отвечает, видит ли viewer
+// аспект key владельца ownerID (галерея фото профиля). Кадр user_update несёт
+// конструктор `user`, и аватарку с СТАТУСОМ в нём решают AccessRules и
+// PresenceOf. Не подключён — фото в кадре нет вовсе (безопасная деградация:
+// клиент дочитает карточку ручкой), статус не едет.
+//
+// AccessRules — правила фото, номера и last_seen (и блок) для ids глазами
+// viewerID (privacy.AccessRules), PresenceOf — присутствие ids (privacy.PresenceOf):
+// из них кадр user_update берёт аватарку и СТАТУС. Кадр заменяет карточку в кэше
+// клиента целиком, и без `status` он стирал бы у получателя живое присутствие.
 type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+	AccessRules(ctx context.Context, viewerID int64, ids []int64) (domain.UserViewRules, error)
+	PresenceOf(ctx context.Context, ids []int64) func(int64) domain.UserStatus
 }
 
 // ContactViewer — как книги зрителей видят пользователя userID: viewerID →

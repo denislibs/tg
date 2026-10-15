@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/usecase/ownsync"
+	"github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
 type fakeMediaReader struct{ m map[int64]domain.Media }
@@ -131,8 +133,7 @@ func (b *fakeBook) List(_ context.Context, owner int64) ([]domain.ContactRecord,
 	var out []domain.ContactRecord
 	for k, r := range b.rows {
 		if k[0] == owner {
-			r.User = b.seen(owner, k[1])
-			r.User.Phone = b.phones[k[1]] // как scanContact: сырой номер, прячет List
+			r.User = b.seen(owner, k[1]) // как scanContact: номер прочитан, но не показан
 			out = append(out, r)
 		}
 	}
@@ -197,31 +198,35 @@ type fakeClose struct{ ids []int64 }
 func (f fakeClose) CloseFriends(context.Context, int64) ([]int64, error) { return f.ids, nil }
 
 // fakePrivacy — правила: allow[ключ] — пускает ли оно зрителя; rulesErr — сбой
-// запроса правил.
+// запроса правил (privacy.ViewRules тогда гасит то, что правила охраняют);
+// status — присутствие контактов (нет записи — userStatusEmpty).
 type fakePrivacy struct {
 	allow    map[domain.PrivacyKey]bool
 	rulesErr error
+	status   map[int64]domain.UserStatus
 }
 
-func (p fakePrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, key domain.PrivacyKey) (map[int64]bool, error) {
-	out := map[int64]bool{}
-	for _, id := range ids {
-		out[id] = p.allow[key]
-	}
-	return out, nil
-}
-func (p fakePrivacy) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+func (p fakePrivacy) AccessRules(_ context.Context, viewer int64, ids []int64) (domain.UserViewRules, error) {
+	rules := domain.UserViewRules{ViewerID: viewer}
 	if p.rulesErr != nil {
-		return nil, p.rulesErr
+		return rules, p.rulesErr
 	}
-	out := map[domain.PrivacyKey]map[int64]bool{}
-	for _, k := range keys {
-		out[k] = map[int64]bool{}
-		for _, id := range ids {
-			out[k][id] = p.allow[k]
+	rules.Photo, rules.Phone, rules.LastSeen = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
+	for _, id := range ids {
+		rules.Photo[id] = p.allow[domain.PrivacyProfilePhoto]
+		rules.Phone[id] = p.allow[domain.PrivacyPhoneNumber]
+		rules.LastSeen[id] = p.allow[domain.PrivacyLastSeen]
+	}
+	return rules, nil
+}
+
+func (p fakePrivacy) PresenceOf(_ context.Context, _ []int64) func(int64) domain.UserStatus {
+	return func(id int64) domain.UserStatus {
+		if st, ok := p.status[id]; ok {
+			return st
 		}
+		return domain.NewUserStatusEmpty()
 	}
-	return out, nil
 }
 func (p fakePrivacy) Check(_ context.Context, _, _ int64, key domain.PrivacyKey) (bool, error) {
 	return p.allow[key], nil
@@ -489,9 +494,11 @@ func TestAdd_EmitterFailureKeepsResponse(t *testing.T) {
 	}
 }
 
-// Сбой правил приватности гасит то, что они охраняют (фото, номер), но строка
-// журнала об удалении пишется и ответ не 500.
-func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
+// Сбой правил приватности внутри транзакции с замком прерывает её, поэтому
+// строки журнала нет (явный отказ с первопричиной в логе, а не строка с
+// погашенными правилами), а ответ ручки не 500: он собирается заново вне
+// транзакции с погашенными фото и номером.
+func TestDelete_PrivacyRulesFailureSkipsRowKeepsResponse(t *testing.T) {
 	i, book, log := newBookInteractor(t)
 	ctx := context.Background()
 	book.phones[cBob] = "+79990000002"
@@ -506,8 +513,8 @@ func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
 	if card.Phone != "" || card.ContactRecord() {
 		t.Fatalf("ответ = %+v", card)
 	}
-	if u, n := rowCard(t, log, cOwner); n != 2 || u.ContactRecord() || u.Phone != "" {
-		t.Fatalf("строка (n=%d) = %+v", n, u)
+	if n := len(log.rows[cOwner]); n != 0 {
+		t.Fatalf("строк журнала = %d; want 0 при сбое правил под замком", n)
 	}
 }
 
@@ -540,16 +547,17 @@ func TestList_MatchesAddResponse(t *testing.T) {
 	}
 }
 
-// Правила приватности читаются ДО транзакции с замком курсора: сбой SQL внутри
-// неё переводит транзакцию в aborted, и строка журнала теряется.
-type orderEmitter struct {
-	inner  SnapshotEmitter
+// Правила читаются ПОСЛЕ взятия замка курсора владельца: блок, случившийся между
+// чтением правил и записью строки, иначе дал бы снимок с большим pts и
+// устаревшим статусом поверх более свежей строки пересчёта блока.
+type orderLog struct {
+	*fakeLog
 	events *[]string
 }
 
-func (o orderEmitter) EmitSnapshot(ctx context.Context, u int64, typ string, build func(context.Context) (map[string]any, error)) error {
-	*o.events = append(*o.events, "emit")
-	return o.inner.EmitSnapshot(ctx, u, typ, build)
+func (l orderLog) LockState(ctx context.Context, uid int64) error {
+	*l.events = append(*l.events, "lock")
+	return l.fakeLog.LockState(ctx, uid)
 }
 
 type orderPrivacy struct {
@@ -557,21 +565,229 @@ type orderPrivacy struct {
 	events *[]string
 }
 
-func (p orderPrivacy) VisibleMaps(ctx context.Context, v int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+func (p orderPrivacy) AccessRules(ctx context.Context, v int64, ids []int64) (domain.UserViewRules, error) {
 	*p.events = append(*p.events, "rules")
-	return p.fakePrivacy.VisibleMaps(ctx, v, ids, keys...)
+	return p.fakePrivacy.AccessRules(ctx, v, ids)
 }
 
-func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
+func (p orderPrivacy) PresenceOf(ctx context.Context, ids []int64) func(int64) domain.UserStatus {
+	*p.events = append(*p.events, "presence")
+	return p.fakePrivacy.PresenceOf(ctx, ids)
+}
+
+func TestPublishContactCard_ReadsPrivacyUnderCursorLock(t *testing.T) {
 	i, _, log := newBookInteractor(t)
 	var events []string
-	i.SetEmitter(orderEmitter{inner: ownsync.New(log, nil, directTx{}), events: &events})
+	i.SetEmitter(ownsync.New(orderLog{log, &events}, nil, directTx{}))
 	i.SetPrivacy(orderPrivacy{events: &events})
 	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) < 2 || events[0] != "rules" || events[1] != "emit" {
-		t.Fatalf("порядок = %v; want правила до EmitSnapshot", events)
+	// Присутствие (Redis) — до замка, правила из БД — после него.
+	if len(events) != 3 || events[0] != "presence" || events[1] != "lock" || events[2] != "rules" {
+		t.Fatalf("порядок = %v; want presence, lock, rules", events)
+	}
+}
+
+// ---- GET /contacts и карточка мутации несут `status` (P0 №2) ----
+//
+// Клиент заменяет карточку в кэше целиком: ответ без `status` стирал живой
+// статус контакта, и «Добавить участников» показывало «был(а) давно» у того, кто
+// в сети. Карточки собираются настоящим privacy.Interactor — тем же сборщиком,
+// что у остальных витрин.
+
+// statusRepo — правила приватности: last_seen закрыт у hiddenBy, hiddenBy ∩
+// blockedBy — заблокировали зрителя; остальные правила открыты.
+type statusRepo struct {
+	privacy.Repo
+	hiddenBy  map[int64]bool
+	blockedBy map[int64]bool
+}
+
+func (r statusRepo) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	out := map[domain.PrivacyKey]map[int64]bool{}
+	for _, k := range keys {
+		out[k] = map[int64]bool{}
+		for _, id := range ids {
+			out[k][id] = !(k == domain.PrivacyLastSeen && r.hiddenBy[id])
+		}
+	}
+	return out, nil
+}
+
+func (r statusRepo) BlockedBy(_ context.Context, _ int64, ids []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range ids {
+		if r.blockedBy[id] {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
+type fixedPresence map[int64]domain.UserStatus
+
+func (fixedPresence) Status(context.Context, int64) (bool, time.Time, time.Time) {
+	return false, time.Time{}, time.Time{}
+}
+
+func (p fixedPresence) Statuses(_ context.Context, ids []int64) map[int64]domain.UserStatus {
+	out := map[int64]domain.UserStatus{}
+	for _, id := range ids {
+		if st, ok := p[id]; ok {
+			out[id] = st
+		}
+	}
+	return out
+}
+
+const (
+	cDarya int64 = 3
+	cEgor  int64 = 4
+)
+
+// newStatusInteractor — книга владельца из Боба, Дарьи и Егора с настоящим
+// сборщиком приватности. Боб в сети, Дарья скрыла last_seen, Егор скрыл и
+// заблокировал зрителя.
+func newStatusInteractor(t *testing.T) (*Interactor, *fakeLog) {
+	t.Helper()
+	i, book, log := newBookInteractor(t)
+	for _, id := range []int64{cDarya, cEgor} {
+		u := domain.NewUser(id, domain.UserFlags{})
+		u.FirstName = "Контакт"
+		book.profile[id] = u
+	}
+	for _, id := range []int64{cBob, cDarya, cEgor} {
+		book.rows[[2]int64{cOwner, id}] = domain.ContactRecord{OwnerID: cOwner, UserID: id, FirstName: "К"}
+	}
+	pr := privacy.New(statusRepo{hiddenBy: map[int64]bool{cDarya: true, cEgor: true}, blockedBy: map[int64]bool{cEgor: true}})
+	pr.SetPresence(fixedPresence{cBob: domain.NewUserStatusOnline(time.Now().Add(time.Minute)), cDarya: domain.NewUserStatusOnline(time.Now().Add(time.Minute))})
+	i.SetPrivacy(pr)
+	return i, log
+}
+
+func statusTag(u domain.UserReal) string {
+	if u.Status == nil {
+		return "<нет поля>"
+	}
+	return u.Status.Tag()
+}
+
+// GET /contacts: статус по правилам — в сети, скрыто правилом («недавно»),
+// скрыто блоком («давно»).
+func TestList_CardsCarryStatus(t *testing.T) {
+	i, _ := newStatusInteractor(t)
+	list, err := i.List(context.Background(), cOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]string{}
+	for _, c := range list {
+		got[c.UserID] = statusTag(c.User)
+	}
+	want := map[int64]string{
+		cBob:   domain.UserStatusOnlineTag,
+		cDarya: domain.UserStatusRecentlyTag,
+		cEgor:  domain.UserStatusEmptyTag,
+	}
+	for id, tag := range want {
+		if got[id] != tag {
+			t.Errorf("контакт %d: статус %q; want %q", id, got[id], tag)
+		}
+	}
+}
+
+// Без проверяющего приватности присутствие неизвестно: карточка без `status`,
+// а не «давно» — иначе клиент принял бы выдумку за статус.
+func TestList_WithoutPrivacyLeavesStatusOut(t *testing.T) {
+	i, book, _ := newBookInteractor(t)
+	book.rows[[2]int64{cOwner, cBob}] = domain.ContactRecord{OwnerID: cOwner, UserID: cBob, FirstName: "Б"}
+	list, err := i.List(context.Background(), cOwner)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List: %v %v", list, err)
+	}
+	if list[0].User.Status != nil {
+		t.Fatalf("статус = %v; want без поля", list[0].User.Status)
+	}
+}
+
+// Карточка мутации — тот же статус, что в GET /contacts: ответ Add, ответ
+// Delete и строка журнала user_update.
+func TestMutationCards_CarryStatus(t *testing.T) {
+	i, log := newStatusInteractor(t)
+	ctx := context.Background()
+
+	c, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Бобби"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusOnlineTag {
+		t.Fatalf("ответ Add: статус %q; want в сети", got)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusOnlineTag {
+		t.Fatalf("журнал после Add: статус %q; want в сети", got)
+	}
+
+	card, found, err := i.Delete(ctx, cOwner, cBob)
+	if err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+	if got := statusTag(card); got != domain.UserStatusOnlineTag {
+		t.Fatalf("ответ Delete: статус %q; want в сети", got)
+	}
+	row, _ = rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusOnlineTag {
+		t.Fatalf("журнал после Delete: статус %q; want в сети", got)
+	}
+
+	// Скрытый last_seen в карточке мутации — «недавно», а заблокировавший — «давно».
+	if c, err = i.Add(ctx, cOwner, AddInput{UserID: cDarya, FirstName: "Д"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusRecentlyTag {
+		t.Fatalf("скрыто правилом: %q; want userStatusRecently", got)
+	}
+	if c, err = i.Add(ctx, cOwner, AddInput{UserID: cEgor, FirstName: "Е"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(c.User); got != domain.UserStatusEmptyTag {
+		t.Fatalf("заблокировал: %q; want userStatusEmpty", got)
+	}
+}
+
+// afterLock выполняет hook сразу после взятия замка курсора: «блок закоммитился,
+// пока мы ждали замок».
+type afterLock struct {
+	*fakeLog
+	hook func()
+}
+
+func (l afterLock) LockState(ctx context.Context, uid int64) error {
+	err := l.fakeLog.LockState(ctx, uid)
+	l.hook()
+	return err
+}
+
+// Гонка блок ↔ снимок: блок, ставший виден к моменту, когда мы взяли замок,
+// попадает в строку журнала (userStatusEmpty), а не «в сети», прочитанное раньше.
+func TestPublishContactCard_BlockBeforeLockIsInSnapshot(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	blocked := map[int64]bool{}
+	repo := statusRepo{hiddenBy: map[int64]bool{}, blockedBy: blocked}
+	// Правило last_seen закрывает блок (как VisibleMaps в БД): hiddenBy тот же ключ.
+	hidden := repo.hiddenBy
+	pr := privacy.New(repo)
+	pr.SetPresence(fixedPresence{cBob: domain.NewUserStatusOnline(time.Now().Add(time.Minute))})
+	i.SetPrivacy(pr)
+	i.SetEmitter(ownsync.New(afterLock{log, func() { blocked[cBob], hidden[cBob] = true, true }}, nil, directTx{}))
+
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	if got := statusTag(row); got != domain.UserStatusEmptyTag {
+		t.Fatalf("строка журнала: статус %q; want userStatusEmpty (блок до замка)", got)
 	}
 }
 

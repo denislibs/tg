@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -556,15 +557,34 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 	for _, u := range users {
 		ids = append(ids, u.ID)
 	}
-	rules := domain.UserViewRules{ViewerID: viewerID}
-	// Три правила — одним запросом, присутствие — одним конвейером: витрина
-	// доводит пачку, а не каждого по отдельности.
-	if maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
-		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen); err == nil {
-		rules.Photo = maps[domain.PrivacyProfilePhoto]
-		rules.Phone = maps[domain.PrivacyPhoneNumber]
-		rules.LastSeen = maps[domain.PrivacyLastSeen]
+	// Сбой правила гасит то, что оно охраняет, и пишется в лог; присутствие не
+	// получено — `Status` не знает пользователя, и поле карточки не трогается.
+	rules, err := i.AccessRules(ctx, viewerID, ids)
+	if err != nil {
+		log.Printf("[privacy] view rules viewer=%d ids=%d: %v", viewerID, len(ids), err)
 	}
+	rules.Status = i.PresenceOf(ctx, ids)
+	rules.Apply(users)
+}
+
+// AccessRules — только правила из БД (фото, номер, last_seen и блок), БЕЗ
+// присутствия. Для витрин, читающих их под замком журнала в транзакции: Redis
+// под `FOR UPDATE` не ходит (см. PresenceOf). Ошибка возвращается вместе с
+// теми правилами, что успели прочитаться (недочитанные скрывают то, что
+// охраняют) — вызывающий решает, что важнее, строка с погашенным или явный
+// отказ: в транзакции SQL-сбой её уже прервал.
+func (i *Interactor) AccessRules(ctx context.Context, viewerID int64, ids []int64) (domain.UserViewRules, error) {
+	rules := domain.UserViewRules{ViewerID: viewerID}
+	// Три правила — одним запросом: витрина доводит пачку, а не каждого по отдельности.
+	maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
+		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen)
+	if err != nil {
+		// Дальше BlockedBy не спрашиваем: в прерванной транзакции он заведомо упал бы.
+		return rules, fmt.Errorf("visible maps: %w", err)
+	}
+	rules.Photo = maps[domain.PrivacyProfilePhoto]
+	rules.Phone = maps[domain.PrivacyPhoneNumber]
+	rules.LastSeen = maps[domain.PrivacyLastSeen]
 	// Скрытое время захода: блок («давно») или правило («недавно») — спрашиваем,
 	// только если есть кому скрывать, и одним запросом.
 	var hidden []int64
@@ -574,23 +594,25 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 		}
 	}
 	if len(hidden) > 0 {
-		if blocked, err := i.repo.BlockedBy(ctx, viewerID, hidden); err == nil {
+		if blocked, berr := i.repo.BlockedBy(ctx, viewerID, hidden); berr != nil {
+			err = fmt.Errorf("blocked by: %w", berr)
+		} else {
 			rules.Blocked = blocked
 		}
 	}
-	// Присутствие не подключено — о статусе ничего не известно: это
-	// userStatusEmpty, а не «офлайн с нулевым временем».
-	rules.Status = func(int64) domain.UserStatus { return domain.NewUserStatusEmpty() }
-	if i.presence != nil {
-		statuses := i.presence.Statuses(ctx, ids)
-		rules.Status = func(id int64) domain.UserStatus {
-			if st, ok := statuses[id]; ok {
-				return st
-			}
-			return domain.NewUserStatusEmpty()
-		}
+	return rules, err
+}
+
+// PresenceOf — присутствие пачки ids одним обращением к хранилищу (Redis).
+// nil — источник не подключён; функция возвращает nil для пользователя, чьё
+// присутствие не получено: о статусе ничего не известно, и поле карточки
+// остаётся как есть (`userStatusEmpty` значит «давно», а не «не знаю»).
+func (i *Interactor) PresenceOf(ctx context.Context, ids []int64) func(int64) domain.UserStatus {
+	if i.presence == nil {
+		return nil
 	}
-	rules.Apply(users)
+	statuses := i.presence.Statuses(ctx, ids)
+	return func(id int64) domain.UserStatus { return statuses[id] }
 }
 
 // PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого
