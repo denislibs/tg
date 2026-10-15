@@ -208,6 +208,7 @@ import { attachRowController, createRowSortableIcon, type RowMediaSizeType, type
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import PeerTitle from '@components/chat/peerTitle'
 import Icon from '@components/icon'
+import type groupCallActiveIcon from '@components/groupCallActiveIcon'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapMediaSpoiler from '@components/wrappers/mediaSpoiler'
 import renderDialogSubtitleParts from '@components/wrappers/dialogSubtitle'
@@ -327,7 +328,8 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      (`isActive` → `setDialogActive`, `:383-390`, `:488-490`) — у менеджера
 //      (`addListDialog`, задача 1-4): строку строит его экземпляр, конструктор
 //      синглтона не видит; там же `is-forum-open` (`:480-485`). `dialogDom` на
-//      узле читает `setDialogActive` для `callIcon`/`titleWrapOptions` (О-96, С5).
+//      узле у нас — `dialogElement.dom` (`DialogListElement`): его читает `setDialogActive`
+//      для `callIcon` (иконка звонка, f6-call); `titleWrapOptions` — С5.
 //      `titleWrapOptions`/`textColor` — рендерера кастом-эмодзи у нас нет.
 //  С5. `setDialogActiveStatus` — только класс `active`: кастом-эмодзи
 //      (`setTextColor`), эмодзи-статус (`changeTitleEmojiColor`) в строке у нас
@@ -342,8 +344,8 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //  С8. `initDialog` разделён: подзаголовок с бейджами — функция модуля (её зовут и
 //      строки вне списка), онлайн-точка (`xd.setOnlineStatus`) и «печатает»
 //      (`setDialogTyping`) — метод экземпляра менеджера (у них предмет — список
-//      папки). Звонок в группе (`xd.processDialogForCallStatus`) — `// О-96 волна 7`:
-//      `call_active` у чата в модели нет. `addListDialog` — без ленивой догрузки
+//      папки). Звонок в группе — `xd.processDialogForCallStatus` (флаги карточки чата, f6-call).
+//      `addListDialog` — без ленивой догрузки
 //      истории по видимости (`lazyLoadQueue`, `:2889-2926`): очереди нет.
 // С10. Сохранённый диалог строкой (`isSavedDialog`: свой пир + `threadId` —
 //      пир-источник, `:345-348`; задача 1-7, `autonomousDialogList/savedDialogs.ts`).
@@ -379,7 +381,7 @@ export function findDialogListElement(target: EventTarget) {
  *  перетаскиванием (`attachPinnedDialogsReorder`) приходит со списком (1-4). */
 const PINNED_DIALOG_CLASS_NAME = 'is-pinned'
 
-/** tweb `:142-183` без `callIcon`, `pollVotesBadge`, `titleWrapOptions`, `textHighlight` (С3, С4, С6). */
+/** tweb `:142-183` без `pollVotesBadge`, `titleWrapOptions`, `textHighlight` (С3, С4, С6). */
 export type DialogDom = {
   avatarEl?: ReturnType<typeof avatarNew>,
   captionDiv: HTMLElement,
@@ -399,6 +401,8 @@ export type DialogDom = {
   listEl: HTMLElement,
   subtitleEl: HTMLElement,
   mutedIcon?: HTMLElement,
+  /** иконка «идёт видеочат» (`AutonomousDialogList.setCallStatus`) */
+  callIcon?: ReturnType<typeof groupCallActiveIcon>,
   /**
    * Сигнатура последнего отрисованного подзаголовка (0af53a342): любое событие
    * диалога гонит `setLastMessage` целиком, и без неё подзаголовок
@@ -1697,7 +1701,7 @@ export class AppDialogsManager {
     listEl.classList.toggle('active', active)
   }
 
-  /** tweb `:1300-1317`. Звонок в группе (`callIcon`) — О-96. */
+  /** tweb `:1300-1317`. */
   public setDialogActive(listEl: HTMLElement, active: boolean) {
     this.setDialogActiveStatus(listEl, active)
     listEl.classList.toggle(
@@ -1710,6 +1714,9 @@ export class AppDialogsManager {
     } else {
       this.lastActiveElements.delete(listEl)
     }
+
+    // иконка звонка красится в primary-color в активной строке (`groupCallActiveIcon`)
+    (listEl as DialogListElement).dialogElement?.dom.callIcon?.setActive(active)
   }
 
   /**
@@ -1783,8 +1790,8 @@ export class AppDialogsManager {
   }
 
   /**
-   * tweb `:2931-2983`: подзаголовок с бейджами, онлайн-точка и «печатает».
-   * Звонок в группе (`processDialogForCallStatus`) — О-96. «Печатает» в теме
+   * tweb `:2931-2983`: подзаголовок с бейджами, иконка звонка в группе, онлайн-точка и
+   * «печатает». «Печатает» в теме
    * (`setDialogTyping({threadId})`) — набора по темам в зеркале нет
    * (расхождение 4 `autonomousDialogList/forumTopics.ts`).
    */
@@ -1792,6 +1799,11 @@ export class AppDialogsManager {
     const { peerId } = options
     // `getDialog(options.dialog || peerId, {threadOrSavedId})` (`:2932-2935`) — С10, С11
     const dialog = options.dialog ?? getDialog(peerId)
+
+    // `:2941-2943`: строка группы/канала (не тема форума и не сохранённый диалог)
+    if(!isUser(peerId) && !options.dialog) {
+      this.xd?.processDialogForCallStatus(peerId, dialogElement.dom)
+    }
 
     if(peerId !== rootScope.myId && isUser(peerId)) {
       const status = useChatsStore.getState().presence[peerId]
@@ -2669,7 +2681,7 @@ export function getDialog(dialog: Dialog | PeerId): Dialog {
 /**
  * tweb `:2931-2984` — первое наполнение строки: подзаголовок с бейджами. Онлайн-точку
  * и «печатает» добавляет метод менеджера `initDialog` (у них предмет — список папки,
- * `xd`), звонок в группе — О-96 (С8).
+ * `xd`), звонок в группе тоже метод `xd` — `processDialogForCallStatus` (С8).
  */
 export function initDialog(dialogElement: DialogElement, options: {
   peerId: PeerId,

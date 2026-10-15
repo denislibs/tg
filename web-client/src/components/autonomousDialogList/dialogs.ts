@@ -41,14 +41,21 @@
 //     первой своей загрузке: страницы «Всех чатов» уходят с `folder_id=0` и
 //     архива не приносят никогда (спека `2026-08-13-dialogs-count-and-refresh-design.md`,
 //     «Дополнение: вход в архив»).
-//  3. Не портировано, с номерами: иконка звонка в группе (`processDialogForCallStatus`,
-//     `setCallStatus`, `groupCallActiveIcon`) — `call_active` у чата в модели нет —
-//     `// О-96 волна 7`; сообщества (`CommunityProjection`, `setupCommunityProjection`,
+//  3. Иконка звонка в группе (`processDialogForCallStatus`, `setCallStatus`, `:721-760`) —
+//     по флагам `call_active && call_not_empty` карточки чата (их ставит сервер, f6-call).
+//     Повод перепроверки — движение зеркала пиров (`subscribePeerMirror`), а не `chat_update`
+//     (`:157`): зеркало уже содержит карточку, а кадр мог прийти раньше неё. Пересчёт идёт по
+//     строкам этого списка и пишет в DOM только при смене флага (`callStatus`). Не портировано,
+//     с номерами: сообщества (`CommunityProjection`, `setupCommunityProjection`,
 //     `communityProjectionRows`, `getCollapsedCommunityId`) — О-5; стриминговые
 //     черновики (`streamed_message_*`) — `// О-97 волна 7`; таймер автоудаления на
 //     аватаре (`auto_delete_period_update`) — `avatarNew` его не рисует;
 //     `fetchChatlistUpdates` — расхождение 14 менеджера.
 //  4. `pinnedPeerIds` фильтра (`filterPinnedPeerIds`) — О-70.
+import groupCallActiveIcon from '@components/groupCallActiveIcon'
+import IS_CALL_SUPPORTED from '@environment/callSupport'
+import { BADGE_TRANSITION_TIME } from '@components/autonomousDialogList/constants'
+import type { DialogDom } from '@lib/appDialogsManager'
 import ArchiveDialog, { createArchiveDialogState, type DisposableArchiveDialogState } from '@components/archiveDialog.solid'
 import { AutonomousDialogListBase, type BaseConstructorArgs, type LoadDialogsInnerArgs } from '@components/autonomousDialogList/base'
 import Scrollable from '@components/scrollable'
@@ -58,7 +65,7 @@ import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import { dialogMatchesFolder } from '@core/folderFilter'
 import { isDialogArchived, type Dialog } from '@core/models'
 import { cachedChat, cachedPeer, subscribePeerMirror } from '@core/peerCache'
-import { isForum } from '@core/peers/predicates'
+import { hasCallParticipants, isForum } from '@core/peers/predicates'
 import { isUserStatusOnline } from '@core/peers/peer'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
@@ -77,6 +84,8 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
   private archiveDialogState?: DisposableArchiveDialogState
   private customPinnedDialog?: CustomPinnedDialog
   private unsubscribers: (() => void)[] = []
+  /** показана ли иконка звонка у строки — чтобы пересчёт по зеркалу не гонял переход зря */
+  private callStatus = new WeakMap<DialogDom, boolean>()
 
   constructor({ filterId, ...args }: ConstructorArgs) {
     super(args)
@@ -134,6 +143,7 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     // правило пользовательской папки читает тип пира (группа/канал/бот)
     const peersUnsubscribe = subscribePeerMirror(() => {
       if(this.filterId !== ALL_FOLDER_ID && this.filterId !== ARCHIVE_FOLDER_ID) this.onFilterUpdate()
+      this.updateCallStatuses()
     })
 
     // В7-1: подпись строки секретного чата до рукопожатия
@@ -276,6 +286,72 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
         element.classList.remove(className)
       },
       useRafs: online && !hasClassName ? 2 : 0,
+    })
+  }
+
+  /** tweb `:721-748`. Холст иконки — `groupCallActiveIcon`, подсветка активной строки — `setDialogActive`. */
+  public setCallStatus(dom: DialogDom, visible: boolean) {
+    // повторный вызов с тем же значением (пересчёт по зеркалу идёт на каждое его движение)
+    // ничего не меняет — у tweb он один на `chat_update`
+    if(!!this.callStatus.get(dom) === visible) {
+      return
+    }
+
+    this.callStatus.set(dom, visible)
+    let { callIcon } = dom
+    const { listEl } = dom
+    if(!callIcon && visible) {
+      const { canvas, startAnimation } = dom.callIcon = callIcon = groupCallActiveIcon(listEl.classList.contains('active'))
+      canvas.classList.add('dialog-group-call-icon')
+      listEl.append(canvas)
+
+      listEl.classList.add('has-group-call-icon')
+      startAnimation()
+    }
+
+    if(!callIcon) {
+      return
+    }
+
+    const { canvas } = callIcon
+    setTransition({
+      element: canvas,
+      className: 'is-visible',
+      forwards: visible,
+      duration: BADGE_TRANSITION_TIME,
+      onTransitionEnd: visible ? undefined : () => {
+        // иконка успела вернуться, пока гасла, — её уже не снимать
+        if(this.callStatus.get(dom) || dom.callIcon?.canvas !== canvas) return
+        canvas.remove()
+        dom.callIcon = undefined
+        listEl.classList.remove('has-group-call-icon')
+      },
+      useRafs: visible ? 2 : 0,
+    })
+  }
+
+  /** tweb `:750-760`: звонок идёт и в нём кто-то есть — иконка в строке группы/канала. */
+  public processDialogForCallStatus(peerId: PeerId, dom?: DialogDom) {
+    if(!IS_CALL_SUPPORTED) {
+      return
+    }
+
+    if(!dom) dom = this.getDialogDom(peerId)
+    if(!dom) return
+
+    this.setCallStatus(dom, hasCallParticipants(cachedChat(peerId)))
+  }
+
+  /** Карточки чатов сменились (снимок `chat_update`, ответ списка) — иконки строк этого списка. */
+  private updateCallStatuses() {
+    if(!IS_CALL_SUPPORTED) {
+      return
+    }
+
+    this.sortedList.getAllDialogElementsMap().forEach((dialogElement, key) => {
+      // темы форума и сохранённые диалоги лежат в других списках; личные чаты звонка не имеют
+      if(typeof key !== 'number' || key >= 0) return
+      this.processDialogForCallStatus(key, dialogElement.dom)
     })
   }
 
