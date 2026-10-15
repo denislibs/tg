@@ -189,6 +189,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{peerID}/messages/{msgSeq}/transcribe", ch.TranscribeMessage) // расшифровка голосового/кружка
 		pr.Get("/chats/{peerID}/send_as", ch.SendAs)                                  // «личности отправителя» (send_as)
 		pr.Get("/chats/{peerID}/pins", ch.ListPins)
+		pr.Delete("/chats/{peerID}/pins", ch.UnpinAll) // messages.unpinAllMessages
 		pr.Get("/chats/{peerID}/messages/{msgSeq}/viewers", ch.Viewers)
 		pr.Get("/chats/{peerID}/messages/{msgSeq}/read_date", ch.ReadDate)
 		pr.Get("/chats/{peerID}/mentions/next", ch.NextMention)
