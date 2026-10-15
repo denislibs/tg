@@ -34,6 +34,8 @@ type Repo interface {
 	// чаты» среди папок (число папок перед ней, 0 — первой).
 	// Reorder возвращает true, если порядок изменился.
 	Reorder(ctx context.Context, ownerID int64, order []int64) (bool, error)
+	// LockOrder блокирует строку владельца до конца транзакции (сериализует перестановки).
+	LockOrder(ctx context.Context, ownerID int64) error
 	// SetAllChatsPos возвращает true, если место изменилось.
 	SetAllChatsPos(ctx context.Context, ownerID int64, pos int) (bool, error)
 	AllChatsPos(ctx context.Context, ownerID int64) (int, error)
@@ -259,6 +261,9 @@ func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) 
 	}
 	var pts int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := i.repo.LockOrder(ctx, ownerID); err != nil {
+			return err
+		}
 		changed := false
 		if allIdx >= 0 {
 			moved, err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx)

@@ -189,22 +189,28 @@ function currentOrder(): number[] {
 // POST могли бы лечь на сервер наоборот). Сервер шлёт кадр и сессии-автору; пока
 // свои запросы в пути, кадры не применяются, а запоминается последний: кадры идут
 // в порядке коммитов, и последний — итоговое состояние сервера (своё эхо или
-// чужая перестановка). Так эхо первой перестановки не дёргает строки назад.
+// чужая перестановка). Когда очередь опустела, последний кадр применяется, если
+// он не эхо своей перестановки. Остаточное окно: эхо приходит ПОЗЖЕ ответа (разные
+// соединения) — строки на миг возвращаются к более раннему своему порядку, эхо
+// последней перестановки сводит их обратно. Точное решение — pts ответа (бэклог).
 let queue: Promise<void> = Promise.resolve()
 let inflight = 0
 /** Порядок, подтверждённый сервером (откат при отказе). */
 let confirmed: number[] = []
 let deferred: number[] | undefined
+/** Свои порядки текущей пачки: устаревшее эхо своей же перестановки не применяется. */
+const ownKeys = new Set<string>()
 
 type OrderManagers = Parameters<typeof loadFolders>[0] & { folders: { updateOrder(order: number[]): Promise<void> } }
 
 /** Своя перестановка: применить сразу и отправить в очередь. */
 export function sendOrder(managers: OrderManagers, order: number[]): Promise<void> {
   if (inflight === 0) confirmed = currentOrder()
-  ++inflight
   applyOrder(order)
   const applied = currentOrder()
-  queue = queue
+  ++inflight
+  ownKeys.add(order.join(','))
+  const run = queue
     .then(() => managers.folders.updateOrder(order))
     .then(() => { confirmed = applied }, async () => {
       // Откат к последнему подтверждённому порядку — без сети, затем сверка с
@@ -215,13 +221,26 @@ export function sendOrder(managers: OrderManagers, order: number[]): Promise<voi
       await loadFolders(managers, { overwrite: true })
     })
     .finally(() => {
-      if (--inflight === 0 && deferred) {
-        const last = deferred
-        deferred = undefined
-        applyOrder(last)
-      }
+      if (--inflight > 0) return
+      const last = deferred
+      deferred = undefined
+      // Эхо СВОЕЙ перестановки (не последней) пришло раньше ответа на последнюю:
+      // применять его значило бы дёрнуть строки назад. Чужой кадр применяется.
+      const echo = last && ownKeys.has(last.join(','))
+      ownKeys.clear()
+      if (last && !echo) applyOrder(last)
     })
-  return queue
+  queue = run.catch(() => {})
+  return run
+}
+
+/** Сбросить очередь — только для тестов. */
+export function resetOrderQueue(): void {
+  queue = Promise.resolve()
+  inflight = 0
+  confirmed = []
+  deferred = undefined
+  ownKeys.clear()
 }
 
 /** Кадр `updateDialogFilterOrder` с сервера (в том числе эхо своего действия). */

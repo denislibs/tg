@@ -220,7 +220,7 @@ const ChatFolders = () => {
         // tweb :365-367
         const managers = tab.managers!
         const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
-        void sendOrder(managers, sent)
+        sendOrder(managers, sent).catch(() => {})
       },
       scrollable: tab.scrollable,
     })

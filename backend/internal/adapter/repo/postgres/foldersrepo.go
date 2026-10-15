@@ -175,9 +175,22 @@ func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64)
 	return changed && err == nil, err
 }
 
+// LockOrder берёт блокировку строки владельца (users) до конца транзакции: все
+// перестановки одного пользователя идут друг за другом, независимо от того, меняет
+// ли конкретная место «Все чаты». Порядок блокировок: users → folders → user_state.
+// Условие `WHERE … <> $2` одного UPDATE этого не даёт: строка, не прошедшая
+// условие, не блокируется (READ COMMITTED).
+func (r *FoldersRepo) LockOrder(ctx context.Context, ownerID int64) error {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, ownerID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
 // SetAllChatsPos запоминает место «Все чаты» среди папок владельца; true — если
-// оно изменилось. Условие в самом UPDATE: проверка «то же место» и запись под
-// одной блокировкой строки владельца, параллельные перестановки идут по очереди.
+// оно изменилось. Зовётся после LockOrder.
 func (r *FoldersRepo) SetAllChatsPos(ctx context.Context, ownerID int64, pos int) (bool, error) {
 	ct, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE users SET dialog_filters_all_pos=$2 WHERE id=$1 AND dialog_filters_all_pos<>$2`, ownerID, pos)

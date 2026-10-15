@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
 import {
-  applyFolderUpdate, applyOrder, applyOrderFrame, loadFolders, sendOrder, useFoldersStore,
+  applyFolderUpdate, applyOrder, applyOrderFrame, loadFolders, resetOrderQueue, sendOrder, useFoldersStore,
 } from './foldersStore'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
@@ -88,6 +88,7 @@ describe('foldersStore.applyOrder', () => {
   const ids = () => useAppStateStore.getState().folders.map((f) => f.id)
 
   beforeEach(() => {
+    resetOrderQueue()
     useAppStateStore.setState({ folders: [mk(1, 0), mk(2, 1), mk(3, 2)] })
   })
 
@@ -173,6 +174,43 @@ describe('foldersStore.applyOrder', () => {
     expect(ids()).toEqual([2, 3, 1])
     applyOrderFrame([1, 2, 3]) // очередь пуста — чужая перестановка применяется сразу
     expect(ids()).toEqual([1, 2, 3])
+  })
+
+  it('эхо первой своей перестановки, пришедшее раньше ответа на вторую, строки не дёргает ни на одном шаге', async () => {
+    const finish: Array<() => void> = []
+    const m = mgr(() => new Promise<void>((resolve) => { finish.push(resolve) }))
+    const seen: number[][] = []
+    const off = useAppStateStore.subscribe(() => { seen.push(ids()) })
+
+    const first = sendOrder(m, [3, 1, 2])
+    const second = sendOrder(m, [2, 3, 1])
+    await vi.waitFor(() => expect(finish).toHaveLength(1))
+    finish[0]()
+    await first
+    await vi.waitFor(() => expect(finish).toHaveLength(2))
+    applyOrderFrame([3, 1, 2]) // эхо первой — во время запроса второй
+    finish[1]() // ответ второй раньше её эха
+    await second
+    applyOrderFrame([2, 3, 1]) // эхо второй, очередь пуста
+    off()
+
+    expect(ids()).toEqual([2, 3, 1])
+    expect(seen.every((order) => order.join() !== '3,1,2' || seen.indexOf(order) === 0)).toBe(true)
+    expect(seen.filter((order) => order.join() === '3,1,2')).toHaveLength(1) // только оптимистичный шаг первой
+  })
+
+  it('чужая перестановка, закоммиченная до нашей, применяется, эхо нашей сводит итог', async () => {
+    let finish: (() => void) | undefined
+    const m = mgr(() => new Promise<void>((resolve) => { finish = resolve }))
+
+    const sent = sendOrder(m, [3, 1, 2])
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    applyOrderFrame([1, 3, 2]) // чужая C — закоммичена до нашей A
+    finish!()
+    await sent
+    expect(ids()).toEqual([1, 3, 2])
+    applyOrderFrame([3, 1, 2]) // эхо A, итог сервера
+    expect(ids()).toEqual([3, 1, 2])
   })
 
   it('чужая перестановка, пришедшая после своего коммита, не теряется', async () => {

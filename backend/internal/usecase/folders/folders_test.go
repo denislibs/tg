@@ -79,6 +79,7 @@ func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) (boo
 	}
 	return changed, nil
 }
+func (r *fakeRepo) LockOrder(context.Context, int64) error { return nil }
 func (r *fakeRepo) SetAllChatsPos(_ context.Context, ownerID int64, pos int) (bool, error) {
 	changed := r.allPos[ownerID] != pos
 	r.allPos[ownerID] = pos
