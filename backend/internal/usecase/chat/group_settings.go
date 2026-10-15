@@ -553,6 +553,11 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 		if e := i.refundScheduledOfChat(ctx, chatID, refunds); e != nil {
 			return e
 		}
+		// Вклад незавершённых розыгрышей канала вернуть создателям: строки розыгрышей
+		// уходят каскадом вместе с чатом.
+		if e := i.refundGiveawayDeposits(ctx, chatID, refunds); e != nil {
+			return e
+		}
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
 			if e != nil {

@@ -226,3 +226,156 @@ func TestCreateGiveaway_PremiumOnlyUnderDevPurchases(t *testing.T) {
 		}
 	}
 }
+
+// expireGiveaway сдвигает срок розыгрыша в прошлое (вместо ожидания).
+func expireGiveaway(t *testing.T, pool *pgxpool.Pool, gid int64) {
+	t.Helper()
+	if _, err := pool.Exec(t.Context(), `UPDATE giveaways SET until_date = now() - interval '1 second' WHERE id=$1`, gid); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Розыгрыш без внесённого вклада (созданный до введения вклада) ничего не
+// выплачивает ни победителям, ни «возврата» создателю.
+func TestGiveaway_NoDepositNoPayout(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, ownerID := signUp(t, h, pool, "+79990007611")
+	guest, _ := signUp(t, h, pool, "+79990007612")
+	cid := newGiveawayChannel(t, h, owner, "gvlegacy")
+	authedReq(t, h, http.MethodPost, "/channels/join", guest, map[string]any{"username": "gvlegacy"})
+	var chatID int64
+	if err := pool.QueryRow(t.Context(), `SELECT id FROM chats WHERE type='channel' LIMIT 1`).Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	var gid int64
+	if err := pool.QueryRow(t.Context(),
+		`INSERT INTO giveaways (chat_id, creator_id, prize_kind, stars, winners_count, until_date, status, deposit)
+		 VALUES ($1,$2,'stars',1000000,100, now() + interval '1 hour','active',0) RETURNING id`, chatID, ownerID).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	_ = cid
+	if _, err := pool.Exec(t.Context(), `INSERT INTO giveaway_participants (giveaway_id, user_id) SELECT $1, id FROM users WHERE id<>$2`, gid, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	expireGiveaway(t, pool, gid)
+	authedReq(t, h, http.MethodGet, "/giveaways/"+itoa(gid), guest, nil)
+	if b := starsBalance(t, h, guest); b != 0 {
+		t.Fatalf("победитель розыгрыша без вклада получил %d", b)
+	}
+	if b := starsBalance(t, h, owner); b != 0 {
+		t.Fatalf("создатель получил возврат без вклада: %d", b)
+	}
+}
+
+// Повтор запроса с тем же client_msg_id не списывает вклад второй раз, не
+// создаёт второй розыгрыш и не рассылает нулевой баланс; ответ несёт media.
+func TestCreateGiveaway_RetrySameClientMsgID(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, _ := signUp(t, h, pool, "+79990007613")
+	cid := newGiveawayChannel(t, h, owner, "gvretry")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	body := func() map[string]any {
+		return map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3, "client_msg_id": "gv-1"}
+	}
+	first := createGiveaway(t, h, owner, cid, body())
+	second := createGiveaway(t, h, owner, cid, body())
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("create/retry: %d %d", first.Code, second.Code)
+	}
+	if !strings.Contains(second.Body.String(), "messageMediaGiveaway") {
+		t.Fatalf("ответ на повтор без media розыгрыша: %s", second.Body.String())
+	}
+	if b := starsBalance(t, h, owner); b != 700 || giveawayCount(t, pool) != 1 {
+		t.Fatalf("после повтора: баланс %d (want 700), розыгрышей %d (want 1)", b, giveawayCount(t, pool))
+	}
+	// Баланс создателя в журнале - по строке на каждое движение (топап, вклад), без нулевого.
+	rows, err := pool.Query(t.Context(), `SELECT payload::text FROM updates WHERE type='balance_update'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var pl string
+		_ = rows.Scan(&pl)
+		n++
+		if strings.Contains(pl, `"amount":0`) || strings.Contains(pl, `"amount": 0`) {
+			t.Fatalf("в журнал лёг нулевой баланс: %s", pl)
+		}
+	}
+	if n != 2 {
+		t.Fatalf("balance_update в журнале = %d, want 2 (пополнение и вклад)", n)
+	}
+}
+
+// Параллельные повторы с одним client_msg_id: один розыгрыш, одно списание, никаких 500.
+func TestCreateGiveaway_ConcurrentSameClientMsgID(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, _ := signUp(t, h, pool, "+79990007614")
+	cid := newGiveawayChannel(t, h, owner, "gvsamecmid")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	var wg sync.WaitGroup
+	codes := make([]int, 5)
+	for n := range codes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes[n] = createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3, "client_msg_id": "gv-race"}).Code
+		}()
+	}
+	wg.Wait()
+	for _, c := range codes {
+		if c != http.StatusOK {
+			t.Fatalf("коды параллельных повторов %v; ждали все 200", codes)
+		}
+	}
+	if b := starsBalance(t, h, owner); b != 700 || giveawayCount(t, pool) != 1 {
+		t.Fatalf("баланс %d (want 700), розыгрышей %d (want 1)", b, giveawayCount(t, pool))
+	}
+}
+
+// Удаление канала возвращает вклад незавершённых розыгрышей.
+func TestDeleteChannel_RefundsGiveawayDeposit(t *testing.T) {
+	h, pool := giveawayRouter(t, false)
+	owner, _ := signUp(t, h, pool, "+79990007615")
+	cid := newGiveawayChannel(t, h, owner, "gvdelete")
+	authedReq(t, h, http.MethodPost, "/stars/topup", owner, map[string]any{"amount": 1000})
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "stars", "stars": 100, "winners_count": 3}); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	if b := starsBalance(t, h, owner); b != 700 {
+		t.Fatalf("баланс после вклада = %d", b)
+	}
+	if rec := authedReq(t, h, http.MethodDelete, "/chats/"+cid, owner, nil); rec.Code >= 300 {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if b := starsBalance(t, h, owner); b != 1000 {
+		t.Fatalf("баланс после удаления канала = %d, want 1000 (вклад возвращён)", b)
+	}
+}
+
+// Участие после срока не принимается; Premium при выключенном флаге не выдаётся.
+func TestGiveaway_ParticipateAfterEndAndPremiumGate(t *testing.T) {
+	h, pool := giveawayRouter(t, true)
+	owner, _ := signUp(t, h, pool, "+79990007616")
+	guest, guestID := signUp(t, h, pool, "+79990007617")
+	cid := newGiveawayChannel(t, h, owner, "gvlate")
+	authedReq(t, h, http.MethodPost, "/channels/join", guest, map[string]any{"username": "gvlate"})
+	if rec := createGiveaway(t, h, owner, cid, map[string]any{"prize_kind": "premium", "months": 3, "winners_count": 1}); rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var gid int64
+	if err := pool.QueryRow(t.Context(), `SELECT id FROM giveaways`).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	expireGiveaway(t, pool, gid)
+	if rec := authedReq(t, h, http.MethodPost, "/giveaways/"+itoa(gid)+"/participate", guest, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("участие после срока: %d, want 403", rec.Code)
+	}
+	var n int
+	_ = pool.QueryRow(t.Context(), `SELECT count(*) FROM giveaway_participants WHERE giveaway_id=$1`, gid).Scan(&n)
+	if n != 0 {
+		t.Fatalf("участник записан после срока: %d", n)
+	}
+	_ = guestID
+}
