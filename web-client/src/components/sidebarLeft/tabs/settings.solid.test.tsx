@@ -101,6 +101,13 @@ const settle = () => pause(400)
 
 let host: InstalledSidebarLeft
 let list: ReturnType<typeof vi.fn<() => Promise<Auth[]>>>
+/** Что отдаёт конфиг приложения (`help.getAppConfig`): по умолчанию — ключей нет. */
+let appConfig: { premium_purchase_blocked?: boolean }
+
+const openWithConfig = (config: { premium_purchase_blocked?: boolean }) => {
+  appConfig = config
+  return host.openTab(AppSettingsTab)
+}
 
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
@@ -111,8 +118,10 @@ beforeEach(() => {
   setAppStateSilent({ starsBalance: 0 })
 
   list = vi.fn<() => Promise<Auth[]>>(async() => [auth(0), auth(2)])
+  appConfig = {}
   const managers = {
     sessions: { list, terminate: vi.fn(), terminateOthers: vi.fn() },
+    appConfig: { getAppConfig: vi.fn(async() => appConfig) },
     langPack: { getLanguages: vi.fn(async() => []) },
   } as unknown as Managers
 
@@ -143,6 +152,9 @@ const mainRows = (tab: SliderSuperTab) =>
 const sectionRows = (tab: SliderSuperTab, index: number) => {
   const section = tab.scrollable.container.querySelectorAll<HTMLElement>('.sidebar-left-section-content')[index]
   return [...section.querySelectorAll<HTMLElement>('.row')]
+}
+function rowByTitleOrNull(tab: SliderSuperTab, title: string) {
+  return [...tab.scrollable.container.querySelectorAll<HTMLElement>('.row')].find((r) => titleOf(r) === title) ?? null
 }
 function rowByTitle(tab: SliderSuperTab, title: string) {
   const found = [...tab.scrollable.container.querySelectorAll<HTMLElement>('.row')].find((r) => titleOf(r) === title)
@@ -182,6 +194,20 @@ describe('корень настроек — состав tweb', () => {
     const rows = sectionRows(tab, 1)
     expect(rows.map(titleOf)).toEqual([lang['Premium.Boarding.Title'], lang.MenuTelegramStars, lang['Chat.Menu.SendGift']])
     expect(rightOf(rows[1])).toBe('42')
+  })
+
+  // tweb :348-351, :419: `premium_purchase_blocked` из конфига приложения прячет
+  // ВСЮ секцию Premium (Premium, «Мои звёзды», «Отправить подарок»).
+  it('premium_purchase_blocked в конфиге — секции Premium нет вовсе', async() => {
+    const tab = await openWithConfig({ premium_purchase_blocked: true })
+    expect(tab.scrollable.container.querySelectorAll('.sidebar-left-section-content')).toHaveLength(1)
+    expect(rowByTitleOrNull(tab, lang['Premium.Boarding.Title'])).toBeNull()
+    expect(rowByTitleOrNull(tab, lang['Chat.Menu.SendGift'])).toBeNull()
+  })
+
+  it('premium_purchase_blocked: false — секция на месте', async() => {
+    const tab = await openWithConfig({ premium_purchase_blocked: false })
+    expect(sectionRows(tab, 1).map(titleOf)).toEqual([lang['Premium.Boarding.Title'], lang['Chat.Menu.SendGift']])
   })
 
   it('своей карточки телефона/имени и «Ночного режима» нет — вместо них свой PeerProfile (isDialog: false)', async() => {

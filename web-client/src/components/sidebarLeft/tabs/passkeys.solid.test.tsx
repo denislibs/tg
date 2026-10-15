@@ -55,6 +55,8 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let host: InstalledSidebarLeft
 let auth: { passkeyDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>> }
+/** Лимит ключей из конфига приложения (`passkeys_account_passkeys_max`). */
+let passkeysMax: number | undefined
 
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
@@ -63,11 +65,15 @@ beforeEach(() => {
   createPasskey.mockReset()
   showPasskeyPopup.mockReset()
   auth = { passkeyDelete: vi.fn(async() => {}) }
+  passkeysMax = 10
 
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = installSidebarLeft({ auth } as unknown as Managers, columnEl)
+  host = installSidebarLeft({
+    auth,
+    appConfig: { getAppConfig: vi.fn(async() => ({ passkeys_account_passkeys_max: passkeysMax })) },
+  } as unknown as Managers, columnEl)
 })
 
 afterEach(async() => {
@@ -222,6 +228,19 @@ describe('«Passkeys» — создание', () => {
     const list = Array.from({ length: 10 }, (_, i) => passkey(String(i + 1), 'Key ' + (i + 1)))
     const { tab } = await open(list)
     expect(createButton(tab)).toBeUndefined()
+  })
+
+  // Лимит берётся из конфига приложения, а не из зашитого числа (tweb
+  // `passkeys.tsx:116`): конфиг отдаёт 3 — на трёх ключах кнопки нет, на двух есть.
+  it('лимит приходит из конфига: при 3 на трёх ключах кнопки нет, на двух есть', async() => {
+    passkeysMax = 3
+    const three = await open(Array.from({ length: 3 }, (_, i) => passkey(String(i + 1), 'Key ' + (i + 1))))
+    expect(createButton(three.tab)).toBeUndefined()
+    three.tab.close()
+    await pause(400)
+
+    const two = await open([passkey('1', 'A'), passkey('2', 'B')])
+    expect(createButton(two.tab)).toBeDefined()
   })
 
   it('без WebAuthn — кнопки нет, а вкладка с ключами остаётся открытой', async() => {
