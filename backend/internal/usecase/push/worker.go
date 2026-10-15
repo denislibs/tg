@@ -38,10 +38,13 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Имя автора — один раз на пачку: сообщение в группу даёт задание каждому
+	// офлайн-участнику, и имя у них одно.
+	names := map[int64]string{}
 	for _, qj := range jobs {
 		// Ack only when the job is handled or is a poison pill; a transient
 		// failure leaves it pending for redelivery (at-least-once).
-		if w.handle(ctx, qj.Job) {
+		if w.handle(ctx, qj.Job, names) {
 			_ = w.queue.Ack(ctx, qj.ID)
 		}
 	}
@@ -51,7 +54,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 // handle processes one job. Returns true if the message should be ACKed
 // (delivered or no subscriptions) and false on a transient error that warrants
 // redelivery.
-func (w *Worker) handle(ctx context.Context, job Job) bool {
+func (w *Worker) handle(ctx context.Context, job Job, names map[int64]string) bool {
 	subs, err := w.subs.ForUser(ctx, job.RecipientID)
 	if err != nil {
 		return false // transient DB error — retry later
@@ -59,7 +62,7 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 	if len(subs) == 0 {
 		return true // nobody to push to
 	}
-	payload, _ := json.Marshal(w.buildPayload(ctx, job))
+	payload, _ := json.Marshal(w.buildPayload(ctx, job, names))
 	retry := false
 	for _, sub := range subs {
 		status, err := w.sender.Send(ctx, sub, payload)
@@ -99,10 +102,15 @@ const (
 //
 // Отличия от оригинала (объявлены): `user_id` (мультиаккаунт) и `silent` не
 // производятся; заголовок группы — имя автора без названия чата.
-func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
+func (w *Worker) buildPayload(ctx context.Context, job Job, names map[int64]string) map[string]any {
 	title := job.Title
 	if title == "" {
-		title, _ = w.enrich.SenderName(ctx, job.SenderID)
+		name, ok := names[job.SenderID]
+		if !ok {
+			name, _ = w.enrich.SenderName(ctx, job.SenderID)
+			names[job.SenderID] = name
+		}
+		title = name
 	}
 	custom := map[string]any{"msg_id": strconv.FormatInt(job.Seq, 10)}
 	// Ключ пира кладём, только когда он есть: у задания, застрявшего в очереди с

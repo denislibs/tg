@@ -73,6 +73,22 @@ const lock = (sw: ReturnType<typeof loadServiceWorker>, locked: boolean) =>
     ports: [],
   })
 
+/** Флаг «код включён» в IDB `msgr/kv` — то, что SW читает при холодном старте. */
+async function writePasscodeRecord() {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open('msgr', 1)
+    req.onupgradeneeded = () => req.result.createObjectStore('kv')
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction('kv', 'readwrite')
+    tx.objectStore('kv').put({ verificationHash: [1] }, 'passcode')
+    tx.oncomplete = () => resolve()
+  })
+  db.close()
+}
+
 const PEER_PUSH = {
   loc_key: 'MESSAGE_TEXT',
   loc_args: ['Алиса', 'привет'],
@@ -215,6 +231,32 @@ describe('sw.js — клик по пушу (tweb push.ts onNotificationClick / o
     await lock(sw, false)
     await ready(sw, win)
     expect(clicks(win)).toEqual([{ type: 'push-click', payload: data }])
+  })
+
+  it('холодный старт SW при включённом коде: вкладка подтвердила ключ за секунду — клик не теряется', async() => {
+    await writePasscodeRecord() // флаг есть в IDB, ключа в памяти SW нет (перезапуск)
+    const win = makeClient()
+    const sw = loadServiceWorker([win])
+    const data = await shownData(sw)
+
+    const clicked = click(sw, data)
+    await new Promise((resolve) => setTimeout(resolve, 50)) // SW уже прочитал флаг и ждёт
+    await lock(sw, false) // ответ вкладки на sw-hello
+    await clicked
+
+    expect(clicks(win)).toEqual([{ type: 'push-click', payload: data }])
+  })
+
+  it('холодный старт SW, ключ не пришёл (приложение заперто): после секунды ожидания только фокус', async() => {
+    await writePasscodeRecord()
+    const win = makeClient()
+    const sw = loadServiceWorker([win])
+    const data = await shownData(sw)
+
+    await click(sw, data)
+
+    expect(win.focus).toHaveBeenCalledTimes(1)
+    expect(clicks(win)).toEqual([])
   })
 
   it('уведомление без данных (например, закрыто системой): ничего не происходит', async() => {

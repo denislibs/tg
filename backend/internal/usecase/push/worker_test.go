@@ -245,3 +245,23 @@ func TestWorker_TitleOverridesSenderName(t *testing.T) {
 		t.Fatalf("custom = %v, want channel_id=3", custom)
 	}
 }
+
+// Имя автора запрашивается один раз на пачку: сообщение в группу даёт задание
+// каждому офлайн-участнику, а имя у них одно.
+func TestWorker_SenderNameOncePerBatch(t *testing.T) {
+	q := &fakeQueue{}
+	for uid := int64(1); uid <= 3; uid++ {
+		_ = q.Enqueue(context.Background(), Job{RecipientID: uid, ChatID: 3, PeerID: -3, Seq: 5, SenderID: 9, Text: "п", Preview: true})
+	}
+	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{
+		1: {{Endpoint: "e1", P256dh: "p", Auth: "a"}}, 2: {{Endpoint: "e2", P256dh: "p", Auth: "a"}}, 3: {{Endpoint: "e3", P256dh: "p", Auth: "a"}},
+	}}
+	enrich := &fakeEnricher{names: map[int64]string{9: "Алиса"}}
+	w := NewWorker(q, subs, &fakeSender{status: http.StatusCreated}, enrich)
+	if err := w.ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+	if enrich.nameCalls != 1 {
+		t.Fatalf("имя автора запрошено %d раз на три задания", enrich.nameCalls)
+	}
+}

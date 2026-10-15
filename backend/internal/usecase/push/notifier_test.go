@@ -148,10 +148,12 @@ func (s *fakeSender) Send(_ context.Context, sub domain.PushSubscription, payloa
 }
 
 type fakeEnricher struct {
-	names map[int64]string
+	names     map[int64]string
+	nameCalls int
 }
 
 func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, error) {
+	e.nameCalls++
 	return e.names[userID], nil
 }
 

@@ -938,12 +938,23 @@ Register the current device's browser push subscription.
 - 200: `{ "_": "boolTrue" }` · 400 missing fields
 
 ### Push payload (delivered to the Service Worker)
+Форма — `PushNotificationObject` tweb (`lib/serviceWorker/push.ts`):
 ```json
-{ "chat_id": 1, "msg_id": 10, "seq": 5,
-  "sender": { "name": "Alice" }, "text": "hello", "badge": 3 }
+{ "loc_key": "MESSAGE_TEXT", "loc_args": ["Alice", "hello"],
+  "title": "Alice", "description": "hello",
+  "custom": { "msg_id": "5", "from_id": "7" } }
 ```
-The Service Worker checks for an active window, muted state, and passcode lock
-before showing the notification; clicking it focuses/opens the chat.
+- `custom.msg_id` — номер сообщения в чате (`seq`); пир: `from_id` (личка) или
+  `channel_id` (группа/канал — положительный id, знак добавляет SW). Строки, как у tweb.
+- `loc_key` — `MESSAGE_TEXT` или `MESSAGE_NOTEXT` (нет текста). Message Preview выключен:
+  нет `loc_key`, `loc_args`, `description` — SW показывает «Telegram» и общий текст.
+- Нет ключа пира (старое задание очереди) — клик открывает приложение без перехода.
+- Не шлются: `badge`, `peer_id`, `id`, `sender`, `text`, `user_id`, `silent`.
+
+Клик по уведомлению: `sw.js` фокусирует окно и шлёт ему `{type: 'push-click', payload}`;
+окна нет — `openWindow('/')` и `pendingNotification` до сообщения `{type: 'push-ready'}`
+от вкладки (раз в 10 с, `PING_PUSH_INTERVAL`). Приложение, запертое код-паролем,
+адрес не получает до разблокировки.
 
 ---
 

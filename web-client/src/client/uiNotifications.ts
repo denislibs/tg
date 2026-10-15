@@ -1,7 +1,7 @@
 // Foreground-уведомления — порт tweb uiNotificationsManager.notify() (упрощённый):
 // входящее сообщение играет звук уведомления (настройки Sound) и, когда вкладка
 // скрыта, показывает браузерную Notification через service worker — клик по ней
-// обрабатывает sw.js (postMessage open-chat → App открывает чат). Гейтинг:
+// обрабатывает sw.js (postMessage push-click → appImManager.onPushClick открывает чат). Гейтинг:
 // per-chat mute → глобальные настройки типа чата → клиентские настройки.
 import { startClient } from './bootstrap'
 import { useSettingsStore } from '../settings'

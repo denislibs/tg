@@ -221,7 +221,8 @@ async function handleMedia(req) {
  * корзины), ключ присылает разблокированная вкладка (`client/passcodeServiceWorker.ts`)
  * — и после каждого перезапуска SW, по `sw-hello` (tweb eff3c59fa). Формат тела —
  * `iv(12) ‖ ciphertext`, как `lib/crypto/aesLocal.ts`. */
-let passcodeState = null // { on, key } — null, пока не прочитали запись
+let passcodeState = null // { on, key, inferred? } — null, пока не прочитали запись; inferred — флаг взят из IDB, вкладка ещё не подтвердила
+let passcodeKeyWaiters = [] // кто ждёт ключ от вкладки после холодного старта (`isPasscodeLocked`)
 let passcodeStatePromise = null
 let cacheDisabled = null // { promise, resolve } — пауза корзины
 
@@ -249,7 +250,7 @@ function readPasscodeFlag() {
 function getPasscodeState() {
   if (passcodeState) return Promise.resolve(passcodeState)
   return passcodeStatePromise ??= readPasscodeFlag().then((on) => {
-    passcodeState ??= { on, key: null }
+    passcodeState ??= { on, key: null, inferred: true }
     return passcodeState
   })
 }
@@ -270,6 +271,9 @@ async function decryptLocal(key, data) {
 function onPasscodeMessage(d) {
   if (d.type === 'passcode-state') {
     passcodeState = { on: !!d.isUsingPasscode, key: d.isUsingPasscode ? (d.encryptionKey || null) : null }
+    const waiters = passcodeKeyWaiters
+    passcodeKeyWaiters = []
+    waiters.forEach((resolve) => resolve())
     return true
   }
   if (d.type === 'passcode-toggle-cache') {
@@ -476,9 +480,18 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
-/** Приложение заперто код-паролем: флаг есть, ключа нет (tweb `isPasscodeLocked` :~270). */
+/** Приложение заперто код-паролем: флаг есть, ключа нет (tweb `isPasscodeLocked` :263-273).
+ *  После холодного старта SW ключа ещё нет, хотя вкладка разблокирована: её ответ на
+ *  `sw-hello` приходит через миллисекунды — ждём его до секунды, как tweb. */
 async function isPasscodeLocked() {
-  const state = await getPasscodeState()
+  let state = await getPasscodeState()
+  if (state.on && !state.key && state.inferred) {
+    await new Promise((resolve) => {
+      passcodeKeyWaiters.push(resolve)
+      setTimeout(resolve, 1000)
+    })
+    state = passcodeState // вкладка могла прислать состояние за время ожидания
+  }
   return state.on && !state.key
 }
 
