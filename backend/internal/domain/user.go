@@ -160,6 +160,10 @@ type Device struct {
 	Location   string // human place from GeoIP, when available
 }
 
+// FreshAuthorizationPeriod — первые сутки сессия не распоряжается другими
+// (tweb appAccountManager.ts:71-77, FRESH_AUTHORIZATION_PERIOD = 24*60*60 с).
+const FreshAuthorizationPeriod = 24 * time.Hour
+
 // Session is a resolved auth context (cached): who, on which device.
 type Session struct {
 	User     UserRecord

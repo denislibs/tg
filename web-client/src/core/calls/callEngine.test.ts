@@ -5,149 +5,90 @@
 // движок не зовёт messages.sendText, а кадры конца несут причину, по которой
 // сервер выбирает Missed / Busy / Hangup / Disconnect.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { connectPair, createNet, FakePC, PEER_OF, pcOf, settle, until, type Net, type Side } from './callTestKit'
 
-const sendCallFrame = vi.fn()
-const sendText = vi.fn()
+let net: Net
 
-vi.mock('../../client/bootstrap', () => ({
-  startClient: () => ({
-    managers: {
-      realtime: { sendCallFrame: (...a: unknown[]) => sendCallFrame(...a) },
-      messages: { sendText: (...a: unknown[]) => sendText(...a) },
-      calls: { iceConfig: async () => ({ servers: [], ttlSeconds: 0 }) },
-      peers: { getUsers: async () => [] },
-    },
-  }),
-}))
-vi.mock('../audio/sounds', () => ({ playSound: () => {}, stopSound: () => {} }))
-vi.mock('../secret/crypto', () => ({
-  generateKeyPair: async () => ({ privateKey: {}, publicKey: {} }),
-  exportPublicKey: async () => new Uint8Array([1]),
-  deriveSecret: async () => ({ fingerprint: new Uint8Array(32) }),
-  b64FromBytes: () => 'pub',
-  b64ToBytes: () => new Uint8Array([1]),
-}))
-
-// Минимальный RTCPeerConnection: движку нужны колбэки состояния и приём-only
-// трансиверы (медиа-устройств в happy-dom нет).
-class FakePC {
-  static last: FakePC | null = null
-  connectionState: RTCPeerConnectionState = 'new'
-  signalingState: RTCSignalingState = 'stable'
-  onicecandidate: unknown = null
-  ontrack: unknown = null
-  onnegotiationneeded: unknown = null
-  onconnectionstatechange: (() => void) | null = null
-  constructor() { FakePC.last = this }
-  addTransceiver() {}
-  addTrack() { return {} }
-  getSenders() { return [] }
-  close() {}
-  setState(st: RTCPeerConnectionState) {
-    this.connectionState = st
-    this.onconnectionstatechange?.()
-  }
-}
-
-type Engine = typeof import('./callEngine')
-type Store = typeof import('../../stores/callStore')
-let engine: Engine
-let callStore: Store
-
-const PEER = { id: 2, name: 'Боб', avatar: '#000' }
-
-function framesOf(type: string) {
-  return sendCallFrame.mock.calls.map((c) => c[0] as { type: string; data: Record<string, unknown> }).filter((f) => f.type === type)
-}
-
-beforeEach(async () => {
-  vi.useFakeTimers()
-  vi.resetModules()
-  sendCallFrame.mockReset()
-  sendText.mockReset()
-  FakePC.last = null
+beforeEach(() => {
+  // фейковые таймеры только для таймеров движка (45 с, грейс 8 с); setImmediate/реальные паузы
+  // нужны реальной криптографии и реле
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
+  FakePC.reset()
   vi.stubGlobal('RTCPeerConnection', FakePC)
-  engine = await import('./callEngine')
-  callStore = await import('../../stores/callStore')
+  net = createNet()
 })
 
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.doUnmock('../../client/bootstrap')
+  vi.doUnmock('../audio/sounds')
 })
+
+const PEER = PEER_OF(2)
+const reasonsOf = (side: Side, type: string) => side.frames(type).map((f) => f.data.reason)
 
 describe('callEngine: лог звонка — забота сервера', () => {
   it('исходящий отменён до ответа: call_end с причиной hangup, sendText не зовётся', async () => {
-    engine.startOutgoing(PEER, false)
-    await vi.advanceTimersByTimeAsync(0)
-    expect(framesOf('call_request')).toHaveLength(1)
+    const A = await net.side(1)
+    A.engine.startOutgoing(PEER, false)
+    await until(() => A.frames('call_request').length === 1, 'call_request')
 
-    engine.hangup()
+    A.engine.hangup()
     await vi.advanceTimersByTimeAsync(2000)
 
-    expect(framesOf('call_end').map((f) => f.data.reason)).toEqual(['hangup'])
-    expect(sendText).not.toHaveBeenCalled()
-    expect(callStore.useCallStore.getState().call).toBeNull()
+    expect(reasonsOf(A, 'call_end')).toEqual(['hangup'])
+    expect(A.sendText).not.toHaveBeenCalled()
+    expect(A.call()).toBeNull()
   })
 
   it('исходящий без ответа 45 с: call_end с причиной missed, sendText не зовётся', async () => {
-    engine.startOutgoing(PEER, true)
+    const A = await net.side(1)
+    A.engine.startOutgoing(PEER, true)
     await vi.advanceTimersByTimeAsync(45_000)
 
-    expect(framesOf('call_end').map((f) => f.data.reason)).toEqual(['missed'])
-    expect(sendText).not.toHaveBeenCalled()
+    expect(reasonsOf(A, 'call_end')).toEqual(['missed'])
+    expect(A.sendText).not.toHaveBeenCalled()
   })
 
   it('входящий отклонён: call_decline с причиной declined, sendText не зовётся', async () => {
-    engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
-    engine.decline()
+    const B = await net.side(2)
+    B.engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
+    B.engine.decline()
     await vi.advanceTimersByTimeAsync(2000)
 
-    expect(framesOf('call_decline').map((f) => f.data.reason)).toEqual(['declined'])
-    expect(sendText).not.toHaveBeenCalled()
+    expect(reasonsOf(B, 'call_decline')).toEqual(['declined'])
+    expect(B.sendText).not.toHaveBeenCalled()
   })
 
   it('состоявшийся звонок, собеседник пропал: по истечении грейса call_end с причиной disconnect', async () => {
-    engine.startOutgoing(PEER, false)
-    await vi.advanceTimersByTimeAsync(0)
-    const callId = callStore.useCallStore.getState().call!.callId
-    engine.handleFrame({ t: 'call_accept', d: { call_id: callId, from_user_id: 2 } })
-    await vi.advanceTimersByTimeAsync(0)
-    const pc = FakePC.last!
-    pc.setState('connected')
-    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+    const { A } = await connectPair(net)
+    pcOf(A)!.setState('connected')
+    expect(A.call()!.phase).toBe('active')
 
-    pc.setState('disconnected')
+    pcOf(A)!.setState('disconnected')
     await vi.advanceTimersByTimeAsync(8000)
 
-    expect(framesOf('call_end').map((f) => f.data.reason)).toEqual(['disconnect'])
-    expect(sendText).not.toHaveBeenCalled()
+    expect(reasonsOf(A, 'call_end')).toEqual(['disconnect'])
+    expect(A.sendText).not.toHaveBeenCalled()
   })
 
   it('состоявшийся звонок, соединение failed: call_end с причиной disconnect', async () => {
-    engine.startOutgoing(PEER, false)
-    await vi.advanceTimersByTimeAsync(0)
-    const callId = callStore.useCallStore.getState().call!.callId
-    engine.handleFrame({ t: 'call_accept', d: { call_id: callId, from_user_id: 2 } })
-    await vi.advanceTimersByTimeAsync(0)
-    FakePC.last!.setState('connected')
-    FakePC.last!.setState('failed')
+    const { A } = await connectPair(net)
+    pcOf(A)!.setState('connected')
+    pcOf(A)!.setState('failed')
 
-    expect(framesOf('call_end').map((f) => f.data.reason)).toEqual(['disconnect'])
-    expect(sendText).not.toHaveBeenCalled()
+    expect(reasonsOf(A, 'call_end')).toEqual(['disconnect'])
+    expect(A.sendText).not.toHaveBeenCalled()
   })
 
   it('состоявшийся звонок положен кнопкой: call_end с причиной hangup', async () => {
-    engine.startOutgoing(PEER, false)
-    await vi.advanceTimersByTimeAsync(0)
-    const callId = callStore.useCallStore.getState().call!.callId
-    engine.handleFrame({ t: 'call_accept', d: { call_id: callId, from_user_id: 2 } })
-    await vi.advanceTimersByTimeAsync(0)
-    FakePC.last!.setState('connected')
-    engine.hangup()
+    const { A } = await connectPair(net)
+    pcOf(A)!.setState('connected')
+    A.engine.hangup()
 
-    expect(framesOf('call_end').map((f) => f.data.reason)).toEqual(['hangup'])
-    expect(sendText).not.toHaveBeenCalled()
+    expect(reasonsOf(A, 'call_end')).toEqual(['hangup'])
+    expect(A.sendText).not.toHaveBeenCalled()
   })
 })
 
@@ -157,46 +98,45 @@ describe('callEngine: лог звонка — забота сервера', () =
 // и не рвёт идущий разговор запоздалым отказом (A2-09).
 describe('callEngine: кадры чужого звонка не действуют', () => {
   async function activeOutgoing() {
-    engine.startOutgoing(PEER, false)
-    await vi.advanceTimersByTimeAsync(0)
-    const callId = callStore.useCallStore.getState().call!.callId
-    engine.handleFrame({ t: 'call_accept', d: { call_id: callId, from_user_id: PEER.id } })
-    await vi.advanceTimersByTimeAsync(0)
-    FakePC.last!.setState('connected')
-    return callId
+    const { A } = await connectPair(net)
+    pcOf(A)!.setState('connected')
+    return A
   }
 
   it('call_end без call_id не обрывает разговор', async () => {
-    await activeOutgoing()
-    engine.handleFrame({ t: 'call_end', d: { from_user_id: PEER.id } })
-    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+    const A = await activeOutgoing()
+    A.engine.handleFrame({ t: 'call_end', d: { from_user_id: PEER.id } })
+    expect(A.call()!.phase).toBe('active')
   })
 
   it('call_end от не-собеседника не обрывает разговор', async () => {
-    const callId = await activeOutgoing()
-    engine.handleFrame({ t: 'call_end', d: { call_id: callId, from_user_id: 99 } })
-    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+    const A = await activeOutgoing()
+    A.engine.handleFrame({ t: 'call_end', d: { call_id: A.call()!.callId, from_user_id: 99 } })
+    expect(A.call()!.phase).toBe('active')
   })
 
   it('запоздалый call_decline (второе устройство) не рвёт разговор', async () => {
-    const callId = await activeOutgoing()
-    engine.handleFrame({ t: 'call_decline', d: { call_id: callId, from_user_id: PEER.id, reason: 'missed' } })
-    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+    const A = await activeOutgoing()
+    A.engine.handleFrame({ t: 'call_decline', d: { call_id: A.call()!.callId, from_user_id: PEER.id, reason: 'missed' } })
+    expect(A.call()!.phase).toBe('active')
   })
 
   it('answered_elsewhere гасит звонящий экран молча, без кадров', async () => {
-    engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
-    engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
-    expect(callStore.useCallStore.getState().call).toBeNull()
+    const B = await net.side(2)
+    B.engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
+    B.engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
+    expect(B.call()).toBeNull()
     await vi.advanceTimersByTimeAsync(45_000)
-    expect(sendCallFrame).not.toHaveBeenCalled()
+    expect(B.sent).toHaveLength(0)
   })
 
   it('answered_elsewhere не трогает устройство, которое ответило', async () => {
-    engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
-    engine.accept()
-    await vi.advanceTimersByTimeAsync(0)
-    engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
-    expect(callStore.useCallStore.getState().call?.phase).toBe('connecting')
+    const B = await net.side(2)
+    B.engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false, dh_hash: 'h' } })
+    B.engine.accept()
+    await until(() => B.call()?.phase === 'connecting', 'connecting')
+    B.engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
+    expect(B.call()?.phase).toBe('connecting')
+    await settle()
   })
 })

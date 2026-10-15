@@ -457,6 +457,60 @@ func TestSignImport_HTTP(t *testing.T) {
 	}
 }
 
+// POST /auth/web_token/cancel: токен, который клиент не стал импортировать,
+// сжигается (tweb appAccountManager.ts:363-375); ответ всегда boolTrue.
+func TestCancelWebToken_HTTP(t *testing.T) {
+	h := newTestRouter(t)
+	token, _ := loginViaHTTP(t, h, "+79990040004")
+
+	rec := postJSONAuth(t, h, "/auth/web_token", map[string]string{}, token)
+	var issued struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &issued)
+	if issued.Token == "" {
+		t.Fatalf("web_token ответ = %s", rec.Body.String())
+	}
+
+	rec = postJSON(t, h, "/auth/web_token/cancel", map[string]string{"web_auth_token": issued.Token})
+	if rec.Code != http.StatusOK || !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("cancel: %d %s", rec.Code, rec.Body.String())
+	}
+	// Отменённый токен больше не меняется на сессию.
+	if rec := postJSON(t, h, "/auth/sign_import", map[string]string{"web_auth_token": issued.Token, "device": "d", "platform": "web"}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("обмен отменённого токена: %d %s", rec.Code, rec.Body.String())
+	}
+	// Неизвестный токен — тоже boolTrue (токен, который сервер уже забыл).
+	rec = postJSON(t, h, "/auth/web_token/cancel", map[string]string{"web_auth_token": "deadbeef"})
+	if rec.Code != http.StatusOK || !isBoolTrue(rec.Body.Bytes()) {
+		t.Fatalf("cancel неизвестного: %d %s", rec.Code, rec.Body.String())
+	}
+	// Пустой токен и кривое тело — 400.
+	if rec := postJSON(t, h, "/auth/web_token/cancel", map[string]string{}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("cancel пустого: %d %s", rec.Code, rec.Body.String())
+	}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/web_token/cancel", strings.NewReader("{"))
+	bad := httptest.NewRecorder()
+	h.ServeHTTP(bad, req)
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("cancel кривого тела: %d %s", bad.Code, bad.Body.String())
+	}
+}
+
+// Отмена делит ведро import-ip: с sign_import — не даёт лишних попыток перебора.
+func TestCancelWebToken_SharesImportBucket(t *testing.T) {
+	h := newTestRouter(t)
+	for n := 0; n < 5; n++ {
+		if rec := postJSON(t, h, "/auth/sign_import", map[string]string{"web_auth_token": "deadbeef"}); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("sign_import #%d: %d", n, rec.Code)
+		}
+	}
+	rec := postJSON(t, h, "/auth/web_token/cancel", map[string]string{"web_auth_token": "deadbeef"})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("cancel после пяти импортов: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 // wireError — тело отказа: конструктор `error{code, text}` (см. разбор
 // docs/readiness/tl-rest-analysis.md, Р3). Остаток секунд, где он есть, лежит
 // ВНУТРИ текста — параметра под него у конструктора нет.

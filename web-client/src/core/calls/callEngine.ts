@@ -9,9 +9,13 @@
 //   SDP/ICE/media-state ходят внутри call_signal (perfect negotiation: glare
 //   разрешается politeness — отвечающая сторона polite, как в tweb).
 //
-// Упрощение относительно tweb: без MTProto DH-слоя поверх сигналинга — медиа
-// и так шифруется DTLS-SRTP, сигналинг идёт по нашему WSS. Mute/камера — через
-// track.enabled + renegotiation (без fallback-потоков silence/black).
+// Проверка звонка против подмены сигналинга (Б-1, этап 1). Сигналинг идёт открытым через
+// сервер (у tweb он шифруется ключом звонка, callInstance.ts:715-735), поэтому SDP с
+// a=fingerprint мог бы подменить посредник. Защита: коммитмент ключа звонящего и отпечатков
+// DTLS обеих сторон (tweb g_a_hash, callInstance.ts:554-563), SAS-эмодзи от DH и ОБЕЩАННЫХ
+// отпечатков, сверка каждого SDP с обещанным, провал протокола фатален без отката на звонок
+// без бейджа. Чистые функции — callSas.ts. Порт протокола tweb целиком — этап 2 М-3 (В-М16).
+// Mute/камера — через track.enabled + renegotiation (без fallback-потоков silence/black).
 //
 // Не React-модуль: пишет состояние в callStore, UI зовёт его функции.
 import { getUserTitle } from '../peers/getPeerTitle'
@@ -23,6 +27,9 @@ import { startClient } from '../../client/bootstrap'
 import type { CallFrameEvt } from '../realtime/events'
 import { generateKeyPair, exportPublicKey, deriveSecret, b64FromBytes, b64ToBytes } from '../secret/crypto'
 import { fingerprintEmoji } from '../secret/fingerprint'
+import {
+  computeCallSas, createDtlsIdentity, dhCommitment, extractDtlsFingerprints, parsePeerFingerprints, sameFingerprints,
+} from './callSas'
 
 // Fallback, если /calls/ice недоступен (без TURN звонок пройдёт только в
 // пределах одной сети).
@@ -72,33 +79,94 @@ const DISCONNECT_GRACE_MS = 8000
 // конца в поле reason кадра call_end: 'hangup' | 'missed' | 'disconnect'.
 let unloadHandler: (() => void) | null = null
 
-// ── E2E (SAS): ECDH поверх сигналинга → emoji-fingerprint (как в секретных чатах).
-// Медиа идёт P2P и уже шифруется DTLS-SRTP; DH-обмен добавляет верификацию против
-// MITM: обе стороны выводят одинаковую цепочку эмодзи и сверяют её голосом (модель
-// Telegram-звонков, tweb emojiFingerprint/fingerprintBadge).
+// ── E2E (SAS) ──
+// Состояние проверки текущего звонка. Протокол (кадры и поля — m-security-contract.md, М3-1):
+//   call_request {video, dh_hash}       dh_hash = H(pubA ‖ fpsCaller) — обещание звонящего
+//   call_accept  {dh: pubB, dtls: fpsCallee}
+//   call_signal  {dh_reveal: pubA, dtls: fpsCaller} — первым кадром после call_accept, до SDP
+// SAS = H(dhFp ‖ "call-sas-v1" ‖ fpsCaller ‖ 0 ‖ fpsCallee) по ОБЕЩАННЫМ наборам; SDP каждой
+// стороны обязан нести ровно обещанные отпечатки.
+let ident: { cert: RTCCertificate; fps: string[] } | null = null // свой сертификат DTLS и его отпечатки
 let dhPriv: CryptoKey | null = null
-let peerDhPub: Uint8Array | null = null // публичный ключ собеседника (захвачен из call_request у входящего)
+let dhPubRaw: Uint8Array | null = null
+let peerDhHash: string | null = null // отвечающий: коммитмент из call_request
+let peerFps: string[] | null = null // обещанные отпечатки собеседника
+let dhFp: Uint8Array | null = null // отпечаток общего секрета ECDH
+let accepting = false // accept() уже запущен — повторный клик не стартует второй
+// Поколение звонка: cleanupRtc() его меняет, и позднее звено очереди/ответ getUserMedia
+// старого звонка выходит, не трогая новый.
+let gen = 0
+// Очередь кадров call_accept/call_signal: строго по одному, иначе dh_reveal и offer из одного
+// тика обгоняли бы друг друга на await криптографии.
+let frameChain: Promise<void> = Promise.resolve()
 
-// Генерируем свою ECDH-пару, возвращаем публичный ключ в base64 для сигналинга.
-async function beginDh(): Promise<string> {
+/** Провал протокола проверки — фатален для звонка (отличается от случайной ошибки pc). */
+class E2EFail extends Error {}
+
+async function beginDh(): Promise<{ priv: CryptoKey; pubRaw: Uint8Array }> {
   const pair = await generateKeyPair()
-  dhPriv = pair.privateKey
-  return b64FromBytes(await exportPublicKey(pair.publicKey))
-}
-
-// Выводим общий секрет из своего приватного + чужого публичного ключа и кладём
-// emoji-fingerprint в стор (обе стороны получают одинаковую цепочку).
-async function deriveFingerprint(peerPubRaw: Uint8Array) {
-  if (!dhPriv) return
-  try {
-    const { fingerprint } = await deriveSecret(dhPriv, peerPubRaw)
-    if (store().call) store().patch({ e2eFingerprint: fingerprintEmoji(fingerprint) })
-  } catch { /* обмен ключами сорвался — звонок работает без SAS-бейджа */ }
+  return { priv: pair.privateKey, pubRaw: await exportPublicKey(pair.publicKey) }
 }
 
 function resetDh() {
+  gen++
+  frameChain = Promise.resolve()
+  ident = null
   dhPriv = null
-  peerDhPub = null
+  dhPubRaw = null
+  peerDhHash = null
+  peerFps = null
+  dhFp = null
+  accepting = false
+}
+
+// Единая точка фатального исхода. До ответа отвечающий отклоняет с причиной missed (сервер
+// пишет «Пропущенный»; «Отклонённый» был бы ложью), после ответа — call_end disconnect
+// («обрыв связи»); звонящий, не успевший послать call_request, просто закрывает экран.
+type E2EPhase = 'pre-request' | 'before-answer' | 'after-answer'
+function failE2E(phase: E2EPhase) {
+  if (!store().call) return
+  if (phase === 'before-answer') sendFrame('call_decline', { reason: 'missed' })
+  else if (phase === 'after-answer') sendFrame('call_end', { reason: 'disconnect' })
+  finish('failed')
+}
+
+// fatal: любая ошибка звена фатальна для звонка (звенья протокола); иначе только провал
+// проверки (E2EFail) фатален, а случайная ошибка pc по ходу звонка пишется в консоль.
+function enqueue(fn: (alive: () => boolean) => Promise<void>, fatal = false) {
+  const g = gen
+  const alive = () => g === gen && !!store().call
+  frameChain = frameChain.then(() => (alive() ? fn(alive) : undefined)).catch((e: unknown) => {
+    if (g !== gen) return
+    if (fatal || e instanceof E2EFail) {
+      console.warn('[call] protocol step failed', e)
+      failE2E('after-answer')
+    } else console.warn('[call] frame handler failed', e)
+  })
+}
+
+// SAS появляется, как только известны ключ и оба обещанных набора.
+async function publishSas(alive: () => boolean) {
+  const call = store().call
+  if (!call || !ident || !peerFps || !dhFp) return
+  const [callerFps, calleeFps] = call.outgoing ? [ident.fps, peerFps] : [peerFps, ident.fps]
+  const sas = await computeCallSas(dhFp, callerFps, calleeFps)
+  if (alive()) store().patch({ e2eFingerprint: fingerprintEmoji(sas) })
+}
+
+async function deriveDhFp(peerPubB64: string): Promise<Uint8Array> {
+  if (!dhPriv) throw new E2EFail('no dh key')
+  try {
+    return (await deriveSecret(dhPriv, b64ToBytes(peerPubB64))).fingerprint
+  } catch {
+    throw new E2EFail('bad peer dh key')
+  }
+}
+
+// Свой localDescription обязан нести ровно свой сертификат.
+function ownDescriptionMatches(desc: RTCSessionDescription | null): boolean {
+  if (!ident || !desc) return false
+  try { return sameFingerprints(extractDtlsFingerprints(desc.sdp), ident.fps) } catch { return false }
 }
 
 function sendFrame(type: string, data: Record<string, unknown>) {
@@ -148,7 +216,8 @@ function finish(reason: CallEndReason) {
   const call = store().call
   if (!call || call.phase === 'ended') return
   playSound(reason === 'busy' || reason === 'declined' || reason === 'privacy' ? 'call_busy' : 'call_end')
-  store().patch({ phase: 'ended', endReason: reason, localStream: null, remoteStream: null })
+  // бейдж гасится вместе с экраном: провалившаяся проверка не оставляет эмодзи на виду
+  store().patch({ phase: 'ended', endReason: reason, localStream: null, remoteStream: null, e2eFingerprint: undefined })
   setTimeout(() => {
     const cur = store().call
     if (cur && cur.phase === 'ended') store().set(null)
@@ -192,14 +261,18 @@ function sendMediaState() {
 
 // ── WebRTC ──
 
-async function startRtc(withVideo: boolean) {
+// Создаёт pc (внутри очереди кадров) и запускает захват микрофона/камеры ВНЕ очереди:
+// открытое окно разрешения не должно держать call_signal/ICE и прочие кадры звонка.
+async function startRtc(withVideo: boolean, alive: () => boolean) {
   const call = store().call
-  if (!call) return
+  if (!call || !ident) return
   store().patch({ phase: 'connecting' })
   stopSound()
   playSound('voip_connecting')
 
-  pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' })
+  const servers = await iceServers()
+  if (!alive()) return
+  pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', certificates: [ident.cert] })
 
   pc.onicecandidate = (e) => {
     if (e.candidate) sendFrame('call_signal', { ice: e.candidate.toJSON() })
@@ -220,6 +293,7 @@ async function startRtc(withVideo: boolean) {
     try {
       makingOffer = true
       await pc.setLocalDescription()
+      if (!ownDescriptionMatches(pc.localDescription)) { failE2E('after-answer'); return }
       sendFrame('call_signal', { sdp: pc.localDescription!.toJSON() })
     } catch { /* pc умер во время переговоров — cleanup сделает finish */ }
     finally { makingOffer = false }
@@ -261,8 +335,16 @@ async function startRtc(withVideo: boolean) {
   window.addEventListener('pagehide', unloadHandler)
   window.addEventListener('beforeunload', unloadHandler)
 
-  localStream = await acquireLocal(withVideo)
-  if (!pc) return // повесили трубку, пока ждали getUserMedia (tweb: isClosing check)
+  void attachLocalMedia(withVideo, gen)
+}
+
+async function attachLocalMedia(withVideo: boolean, g: number) {
+  const stream = await acquireLocal(withVideo)
+  if (g !== gen || !pc) { // повесили трубку, пока ждали getUserMedia (tweb: isClosing check)
+    stream?.getTracks().forEach((t) => t.stop())
+    return
+  }
+  localStream = stream
   if (localStream) {
     for (const track of localStream.getTracks()) {
       const sender = pc.addTrack(track, localStream)
@@ -270,17 +352,37 @@ async function startRtc(withVideo: boolean) {
     }
     store().patch({ localStream, camOn: localStream.getVideoTracks().length > 0 })
   } else {
-    // нет пермишена/устройств: соединяемся только на приём
-    pc.addTransceiver('audio', { direction: 'recvonly' })
-    if (withVideo) pc.addTransceiver('video', { direction: 'recvonly' })
+    // нет пермишена/устройств: соединяемся только на приём. Отвечающая сторона к этому
+    // моменту могла уже принять offer собеседника — тогда приёмные трансиверы уже есть.
+    const has = (kind: string) => pc!.getTransceivers().some((t) => t.receiver.track.kind === kind)
+    if (!has('audio')) pc.addTransceiver('audio', { direction: 'recvonly' })
+    if (withVideo && !has('video')) pc.addTransceiver('video', { direction: 'recvonly' })
     store().patch({ camOn: false })
   }
   sendMediaState()
 }
 
-async function handleSignal(d: Record<string, unknown>) {
+// Раскрытие ключа звонящего (отвечающая сторона): проверка по коммитменту из call_request,
+// провал фатален — подложный ключ в SAS попасть не должен (tweb callsController.ts:233-240).
+async function onDhReveal(d: Record<string, unknown>, alive: () => boolean) {
   const call = store().call
-  if (!call || !pc) return
+  if (!call || call.outgoing || !peerDhHash || !ident || dhFp) return // дубль раскрытия игнорируем
+  const callerFps = parsePeerFingerprints(d.dtls)
+  if (typeof d.dh_reveal !== 'string' || !callerFps) throw new E2EFail('bad dh_reveal')
+  let pubRaw: Uint8Array
+  try { pubRaw = b64ToBytes(d.dh_reveal) } catch { throw new E2EFail('bad dh_reveal key') }
+  if (await dhCommitment(pubRaw, callerFps) !== peerDhHash) throw new E2EFail('commitment mismatch')
+  const fp = await deriveDhFp(d.dh_reveal)
+  if (!alive()) return
+  peerFps = callerFps
+  dhFp = fp
+  await publishSas(alive)
+}
+
+async function handleSignal(d: Record<string, unknown>, alive: () => boolean) {
+  if (!store().call) return
+  if (d.dh_reveal !== undefined) { await onDhReveal(d, alive); return }
+  if (!pc) return
   // media-state собеседника (tweb шлёт его в DataChannel; у нас — тем же реле)
   const media = d.media as { muted?: boolean; cam_on?: boolean } | undefined
   if (media) {
@@ -289,17 +391,29 @@ async function handleSignal(d: Record<string, unknown>) {
   }
   const sdp = d.sdp as RTCSessionDescriptionInit | undefined
   if (sdp) {
+    // SDP до проверенного раскрытия ключа, не offer/answer или с отпечатками, отличными от
+    // обещанных, — подмена (или нарушенный порядок): звонок рвётся.
+    if (!dhFp || !peerFps) throw new E2EFail('sdp before dh_reveal')
+    if ((sdp.type !== 'offer' && sdp.type !== 'answer') || typeof sdp.sdp !== 'string') throw new E2EFail('bad sdp')
+    let sdpFps: string[]
+    try { sdpFps = extractDtlsFingerprints(sdp.sdp) } catch { throw new E2EFail('malformed sdp fingerprint') }
+    if (!sameFingerprints(sdpFps, peerFps)) throw new E2EFail('sdp fingerprint mismatch')
     // perfect negotiation: impolite (звонящий) игнорирует чужой offer при glare,
     // polite (отвечающий) откатывает свой — ровно как rollback в tweb.
     const collision = sdp.type === 'offer' && (makingOffer || pc.signalingState !== 'stable')
     ignoreOffer = !polite && collision
     if (ignoreOffer) return
-    await pc.setRemoteDescription(sdp)
-    for (const c of pendingCandidates) await pc.addIceCandidate(c).catch(() => {})
+    const p = pc
+    await p.setRemoteDescription(sdp)
+    if (!alive() || pc !== p) return // звонок закончился (или начался новый) посреди переговоров
+    for (const c of pendingCandidates) await p.addIceCandidate(c).catch(() => {})
+    if (!alive() || pc !== p) return
     pendingCandidates = []
     if (sdp.type === 'offer') {
-      await pc.setLocalDescription()
-      sendFrame('call_signal', { sdp: pc.localDescription!.toJSON() })
+      await p.setLocalDescription()
+      if (!alive() || pc !== p) return
+      if (!ownDescriptionMatches(p.localDescription)) throw new E2EFail('own sdp fingerprint mismatch')
+      sendFrame('call_signal', { sdp: p.localDescription!.toJSON() })
     }
     return
   }
@@ -308,6 +422,24 @@ async function handleSignal(d: Record<string, unknown>) {
     if (!pc.remoteDescription) pendingCandidates.push(ice)
     else await pc.addIceCandidate(ice).catch(() => { if (!ignoreOffer) throw new Error('bad ice') })
   }
+}
+
+// Ответ звонящему на call_accept: набор и ключ отвечающего, раскрытие своего ключа и SAS.
+async function onCallAccept(d: Record<string, unknown>, alive: () => boolean) {
+  const call = store().call
+  if (!call || !call.outgoing || !ident || !dhPubRaw || peerFps) return // ранний или повторный call_accept
+  clearRingTimer()
+  const calleeFps = parsePeerFingerprints(d.dtls)
+  if (typeof d.dh !== 'string' || !calleeFps) throw new E2EFail('call_accept without dh/dtls')
+  const fp = await deriveDhFp(d.dh)
+  if (!alive()) return
+  peerFps = calleeFps
+  dhFp = fp
+  // раскрытие — первым кадром, до SDP: отвечающий проверяет его по коммитменту до SAS
+  sendFrame('call_signal', { dh_reveal: b64FromBytes(dhPubRaw), dtls: ident.fps })
+  await publishSas(alive)
+  if (!alive()) return
+  await startRtc(call.video, alive)
 }
 
 // ── публичное API (UI) ──
@@ -322,23 +454,54 @@ export function startOutgoing(peer: CallPeer, video: boolean) {
   })
   polite = false // звонящий — impolite (tweb: incoming сторона делает rollback)
   playSound('call_outgoing', { loop: true })
-  // ECDH: свой публичный ключ уходит в call_request; ответ придёт в call_accept.
-  void beginDh().then((dh) => { if (store().call?.callId === callId) sendFrame('call_request', { video, dh }) })
+  // Сертификат DTLS и ключ ECDH — до первого кадра: в call_request уходит только коммитмент
+  // на пару «ключ + отпечатки», сами они раскрываются после ответа (call_signal dh_reveal).
+  const g = gen
+  void (async () => {
+    try {
+      const id = await createDtlsIdentity()
+      const dh = await beginDh()
+      const dhHash = await dhCommitment(dh.pubRaw, id.fps)
+      if (g !== gen) return
+      ident = id
+      dhPriv = dh.priv
+      dhPubRaw = dh.pubRaw
+      sendFrame('call_request', { video, dh_hash: dhHash })
+    } catch (e) {
+      console.warn('[call] cannot prepare DTLS identity / DH', e)
+      if (g === gen) failE2E('pre-request')
+    }
+  })()
   ringTimer = setTimeout(() => { sendFrame('call_end', { reason: 'missed' }); finish('missed') }, RING_TIMEOUT_MS)
 }
 
 export function accept() {
   const call = store().call
-  if (!call || call.phase !== 'incoming') return
+  if (!call || call.phase !== 'incoming' || accepting) return
   clearRingTimer()
   polite = true
-  // ECDH: генерируем свою пару, выводим fingerprint по ключу звонящего (захвачен
-  // в call_request) и отправляем свой публичный ключ в call_accept.
-  void beginDh().then(async (dh) => {
-    if (peerDhPub) await deriveFingerprint(peerDhPub)
-    sendFrame('call_accept', { dh })
-  })
-  void startRtc(call.video)
+  // Звонящий старой сборки коммитмента не прислал — проверить его нечем: честный отказ,
+  // а не звонок без бейджа.
+  if (!peerDhHash) { failE2E('before-answer'); return }
+  accepting = true
+  const g = gen
+  void (async () => {
+    try {
+      const id = await createDtlsIdentity()
+      const dh = await beginDh()
+      if (g !== gen) return
+      ident = id
+      dhPriv = dh.priv
+      dhPubRaw = dh.pubRaw
+    } catch (e) {
+      console.warn('[call] cannot prepare DTLS identity / DH', e)
+      if (g === gen) failE2E('before-answer')
+      return
+    }
+    sendFrame('call_accept', { dh: b64FromBytes(dhPubRaw!), dtls: ident!.fps })
+    store().patch({ phase: 'connecting' })
+    enqueue((alive) => startRtc(call.video, alive), true)
+  })()
 }
 
 export function decline() {
@@ -505,8 +668,9 @@ export function handleFrame(evt: CallFrameEvt) {
       return
     }
     const video = !!d.video
-    // ECDH: сохраняем публичный ключ звонящего — используем при accept().
-    peerDhPub = typeof d.dh === 'string' ? b64ToBytes(d.dh) : null
+    // Коммитмент звонящего на пару «ключ + отпечатки DTLS»; без него (старая сборка)
+    // accept() честно откажет.
+    peerDhHash = typeof d.dh_hash === 'string' ? d.dh_hash : null
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
@@ -551,11 +715,11 @@ export function handleFrame(evt: CallFrameEvt) {
 
   switch (t) {
     case 'call_accept':
-      if (call.outgoing && call.phase === 'outgoing') {
-        clearRingTimer()
-        // ECDH: пришёл публичный ключ отвечающего → выводим общий fingerprint.
-        if (typeof d.dh === 'string') void deriveFingerprint(b64ToBytes(d.dh))
-        void startRtc(call.video)
+      if (call.outgoing && call.phase === 'outgoing' && ident && dhPubRaw) { // call_request уже ушёл
+        // 'connecting' сразу: кадры call_signal отвечающего, пришедшие, пока звено крутит
+        // криптографию, должны встать в очередь за ним, а не быть отброшены фильтром по фазе
+        store().patch({ phase: 'connecting' })
+        enqueue((alive) => onCallAccept(d, alive), true)
       }
       break
     case 'call_decline':
@@ -569,7 +733,9 @@ export function handleFrame(evt: CallFrameEvt) {
       finish('hangup')
       break
     case 'call_signal':
-      void handleSignal(d)
+      // до ответа (звонящий в outgoing, отвечающий в incoming) сигналинга быть не может
+      if (call.phase === 'connecting' || call.phase === 'active') // раскрытие ключа — звено протокола: его сбой фатален (иначе звонок пошёл бы без бейджа)
+      enqueue((alive) => handleSignal(d, alive), d.dh_reveal !== undefined)
       break
   }
 }
