@@ -54,8 +54,6 @@ var peerOmittedWithoutSubject = map[string][]string{
 	// группа отдаёт channelFull), поэтому пропуск здесь не про предмет.
 	"chatFull": {"participants", "notify_settings"},
 
-	// bot_info:Vector<BotInfo> — карточки ботов чата отдельным конструктором
-	// (подсистема ботов).
 	// pts — счётчик кадров канала: реквизит синхронизации MTProto. У нас он
 	// живёт в channel_updates и едет своей ручкой difference, а не в карточке.
 	//
@@ -66,7 +64,7 @@ var peerOmittedWithoutSubject = map[string][]string{
 	// уведомлений зритель-зависимы. Пустым конструктором такое не выражается —
 	// он означал бы «переопределения нет», то есть чужой ответ, разосланный
 	// всем; см. ChatRecord.NotifySettings.
-	"channelFull": {"notify_settings", "bot_info", "pts"},
+	"channelFull": {"notify_settings", "pts"},
 
 	// Вложенное Photo аватарки чата — тот же список реквизитов транспорта, что
 	// у медиа: ссылаемся на него, чтобы источник остался единственным.
@@ -134,6 +132,12 @@ func allPeerConstructors() []any {
 			return f
 		}(),
 		NewUserFull(43, UserFullFlags{}),
+		func() UserFull {
+			f := NewUserFull(44, UserFullFlags{})
+			b := NewBotInfo(44, "Что умеет бот", []BotCommand{{Command: "start", Description: "начать"}})
+			f.BotInfo = &b
+			return f
+		}(),
 
 		// ── Списочные ответы ─────────────────────────────────────────────────
 		// can_message — НАШ клиентский параметр конструктора; сверщик обязан его
@@ -247,6 +251,7 @@ func allPeerConstructors() []any {
 			f.ThemeEmoticon = "night"
 			ns := NewPeerNotifySettings(time.Unix(MuteUntilForever, 0), nil, NewNotificationSoundNone())
 			f.NotifySettings = &ns
+			f.BotInfo = []BotInfo{NewBotInfo(9, "", []BotCommand{{Command: "help", Description: "помощь"}})}
 			return f
 		}(),
 		// Пустая карточка: обязательные about/горизонты/unread едут нулями,

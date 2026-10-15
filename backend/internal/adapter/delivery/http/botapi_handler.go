@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -41,6 +44,65 @@ func decodeBody(r *http.Request) map[string]json.RawMessage {
 		_ = json.NewDecoder(r.Body).Decode(&m)
 	}
 	return m
+}
+
+// decodeStrictBody читает параметры метода из тела: JSON (по умолчанию),
+// application/x-www-form-urlencoded или multipart/form-data — все три формы, что
+// принимает Bot API. Пустое тело — пустые параметры (значения могут прийти в
+// query). Нечитаемое или слишком большое тело — код ошибки (400 / 413), а не
+// тихо пустой набор. Значения форм ложатся строками JSON: объект, присланный
+// строкой, разворачивает jsonParam.
+func decodeStrictBody(r *http.Request) (map[string]json.RawMessage, int) {
+	m := map[string]json.RawMessage{}
+	if r.Body == nil || r.Body == http.NoBody {
+		return m, 0
+	}
+	fail := func(err error) (map[string]json.RawMessage, int) {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return nil, http.StatusRequestEntityTooLarge
+		}
+		return nil, http.StatusBadRequest
+	}
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	switch ct {
+	case "application/x-www-form-urlencoded", "multipart/form-data":
+		var err error
+		if ct == "multipart/form-data" {
+			err = r.ParseMultipartForm(botCommandsBodyLimit)
+		} else {
+			err = r.ParseForm()
+		}
+		if err != nil {
+			return fail(err)
+		}
+		for k, v := range r.PostForm {
+			if len(v) > 0 {
+				raw, _ := json.Marshal(v[0])
+				m[k] = raw
+			}
+		}
+		return m, 0
+	}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&m); err != nil {
+		if errors.Is(err, io.EOF) {
+			return map[string]json.RawMessage{}, 0 // тело из одних пробелов
+		}
+		return fail(err)
+	}
+	// `null` и склеенные объекты читались бы как «нет параметров» / первый объект.
+	if m == nil {
+		return nil, http.StatusBadRequest
+	}
+	var tail json.RawMessage
+	if err := dec.Decode(&tail); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, http.StatusBadRequest
+		}
+		return fail(err)
+	}
+	return m, 0
 }
 
 // param достаёт значение сначала из тела, затем из query (?k=).
@@ -85,6 +147,9 @@ type bodyParams struct {
 	}
 }
 
+// botCommandsBodyLimit — потолок тела методов команд (100 команд по ≤256 символов — десятки КБ).
+const botCommandsBodyLimit = 256 << 10
+
 func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	method := chi.URLParam(r, "method")
@@ -103,7 +168,25 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		botErr(w, http.StatusTooManyRequests, "Too Many Requests: retry later")
 		return
 	}
-	p := bodyParams{body: decodeBody(r), query: r.URL.Query()}
+	body := map[string]json.RawMessage{}
+	if strings.HasSuffix(method, "MyCommands") {
+		// Список команд копируется в журнал каждого получателя: тело ограничено, а
+		// непрочитанное тело — ошибка: молчаливо пустые параметры означали бы
+		// «scope: default» и «commands: []», то есть снять список default.
+		r.Body = http.MaxBytesReader(w, r.Body, botCommandsBodyLimit)
+		var code int
+		if body, code = decodeStrictBody(r); code != 0 {
+			if code == http.StatusRequestEntityTooLarge {
+				botErr(w, code, "Request Entity Too Large")
+			} else {
+				botErr(w, code, "Bad Request: can't parse request body")
+			}
+			return
+		}
+	} else {
+		body = decodeBody(r)
+	}
+	p := bodyParams{body: body, query: r.URL.Query()}
 
 	switch method {
 	case "getMe":
@@ -125,16 +208,37 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		_ = h.svc.BotSetWebhook(r.Context(), bot, "")
 		botOK(w, true)
 	case "setMyCommands":
-		scope, lang := parseCommandScope(p.raw("scope")), p.str("language_code")
-		if err := h.svc.BotSetCommands(r.Context(), bot, scope, lang, parseCommands(p.raw("commands"))); err != nil {
-			botErr(w, http.StatusInternalServerError, "setMyCommands failed")
+		scope, err := scopeParam(p)
+		cmds, cerr := commandsParam(p)
+		if err != nil || cerr != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope or commands")
+			return
+		}
+		if err := h.svc.BotSetCommands(r.Context(), bot, scope, p.str("language_code"), cmds); err != nil {
+			botErr(w, botCommandsErrCode(err), "setMyCommands failed")
+			return
+		}
+		botOK(w, true)
+	case "deleteMyCommands":
+		scope, err := scopeParam(p)
+		if err != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope")
+			return
+		}
+		if err := h.svc.BotDeleteCommands(r.Context(), bot, scope, p.str("language_code")); err != nil {
+			botErr(w, botCommandsErrCode(err), "deleteMyCommands failed")
 			return
 		}
 		botOK(w, true)
 	case "getMyCommands":
-		cmds, err := h.svc.BotGetCommands(r.Context(), bot, parseCommandScope(p.raw("scope")), p.str("language_code"))
+		scope, serr := scopeParam(p)
+		if serr != nil {
+			botErr(w, http.StatusBadRequest, "Bad Request: invalid scope")
+			return
+		}
+		cmds, err := h.svc.BotGetCommands(r.Context(), bot, scope, p.str("language_code"))
 		if err != nil {
-			botErr(w, http.StatusInternalServerError, "getMyCommands failed")
+			botErr(w, botCommandsErrCode(err), "getMyCommands failed")
 			return
 		}
 		out := make([]map[string]any, 0, len(cmds))
@@ -171,7 +275,11 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		markup := parseReplyMarkup(p.raw("reply_markup"))
-		msg, err := h.svc.BotSendMessage(r.Context(), bot, chatID, text, markup)
+		msg, err := h.svc.BotSendMessage(r.Context(), bot, chatID, text, markup, usecasechat.BotSendOpts{
+			Entities:   parseEntities(p.raw("entities")),
+			ReplyToSeq: parseReplyTo(p),
+			Silent:     p.boolean("disable_notification"),
+		})
 		if err != nil {
 			botErr(w, http.StatusBadRequest, "sendMessage failed: "+err.Error())
 			return
@@ -586,32 +694,132 @@ func parseInlineResults(raw json.RawMessage) []domain.InlineResult {
 	return out
 }
 
+// jsonParam — значение параметра-объекта Bot API: JSON-телом, строкой с JSON
+// внутри (form/query) либо из query. Отсутствие параметра — ok == false, raw nil.
+func jsonParam(p bodyParams, key string) (raw json.RawMessage, present bool) {
+	if v, ok := p.body[key]; ok {
+		raw = v
+	} else if q := p.query.Get(key); q != "" {
+		raw = json.RawMessage(q)
+	} else {
+		return nil, false
+	}
+	var inner string
+	if json.Unmarshal(raw, &inner) == nil { // объект, присланный строкой
+		raw = json.RawMessage(inner)
+	}
+	return raw, true
+}
+
+// commandsParam: BotCommand[] → domain.BotCommand[]. Нет параметра или он нечитаем —
+// ошибка: прежнее «молча пусто» теперь означало бы «снять скоуп».
+func commandsParam(p bodyParams) ([]domain.BotCommand, error) {
+	raw, ok := jsonParam(p, "commands")
+	if !ok {
+		return nil, errBadParam
+	}
+	return parseCommands(raw)
+}
+
+// scopeParam: нет параметра — default; есть, но нечитаем — ошибка (иначе
+// deleteMyCommands с испорченным scope снял бы default и разослал это всем).
+func scopeParam(p bodyParams) (domain.BotCommandScope, error) {
+	raw, ok := jsonParam(p, "scope")
+	if !ok {
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}, nil
+	}
+	return parseCommandScope(raw)
+}
+
+var errBadParam = errors.New("bad parameter")
+
 // parseCommands: Telegram BotCommand[] → domain.BotCommand[].
-func parseCommands(raw json.RawMessage) []domain.BotCommand {
+func parseCommands(raw json.RawMessage) ([]domain.BotCommand, error) {
 	var cmdsIn []struct {
 		Command     string `json:"command"`
 		Description string `json:"description"`
 	}
-	_ = json.Unmarshal(raw, &cmdsIn)
+	if err := json.Unmarshal(raw, &cmdsIn); err != nil {
+		return nil, errBadParam
+	}
 	cmds := make([]domain.BotCommand, 0, len(cmdsIn))
 	for _, c := range cmdsIn {
 		cmds = append(cmds, domain.BotCommand{Command: c.Command, Description: c.Description})
 	}
-	return cmds
+	return cmds, nil
 }
 
-// parseCommandScope: {"type":"..."} → строка скоупа (пустая = default).
-func parseCommandScope(raw json.RawMessage) string {
+// parseCommandScope: BotCommandScope Bot API {type, chat_id?, user_id?} → наш
+// скоуп. chat_id — внутренний номер чата, как у sendMessage, числом или строкой-
+// числом; адрес без нужного типу — отсеивает usecase (Valid). Нечитаемое — ошибка.
+func parseCommandScope(raw json.RawMessage) (domain.BotCommandScope, error) {
 	if len(raw) == 0 {
-		return "default"
+		return domain.BotCommandScope{Type: domain.BotScopeDefault}, nil
 	}
 	var s struct {
-		Type string `json:"type"`
+		Type   string          `json:"type"`
+		ChatID json.RawMessage `json:"chat_id"`
+		UserID json.RawMessage `json:"user_id"`
 	}
-	if json.Unmarshal(raw, &s) != nil || s.Type == "" {
-		return "default"
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return domain.BotCommandScope{}, errBadParam
 	}
-	return s.Type
+	num := func(v json.RawMessage) (int64, error) {
+		if len(v) == 0 {
+			return 0, nil
+		}
+		var n int64
+		if json.Unmarshal(v, &n) == nil {
+			return n, nil
+		}
+		var str string
+		if json.Unmarshal(v, &str) == nil {
+			if n, err := strconv.ParseInt(str, 10, 64); err == nil {
+				return n, nil
+			}
+		}
+		return 0, errBadParam
+	}
+	chatID, err := num(s.ChatID)
+	if err != nil {
+		return domain.BotCommandScope{}, err
+	}
+	userID, err := num(s.UserID)
+	if err != nil {
+		return domain.BotCommandScope{}, err
+	}
+	return domain.BotCommandScope{Type: s.Type, ChatID: chatID, UserID: userID}, nil
+}
+
+// parseReplyTo: reply_parameters.message_id, а у старой формы —
+// reply_to_message_id. Номер сообщения в чате; нет — ответа нет.
+func parseReplyTo(p bodyParams) *int64 {
+	if raw := p.raw("reply_parameters"); len(raw) > 0 {
+		var rp struct {
+			MessageID int64 `json:"message_id"`
+		}
+		if json.Unmarshal(raw, &rp) == nil && rp.MessageID > 0 {
+			return &rp.MessageID
+		}
+	}
+	if id := p.int("reply_to_message_id"); id > 0 {
+		return &id
+	}
+	return nil
+}
+
+// botCommandsErrCode — код ответа методов команд: неверный скоуп или список —
+// 400, чужой чат — 403, нет чата — 404; остальное — сбой хранилища.
+func botCommandsErrCode(err error) int {
+	switch {
+	case errors.Is(err, domain.ErrInvalid):
+		return http.StatusBadRequest
+	case errors.Is(err, domain.ErrForbidden):
+		return http.StatusForbidden
+	case errors.Is(err, domain.ErrNotFound):
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }
 
 // ── Разметка на границе Bot API ─────────────────────────────────────────────

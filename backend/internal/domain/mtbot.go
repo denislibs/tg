@@ -7,6 +7,7 @@ package domain
 
 const (
 	BotCommandTag             = "botCommand"
+	BotInfoTag                = "botInfo"
 	BotMenuButtonTag          = "botMenuButton"
 	BotInlineResultTag        = "botInlineResult"
 	BotInlineMessageTextTag   = "botInlineMessageText"
@@ -24,6 +25,36 @@ type MTBotCommand struct {
 // NewBotCommand — строка списка команд бота.
 func NewBotCommand(c BotCommand) MTBotCommand {
 	return MTBotCommand{Underscore: BotCommandTag, Command: c.Command, Description: c.Description}
+}
+
+// botInfo#4d8a0299 flags:# has_preview_medias:flags.6?true user_id:flags.0?long
+// description:flags.1?string description_photo:flags.4?Photo
+// description_document:flags.5?Document commands:flags.2?Vector<BotCommand>
+// menu_button:flags.3?BotMenuButton … = BotInfo;
+//
+// Карточка бота в полной карточке пира: у пользователя-бота — `userFull.bot_info`
+// (одна), у группы — вектор `channelFull.bot_info` по ботам-участникам.
+// Команды — те, что видит ЗРИТЕЛЬ карточки (скоуп лички или группы); вектор
+// едет всегда, пустой тоже: «команд нет» — ответ, а не отсутствие.
+//
+// Не производим: has_preview_medias, description_photo/description_document
+// (картинки экрана «Что умеет этот бот?»), privacy_policy_url, app_settings,
+// verifier_settings — предмета у нас нет.
+type BotInfo struct {
+	Underscore  string         `json:"_"`
+	UserID      int64          `json:"user_id"`
+	Description string         `json:"description,omitempty"`
+	Commands    []MTBotCommand `json:"commands"`
+	MenuButton  *BotMenuButton `json:"menu_button,omitempty"`
+}
+
+// NewBotInfo — карточка бота с командами глазами зрителя.
+func NewBotInfo(botID int64, description string, commands []BotCommand) BotInfo {
+	cs := make([]MTBotCommand, 0, len(commands))
+	for _, c := range commands {
+		cs = append(cs, NewBotCommand(c))
+	}
+	return BotInfo{Underscore: BotInfoTag, UserID: botID, Description: description, Commands: cs}
 }
 
 // botMenuButton#c7b57ce6 text:string url:string = BotMenuButton;
