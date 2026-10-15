@@ -365,8 +365,8 @@ func TestReorder_NoOpWritesNothing(t *testing.T) {
 	}
 }
 
-// Папок может быть больше лимита создания (вступление по ссылке лимит не
-// проверяет): полный список из 11 папок и «Все чаты» переставляется.
+// Папок может быть больше лимита создания (старые данные, гонка Count/Create):
+// полный список из 11 папок и «Все чаты» переставляется.
 func TestReorder_MoreThanCreateLimit(t *testing.T) {
 	uc, _, _ := setup()
 	uc.repo.(*fakeRepo).nextID = 100

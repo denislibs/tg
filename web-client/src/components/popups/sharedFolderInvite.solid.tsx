@@ -23,8 +23,9 @@
 //     `setSelectedFolderId`, `stores/folders.ts:201-203`) по `updateDialogFilter` ответа.
 //     Наша ручка отвечает `boolTrue` без номера папки: перечитываем папки и диалоги
 //     (`loadFolders({overwrite: true})`), вкладку не переключаем.
-//  5. Лимит папок (`DIALOG_FILTERS_TOO_MUCH` → `showLimitPopup('folders')`) — попапа
-//     лимитов у нас нет, отказ оставляет попап открытым (кнопка снова активна).
+//  5. Лимит папок (`DIALOG_FILTERS_TOO_MUCH` → `showLimitPopup('folders')`, :212-216) —
+//     попапа лимитов у нас нет: вместо него тост `LimitReached`, как в `editFolder.solid.tsx`
+//     (расхождение 4). Дальше, как у оригинала, попап закрывается без перечитывания папок.
 import { createSignal, onCleanup } from 'solid-js'
 import PopupElement, { createPopup } from '@components/popups/indexTsx.solid'
 import AppSelectPeers from '@components/appSelectPeers.solid'
@@ -36,6 +37,7 @@ import I18n, { i18n, _i18n } from '@lib/langPack'
 import type { Managers } from '@/client/bootstrap'
 import type { FolderInvitePreview } from '@core/managers/foldersManager'
 import { loadFolders } from '@stores/foldersStore'
+import { toastNew } from '@components/toast'
 
 const CLASS_NAME = 'popup-chatlist-invite'
 
@@ -135,7 +137,18 @@ export default function showSharedFolderInvitePopup(options: {
 
   // resolving closes the popup; throwing leaves it open with the button live again
   const onConfirm = async() => {
-    await managers.folders.joinInvite(slug, [...selector.selected] as PeerId[])
+    try {
+      await managers.folders.joinInvite(slug, [...selector.selected] as PeerId[])
+    } catch(error) {
+      // через границу воркера отказ приходит обычным `Error` с полем `type`
+      if((error as ApiError).type !== 'DIALOG_FILTERS_TOO_MUCH') {
+        throw error
+      }
+
+      toastNew({ langPackKey: 'LimitReached' }) // расхождение 5
+      return
+    }
+
     // расхождение 4
     // список догонит следующий refresh
     void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true })).catch(() => {})
