@@ -29,6 +29,7 @@ function fakeMessages() {
       return byChat.get(peerId)?.get(seq)
     },
     flushHistoryWindows() {},
+    cacheUnpinAll: () => [],
   }
 }
 

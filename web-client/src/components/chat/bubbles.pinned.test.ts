@@ -78,7 +78,7 @@ describe('ChatBubbles — экран закрепов (ChatType.Pinned)', () => 
     await (await feed.setPeer())?.promise
     await settle()
 
-    expect(listPins).toHaveBeenCalledWith(PEER)
+    expect(listPins).toHaveBeenCalledWith(PEER, undefined)
     expect(renderedMids(feed)).toEqual([3, 5, 9])
     expect(mirrorWindow(KEY)?.map((m) => m.id)).toEqual([3, 5, 9])
     expect(mirrorWindow(String(PEER))).toBeUndefined()

@@ -68,6 +68,12 @@ export function registerRefetchSubscriber(managers: Managers): void {
   rootScope.addEventListener('peer_pinned_deleted', ({ peerId, mids, pinned }) => {
     if (pinned.length || hasPinnedMessageCached(peerId, mids)) onPinnedMessagesUpdate(peerId, mids, false)
   })
+  // «Открепить все» (воркер, `chats.unpinAllMessages`): tweb :6886-6887 — сброс кэша закрепов
+  // (`flushPinnedMessagesCache`, скрытие плашки не трогается) и `peer_pinned_messages {unpinAll}`.
+  rootScope.addEventListener('peer_unpinned_all', ({ peerId, threadId }) => {
+    flushPinnedMessagesCache(peerId)
+    rootScope.dispatchEventSingle('peer_pinned_messages', { peerId, threadId, unpinAll: true })
+  })
   // Очистка истории: tweb `flushStoragesByPeerId` сбрасывает только кэш закрепов (:6747,
   // `flushPinnedMessagesCache` :6800) — скрытие плашки не трогает. Плашка и экран закрепов
   // перечитывают список по `peer_pinned_messages`, поэтому объявляем его без номеров

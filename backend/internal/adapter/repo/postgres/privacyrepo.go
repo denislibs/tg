@@ -447,8 +447,13 @@ func (r *PrivacyRepo) PeerFullState(ctx context.Context, viewerID, targetID int6
 		        JOIN chat_members b ON b.chat_id = a.chat_id AND b.user_id = $2
 		        JOIN chats c ON c.id = a.chat_id AND c.type = 'group'
 		       WHERE a.user_id = $1) END,
-		   COALESCE((SELECT pm.seq FROM pinned_messages p JOIN messages pm ON pm.id = p.msg_id
-		              WHERE p.chat_id = pc.chat_id AND pm.deleted_at IS NULL
+		   COALESCE((SELECT pm.seq FROM (
+		               SELECT msg_id, pinned_at FROM pinned_messages WHERE chat_id = pc.chat_id
+		               UNION ALL
+		               SELECT msg_id, pinned_at FROM pinned_messages_oneside
+		                WHERE chat_id = pc.chat_id AND user_id = $1
+		             ) p JOIN messages pm ON pm.id = p.msg_id
+		              WHERE `+messageVisibleTo("pm", "$1")+`
 		              ORDER BY p.pinned_at DESC LIMIT 1), 0),
 		   (SELECT count(*) FROM saved_star_gifts sg
 		     WHERE sg.owner_id = $2 AND NOT sg.converted AND ($1 = $2 OR NOT sg.hidden)),

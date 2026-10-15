@@ -148,11 +148,11 @@ func channelDeletePayload(channelID int64, seqs []int64) map[string]any {
 
 // channelPinPayload — тело закрепления в канале (updatePinnedChannelMessages);
 // «открепили» — отсутствие бита.
-func channelPinPayload(channelID, seq int64, pinned bool) map[string]any {
+func channelPinPayload(channelID int64, seqs []int64, pinned bool) map[string]any {
 	p := map[string]any{
 		"_":          domain.UpdatePinnedChannelMessagesTag,
 		"channel_id": channelID,
-		"messages":   []int64{seq},
+		"messages":   seqs,
 		"pts_count":  domain.PtsCountOne,
 	}
 	if pinned {

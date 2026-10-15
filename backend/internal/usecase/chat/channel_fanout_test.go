@@ -295,7 +295,7 @@ func TestChannelEditDeletePin_ChannelJournal(t *testing.T) {
 	if _, err := e.i.EditMessage(ctx, e.ch, post.ID, 7, "правка", nil); err != nil {
 		t.Fatalf("EditMessage: %v", err)
 	}
-	if err := e.i.SetPin(ctx, e.ch, post.ID, 7, true); err != nil {
+	if _, err := e.i.SetPin(ctx, e.ch, post.ID, 7, true, PinOpts{}); err != nil {
 		t.Fatalf("SetPin: %v", err)
 	}
 	if err := e.i.DeleteMessage(ctx, e.ch, post.ID, 7, true); err != nil {

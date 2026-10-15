@@ -111,7 +111,7 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 		}
 
 		pub.reset()
-		if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+		if _, err := in.SetPin(ctx, chatID, msg.ID, a, true, PinOpts{}); err != nil {
 			t.Fatalf("SetPin: %v", err)
 		}
 		// Именно кадр закрепления: следом за ним летит ещё и служебное
@@ -129,7 +129,7 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 		}
 
 		pub.reset()
-		if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+		if _, err := in.SetPin(ctx, chatID, msg.ID, a, false, PinOpts{}); err != nil {
 			t.Fatalf("SetPin(false): %v", err)
 		}
 		unpinned := frameOfType(t, pub, b, "pin_message")
