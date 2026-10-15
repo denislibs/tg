@@ -104,6 +104,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   const existing = await managers().messages.groupCallParticipants(peerId).catch(() => [] as number[])
   store().setJoined(peerId)
   store().setMedia(true, withVideo)
+  const gen = callGen
   void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
   // новичок предлагает соединение каждому сидящему
   const meId = useChatsStore.getState().meId
@@ -113,7 +114,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
     if (!pc) return // звонок убран (rejected / выход), пока шли офферы
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    if (store().peerId !== peerId) return
+    if (gen !== callGen) return
     signal(userId, { sdp: sdpJSON(pc.localDescription) })
   }
   broadcastMediaState()
@@ -191,12 +192,14 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   const { t, d } = evt
   if (t === 'group_call_update') {
     // список идущих звонков — для баннера Join у всех членов чата
-    store().setActive(d.peer_id, d.participants ?? [])
     if (d.action === 'rejected') {
-      // кадр адресован только отказанному, но user_id сверяем: чужой не трогает наш звонок
+      // Отказ списка участников не несёт (причина могла быть и сбоем хранилища, а
+      // звонок — идти): activeByChat не трогаем. Кадр адресован только отказанному,
+      // user_id сверяем: чужой не трогает наш звонок.
       if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id)
       return
     }
+    store().setActive(d.peer_id, d.participants ?? [])
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }

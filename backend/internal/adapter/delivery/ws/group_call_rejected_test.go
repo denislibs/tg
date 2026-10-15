@@ -26,7 +26,7 @@ func TestGroupCallRejectedFrame(t *testing.T) {
 	if f.T != "group_call_update" || f.D.PeerID != -1001 || f.D.UserID != 8 || f.D.Action != "rejected" {
 		t.Fatalf("кадр отказа = %s", raw)
 	}
-	if f.D.Participants == nil {
-		t.Fatalf("participants = null, want []: %s", raw)
+	if f.D.Participants != nil {
+		t.Fatalf("в отказе есть participants (клиент затёр бы список идущего звонка): %s", raw)
 	}
 }

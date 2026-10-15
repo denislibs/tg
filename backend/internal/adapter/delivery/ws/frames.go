@@ -143,12 +143,13 @@ type peerData struct {
 
 // groupCallRejectedFrame — ответ ОДНОМУ соединению на group_call_join, на который
 // сервер не пустил (Б-9): клиент откатывает локальный звонок без group_call_leave.
-// peer_id — тот, что прислал клиент (ключ глазами получателя); participants
-// пустой, но не null: множество было пусто в момент отказа.
+// peer_id — тот, что прислал клиент (ключ глазами получателя). Списка участников
+// нет: отказ бывает и при сбое хранилища, когда звонок идёт — клиент activeByChat
+// не трогает.
 func groupCallRejectedFrame(peer domain.PeerID, userID int64) []byte {
 	f, _ := json.Marshal(map[string]any{
 		"t": "group_call_update",
-		"d": map[string]any{"peer_id": peer, "user_id": userID, "action": "rejected", "participants": []int64{}},
+		"d": map[string]any{"peer_id": peer, "user_id": userID, "action": "rejected"},
 	})
 	return f
 }

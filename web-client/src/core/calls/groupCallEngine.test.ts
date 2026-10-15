@@ -91,7 +91,7 @@ describe('groupCallEngine: отказ входа (action = rejected)', () => {
   })
 
   const rejected = (peer: number, user: number) => ({
-    t: 'group_call_update', d: { peer_id: peer, user_id: user, action: 'rejected' as const, participants: [] },
+    t: 'group_call_update', d: { peer_id: peer, user_id: user, action: 'rejected' as const },
   })
 
   it('убирает локальный звонок, останавливает треки, не шлёт group_call_leave, показывает тост', async () => {
@@ -106,6 +106,13 @@ describe('groupCallEngine: отказ входа (action = rejected)', () => {
     expect(engine.getLocalStream()).toBeNull()
     expect(sendCallFrame).not.toHaveBeenCalled()
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+  })
+
+  it('отказ не затирает список участников идущего звонка', async () => {
+    store.useGroupCallStore.getState().setActive(PEER, [2, 3])
+    await engine.joinGroupCall(PEER)
+    engine.handleGroupCallFrame(rejected(PEER, 1))
+    expect(store.useGroupCallStore.getState().activeByChat[PEER]).toEqual([2, 3])
   })
 
   it('отказ чужого пользователя или другого чата звонок не трогает', async () => {
