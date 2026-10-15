@@ -774,7 +774,7 @@ export function newDialogsManager({ rest, getUpdatesPts, isLiveSynced, addChanne
           if (gen !== sessionGen) return
           // tweb :6313-6319: `currentState.pts && currentState.pts !== state.pts`.
           const cursorPts = getUpdatesPts?.() ?? 0
-          if (!cursorPts || cursorPts === r.state.pts || !(isLiveSynced?.() ?? false) || attempt >= PEER_DIALOGS_PTS_RETRIES) break
+          if (!cursorPts || !(isLiveSynced?.() ?? false) || cursorPts === r.state.pts || attempt >= PEER_DIALOGS_PTS_RETRIES) break
           await pause(500)
           if (gen !== sessionGen) return
         }

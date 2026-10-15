@@ -104,9 +104,12 @@ describe('createWorkerCore() — проводка сверки pts для messag
 // перечитывалась бы по кругу). Гоним по одному кадру каждого конструктора каталога
 // (кроме канальных — у них свой курсор) через настоящий `onFrame` соединения:
 // маршрутизация `workerCore.ts` (развилка канальных, конверт против тела,
-// воронка) входит в проверку, в отличие от теста самой воронки.
+// воронка) входит в проверку, в отличие от теста самой воронки. Сервер кладёт pts
+// ЛИБО в тело (конструктор объявляет параметр), ЛИБО в конверт (backend/internal/
+// usecase/chat/frame.go:64-69), поэтому каждый кадр гоним дважды — с pts только в
+// конверте и только в теле. `folder_update` — кадр журнала без конструктора.
 describe('createWorkerCore() — каждый кадр пер-юзерного журнала доводит курсор до своего pts (Ф7-Ж)', () => {
-  it('onFrame(конструктор, {pts}, envPts) → cursor.pts === pts для всех конструкторов каталога', async () => {
+  it.each([['pts в конверте', true], ['pts в теле', false]])('onFrame, %s → cursor.pts === pts для всех конструкторов каталога и folder_update', async (_name, inEnvelope) => {
     const core = createWorkerCore()
     core.start()
     const cursor = capturedSyncDeps!.cursor
@@ -135,11 +138,14 @@ describe('createWorkerCore() — каждый кадр пер-юзерного �
     expect(keys.length).toBeGreaterThan(30)
     const stuck: string[] = []
     let pts = 0
-    for (const key of keys) {
+    // updateNewMessage объявляет pts в теле (frame.go) и читает его оттуда: сервер не
+    // кладёт его в конверт, воркер конверт для него и не читает.
+    for (const key of [...keys, 'folder_update'].filter((k) => !(inEnvelope && k === 'updateNewMessage'))) {
       pts += 1
       // Минимальное тело: обработчики владельцев терпят неполный кадр, нас
       // интересует только арифметика курсора на пути onFrame → воронка.
-      try { capturedConnDeps!.onFrame(key, { _: key, pts, ...bodies[key] }, pts) } catch (e) { stuck.push(`throw ${key}: ${String(e).slice(0, 80)}`) }
+      const body = key === 'folder_update' ? {} : { _: key, ...bodies[key] }
+      try { inEnvelope ? capturedConnDeps!.onFrame(key, body, pts) : capturedConnDeps!.onFrame(key, { ...body, pts }) } catch (e) { stuck.push(`throw ${key}: ${String(e).slice(0, 80)}`) }
       if (cursor.get().pts !== pts) { stuck.push(`${key}: cursor ${cursor.get().pts}, ждали ${pts}`); pts = cursor.get().pts }
     }
     expect(stuck).toEqual([])

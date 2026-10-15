@@ -367,7 +367,8 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 	// state.pts < курсора клиента — клиент повторит запрос (tweb :6313-6319), а не
 	// примет возможно устаревшую строку за свежую. Это не гарантия свежести:
 	// строки идут из кэша диалогов (ListDialogs, TTL 15 с, сброс после коммита),
-	// и в окне между коммитом и сбросом они могут отстать от state.
+	// и они могут отстать от state: в окне между коммитом и сбросом, а также до конца TTL,
+	// если параллельное чтение, начатое до коммита, положит старый снимок после сброса.
 	state, err := h.svc.UpdatesState(r.Context(), h.meID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not get dialogs")
