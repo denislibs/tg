@@ -35,11 +35,12 @@ func (f *fakeStars) Balance(_ context.Context, userID int64) (int64, error) {
 	return f.bal[userID], nil
 }
 
-func (f *fakeStars) TakeUpTo(_ context.Context, userID, max int64) (int64, error) {
+func (f *fakeStars) TakeUpTo(_ context.Context, userID, max int64) (int64, int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.bal[userID] -= min(f.bal[userID], max)
-	return f.bal[userID], nil
+	taken := min(f.bal[userID], max)
+	f.bal[userID] -= taken
+	return taken, f.bal[userID], nil
 }
 
 func (f *fakeStars) AddBalance(_ context.Context, userID, delta int64) (int64, error) {
@@ -295,5 +296,49 @@ func TestGiftAnonymity(t *testing.T) {
 	otherView, _ := in.stars.GiftInfo(ctx, savedID, 3)
 	if otherView.FromID != nil {
 		t.Fatal("outsider must not see anonymous sender")
+	}
+}
+
+// Возврат за отложенное платное сообщение не печатает звёзды: автору
+// возвращается ровно то, что снято с получателя. Цепочка сообщника: автор платит
+// владельцу 1000, владелец «тратит» полученное (подарок автору, конвертация 1:1) -
+// автор снимает отложенное и не получает вторые 1000.
+func TestRefundScheduled_ReturnsOnlyWhatWasTakenFromOwner(t *testing.T) {
+	ctx := context.Background()
+	const author, owner = int64(1), int64(2)
+	row := domain.ScheduledMessage{SenderID: author, PaidTo: owner, PaidStars: 1000}
+
+	// Владелец потратил всё, автор получил 1000 обратно через подарок -> 1000 на балансе.
+	f := newFakeStars()
+	f.bal[author], f.bal[owner] = 1000, 0
+	i := &Interactor{stars: f}
+	balances := map[int64]int64{}
+	if err := i.refundScheduled(ctx, row, balances); err != nil {
+		t.Fatal(err)
+	}
+	if f.bal[author] != 1000 || f.bal[owner] != 0 {
+		t.Fatalf("после возврата автор=%d владелец=%d; want 1000/0 (без удвоения)", f.bal[author], f.bal[owner])
+	}
+
+	// Владелец потратил часть: возвращается остаток.
+	f = newFakeStars()
+	f.bal[author], f.bal[owner] = 0, 400
+	i = &Interactor{stars: f}
+	if err := i.refundScheduled(ctx, row, map[int64]int64{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.bal[author] != 400 || f.bal[owner] != 0 {
+		t.Fatalf("частичный возврат: автор=%d владелец=%d; want 400/0", f.bal[author], f.bal[owner])
+	}
+
+	// Владелец не тратил: полный возврат.
+	f = newFakeStars()
+	f.bal[author], f.bal[owner] = 0, 1000
+	i = &Interactor{stars: f}
+	if err := i.refundScheduled(ctx, row, map[int64]int64{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.bal[author] != 1000 || f.bal[owner] != 0 {
+		t.Fatalf("полный возврат: автор=%d владелец=%d; want 1000/0", f.bal[author], f.bal[owner])
 	}
 }

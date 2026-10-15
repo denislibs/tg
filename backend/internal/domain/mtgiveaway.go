@@ -68,7 +68,8 @@ type MessageMediaGiveaway struct {
 	Quantity int `json:"quantity"`
 	// Months — flags.4?int: срок premium-подписки. Едет только у premium-приза.
 	Months int `json:"months,omitempty"`
-	// Stars — flags.5?long: звёзд каждому победителю. Едет только у ⭐-приза.
+	// Stars — flags.5?long: ОБЩАЯ сумма розыгрыша (tweb chat/giveaway.tsx:199).
+	// Едет только у ⭐-приза.
 	Stars int64 `json:"stars,omitempty"`
 	// UntilDate — обязательный: когда розыгрыш состоится, секунды эпохи.
 	UntilDate int `json:"until_date"`
@@ -144,13 +145,22 @@ func (g GiveawayInfo) ToMedia(launchSeq int64) MessageMedia {
 		setPFlag(&out.PFlags, "winners_are_visible", true)
 		return out
 	}
+	// Итоги описывают состоявшееся: winners_count - сколько победителей на самом
+	// деле, unclaimed_count - сколько мест осталось без победителя (tweb
+	// chat/giveaway.tsx:220-223, :52), stars - сколько звёзд роздано победителям
+	// (остаток вклада вернулся создателю). Без победителей stars остаётся общей
+	// суммой: иначе конструктор перестал бы быть звёздным.
+	winners := len(g.WinnerIDs)
+	if stars > 0 && winners > 0 && g.WinnersCount > 0 {
+		stars = stars / int64(g.WinnersCount) * int64(winners)
+	}
 	return &MessageMediaGiveawayResults{
 		Underscore:     MessageMediaGiveawayResultsTag,
 		ID:             g.ID,
 		ChannelID:      g.PeerID.ToChatID(),
 		LaunchMsgID:    launchSeq,
-		WinnersCount:   g.WinnersCount,
-		UnclaimedCount: 0,
+		WinnersCount:   winners,
+		UnclaimedCount: max(g.WinnersCount-winners, 0),
 		Winners:        orEmpty(g.WinnerIDs),
 		Months:         months,
 		Stars:          stars,
@@ -225,7 +235,8 @@ type GiveawayStateResults struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	StartDate  int             `json:"start_date"`
-	// StarsPrize — flags.4?long: звёзд победителю. Едет только у ⭐-приза.
+	// StarsPrize — flags.4?long: сколько звёзд выиграл зритель. Едет только у
+	// победителя ⭐-розыгрыша.
 	StarsPrize int64 `json:"stars_prize,omitempty"`
 	// FinishDate — обязательный: когда розыгрыш состоялся.
 	FinishDate   int `json:"finish_date"`
@@ -250,13 +261,18 @@ func (g GiveawayInfo) ToState() GiveawayState {
 		setPFlag(&out.PFlags, "participating", g.Participating)
 		return out
 	}
-	_, stars := g.prize()
+	// stars_prize - личный приз: сколько звёзд выиграл ЗРИТЕЛЬ (схема TL); у
+	// проигравшего его нет.
+	var prize int64
+	if _, stars := g.prize(); g.IWon && stars > 0 && g.WinnersCount > 0 {
+		prize = stars / int64(g.WinnersCount)
+	}
 	out := &GiveawayStateResults{
 		Underscore:   GiveawayInfoResultsTag,
 		StartDate:    int(g.StartDate / 1000),
-		StarsPrize:   stars,
+		StarsPrize:   prize,
 		FinishDate:   int(g.UntilDate / 1000),
-		WinnersCount: g.WinnersCount,
+		WinnersCount: len(g.WinnerIDs),
 		Participants: g.Participants,
 	}
 	setPFlag(&out.PFlags, "winner", g.IWon)

@@ -11,8 +11,8 @@ type Giveaway struct {
 	CreatorID int64
 	PrizeKind string // "premium" | "stars"
 	Months    int    // срок premium-подписки (PrizeKind == "premium")
-	Stars     int64  // звёзд каждому победителю (PrizeKind == "stars")
-	// Deposit — внесённый создателем вклад (Stars × WinnersCount): из него платятся
+	Stars     int64  // ОБЩАЯ сумма розыгрыша звёзд (PrizeKind == "stars"); победителю - Stars / WinnersCount
+	// Deposit — внесённый создателем вклад (= Stars): из него платятся
 	// призы и возвращаются неразданные места. 0 у премиум-розыгрыша.
 	Deposit      int64
 	WinnersCount int
