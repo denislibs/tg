@@ -652,13 +652,17 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     await dragRow(tab, 1, 0)
 
     expect(folders.updateOrder).toHaveBeenCalledWith([BOTS.id, WORK.id])
-    // ответа ещё нет — модель прежняя, строки на прежних местах
+    // ответа ещё нет — модель прежняя, а строка остаётся на месте жеста (временный порядок вида)
     expect(stateIds()).toEqual([WORK.id, BOTS.id])
-    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+    expect(titles(tab)).toEqual(['Боты', 'Работа'])
 
     reply.finish()
     await vi.waitFor(() => expect(stateIds()).toEqual([BOTS.id, WORK.id]))
+    const rowsAfter = [...tab.scrollable.container.querySelectorAll('.row-sortable')]
+    await settle()
     expect(titles(tab)).toEqual(['Боты', 'Работа'])
+    // ответ не пересоздаёт строки: порядок вида совпал с моделью
+    expect([...tab.scrollable.container.querySelectorAll('.row-sortable')]).toEqual(rowsAfter)
 
     // следующая перестановка модели (кадр с другого устройства) ведёт строки корректно
     frame([WORK.id, BOTS.id])
@@ -699,15 +703,18 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
     expect(titles(tab)).toEqual(['Работа', 'Боты', 'All Chats'])
   })
 
-  it('отказ сервера: порядок не применяется, откатов и перечитывания нет (как у tweb)', async() => {
+  it('отказ сервера: порядок не применяется, строки возвращаются, перечитывания списка нет', async() => {
     setPremium(false)
     const reply = deferUpdate()
     const tab = await openList()
 
     await dragRow(tab, 1, 0)
+    expect(titles(tab)).toEqual(['Боты', 'Работа'])
     reply.fail(new Error('500'))
     await settle()
 
+    // откат только при отказе: строки вернулись на прежние места
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
     expect(stateIds()).toEqual([WORK.id, BOTS.id])
     expect(folders.list).not.toHaveBeenCalled()
     expect(tab.scrollable.container.querySelector('.row-sortable')).not.toBeNull()

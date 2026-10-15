@@ -20,18 +20,17 @@
  *     `moveInDom: false`: список рисует `For` из модели, и его разностный проход
  *     по руками сдвинутому DOM ставит строки неверно (так сказано у самого
  *     `Sortable`). У tweb строку двигает сам `Sortable`, а порядок в хранилище
- *     появляется по ответу (`filters.ts:424-433`) — здесь строка встаёт на место
- *     тоже по ответу, до него она возвращается на прежнее (видимая разница на
- *     время запроса), и на это время новый жест закрыт (`enabled`): `order`
- *     собирается из модели, которая до ответа прежняя. `onSort` собирает `order` из строк (`:355-363`), у
- *     не-премиум `0` вырезается (`:365-367`), `foldersStore.updateOrder` шлёт
- *     запрос и только ПО ОТВЕТУ применяет порядок; отказ порядка не меняет.
- *     Строка «Все чаты» (`:108-110`, `toggleAllChats` `:200-203`) есть только у
- *     премиума, стоит на месте `appState.allChatsPos` (решение В-6) и несёт в
- *     `order` id `0`. События `filter_order` (`:325-331`) нет — порядок приходит
- *     кадром `updateDialogFilterOrder` в `foldersStore.applyOrder`, `For` двигает
- *     строки сам. Подпись «Все чаты» — число чатов всех не-архивных диалогов
- *     (`getFolderDialogs(0)`, `:91-97`).
+ *     появляется по ответу (`filters.ts:424-433`). У нас место жеста между
+ *     жестом и ответом держит временный порядок только для вида (`viewOrder`),
+ *     модель меняется по ответу (`foldersStore.updateOrder`), при отказе строки
+ *     возвращаются; на время запроса новый жест закрыт (`enabled`). `onSort`
+ *     собирает `order` из строк (`:355-363`), у не-премиум `0` вырезается
+ *     (`:365-367`). Строка «Все чаты» (`:108-110`, `toggleAllChats`
+ *     `:200-203`) есть только у премиума, стоит на месте `appState.allChatsPos`
+ *     (решение В-6) и несёт в `order` id `0`. События `filter_order` (`:325-331`)
+ *     нет — порядок приходит кадром `updateDialogFilterOrder` в
+ *     `foldersStore.applyOrder`, `For` двигает строки сам. Подпись «Все чаты» —
+ *     число чатов всех не-архивных диалогов (`getFolderDialogs(0)`, `:91-97`).
  *  2. (О-20) Секции «Рекомендованные папки» (`FilterRecommended`, `:215-255`,
  *     `:398-402`) нет: нет `getSuggestedDialogFilters`. Прежний React-экран
  *     рисовал вместо неё два своих пресета — выдумка, в порт не перенесена.
@@ -61,7 +60,7 @@
  *     SIMD — статичный кадр (`renderStaticAssetFallback`), а отказ загрузки
  *     коллектору не отдаётся — иначе вкладка не открылась бы вовсе.
  */
-import { createMemo, For, onMount, Show } from 'solid-js'
+import { createMemo, createSignal, For, onMount, Show } from 'solid-js'
 import { i18n, join, type LangPackKey } from '@lib/langPack'
 import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import lottieLoader from '@lib/lottie/lottieLoader'
@@ -161,13 +160,26 @@ const ChatFolders = () => {
   )
   // Строки списка: папки + «Все чаты» (`undefined`) на сохранённом месте — только
   // у премиума (tweb `toggleAllChats` `:200-203`).
-  const rows = createMemo<(Folder | undefined)[]>(() => {
+  const modelRows = createMemo<(Folder | undefined)[]>(() => {
     const list = folders()
     if(!isPremium()) return list
     const at = Math.min(allChatsPos(), list.length)
     return [...list.slice(0, at), undefined, ...list.slice(at)]
   })
-  const foldersHidden = createMemo(() => !rows().length)
+  // Порядок строк, который показан между жестом и ответом сервера (только вид:
+  // модель меняется по ответу). У tweb строка остаётся там, куда её поставил
+  // `Sortable` (он двигает DOM сам); у нас список рисует `For`, поэтому место
+  // жеста держит этот временный порядок. Снимается, когда запрос завершён:
+  // при успехе модель уже совпадает с ним, при отказе строки возвращаются.
+  const [viewOrder, setViewOrder] = createSignal<number[]>()
+  const rows = createMemo(() => {
+    const base = modelRows()
+    const view = viewOrder()
+    if(!view || view.length !== base.length) return base
+    const byId = new Map(base.map((filter) => [filter?.id ?? ALL_FOLDER_ID, filter]))
+    return view.every((id) => byId.has(id)) ? view.map((id) => byId.get(id)) : base
+  })
+  const foldersHidden = createMemo(() => !modelRows().length)
   let list!: HTMLDivElement
   let pending = false
 
@@ -217,9 +229,8 @@ const ChatFolders = () => {
       list,
       middleware: tab.middlewareHelper.get(),
       moveInDom: false,
-      // Пока ответа нет, модель прежняя, и следующий `order` собрался бы от неё,
-      // затерев первую перестановку (у tweb его собирает из DOM, который Sortable
-      // уже сдвинул) — на время запроса жест закрыт (расхождение 1).
+      // Жест закрыт на время запроса: два запроса подряд могли бы лечь на сервер
+      // не в порядке действий (у tweb такой защиты нет, расхождение 1).
       enabled: () => !pending,
       onSort: (_prevIdx, _newIdx, { from, to }) => {
         const order = rows().map((filter) => filter?.id ?? ALL_FOLDER_ID)
@@ -228,9 +239,10 @@ const ChatFolders = () => {
         const managers = tab.managers!
         const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
         pending = true
+        setViewOrder(order)
         updateOrder(managers, sent)
         .catch((err) => { console.error('[folders] updateOrder', err) })
-        .finally(() => { pending = false })
+        .finally(() => { pending = false; setViewOrder(undefined) })
       },
       scrollable: tab.scrollable,
     })
