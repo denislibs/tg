@@ -36,9 +36,7 @@ var allowedPrivacy = map[string]bool{"everyone": true, "contacts": true, "close"
 // между активациями. past — окно ретро-скрытия недавних просмотров при
 // активации, future — окно «невидимого» просмотра вперёд.
 const (
-	stealthPastPeriod   = 5 * time.Minute
-	stealthFuturePeriod = 25 * time.Minute
-	stealthCooldown     = 1 * time.Hour
+	stealthCooldown = 1 * time.Hour
 )
 
 // Service is the stories application logic: posting (with media-ownership,
@@ -595,7 +593,7 @@ func (s *Service) StealthState(ctx context.Context, userID int64) (domain.Stealt
 }
 
 // ActivateStealth turns on stealth mode for userID: views are hidden for the
-// next stealthFuturePeriod and recent views (last stealthPastPeriod) are purged.
+// next domain.StealthFuturePeriod and recent views (last domain.StealthPastPeriod) are purged.
 // It fails with domain.ErrConflict while a cooldown is still in effect and
 // domain.ErrUnavailable when no stealth store is configured.
 func (s *Service) ActivateStealth(ctx context.Context, userID int64) (domain.StealthMode, error) {
@@ -611,14 +609,14 @@ func (s *Service) ActivateStealth(ctx context.Context, userID int64) (domain.Ste
 		return domain.StealthMode{}, domain.ErrConflict
 	}
 	mode := domain.StealthMode{
-		ActiveUntil:   now.Add(stealthFuturePeriod),
+		ActiveUntil:   now.Add(domain.StealthFuturePeriod),
 		CooldownUntil: now.Add(stealthCooldown),
 	}
 	if err := s.stealth.Set(ctx, userID, mode); err != nil {
 		return domain.StealthMode{}, err
 	}
-	// Past-эффект: ретро-удаляем просмотры зрителя за последние stealthPastPeriod.
-	_ = s.repo.PurgeRecentViews(ctx, userID, now.Add(-stealthPastPeriod))
+	// Past-эффект: ретро-удаляем просмотры зрителя за последние domain.StealthPastPeriod.
+	_ = s.repo.PurgeRecentViews(ctx, userID, now.Add(-domain.StealthPastPeriod))
 	return mode, nil
 }
 

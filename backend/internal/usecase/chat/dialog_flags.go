@@ -10,10 +10,6 @@ import (
 // пер-юзерные флаги членства; изменения рассылаются на устройства владельца
 // фреймами dialog_pin / dialog_archive (как draft_update).
 
-// maxPinnedDialogs — лимит закреплённых в основном списке (tweb: «Sorry, you
-// can only pin 5 chats to the top»).
-const maxPinnedDialogs = 5
-
 // PinDialog закрепляет/открепляет диалог вверху списка.
 func (i *Interactor) PinDialog(ctx context.Context, chatID, userID int64, pinned bool) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
@@ -28,7 +24,7 @@ func (i *Interactor) PinDialog(ctx context.Context, chatID, userID int64, pinned
 		if err != nil {
 			return err
 		}
-		if n >= maxPinnedDialogs {
+		if n >= domain.MaxPinnedDialogs {
 			return domain.ErrPinLimit
 		}
 	}
