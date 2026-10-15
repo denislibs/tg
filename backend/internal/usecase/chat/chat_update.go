@@ -50,27 +50,44 @@ func chatFullSnapshotPayload(tag string, peer domain.PeerID, c domain.ChatRecord
 // кадром. Снимок viewer-agnostic (viewerID=0): один payload всем и в лог.
 // Best-effort — метаданные косметические, ошибка рассылки не должна валить мутацию.
 func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
+	_ = i.publishChatSnapshot(ctx, chatID)
+}
+
+// publishChatSnapshot — publishChatUpdate с ошибкой: отложенный снимок звонка
+// (FlushDirtyCallSnapshots) снимает запись из очереди только после успеха.
+// domain.ErrNotFound — чата уже нет.
+func (i *Interactor) publishChatSnapshot(ctx context.Context, chatID int64) error {
 	if i.groups == nil {
-		return
+		return nil
 	}
 	card, err := i.groups.Card(ctx, chatID, 0)
 	if err != nil {
-		return
+		return err
 	}
+	// Снимок несёт channel, а он есть только у группы и канала (у личного чата
+	// пир — человек, и `channel` с внутренним ключом строки выдавал бы наш id).
+	if !hasChannelBody(card.Type) {
+		return nil
+	}
+	// Состояние звонка общее для всех зрителей, поэтому едет и в снимке без
+	// зрителя (min): клиент берёт из min общее (peersManager.mergeApiChat), и без
+	// флагов любое переименование гасило бы иконку идущего звонка.
+	recs := []domain.ChatRecord{card}
+	i.FillCallState(ctx, recs)
+	card = recs[0]
 	// Канал: один channel-broadcast (O(1)) по channel-конверту вместо N+1 fan-out
 	// в per-user лог каждого подписчика. Подписчики получают кадр живым, остальные
 	// добирают снимок при открытии через /channels/{id}/difference. Группа —
 	// прежний per-user путь (у групп нет канального курсора/топика).
 	if card.Type == domain.ChatTypeChannel {
 		// Ключ канала один на всех подписчиков — пер-зрительского в нём нет.
-		_ = i.logAndPublishChannel(ctx, chatID, "chat_update",
+		return i.logAndPublishChannel(ctx, chatID, "chat_update",
 			channelUpdatePayload(domain.ToPeerID(chatID, true), card))
-		return
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
-		return
+		return err
 	}
-	_ = i.logAndPublishPerPeer(ctx, chatID, members, "chat_update",
+	return i.logAndPublishPerPeer(ctx, chatID, members, "chat_update",
 		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, card) })
 }

@@ -8,8 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -512,31 +510,11 @@ func TestSecretChat_BlockAndPrivacy(t *testing.T) {
 
 // --- Реле сигналинга звонков (A5-04, A5-32, A2-09) ---
 
-type fakeGroupCalls struct {
-	mu    sync.Mutex
-	parts map[int64][]int64
-}
-
-func (f *fakeGroupCalls) Join(_ context.Context, chatID, userID int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if !slices.Contains(f.parts[chatID], userID) {
-		f.parts[chatID] = append(f.parts[chatID], userID)
-	}
-	return nil
-}
-func (f *fakeGroupCalls) Leave(context.Context, int64, int64) error { return nil }
-func (f *fakeGroupCalls) Participants(_ context.Context, chatID int64) ([]int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.parts[chatID]), nil
-}
-
 func TestGroupCallSignal_OnlyBetweenParticipants(t *testing.T) {
 	in, s := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
-	in.SetGroupCalls(&fakeGroupCalls{parts: map[int64][]int64{}})
+	in.SetGroupCalls(newFakeCallStore(newFakeClock()))
 	ctx := context.Background()
 	s.seedChat(600, domain.ChatTypeGroup, 1, 2, 3)
 	if _, err := in.JoinGroupCall(ctx, 600, 1); err != nil {

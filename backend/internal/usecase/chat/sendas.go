@@ -68,6 +68,7 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 	if e != nil {
 		return nil, e
 	}
+	i.FillCallState(ctx, cards)
 	for _, c := range cards {
 		ch := c.ToChannel()
 		out = append(out, domain.SendAsPeerRecord{Peer: domain.NewPeerChannel(c.ID), Chat: &ch})

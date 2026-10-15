@@ -163,21 +163,23 @@ type memGroupCalls struct {
 	byID map[int64][]int64
 }
 
-func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) error {
+func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	first := len(m.byID[chatID]) == 0
 	for _, id := range m.byID[chatID] {
 		if id == userID {
-			return nil
+			return false, nil
 		}
 	}
 	m.byID[chatID] = append(m.byID[chatID], userID)
-	return nil
+	return first, nil
 }
 
-func (m *memGroupCalls) Leave(_ context.Context, chatID, userID int64) error {
+func (m *memGroupCalls) Leave(_ context.Context, chatID, userID int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	had := len(m.byID[chatID]) > 0
 	kept := m.byID[chatID][:0]
 	for _, id := range m.byID[chatID] {
 		if id != userID {
@@ -185,13 +187,37 @@ func (m *memGroupCalls) Leave(_ context.Context, chatID, userID int64) error {
 		}
 	}
 	m.byID[chatID] = kept
-	return nil
+	return had && len(kept) == 0, nil
 }
 
 func (m *memGroupCalls) Participants(_ context.Context, chatID int64) ([]int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]int64(nil), m.byID[chatID]...), nil
+}
+
+func (m *memGroupCalls) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[int64]bool{}
+	for _, id := range chatIDs {
+		if len(m.byID[id]) > 0 {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
+// Очередь снимков звонка в тестах ручек не нужна: окно всегда свободно.
+func (m *memGroupCalls) ClaimSnapshot(context.Context, int64, time.Duration) (bool, error) {
+	return true, nil
+}
+func (m *memGroupCalls) MarkSnapshotDirty(context.Context, int64, time.Time) error { return nil }
+func (m *memGroupCalls) LeaseDirtySnapshots(context.Context, time.Time, time.Time, int) ([]int64, error) {
+	return nil, nil
+}
+func (m *memGroupCalls) FinishDirtySnapshot(context.Context, int64, time.Time, time.Duration) error {
+	return nil
 }
 
 // testGroupCalls — общий стор для роутеров теста: тесту нужен доступ к нему,

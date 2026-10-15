@@ -604,7 +604,12 @@ func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (doma
 	if c.Type != domain.ChatTypeGroup && c.Type != domain.ChatTypeChannel {
 		return domain.ChatRecord{}, domain.ErrInvalid
 	}
-	return c, nil
+	// Карточка уходит наружу полным channel (ручки создания/вступления/
+	// переименования и ChatFullContainer): без состояния звонка клиент заменил бы
+	// им лежащий канал и погасил иконку идущего видеочата.
+	recs := []domain.ChatRecord{c}
+	i.FillCallState(ctx, recs)
+	return recs[0], nil
 }
 
 // ChatFullContainer — ответ channels.getFullChannel: messages.chatFull, где

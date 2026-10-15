@@ -932,11 +932,41 @@ type SendInput struct {
 	webPage *domain.WebPagePreview
 }
 
-// GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
+// GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis)
+// и очередь снимков чата при смене состояния звонка.
+//
+// Join и Leave атомарны и сообщают о ПЕРЕХОДЕ: first — в звонке до вызова никого
+// не было, last — в нём после вызова никого не осталось. По признаку, а не по
+// отдельному Participants решается, нужен ли снимок chat_update: чтение и запись
+// двумя вызовами гонялись бы между собой.
+//
+// Снимки не чаще раза в окно на чат, и состояние переживает рестарт и несколько
+// реплик: ClaimSnapshot занимает окно (SET NX EX), занятое окно откладывает
+// снимок записью MarkSnapshotDirty, тик каждой реплики берёт созревшие записи в
+// аренду (LeaseDirtySnapshots) и закрывает их FinishDirtySnapshot после
+// публикации. Запись, которую арендатор не закрыл (упал), снова доступна по
+// истечении аренды.
 type GroupCallStore interface {
-	Join(ctx context.Context, chatID, userID int64) error
-	Leave(ctx context.Context, chatID, userID int64) error
+	Join(ctx context.Context, chatID, userID int64) (first bool, err error)
+	Leave(ctx context.Context, chatID, userID int64) (last bool, err error)
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
+	// ActiveAmong — подмножество chatIDs, где в звонке есть участники (одним
+	// запросом на пачку).
+	ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error)
+
+	// ClaimSnapshot занимает окно снимков чата на ttl; false — окно занято.
+	ClaimSnapshot(ctx context.Context, chatID int64, ttl time.Duration) (bool, error)
+	// MarkSnapshotDirty откладывает снимок чата до due. Уже отложенная запись с
+	// более ранним сроком не двигается (иначе непрерывный вход/выход откладывал
+	// бы снимок бесконечно); запись в аренде возвращается к сроку due.
+	MarkSnapshotDirty(ctx context.Context, chatID int64, due time.Time) error
+	// LeaseDirtySnapshots атомарно берёт в аренду до leaseUntil не больше limit
+	// записей, чей срок наступил к now. Каждую запись получает одна реплика.
+	LeaseDirtySnapshots(ctx context.Context, now, leaseUntil time.Time, limit int) ([]int64, error)
+	// FinishDirtySnapshot после публикации занимает окно на ttl и снимает
+	// запись, если аренда всё ещё наша (leaseUntil): запись, которую успели
+	// отложить заново, остаётся.
+	FinishDirtySnapshot(ctx context.Context, chatID int64, leaseUntil time.Time, ttl time.Duration) error
 }
 
 // PhoneCallStore — состояние идущих 1:1 звонков между call_request и концом
@@ -961,6 +991,8 @@ type PhoneCallStore interface {
 type LivestreamRepo interface {
 	Get(ctx context.Context, chatID int64) (domain.Livestream, error) // domain.ErrNotFound, если трансляции не заводили
 	Upsert(ctx context.Context, ls domain.Livestream) error
+	// ActiveAmong — подмножество chatIDs, где эфир идёт (одним запросом на пачку).
+	ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error)
 }
 
 // TopicRepo хранит темы форум-групп.
