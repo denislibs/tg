@@ -477,6 +477,8 @@ func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
 	return nil
 }
 
+func (r fakeChats) LockDialogDelete(context.Context, int64) error { return nil }
+
 // RecountCounters — те же формулы, что у ChatsRepo.RecountCounters, в объёме
 // фейка.
 func (r fakeChats) RecountCounters(_ context.Context, chatID int64, userIDs []int64) error {
@@ -681,18 +683,25 @@ func (s *store) syncMentionsLocked(chatID, userID int64) int {
 	return n
 }
 
-func (r fakeChats) ReadMention(_ context.Context, chatID, msgID, userID int64) (bool, error) {
+func (r fakeChats) ReadMentions(_ context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
+	want := map[int64]bool{}
+	for _, id := range msgIDs {
+		want[id] = true
+	}
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	var read []int64
 	for i := range r.s.mentions {
 		m := &r.s.mentions[i]
-		if m.msgID == msgID && m.userID == userID && !m.read {
+		if want[m.msgID] && m.userID == userID && !m.read {
 			m.read = true
-			r.s.syncMentionsLocked(chatID, userID)
-			return true, nil
+			read = append(read, m.msgID)
 		}
 	}
-	return false, nil
+	if len(read) > 0 {
+		r.s.syncMentionsLocked(chatID, userID)
+	}
+	return read, nil
 }
 
 func (r fakeChats) RemoveMention(_ context.Context, chatID, msgID, userID int64) error {
@@ -1595,23 +1604,6 @@ func (r fakeMsgs) UpdateText(_ context.Context, msgID int64, text string, entiti
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) UpdateAction(_ context.Context, msgID int64, action domain.MessageAction) (domain.Message, error) {
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	now := time.Now()
-	for chatID, msgs := range r.s.messages {
-		for idx, m := range msgs {
-			if m.ID == msgID {
-				m.Action = action
-				m.EditedAt = &now
-				r.s.messages[chatID][idx] = m
-				return m, nil
-			}
-		}
-	}
-	return domain.Message{}, domain.ErrNotFound
-}
-
 func (r fakeMsgs) UpdateReplyMarkup(_ context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1660,14 +1652,14 @@ func (r fakeMsgs) SoftDeleteUpTo(_ context.Context, chatID, maxSeq int64) error 
 	return nil
 }
 
-func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
+func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	for chatID, msgs := range r.s.messages {
 		for idx, m := range msgs {
 			if m.ID == msgID {
 				if m.Deleted {
-					return nil
+					return false, nil
 				}
 				m.Deleted = true
 				m.Text = ""
@@ -1687,11 +1679,11 @@ func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 					r.s.syncMentionsLocked(chatID, uid)
 				}
 				r.s.recountReactionsLocked(chatID, m.SenderID)
-				return nil
+				return true, nil
 			}
 		}
 	}
-	return domain.ErrNotFound
+	return false, domain.ErrNotFound
 }
 
 func (r fakeMsgs) SetDestructOnRead(_ context.Context, chatID, readerID, readSeq int64) error {
@@ -1706,7 +1698,7 @@ func (s *store) hiddenFor(userID, msgID int64) bool {
 	return s.hidden != nil && s.hidden[userID] != nil && s.hidden[userID][msgID]
 }
 
-func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
+func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.hidden == nil {
@@ -1716,7 +1708,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 		r.s.hidden[userID] = map[int64]bool{}
 	}
 	if r.s.hidden[userID][msgID] {
-		return nil
+		return false, nil
 	}
 	r.s.hidden[userID][msgID] = true
 	// Как MessagesRepo.HideForUser: скрытое уходит из счётчиков скрывшего.
@@ -1741,7 +1733,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 			r.s.recountReactionsLocked(chatID, userID)
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, tag string) ([]domain.Message, error) {

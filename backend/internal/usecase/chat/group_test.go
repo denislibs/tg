@@ -1038,6 +1038,7 @@ func (c groupChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int
 }
 func (c groupChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
 func (c groupChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupChats) LockDialogDelete(context.Context, int64) error             { return nil }
 func (c groupChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
 func (c groupChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
 func (c groupChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
@@ -1054,8 +1055,8 @@ func (c groupChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, 
 	return time.Time{}, false, nil
 }
 func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) error { return nil }
-func (c groupChats) ReadMention(context.Context, int64, int64, int64) (bool, error) {
-	return false, nil
+func (c groupChats) ReadMentions(context.Context, int64, int64, []int64) ([]int64, error) {
+	return nil, nil
 }
 func (c groupChats) RemoveMention(context.Context, int64, int64, int64) error { return nil }
 func (c groupChats) MessageMentions(context.Context, int64) (map[int64]bool, error) {

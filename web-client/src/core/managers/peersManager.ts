@@ -71,7 +71,7 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
  * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
  */
-export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onSelfUser }: {
+export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onContactToggle, onSelfUser }: {
   rest: Pick<RestClient, 'get'>
   onPeerOps?: (ops: PeerOp[]) => void
   onUserStatus?: (evt: PresenceEvt) => void
@@ -83,6 +83,10 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    *  себя в том же кэше `users`, а у нас `me` живёт отдельно, и карточки «я» в
    *  кэше пиров может не быть вовсе. */
   onSelfUser?: (user: UserReal) => void
+  /** tweb `onContactUpdated(userId, newContact, wasContact)` (`appUsersManager.ts:
+   *  738-754`): у карточки сменился `pFlags.contact`. Владелец книги двигает
+   *  индекс и объявляет `contacts_update`. */
+  onContactToggle?: (userId: number, isContact: boolean, wasContact: boolean) => void
 }) {
   const cache = new Map<PeerId, User | Chat>()
   /**
@@ -178,7 +182,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * это единственная причина, по которой имена и аватарки вообще есть у
    * объектов, за которыми никто отдельно не ходил.
    */
-  function save(peers: readonly (User | Chat)[]): { written: (User | Chat)[]; replaced: (User | Chat)[] } {
+  function save(peers: readonly (User | Chat)[]): { written: (User | Chat)[]; replaced: (User | Chat)[]; afterPublish: () => void } {
     const written: (User | Chat)[] = []
     const replaced: (User | Chat)[] = []
     const persist: UserReal[] = []
@@ -188,6 +192,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     // раньше давал сам персист диалогов.
     const persistChatCards: Chat[] = []
     const toggledForum: [PeerId, boolean][] = []
+    const toggledContact: [number, boolean][] = []
     for (const incoming of peers) {
       // Статус — СВЕЖИЙ снимок сервера, поэтому отдаётся и тогда, когда
       // карточка целиком совпала с лежащей: между двумя снимками присутствие
@@ -206,13 +211,23 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
       if (prev && peer._ === 'channel' && prev._ === 'channel' && !!prev.pFlags?.forum !== !!peer.pFlags?.forum) {
         toggledForum.push([key, !!peer.pFlags?.forum])
       }
+      // Книга двигается на ЗАМЕНЕ карточки со сменой флага (tweb :738-754). Новая
+      // карточка книгу не трогает: её читает fillContacts, он же её перестраивает.
+      if (prev && peer._ === 'user' && prev._ === 'user' && !!prev.pFlags?.contact !== !!peer.pFlags?.contact) {
+        toggledContact.push([peer.id, !!peer.pFlags?.contact])
+      }
       if (peer._ === 'user') persist.push(peer)
       else if (peer._ !== 'userEmpty') persistChatCards.push(peer)
     }
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
     if (persistChatCards.length) void persistChats(persistChatCards)
     for (const [peerId, enabled] of toggledForum) onChatToggleForum?.(peerId, enabled)
-    return { written, replaced }
+    // Книга двигается ПОСЛЕ объявления карточки зеркалу (tweb: `mirrorUser`, затем
+    // `onContactUpdated`, :749-760): подписчик `contacts_update` читает свежую карточку.
+    const afterPublish = () => {
+      for (const [userId, isContact] of toggledContact) onContactToggle?.(userId, isContact, !isContact)
+    }
+    return { written, replaced, afterPublish }
   }
 
   /**
@@ -246,7 +261,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     if (!object) return
     const peers: (User | Chat)[] = [...(object.chats ?? []), ...(object.users ?? [])]
     if (!peers.length) return
-    publish(save(peers).written)
+    const saved = save(peers)
+    publish(saved.written)
+    saved.afterPublish()
   }
 
   /**
@@ -259,14 +276,17 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * обслуживаются кэшем и молчат, если его нет: это не потеря, а отсутствие
    * источника.
    */
-  async function resolve(peerIds: PeerId[]): Promise<{ peers: (User | Chat)[]; changed: (User | Chat)[] }> {
+  async function resolve(peerIds: PeerId[]): Promise<{ peers: (User | Chat)[]; changed: (User | Chat)[]; afterPublish: () => void }> {
     const missing = peerIds.filter((id) => isUser(id) && !cache.has(id)).map(toUserId)
     let changed: (User | Chat)[] = []
+    let afterPublish = (): void => {}
     if (missing.length) {
       try {
         // Ответ — сам вектор `Vector<User>`: обёртки `{users}` у ручки нет.
         const users = await rest.get<UserReal[]>('/users', { ids: missing.join(',') })
-        changed = save(users ?? []).replaced
+        const saved = save(users ?? [])
+        changed = saved.replaced
+        afterPublish = saved.afterPublish
       } catch (e) {
         // Сеть недоступна — поднимаем персистнутых юзеров в память, чтобы имена
         // и аватарки резолвились офлайн. Не глотаем HTTP-ошибки (401/500 и т.п.).
@@ -274,14 +294,15 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
         for (const u of await loadUsers()) if (!cache.has(peerKey(u))) cache.set(peerKey(u), u)
       }
     }
-    return { peers: peerIds.map((id) => cache.get(id)).filter((p): p is User | Chat => !!p), changed }
+    return { peers: peerIds.map((id) => cache.get(id)).filter((p): p is User | Chat => !!p), changed, afterPublish }
   }
 
   /** Чтение для тех, кто рисует по возвращённому массиву. Объявляем только
    *  замену — впервые заведённая карточка зеркалу не адресована. */
   async function getPeers(peerIds: PeerId[]): Promise<(User | Chat)[]> {
-    const { peers, changed } = await resolve(peerIds)
+    const { peers, changed, afterPublish } = await resolve(peerIds)
     publish(changed)
+    afterPublish()
     return peers
   }
 
@@ -317,8 +338,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     // Ровно один кадр на вызов: ответ на пробел уже содержит всё, что
     // изменилось, поэтому берём `resolve` напрямую, а не `getPeers` — иначе на
     // одном вызове публиковались бы два кадра.
-    const { peers } = await resolve(peerIds)
+    const { peers, afterPublish } = await resolve(peerIds)
     publish(peers)
+    afterPublish()
   }
 
   /**
@@ -328,17 +350,26 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * карточку приходилось перезапрашивать отдельной ручкой; на упавшем до-фетче
    * витрина оставалась со старым аватаром, а кэш воркера — ни с чем.
    *
-   * Неизвестного пира не заводим — правило владельца: карточку, которой в кэше
-   * ещё не было, зеркало держать не может, и объявлять её некому. Исключение —
-   * своя карточка: её получает `onSelfUser` ДО этого гварда (tweb `saveApiUser`
-   * кладёт её в тот же кэш при любом ответе, а `checkPremium` :793-800 сверяет
-   * признак Premium именно у неё).
+   * Порт `saveApiUser` (tweb `appUsersManager.ts:663-782`): карточка сохраняется
+   * и когда её в кэше ещё не было (`oldUser === undefined` → `mirrorUser`), —
+   * так приходит «добавил в контакты» со второго устройства про человека, чью
+   * карточку этот воркер ещё не читал. Объявляется всё записанное, как в
+   * `saveApiPeers`. Неизвестный контакт двигает книгу: у tweb книга — полный
+   * список `getContacts`, у нас ленивый, и без этого вызова новый контакт не
+   * попал бы в индекс до следующего чтения книги.
    */
   function applyUserUpdate(user: UserReal): void {
     if (!user) return
+    // Своя карточка идёт в `me` воркера: tweb держит себя в том же кэше `users`
+    // (`saveApiUser` :663-782, `checkPremium` :793-800 сверяет признак Premium
+    // именно у неё), а у нас `me` живёт отдельно.
     if (user.pFlags?.self) onSelfUser?.(user)
-    if (!cache.has(peerKey(user))) return
-    publish(save([user]).replaced)
+    const key = peerKey(user)
+    const known = cache.has(key)
+    const saved = save([user])
+    publish(saved.written)
+    saved.afterPublish()
+    if (!known && user.pFlags?.contact) onContactToggle?.(user.id, true, false)
   }
 
   /**

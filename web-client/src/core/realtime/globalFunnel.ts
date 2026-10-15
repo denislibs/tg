@@ -7,7 +7,7 @@
 // приходит сюда зависимостью — funnel не знает про менеджеры.
 
 import { classifyPts, type Cursor } from './cursor'
-import { newPendingPts } from './pendingPts'
+import { LOCAL_PTS_KEY, newPendingPts } from './pendingPts'
 import { updateDate } from './updateCatalog'
 import type { EventMeta } from '../../rpc/superMessagePort'
 
@@ -29,6 +29,15 @@ export interface GlobalFunnelDeps {
 
 export function newGlobalFunnel(deps: GlobalFunnelDeps): {
   applyUpdate(key: string, pts: number | undefined, d: unknown): void
+  /**
+   * Местный updatePts — tweb `processLocalUpdate({_:'updatePts', pts, pts_count})`
+   * (apiUpdatesManager.ts:191-199, с ignoreSyncLoading). Ответ REST на операцию,
+   * которая записала `ptsCount` строк в журнал актора (очистка истории, снятие
+   * закрепов): курсор прыгает на `pts`, придержанные живые кадры с pts не
+   * больше нового курсора выбрасываются при сливе. Последствия операции
+   * (окно, строку диалога) применяет вызывающий сам.
+   */
+  applyLocalPts(pts: number, ptsCount: number): void
   clear(): void
 } {
   // Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
@@ -58,6 +67,7 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
   function drainPending(): void {
     if (!pendingPts.has()) return
     pendingPts.drain(() => deps.cursor.get().pts, (item) => {
+      if (item.key === LOCAL_PTS_KEY) { deps.cursor.advance(item.pts); return }
       // Кадр в буфере — живой (пришёл по WS, лишь придержан переупорядочиванием),
       // поэтому catchUp:false — происхождение не меняется от факта буферизации.
       deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
@@ -102,8 +112,25 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
     drainPending()
   }
 
+  // Гейт isSyncing сюда не ставим: местный апдейт применяется и во время догона
+  // (tweb ignoreSyncLoading), курсор прыгает сразу на pts.
+  function applyLocalPts(pts: number, ptsCount: number): void {
+    if (ptsCount <= 0) return
+    if (!deps.isCursorReady()) { deps.catchUp(); return }
+    const cls = classifyPts(deps.cursor.get().pts, pts, ptsCount)
+    if (cls === 'dup') return
+    if (cls === 'gap') {
+      if (!pendingPts.push({ key: LOCAL_PTS_KEY, pts, ptsCount, d: null })) { clearPtsSync(); deps.catchUp(); return }
+      schedulePtsSync()
+      return
+    }
+    deps.cursor.advance(pts)
+    drainPending()
+  }
+
   return {
     applyUpdate,
+    applyLocalPts,
     clear: clearPtsSync,
   }
 }

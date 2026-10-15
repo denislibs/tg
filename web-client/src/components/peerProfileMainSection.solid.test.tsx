@@ -359,7 +359,7 @@ describe('BotReport (tweb 2488f2cf0, 812502980 :1098-1111)', () => {
     const row = rowByIcon(h, 'flag')
     expect(row).not.toBeNull()
     row!.click()
-    expect(useReportStore.getState().target).toEqual({ peerId: 7 })
+    expect(useReportStore.getState().target).toEqual({ peerId: 7, mids: [] })
     useReportStore.getState().close()
   })
 

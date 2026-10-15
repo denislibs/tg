@@ -1121,7 +1121,7 @@ function BotReport() {
 
   return (
     <Show when={canReport()}>
-      <Row clickable={() => useReportStore.getState().open({ peerId: context.peerId })}>
+      <Row clickable={() => useReportStore.getState().open({ peerId: context.peerId, mids: [] })}>
         <Row.Icon icon="flag" />
         <Row.Title>{i18n('ReportChat')}</Row.Title>
       </Row>

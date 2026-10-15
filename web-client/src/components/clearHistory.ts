@@ -7,14 +7,10 @@
 // Расхождения:
 //  1. О-89 волна 7: чекбоксы «удалить и у собеседника» (`ClearHistoryOptionAlso`) и
 //     «у всех» в своей группе (`DeleteMessagesOptionAlsoChat`), а с ними `revoke` —
-//     на бэкенде очистка только у себя (`POST /chats/{id}/clear`,
+//     на бэкенде очистка только у себя (`DELETE /chats/{id}/history?just_clear=1`,
 //     `chatsManager.clearHistory`). Канал у оригинала чистится у всех всегда
 //     (`revoke: isBroadcast`) — у нас тоже только у себя.
-//  2. `flushHistory` → `chats.clearHistory` + то, что у оригинала делает
-//     `flushStoragesByPeerId` (`appMessagesManager.ts:4709`, `:4732-4742`): окно
-//     зеркала пустеет, список диалогов перечитывается — тот же порядок, что у
-//     шапки чата (`Chat.tsx::doClearHistory`).
-//  3. Пир — из зеркала главного потока (`cachedPeer`), имя в тексте — `PeerTitle`
+//  2. Пир — из зеркала главного потока (`cachedPeer`), имя в тексте — `PeerTitle`
 //     с миддлварью попапа (как `popups/deleteDialog.ts`, расхождение 6).
 import type { FormatterArguments, LangPackKey } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
@@ -24,12 +20,10 @@ import { toastNew } from '@components/toast'
 import { confirmationPopup } from '@components/popups/popupPeer'
 import canClearHistory from '@core/peers/canClearHistory'
 import { cachedPeer } from '@core/peerCache'
-import { replaceMirrorWindow, winKey } from '@core/history/messagesMirror'
 import type { Managers } from '@/client/bootstrap'
 
 export type ClearHistoryManagers = PeerTitleManagers & {
   chats: Pick<Managers['chats'], 'clearHistory'>
-  dialogs: Pick<Managers['dialogs'], 'refresh'>
 }
 
 export default async function clearHistoryWithConfirmation(options: {
@@ -86,9 +80,9 @@ export default async function clearHistoryWithConfirmation(options: {
   }
 
   try {
+    // Всё остальное (`flushStoragesByPeerId`, строка диалога, окно зеркала) делает
+    // воркер и объявляет `dialog_flush` — как `flushHistory` оригинала.
     await managers.chats.clearHistory(peerId)
-    replaceMirrorWindow(winKey(peerId), []) // расхождение 2
-    await managers.dialogs.refresh()
     return true
   } catch(error) {
     console.error('clear history error', error)

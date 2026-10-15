@@ -200,7 +200,18 @@ export function createWorkerCore() {
     messages: {
       saveApiMessages: (list) => messages.saveApiMessages(list),
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+      flushHistoryWindows: (peerId) => messages.flushHistoryWindows(peerId),
     },
+    // Очистка и удаление истории (tweb `flushHistory`): ответ — местный
+    // `updatePts` воронки, затем окна и строка диалога. Воронка и владельцы
+    // объявлены НИЖЕ — та же ленивая forward-ссылка.
+    getFunnel: () => funnel,
+    dialogs: {
+      reloadConversation: (peerId) => dialogs.reloadConversation(peerId),
+      applyRemoved: (peerId) => dialogs.applyRemoved(peerId),
+      getDialogOnly: (peerId) => dialogs.getDialogOnly(peerId),
+    },
+    broadcast: (event, payload) => broadcast(event, payload),
   })
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
@@ -414,6 +425,10 @@ export function createWorkerCore() {
       forumTopics.onChatToggleForum(peerId, enabled)
       if (!enabled) messages.flushThreadWindows(peerId)
     },
+    // tweb `onContactUpdated` из `saveApiUser` (appUsersManager.ts:738-754): карточка
+    // сменила `pFlags.contact` — книга двигает индекс и шлёт `contacts_update`.
+    // `contacts` объявлен ниже — стрелка дёргает его лениво.
+    onContactToggle: (userId, isContact, wasContact) => contacts.onContactUpdated(userId, isContact, wasContact),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец

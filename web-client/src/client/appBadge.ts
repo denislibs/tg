@@ -11,7 +11,8 @@
 import type { LangPackKey } from '@/lang'
 import { useChatsStore } from '../stores/chatsStore'
 import { isDialogArchived, type Dialog } from '../core/models'
-import { isPeerMuted } from '../core/dialogs/notifySettings'
+import { isDialogMuted, useNotifyStore } from '../stores/notifyStore'
+import { cachedChat } from '../core/peerCache'
 import { isDialogUnreadUnmuted, subscribeForumUnread } from '../core/dialogs/forumUnreadMirror'
 import { useI18nStore } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
@@ -39,16 +40,19 @@ export function notificationsCountTitle(count: number, tArgs: (key: LangPackKey,
  *
  * «Замьючен» и «в архиве» больше не приезжают полями строки: первый выражен
  * СРОКОМ (`notify_settings.mute_until`), второй — номером папки. Оба вопроса
- * задаются здесь теми же функциями, что и везде.
+ * задаются здесь теми же функциями, что и везде. «Замьючен» — с учётом типа чатов
+ * (tweb `isDialogUnmuted`, `lib/storages/dialogs.ts:552-558`, `respectType: true`):
+ * чат заглушённого типа в бейдж не идёт, если свой мьют не задан.
  */
 export function countUnmutedUnreadPeers(
   dialogs: Pick<Dialog, 'peerId' | 'unread_count' | 'notify_settings' | 'folder_id'>[],
   now = Math.floor(Date.now() / 1000),
 ): number {
   let n = 0
+  const settings = useNotifyStore.getState().settings
   for (const d of dialogs) {
     // у форума — непрочитанные темы и их мьют (`core/dialogs/forumUnreadMirror.ts`)
-    if (!isDialogArchived(d) && isDialogUnreadUnmuted(d, () => isPeerMuted(d.notify_settings, now))) n += 1
+    if (!isDialogArchived(d) && isDialogUnreadUnmuted(d, () => isDialogMuted(d, cachedChat(d.peerId), settings, now))) n += 1
   }
   return n
 }
@@ -213,6 +217,8 @@ export function initAppBadge(): void {
     }, 500)
   }
   useChatsStore.subscribe(schedule)
+  // тип чатов заглушили/включили — бейдж пересчитывается
+  useNotifyStore.subscribe((s, prev) => { if (s.settings !== prev.settings) schedule() })
   // непрочитанное форума — темы (`core/dialogs/forumUnreadMirror.ts`)
   subscribeForumUnread(schedule)
 }

@@ -10,6 +10,9 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { cachedPeerFull, cachedPeerTheme, resetChatFullMirror, saveChatFull } from '../../core/chatFullCache'
 import { RT } from '../../core/realtime/events'
+import { mirrorWindow, replaceMirrorWindow, resetMessagesMirror, winKey } from '../../core/history/messagesMirror'
+import { makeRawMessage } from '../../core/messages/testMessage'
+import { mapMyMessage } from '../../core/models'
 import { useChatsStore } from '../../stores/chatsStore'
 import { newDialogsManager } from '../../core/managers/dialogsManager'
 import type { Dialog } from '../../core/models'
@@ -175,5 +178,20 @@ describe('storeProjection — тема чата живёт в карточке, 
     rootScope.dispatchEventSingle('peer_block', { peerId: 7, blocked: true })
 
     expect(cachedPeerFull(7)).toMatchObject({ pFlags: { blocked: true } })
+  })
+
+  // tweb `bubbles.ts:1144`: `dialog_flush` опустошает окно открытого чата. Воркер
+  // шлёт его после очистки истории — в том числе в другие вкладки и по ответу
+  // с другого устройства, поэтому окно сбрасывает проектор, а не вызывающий.
+  it('dialog_flush опустошает окно зеркала этого чата и только его', () => {
+    resetMessagesMirror()
+    const msg = (peerId: number, id: number) => mapMyMessage(makeRawMessage({ id, peerId, fromId: 1, text: 'x', createdAt: '2026-08-01T00:00:00Z' }))
+    replaceMirrorWindow(winKey(5), [msg(5, 1), msg(5, 2)])
+    replaceMirrorWindow(winKey(6), [msg(6, 1)])
+
+    rootScope.dispatchEventSingle('dialog_flush', { peerId: 5, dialog: undefined })
+
+    expect(mirrorWindow(winKey(5))).toEqual([])
+    expect(mirrorWindow(winKey(6))).toHaveLength(1)
   })
 })

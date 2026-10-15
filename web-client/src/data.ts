@@ -62,9 +62,6 @@ export interface ConvMsg {
   reactions?: MessageReactions
   mediaUnread?: boolean // голосовое/кружок не прослушано получателем (точка у обеих сторон)
   forwardFrom?: { name: string; color?: string } // "Переслано от X"
-  // Предложение фото профиля (service-сообщение suggest_photo): у получателя под
-  // превью — кнопка «Установить фото»; accepted скрывает её на всех устройствах.
-  photoSuggestion?: { accepted: boolean }
   reply?: { name: string; text: string; entities?: MessageEntity[]; color?: string; seq?: number; mediaId?: number; mediaType?: string; quote?: boolean }
   /** кросс-чат ответ (tweb ReplyToAnotherChat): ключ ЧАТА оригинала. Готового
    *  снимка превью рядом больше нет: недоступный оригинал выражают

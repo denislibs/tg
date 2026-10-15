@@ -338,9 +338,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        c.photo_media_id, pm.blur_preview,
 		        m.last_read_seq, `+dialogUnreadCount("m", "c")+`, m.unread_mentions_count, m.unread_reactions,
-		        -- Мьют едет СРОКОМ, а не булевым: предикат «замьючен ли сейчас»
-		        -- в домене один (PeerNotifySettings.Muted), и пяти копий условия
-		        -- в SQL больше нет.
+		        -- Мьют едет СРОКОМ, а не булевым (NULL — не задан, наследует тип
+		        -- чатов): «замьючен ли сейчас» решает domain.ChatMuted, пачкой в
+		        -- SQL — его копия chatMutedSQL.
 		        m.muted_until,
 		        m.pinned_at IS NOT NULL, m.archived, c.is_forum,
 		        m.notify_preview, m.notify_sound,
@@ -752,18 +752,49 @@ func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64
 	return remaining, err
 }
 
-// ReadMention marks one mention read (Telegram readMessageContents on a
-// mention): reports whether it was unread, and then re-syncs the counter.
-func (r *ChatsRepo) ReadMention(ctx context.Context, chatID, msgID, userID int64) (bool, error) {
-	q := querier(ctx, r.pool)
-	tag, err := q.Exec(ctx,
-		`UPDATE message_mentions SET unread=false WHERE message_id=$1 AND user_id=$2 AND unread`,
-		msgID, userID)
-	if err != nil || tag.RowsAffected() == 0 {
-		return false, err
+// ReadMentions marks the viewer's unread mentions in the given messages read
+// (Telegram readMessageContents on a mention) and lowers the counter once by the
+// number actually read. Не пересчёт count(*) по истории (строки упоминаний не
+// удаляются, а запись абсолютного значения теряет конкурентный AddMention или
+// ClearMentions): декремент под блокировкой строки участника безопасен —
+// вызывающие ClearMentions берут её заранее через SetRead; остальные записи
+// абсолютного значения (RemoveMention, удаление сообщений) такой гонки не
+// закрывают и были ей подвержены и раньше.
+// Returns the ids of the messages whose mention WAS unread.
+func (r *ChatsRepo) ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
+	if len(msgIDs) == 0 {
+		return nil, nil
 	}
-	_, err = r.syncUnreadMentions(ctx, chatID, userID)
-	return true, err
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`UPDATE message_mentions SET unread=false
+		 WHERE message_id = ANY($1) AND user_id=$2 AND unread
+		 RETURNING message_id`, msgIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var read []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		read = append(read, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if len(read) == 0 {
+		return nil, nil
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = GREATEST(unread_mentions_count - $3, 0)
+		 WHERE chat_id=$1 AND user_id=$2`, chatID, userID, len(read)); err != nil {
+		return nil, err
+	}
+	return read, nil
 }
 
 // RemoveMention drops a mention the message no longer carries (an edit removed
@@ -849,17 +880,18 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	return seq, err
 }
 
-// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — мьют чата
-// сроком в будущем (тот же срок, что читает PeerNotifySettings.Muted).
+// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — domain.ChatMuted:
+// свой мьют чата, если задан (срок в будущем), иначе тип чата (chatMutedSQL).
 func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`UPDATE chat_members SET archived = false
-		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND archived
-		    AND (muted_until IS NULL OR muted_until <= now())
-		  RETURNING user_id`, chatID, userIDs)
+		`UPDATE chat_members m SET archived = false
+		   FROM chats c
+		  WHERE c.id = $1 AND m.chat_id = c.id AND m.user_id = ANY($2::bigint[]) AND m.archived
+		    AND NOT `+chatMutedSQL(memberNotify)+`
+		  RETURNING m.user_id`, chatID, userIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -909,6 +941,14 @@ func (r *ChatsRepo) SetDialogHidden(ctx context.Context, chatID, userID int64, h
 func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE chat_members SET dialog_hidden = false WHERE chat_id = $1 AND dialog_hidden`, chatID)
+	return err
+}
+
+// LockDialogDelete — см. ChatRepo.LockDialogDelete. Ключ с пространством имён
+// (как scheduledrepo.go LockQueue, topicsrepo.go).
+func (r *ChatsRepo) LockDialogDelete(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('dialog_delete:' || $1::bigint, 0))`, chatID)
 	return err
 }
 

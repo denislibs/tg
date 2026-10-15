@@ -71,11 +71,12 @@ type readData struct {
 	UpToSeq int64         `json:"up_to_seq"`
 }
 
-// readMediaData — «медиа прослушано». Сообщение адресуется парой «пир +
-// номер», как и везде: ключ `id` со значением seq.
+// readMediaData — «медиа прослушано»: messages.readMessageContents{id:
+// Vector<int>}. Сообщения адресуются парой «пир + номера», как и везде: ключ
+// `id` со списком seq.
 type readMediaData struct {
 	PeerID domain.PeerID `json:"peer_id"`
-	Seq    int64         `json:"id"`
+	IDs    []int64       `json:"id"`
 }
 
 // typingData — «печатает» от клиента. Действие едет КОНСТРУКТОРОМ объединения

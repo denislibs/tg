@@ -270,10 +270,10 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
 })
 
 describe('showMessageReport — мост (tweb reportAd.tsx:360, ВРЕМЕННО до 2C-27)', () => {
-  it('кладёт цель жалобы (первое сообщение) в reportStore — её берёт ReportPopup', () => {
+  it('кладёт цель жалобы (все выбранные сообщения) в reportStore — её берёт ReportPopup', () => {
     const onFinish = vi.fn()
     showMessageReport(CHANNEL, [5, 6], onFinish)
-    expect(useReportStore.getState().target).toEqual({ peerId: CHANNEL, msgId: 5 })
+    expect(useReportStore.getState().target).toEqual({ peerId: CHANNEL, mids: [5, 6] })
     expect(onFinish).toHaveBeenCalledTimes(1)
     useReportStore.getState().close()
   })

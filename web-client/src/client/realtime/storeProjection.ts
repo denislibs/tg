@@ -17,7 +17,7 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
-import { applyOpsToMirror, resetMessagesMirror, setMirrorHistoryCount } from '../../core/history/messagesMirror'
+import { applyOpsToMirror, replaceMirrorWindow, resetMessagesMirror, setMirrorHistoryCount, winKey } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
@@ -171,6 +171,10 @@ const APPLY: Projector = {
   // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
   // здесь. Событие объявляет владелец блокировки (`privacy.toggleBlock`).
   peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
+  // История чата очищена (tweb `flushHistory` → `dialog_flush`, `bubbles.ts:1144`):
+  // окно зеркала пусто. Это делают ВСЕ вкладки, а не та, что нажала кнопку, —
+  // воркер объявляет событие после ответа сервера.
+  dialog_flush: (e) => { replaceMirrorWindow(winKey(e.peerId), []) },
   // Глобальные настройки уведомлений по типу чатов — зеркало одно, `notifyStore`
   // (tweb `onUpdateNotifySettings` → `savePeerSettings`, `appNotificationsManager.ts:504-538`).
   notify_settings: (e) => { useNotifyStore.getState().apply(e.peer._, e.notify_settings) },

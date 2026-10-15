@@ -3,6 +3,8 @@ package contacts
 import (
 	"context"
 	"errors"
+	"log"
+	"slices"
 	"strings"
 	"unicode/utf16"
 
@@ -30,6 +32,7 @@ type Interactor struct {
 	photos  CustomPhotoRepo
 	close   CloseFriendsRepo
 	media   MediaReader
+	emit    SnapshotEmitter
 }
 
 // errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
@@ -50,6 +53,108 @@ func (i *Interactor) SetCloseFriends(p CloseFriendsRepo) { i.close = p }
 
 // SetMediaReader подключает проверку «файл свой» для личных фото контактов.
 func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
+
+// SetEmitter подключает журнал своих устройств (optional): мутации книги
+// отдают владельцу карточку контакта строкой user_update.
+func (i *Interactor) SetEmitter(e SnapshotEmitter) { i.emit = e }
+
+// publishContactCard — владельцу книги на остальные устройства: карточка userID
+// ГЛАЗАМИ ВЛАДЕЛЬЦА после мутации (имя из книги, pFlags.contact, личное фото,
+// close_friend). У оригинала это апдейт с users:[user] — клиент кладёт карточку
+// в кэш и по смене pFlags.contact двигает книгу (tweb appUsersManager
+// saveApiUser :663-782 → onContactUpdated :1216-1228).
+//
+// Контакту строки нет — сознательно: у него от мутации меняется карточка
+// владельца (pFlags.mutual_contact, и фото/номер, если правило владельца даёт
+// «контактам»), но пересчёт у собеседников — предмет f6-privacy
+// (AnnounceUserTo), и этой задаче он не принадлежит.
+//
+// Возвращает ту же карточку, что легла в журнал: ею же отвечает ручка, поэтому
+// устройство-инициатор (оно получает и кадр, и ответ) не расходится со вторым.
+// Зовётся ПОСЛЕ коммита мутации. Сбой журнала ответ не ломает (только лог);
+// ошибка — только если карточку не удалось собрать вовсе.
+func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int64, needCard bool) (domain.UserReal, error) {
+	var card domain.UserReal
+	built := false
+	// Правила приватности читаются ДО транзакции с замком: сбой SQL внутри
+	// транзакции переводит её в aborted, и «гасим фото и номер» стоило бы строки
+	// журнала. Правила замком курсора владельца не упорядочиваются: их смена —
+	// предмет f6-privacy, не этой строки.
+	rules := i.privacyRules(ctx, ownerID, userID)
+	if i.emit != nil {
+		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
+			u, err := i.seenByOwner(ctx, ownerID, userID, rules)
+			if err != nil {
+				return nil, err
+			}
+			card, built = u, true
+			return map[string]any{"_": domain.UpdateUserSnapshotTag, "user": u}, nil
+		})
+		if err != nil {
+			log.Printf("[user_update] contact card owner=%d user=%d: %v", ownerID, userID, err)
+		}
+	}
+	if built || !needCard {
+		return card, nil
+	}
+	return i.seenByOwner(ctx, ownerID, userID, rules)
+}
+
+// ownerPrivacy — ответы правил приватности пользователя ЗРИТЕЛЮ-владельцу.
+type ownerPrivacy struct{ photo, phone map[int64]bool }
+
+// privacyRules — profile_photo и phone_number одним запросом. Сбой гасит то, что
+// правила охраняют (фото и номер не показываются), как usecase/privacy.ViewUsers.
+// Без проверяющего приватности фото видно, номер скрыт.
+func (i *Interactor) privacyRules(ctx context.Context, ownerID, userID int64) ownerPrivacy {
+	if i.privacy == nil {
+		return ownerPrivacy{photo: map[int64]bool{userID: true}, phone: map[int64]bool{}}
+	}
+	maps, err := i.privacy.VisibleMaps(ctx, ownerID, []int64{userID}, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
+	if err != nil {
+		log.Printf("[user_update] privacy rules owner=%d user=%d: %v", ownerID, userID, err)
+		return ownerPrivacy{photo: map[int64]bool{}, phone: map[int64]bool{}}
+	}
+	return ownerPrivacy{photo: maps[domain.PrivacyProfilePhoto], phone: maps[domain.PrivacyPhoneNumber]}
+}
+
+// seenByOwner — краткая карточка userID глазами ownerID: имя и pFlags.contact
+// из его книги (SeenUser), аватарка по правилу profile_photo пользователя и
+// поверх неё личное фото владельца, номер по правилу phone_number
+// (rules — privacyRules), pFlags.close_friend. Читает только через ctx: зовётся
+// и внутри транзакции с замком курсора владельца.
+func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rules ownerPrivacy) (domain.UserReal, error) {
+	u, err := i.repo.SeenUser(ctx, ownerID, userID)
+	if err != nil {
+		return domain.UserReal{}, err
+	}
+	users := []domain.UserReal{u}
+	view := domain.UncheckedUserViewRules(ownerID, users)
+	// Присутствие в снимок не входит: своё место у него — updateUserStatus, а
+	// «ничего не известно» в карточке стёрло бы у клиента настоящий статус.
+	view.Status = nil
+	view.Photo, view.Phone = rules.photo, rules.phone
+	// Личное фото задано ЗРИТЕЛЕМ (pFlags.personal): правило аватарки его не гасит.
+	if i.photos != nil {
+		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID})
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		if mediaID, ok := custom[userID]; ok {
+			users[0].Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
+		}
+	}
+	view.Apply(users)
+	u = users[0]
+	if i.close != nil {
+		friends, err := i.close.CloseFriends(ctx, ownerID)
+		if err != nil {
+			return domain.UserReal{}, err
+		}
+		u.MarkCloseFriend(slices.Contains(friends, userID))
+	}
+	return u, nil
+}
 
 // SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
 // аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
@@ -74,7 +179,11 @@ func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID,
 	if m.OwnerID != ownerID || !strings.HasPrefix(m.Mime, "image/") {
 		return domain.ErrNotFound
 	}
-	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID)
+	if err := i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID); err != nil {
+		return err
+	}
+	_, _ = i.publishContactCard(ctx, ownerID, contactUserID, false)
+	return nil
 }
 
 // ClearCustomPhoto сбрасывает личное фото контакта — владелец снова видит его
@@ -83,7 +192,11 @@ func (i *Interactor) ClearCustomPhoto(ctx context.Context, ownerID, contactUserI
 	if i.photos == nil {
 		return domain.ErrNotFound
 	}
-	return i.photos.ClearCustomPhoto(ctx, ownerID, contactUserID)
+	if err := i.photos.ClearCustomPhoto(ctx, ownerID, contactUserID); err != nil {
+		return err
+	}
+	_, _ = i.publishContactCard(ctx, ownerID, contactUserID, false)
+	return nil
 }
 
 // AddInput is the payload for saving (or editing) a contact.
@@ -129,7 +242,7 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 		_, _ = i.repo.Delete(ctx, ownerID, in.UserID)
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
-	return c, nil
+	return i.withOwnerCard(ctx, c)
 }
 
 // AddByPhoneInput — добавление контакта по номеру телефона (как tweb
@@ -191,6 +304,26 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		_, _ = i.repo.Delete(ctx, ownerID, userID)
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
+	return i.withOwnerCard(ctx, c)
+}
+
+// withOwnerCard — запись контакта после мутации: журнал владельцу и ТА ЖЕ
+// карточка в ответе ручки. Сырая карточка репозитория (c.User) телефон и фото
+// отдаёт без правил приватности и без личного фото и close_friend; устройство-
+// инициатор получает и кадр, и ответ — они обязаны совпадать.
+//
+// Ошибка сборки (не журнала) — 500 после коммита: Add идемпотентен (upsert), и
+// повтор клиента доведёт запись; деградировать до сырой карточки репозитория
+// нельзя — она отдаёт номер и фото мимо правил приватности. (Delete, у которого
+// повтор отвечает 404, деградирует до урезанной карточки.)
+func (i *Interactor) withOwnerCard(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
+	card, err := i.publishContactCard(ctx, c.OwnerID, c.UserID, true)
+	if err != nil {
+		return domain.ContactRecord{}, err
+	}
+	c.User = card
+	p, ok := card.Photo.(domain.UserProfilePhotoReal)
+	c.HasCustomPhoto = ok && p.Personal()
 	return c, nil
 }
 
@@ -251,13 +384,19 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 		ids = append(ids, c.UserID)
 	}
 	if i.privacy != nil {
-		vis, err := i.privacy.VisibleMap(ctx, ownerID, ids, domain.PrivacyPhoneNumber)
+		// Фото и номер — одним запросом; тот же набор правил, что в карточке после
+		// мутации (seenByOwner), иначе одна и та же карточка выходит разной из
+		// GET /contacts и из ответа добавления.
+		maps, err := i.privacy.VisibleMaps(ctx, ownerID, ids, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
 		if err != nil {
 			return nil, err
 		}
 		for idx := range list {
-			if !vis[list[idx].UserID] {
+			if !maps[domain.PrivacyPhoneNumber][list[idx].UserID] {
 				list[idx].User.Phone = ""
+			}
+			if !maps[domain.PrivacyProfilePhoto][list[idx].UserID] {
+				list[idx].User.Photo = domain.NewUserProfilePhotoEmpty()
 			}
 		}
 	}
@@ -310,21 +449,18 @@ func (i *Interactor) Delete(ctx context.Context, ownerID, userID int64) (domain.
 	if err != nil || !found {
 		return domain.UserReal{}, found, err
 	}
-	u, err := i.repo.SeenUser(ctx, ownerID, userID)
+	// Сначала журнал, потом ответ: сбой сборки ответа не должен оставлять
+	// остальные устройства без строки об уже закоммиченном удалении.
+	u, err := i.publishContactCard(ctx, ownerID, userID, true)
 	if err != nil {
-		return domain.UserReal{}, true, err
-	}
-	if i.privacy != nil {
-		if ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyProfilePhoto); err != nil || !ok {
-			u.Photo = domain.NewUserProfilePhotoEmpty()
+		// Карточку со всеми обогатителями собрать не вышло: ответ деградирует до
+		// карточки книги без фото и номера, мутация уже совершена.
+		log.Printf("[user_update] delete response owner=%d user=%d: %v", ownerID, userID, err)
+		u, err = i.repo.SeenUser(ctx, ownerID, userID)
+		if err != nil {
+			return domain.UserReal{}, true, err
 		}
-	}
-	if i.photos != nil {
-		if custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID}); err == nil {
-			if mediaID, ok := custom[userID]; ok {
-				u.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
-			}
-		}
+		u.Photo = domain.NewUserProfilePhotoEmpty()
 	}
 	return u, true, nil
 }

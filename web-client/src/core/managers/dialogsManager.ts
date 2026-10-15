@@ -352,7 +352,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
 
   // ── Мьют это СРОК, и гасит его клиент (решение Р4) ─────────────────────────
   //
-  // Порт tweb `appNotificationsManager.checkMuteUntil` (`:162-218`): по
+  // Порт tweb `appNotificationsManager.checkMuteUntil` (`:213-284`): по
   // наступлении `mute_until` переопределение СНИМАЕТСЯ и объявляется апдейтом,
   // а следующая проверка ставится на БЛИЖАЙШИЙ оставшийся срок, но не дальше
   // получаса (`Math.min(1800e3, …)`).
@@ -392,13 +392,12 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     for (const { dialog } of [...items]) {
       const until = dialog.notify_settings?.mute_until
       if (!until || until > now) continue
-      // Срок вышел — переопределения БОЛЬШЕ НЕТ. Ключ снимаем, а не обнуляем:
-      // «выключено» у нас это отсутствие ключа (правило фазы 0). tweb пишет
-      // `mute_until = 0` по своей причине — у него пер-типовые настройки
-      // склеиваются с пер-чатными в `getPeerLocalSettings`, и удалённая запись
-      // была бы перетёрта настройкой типа.
-      const { mute_until: _gone, ...rest } = dialog.notify_settings
-      patchDialog(dialog.peerId, { notify_settings: rest })
+      // Срок вышел — явное «уведомлять»: `mute_until = 0`, а не снятый ключ (tweb
+      // `checkMuteUntil`, `:232-235`: «do not delete it because peer's unique
+      // settings will be overwritten in getPeerLocalSettings with type's
+      // settings»). Мьют чата трёхзначный: отсутствие ключа значит «наследовать
+      // тип», и чат с вышедшим сроком снова заглох бы по выключенному типу.
+      patchDialog(dialog.peerId, { notify_settings: { ...dialog.notify_settings, mute_until: 0 } })
     }
   }
 
@@ -1769,6 +1768,11 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      */
     reloadConversation(peerId: number): void {
       reloadConversation(peerId)
+    },
+
+    /** tweb `getDialogOnly` (appMessagesManager): строка диалога, какой она у владельца сейчас. */
+    getDialogOnly(peerId: number): Dialog | undefined {
+      return findDialog(peerId)
     },
 
     /**

@@ -101,7 +101,7 @@ func TestMessagesRepo_SelfDestruct(t *testing.T) {
 	if !found {
 		t.Fatalf("ExpiredMessages must include the self-destructed message %d", recv.ID)
 	}
-	if err := msgs.SoftDelete(ctx, recv.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, recv.ID); err != nil {
 		t.Fatalf("SoftDelete: %v", err)
 	}
 	var deletedAt *time.Time

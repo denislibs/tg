@@ -201,11 +201,17 @@ type RevocationNotifier interface {
 
 const SessionCacheTTL = 30 * time.Minute
 
-// QRStore persists ephemeral QR-login records keyed by the token hash.
+// QRStore хранит записи QR-входа: запись по хешу ключа входа и указатель
+// «хеш кода → хеш ключа» (по нему подтверждающее устройство находит запись).
 type QRStore interface {
-	Put(ctx context.Context, tokenHash string, rec domain.QRLogin, ttl time.Duration) error
-	Get(ctx context.Context, tokenHash string) (domain.QRLogin, error) // domain.ErrNotFound when absent/expired
-	Delete(ctx context.Context, tokenHash string) error
+	GetByKey(ctx context.Context, keyHash string) (domain.QRLogin, error) // domain.ErrNotFound, если нет/протухла
+	// Create ставит запись ключа с NX и, только при успехе, указатель кода.
+	// created=false — запись ключа уже есть (проиграна гонка двух первых опросов).
+	Create(ctx context.Context, keyHash, tokenHash string, rec domain.QRLogin, ttl time.Duration) (created bool, err error)
+	PeekToken(ctx context.Context, tokenHash string) (keyHash string, err error)  // GET без удаления; ErrNotFound
+	ClaimToken(ctx context.Context, tokenHash string) (keyHash string, err error) // атомарный GETDEL; ErrNotFound
+	PutByKey(ctx context.Context, keyHash string, rec domain.QRLogin, ttl time.Duration) error
+	DeleteByKey(ctx context.Context, keyHash string) error
 }
 
 const QRLoginTTL = 60 * time.Second

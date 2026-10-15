@@ -92,8 +92,14 @@ export class RestClient {
     return this.request<R>('GET', path + qs)
   }
 
-  async post<R>(path: string, body: unknown): Promise<R> {
-    return this.request<R>('POST', path, body)
+  /**
+   * `opts.headers` — заголовки именно ЭТОГО запроса (ключ входа QR,
+   * `X-Login-Key`). Такой запрос идёт `fetch`-ом мимо DNP-канала: заголовок
+   * принадлежит устройству, которое ещё не вошло, а не сессии канала, и
+   * `rpc_req` его не несёт.
+   */
+  async post<R>(path: string, body: unknown, opts?: { headers?: Record<string, string> }): Promise<R> {
+    return this.request<R>('POST', path, body, opts?.headers)
   }
 
   async put<R>(path: string, body: unknown): Promise<R> {
@@ -176,10 +182,10 @@ export class RestClient {
    * (кроме `SLOWMODE_WAIT`) — подождать N секунд и повторить, если ждать не
    * дольше `FLOOD_MAX_TIMEOUT`; дольше — отказ вызывающему.
    */
-  private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+  private async request<R>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<R> {
     for (;;) {
       try {
-        return await this.requestOnce<R>(method, path, body)
+        return await this.requestOnce<R>(method, path, body, extraHeaders)
       } catch (e) {
         const wait = floodWaitSeconds(e)
         if (wait === undefined || wait > FLOOD_MAX_TIMEOUT) throw e
@@ -188,9 +194,10 @@ export class RestClient {
     }
   }
 
-  private async requestOnce<R>(method: string, path: string, body?: unknown): Promise<R> {
+  private async requestOnce<R>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<R> {
     // При DNP-ON и готовом канале REST идёт через Noise-канал; иначе (логин/пре-канал) — fetch.
-    if (this.channelRpc?.isReady()) {
+    // Запрос с собственными заголовками канал не несёт (см. `post`) — он всегда fetch.
+    if (this.channelRpc?.isReady() && !extraHeaders) {
       const { status, body: respBody } = await this.channelRpc.call(method, path, body)
       if (status < 200 || status >= 300) throw errorOf(status, respBody)
       return respBody as R
@@ -198,7 +205,7 @@ export class RestClient {
     if (this.ready) await this.ready() // дождаться загрузки токена (см. конструктор)
     const res = await fetch(this.base + path, {
       method,
-      headers: this.headers(),
+      headers: { ...this.headers(), ...extraHeaders },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     const data = await this.decodeBody(res)

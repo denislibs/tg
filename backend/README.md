@@ -125,8 +125,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `POST /auth/password/recover/confirm` | подтвердить код, снять пароль, выдать сессию |
 | `POST /auth/account/reset` | сброс аккаунта, когда почты для восстановления нет: первый вызов планирует удаление (`409 2fa_confirm_wait` + `retry_after`), вызов после истечения окна — исполняет (`200 {"ok":true}`); вход владельца отменяет (`409 2fa_recent_confirm`) |
 | `POST /auth/sign_import` | обменять веб-токен (`#?tgWebAuthToken=`) на сессию |
-| `POST /auth/qr/new` | начать QR-логин |
-| `GET /auth/qr/{token}` | опрос статуса QR |
+| `POST /auth/export_login_token` | QR-логин: выпуск/опрос кода и выдача сессии по ключу входа (`X-Login-Key`) |
 | `GET /media/{mediaID}/content` | скачать медиа (авторизация через `?token=`) |
 | `GET /langpack/languages` · `GET /langpack/languages/{code}` | языки пакета (`langpack.getLanguages` / `getLanguage`) |
 | `GET /langpack/{code}` · `GET /langpack/{code}/difference?from_version=` | весь пакет строк / разница с версии клиента |
@@ -135,7 +134,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 
 **Защищённые** (основные группы):
 
-- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `POST /me/photos`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/qr/confirm`, `POST /auth/web_token`
+- **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `POST /me/photos`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/accept_login_token`, `POST /auth/web_token`
 - **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `GET /peer_dialogs?peers=` (messages.getPeerDialogs), `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
 - **Updates:** `GET /updates/state`, `GET /updates/difference`, `GET /updates/channel_difference` — догонка (updates.getState/getDifference/getChannelDifference)
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`

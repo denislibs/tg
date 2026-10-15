@@ -23,14 +23,6 @@ type ContactPhotoLookup interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
-// ProfilePhotoAdder appends a suggested photo to a user's profile gallery and
-// promotes it to the current avatar (implemented by the auth usecase). Used
-// when a user accepts a suggested profile photo; the file belongs to the
-// suggester (suggesterID), whom the implementation checks as its owner. Optional.
-type ProfilePhotoAdder interface {
-	AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error)
-}
-
 type ChatRepo interface {
 	FindPrivate(ctx context.Context, a, b int64) (int64, error) // domain.ErrNotFound if none
 	CreatePrivate(ctx context.Context, a, b int64) (int64, error)
@@ -98,13 +90,14 @@ type ChatRepo interface {
 	// пользователем не резолвится, посторонний в ответ не попадает.
 	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
-	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
-	// прочтение одного упоминания (readMessageContents), true — было
-	// непрочитано. RemoveMention — правка сняла упоминание. MessageMentions —
+	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMentions —
+	// прочтение упоминаний зрителя в названных сообщениях (readMessageContents):
+	// возвращает id тех, что были непрочитаны, и один раз уменьшает счётчик на их число.
+	// RemoveMention — правка сняла упоминание. MessageMentions —
 	// адресаты сообщения (userID -> непрочитано), ViewerMentions — какие из
 	// msgIDs упоминают зрителя (msgID -> непрочитано). Счётчик
 	// unread_mentions_count пересчитывается там, где строка меняется.
-	ReadMention(ctx context.Context, chatID, msgID, userID int64) (bool, error)
+	ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error)
 	RemoveMention(ctx context.Context, chatID, msgID, userID int64) error
 	MessageMentions(ctx context.Context, msgID int64) (map[int64]bool, error)
 	ViewerMentions(ctx context.Context, userID int64, msgIDs []int64) (map[int64]bool, error)
@@ -125,8 +118,9 @@ type ChatRepo interface {
 	// его единый предикат видимости сообщения в хранилище.
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)
 	// UnarchiveUnmuted — из userIDs вернуть из архива тех, у кого чат в архиве
-	// и НЕ заглушён (новое сообщение, Telegram keep_archived_unmuted=false);
-	// возвращает, кого вернули.
+	// и он эффективно НЕ заглушён (domain.ChatMuted: свой мьют, иначе тип чатов;
+	// новое сообщение, Telegram keep_archived_unmuted=false); возвращает, кого
+	// вернули.
 	UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error)
 	// VisibleSeqsUpTo — номера видимых участнику сообщений с seq<=maxSeq (что
 	// у него пропадёт при очистке и удалении диалога), по возрастанию.
@@ -136,6 +130,11 @@ type ChatRepo interface {
 	// сообщение.
 	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
 	ShowDialogs(ctx context.Context, chatID int64) error
+	// LockDialogDelete — транзакционный замок «удаление диалога» чата: двух
+	// встречных DeleteDialog(revoke) с разных сторон он разводит (они берут строки
+	// chat_members в разном порядке). Другие пути (DeleteMessage, Send) замок не
+	// берут. Первой командой транзакции.
+	LockDialogDelete(ctx context.Context, chatID int64) error
 	// RecountCounters пересчитывает непрочитанное, «@» и ❤ участников по
 	// видимым им сообщениям (после массового удаления), выбросив упоминания
 	// удалённых сообщений чата.
@@ -168,8 +167,10 @@ type GroupRepo interface {
 	// SetRole — смена роли; promotedBy — назначивший админа (0 — нет).
 	// domain.ErrNotFound, если userID не участник.
 	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights, promotedBy int64) error
-	// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
-	// «навсегда». Булева аргумента здесь нет: два способа сказать одно и то же и
+	// SetMuted записывает СРОК мьюта чата, ТРИ состояния: nil — не задан (чат
+	// наследует тип), time.Unix(domain.MuteUntilNever) — явное «уведомлять»
+	// (перекрывает выключенный тип), domain.MuteUntilForever — «навсегда».
+	// Булева аргумента здесь нет: два способа сказать одно и то же и
 	// были дефектом, из-за которого «заглушить на час» работало как «навсегда».
 	SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error
 	// NotifySettings — пер-чатное переопределение уведомлений участника целиком
@@ -384,12 +385,12 @@ type MessageRepo interface {
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
 	UpdateText(ctx context.Context, msgID int64, text string, entities domain.MessageEntities) (domain.Message, error)
-	// UpdateAction заменяет служебное действие сообщения (messages.action).
-	UpdateAction(ctx context.Context, msgID int64, action domain.MessageAction) (domain.Message, error)
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
-	SoftDelete(ctx context.Context, msgID int64) error
+	// SoftDelete — удалить у всех; false — уже было удалено (повтор), и
+	// вызывающий не трогает счётчики и журнал второй раз.
+	SoftDelete(ctx context.Context, msgID int64) (bool, error)
 	// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq
 	// (deleteHistory revoke).
 	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) error
@@ -397,7 +398,8 @@ type MessageRepo interface {
 	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
 	// без ttl. Идемпотентно.
 	SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error
-	HideForUser(ctx context.Context, userID, msgID int64) error
+	// HideForUser — скрыть у себя; false — уже скрыто (повтор).
+	HideForUser(ctx context.Context, userID, msgID int64) (bool, error)
 	// ListThread — сообщения треда по возрастанию, только видимые зрителю viewerID.
 	ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
@@ -820,7 +822,7 @@ type SendInput struct {
 	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
 	ScheduleRepeatPeriod int
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
-	// media принадлежит автору истории, а видимость уже проверена story-usecase).
+	// media принадлежит автору истории, а видимость и публичность уже проверены story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
 	skipMediaOwner bool
 	// userAction — служебное действие ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ (предложить дату
