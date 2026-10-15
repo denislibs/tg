@@ -108,12 +108,17 @@ const (
 	// Теги «Избранного» (Ф-6, f6-contacts) — updateSavedReactionTags без
 	// параметров: «перечитай теги» (tweb appReactionsManager.ts:121-132).
 	UpdateSavedReactionTagsTag = "updateSavedReactionTags"
+	// Порядок папок (Ф7-З, MC-10) — updateDialogFilterOrder{order}
+	// (tweb filters.ts:179-199).
+	UpdateDialogFilterOrderTag = "updateDialogFilterOrder"
 	// Стикеры и GIF (Ф-6, f6-stickers) — свои устройства (tweb
 	// appStickersManager.ts:80-88, appGifsManager.ts:21-29).
 	UpdateNewStickerSetTag  = "updateNewStickerSet"
 	UpdateRecentStickersTag = "updateRecentStickers"
 	UpdateFavedStickersTag  = "updateFavedStickers"
 	UpdateSavedGifsTag      = "updateSavedGifs"
+	// Команды бота (Ф-6, f6-bots) — tweb appProfileManager.ts:1560-1569.
+	UpdateBotCommandsTag = "updateBotCommands"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1451,6 +1456,31 @@ func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
 	return UpdateSavedReactionTags{Underscore: UpdateSavedReactionTagsTag}
 }
 
+// updateDialogFilterOrder#a5d72105 order:Vector<int> = Update; — порядок папок
+// сменился на другом устройстве владельца (tweb filters.ts:179-199). order — id
+// папок в новом порядке; 0 — «Все чаты», он присутствует, только если
+// устройство его переставляло (у не-премиум tweb вырезает его из order,
+// chatFolders.tsx:365-367). Папки, которых в списке нет, остаются в хвосте в
+// прежнем порядке — так же, как их ставит сервер. Своего pts у конструктора
+// нет — курсор едет в конверте.
+type UpdateDialogFilterOrder struct {
+	Underscore string  `json:"_"`
+	Order      []int64 `json:"order"`
+}
+
+func (UpdateDialogFilterOrder) isUpdate()     {}
+func (u UpdateDialogFilterOrder) Tag() string { return u.Underscore }
+
+// NewUpdateDialogFilterOrder: id папок в схеме — int (Vector<int>), а у нас
+// BIGSERIAL; пока id папок < 2³¹ кадр кодируется в TL без потерь. nil → пустой
+// вектор, а не JSON null.
+func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
+	if order == nil {
+		order = []int64{}
+	}
+	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
+}
+
 // ── Автоудаление чата (Ф-6, f6-ttl) — блок в конце по правилу горячих файлов ──
 
 const (
@@ -1529,4 +1559,27 @@ func (u UpdateSavedGifs) Tag() string { return u.Underscore }
 
 func NewUpdateSavedGifs() UpdateSavedGifs {
 	return UpdateSavedGifs{Underscore: UpdateSavedGifsTag}
+}
+
+// updateBotCommands#4d712f2e peer:Peer bot_id:long commands:Vector<BotCommand>
+// = Update; — бот сменил список команд, который видит получатель. Peer — чат, где
+// список действует: личка (peerUser бота) или группа (peerChannel). Параметра pts
+// нет — курсор едет в конверте кадра. Клиент кладёт команды в закэшированную
+// полную карточку пира, не перечитывая её (tweb onUpdateBotCommands).
+type UpdateBotCommands struct {
+	Underscore string         `json:"_"`
+	Peer       Peer           `json:"peer"`
+	BotID      int64          `json:"bot_id"`
+	Commands   []MTBotCommand `json:"commands"`
+}
+
+func (UpdateBotCommands) isUpdate()     {}
+func (u UpdateBotCommands) Tag() string { return u.Underscore }
+
+func NewUpdateBotCommands(peer Peer, botID int64, commands []BotCommand) UpdateBotCommands {
+	cs := make([]MTBotCommand, 0, len(commands))
+	for _, c := range commands {
+		cs = append(cs, NewBotCommand(c))
+	}
+	return UpdateBotCommands{Underscore: UpdateBotCommandsTag, Peer: peer, BotID: botID, Commands: cs}
 }

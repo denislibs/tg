@@ -81,6 +81,7 @@ export const UPDATE_RT = {
   updateRecentStickers: RT.recentStickers,
   updateFavedStickers: RT.favedStickers,
   updateSavedGifs: RT.savedGifs,
+  updateBotCommands: RT.botCommands,
   updateUserSnapshot: RT.userUpdate,
   // Ниже — кадры БЕЗ курсора. Прежде они лежали в отдельном списке
   // «эфемерных», и список этот был рукописным. Теперь деления нет: несёт кадр
@@ -98,6 +99,7 @@ export const UPDATE_RT = {
   updateReadStories: RT.storyRead,
   updatePeerBlocked: RT.peerBlocked,
   updatePrivacy: RT.privacy,
+  updateDialogFilterOrder: RT.dialogFilterOrder,
   updatePeerHistoryTTL: RT.peerHistoryTTL,
 } as const satisfies Record<UpdatePredicate, string>
 

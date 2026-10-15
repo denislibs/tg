@@ -47,6 +47,11 @@ type Interactor struct {
 	savedTags    SavedTagRepo
 	bots         BotRepo
 	botAPI       BotAPIRepo
+	// botCommandsLimit — предел получателей updateBotCommands на одно изменение
+	// (0 — botCommandsFanoutLimit); тесты ставят малое число.
+	botCommandsLimit int
+	// botFanouts — идущие рассылки updateBotCommands по ботам (botcommands.go).
+	botFanouts   botFanoutRuns
 	botMedia     BotMediaStore
 	botHTTP      BotHTTP
 	botAPIView   BotAPIView

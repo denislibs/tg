@@ -611,11 +611,12 @@ type ChannelRepo interface {
 
 type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]int64, error) // public only, ranked
-	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy).
+	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy); по имени —
+	// только свои (имя из книги или профильное), по @username — все.
 	SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error)
 	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
-	// участник, и пользователи из его контактов или с общим личным чатом
-	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
+	// участник, и пользователи из его контактов или с общим личным чатом,
+	// не скрытым им (dialog_hidden) (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
 	OwnPeers(ctx context.Context, viewerID int64, chatIDs, userIDs []int64) (chats, users map[int64]bool, err error)
 	PublicChatByUsername(ctx context.Context, username string) (int64, error) // domain.ErrNotFound
 	// UserIDByUsername — пользователь по точному @имени без учёта регистра
@@ -1269,10 +1270,26 @@ type PaidOffer struct {
 	SellerID int64 // автор предложения
 }
 
-// BotRepo — данные ботов: флаг is_bot и список команд.
+// BotRepo — данные ботов: флаг is_bot и команды по скоупам.
 type BotRepo interface {
 	IsBot(ctx context.Context, userID int64) (bool, error)
-	Commands(ctx context.Context, botID int64) ([]domain.BotCommand, error)
+	// CommandsFor — список команд бота глазами зрителя (приоритет скоупов — в
+	// реализации). chatID == 0 — личка; иначе группа, isAdmin — зритель её
+	// создатель или админ; viewerID == 0 — «зрителя нет» (запись chat_member не
+	// подходит никому). lang — язык зрителя, затем пустой.
+	CommandsFor(ctx context.Context, botID, chatID, viewerID int64, isAdmin bool, lang string) ([]domain.BotCommand, error)
+	// CommandsForBots — то же для набора ботов одним запросом (карточка группы).
+	CommandsForBots(ctx context.Context, botIDs []int64, chatID, viewerID int64, isAdmin bool, lang string) (map[int64][]domain.BotCommand, error)
+	// BotChats — чаты бота заданных видов (types: ChatTypePrivate, ChatTypeGroup),
+	// не больше limit: адресаты updateBotCommands.
+	BotChats(ctx context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error)
+	// ChatRecipients — получатели в этих чатах (не больше limit), кроме самого
+	// бота и других ботов; фильтр сужает до одного пользователя или до админов.
+	ChatRecipients(ctx context.Context, botID int64, chatIDs []int64, f domain.BotRecipientFilter, limit int) ([]domain.BotRecipient, error)
+	// GroupLists — списки бота (язык "") для набора групп одним запросом.
+	GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error)
+	// ChatBotIDs — боты-участники чата (не больше limit).
+	ChatBotIDs(ctx context.Context, chatID int64, limit int) ([]int64, error)
 }
 
 // BotAPIRepo — хранилище Bot API: учётки/токены ботов, очередь апдейтов,
@@ -1287,8 +1304,11 @@ type BotAPIRepo interface {
 	SetWebhook(ctx context.Context, botID int64, url string) error
 	SetMenuButton(ctx context.Context, botID int64, text, url string) error
 	RegenToken(ctx context.Context, botID int64) (string, error)
-	SetCommands(ctx context.Context, botID int64, scope, lang string, cmds []domain.BotCommand) error
-	CommandsScoped(ctx context.Context, botID int64, scope, lang string) ([]domain.BotCommand, error)
+	// SetCommands/DeleteCommands отвечают, изменилось ли хранимое: рассылка
+	// updateBotCommands — только при изменении.
+	SetCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string, cmds []domain.BotCommand) (bool, error)
+	DeleteCommands(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) (bool, error)
+	CommandsScoped(ctx context.Context, botID int64, scope domain.BotCommandScope, lang string) ([]domain.BotCommand, error)
 	// профиль и inline-настройки
 	SetProfile(ctx context.Context, botID int64, description, about *string) error
 	SetInline(ctx context.Context, botID int64, enabled bool, placeholder string) error

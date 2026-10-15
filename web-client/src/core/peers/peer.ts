@@ -229,6 +229,30 @@ export type User = UserEmpty | UserReal
 /** birthday#6c8e1e06 flags:# day:int month:int year:flags.0?int = Birthday; */
 export interface Birthday { _: 'birthday'; day: number; month: number; year?: number }
 
+/** botCommand#c27ac8c7 command:string description:string = BotCommand; */
+export interface BotCommand {
+  _: 'botCommand'
+  command: string
+  description: string
+}
+
+/**
+ * botInfo#4d8a0299 flags:# user_id:flags.0?long description:flags.1?string
+ * commands:flags.2?Vector<BotCommand> menu_button:flags.3?BotMenuButton … = BotInfo;
+ *
+ * Карточка бота в полной карточке пира: у бота — `userFull.bot_info`, у группы —
+ * вектор `channelFull.bot_info`. Команды — те, что видит ЗРИТЕЛЬ (скоуп лички
+ * или группы, язык `""`). Не производим: описание-картинки, политика
+ * конфиденциальности, настройки приложения.
+ */
+export interface BotInfo {
+  _: 'botInfo'
+  user_id?: number
+  description?: string
+  commands?: BotCommand[]
+  menu_button?: { _: 'botMenuButton'; text: string; url: string }
+}
+
 /**
  * userFull#06cbe645 flags:# blocked:flags.0?true … id:long about:flags.1?string
  * … personal_photo:flags.21?Photo … ttl_period:flags.14?int …
@@ -239,6 +263,8 @@ export interface Birthday { _: 'birthday'; day: number; month: number; year?: nu
  */
 export interface UserFull {
   _: 'userFull'
+  /** бот: описание и команды скоупа лички глазами зрителя */
+  bot_info?: BotInfo
   pFlags?: Partial<{ blocked: true; phone_calls_available: true; video_calls_available: true }>
   id: number
   /** наш `users.bio` */
@@ -505,6 +531,10 @@ export interface ChannelFull {
   /** пер-чатное переопределение уведомлений; мьют в нём выражен СРОКОМ, а не
    *  булевым «заглушено» рядом с конструктором (решение Р4). */
   notify_settings?: PeerNotifySettings
+  /** `bot_info:Vector<BotInfo>` — боты-участники группы с командами глазами
+   *  зрителя (в схеме обязателен; карточка с сервера несёт его всегда, пустым
+   *  тоже). Кадр `updateBotCommands` правит запись нужного бота. */
+  bot_info?: BotInfo[]
 }
 
 export type ChatFull = ChatFullReal | ChannelFull

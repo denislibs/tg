@@ -5,6 +5,7 @@
 // общие Zustand-зеркала. Поэтому каждый кейс начинает с чистых зеркал и с
 // `dispose()` прошлой гидрации: иначе подписки прошлого кейса пережили бы его.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { briefProfile } from '../core/managers/authManager'
 import useFolders from './folders.solid'
 import { useAppStateStore, setAppState } from './appState'
 import { applyFolderUpdate, useFoldersStore } from './foldersStore'
@@ -219,5 +220,62 @@ describe('folders.solid — onClick', () => {
     folders.onClick()?.(2)
 
     expect(calls).toEqual([2])
+  })
+})
+
+// Ф7-З: место «Все чаты» среди папок (`allChatsPos`). У tweb «Все чаты» — обычный
+// фильтр со своим `localId`, и премиум переставляет её (`chatFolders.tsx:108-110`);
+// у не-премиум она первая (`premium_toggle`, `stores/folders.ts:197-206`).
+describe('folders.solid — место «Все чаты»', () => {
+  const setPremium = (premium: boolean) => useChatsStore.getState().setMe(briefProfile({
+    _: 'user', id: 1, first_name: 'Me', ...(premium ? { pFlags: { premium: true as const } } : {}),
+  }))
+
+  it('премиум: «Все чаты» стоит на месте allChatsPos среди папок', () => {
+    applyFolderUpdate({ folder: raw(3, 0) })
+    applyFolderUpdate({ folder: raw(4, 1) })
+    applyFolderUpdate({ folder: raw(5, 2) })
+    setAppState('allChatsPos', 2)
+    setPremium(true)
+
+    folders.hydrate()
+
+    expect(ids()).toEqual([3, 4, ALL_FOLDER_ID, 5])
+  })
+
+  it('не-премиум: «Все чаты» первая, как бы ни стояло сохранённое место', () => {
+    applyFolderUpdate({ folder: raw(3, 0) })
+    applyFolderUpdate({ folder: raw(4, 1) })
+    setAppState('allChatsPos', 2)
+    setPremium(false)
+
+    folders.hydrate()
+
+    expect(ids()).toEqual([ALL_FOLDER_ID, 3, 4])
+  })
+
+  it('место за концом списка — «Все чаты» последняя (после удаления папок)', () => {
+    applyFolderUpdate({ folder: raw(3, 0) })
+    setAppState('allChatsPos', 5)
+    setPremium(true)
+
+    folders.hydrate()
+
+    expect(ids()).toEqual([3, ALL_FOLDER_ID])
+  })
+
+  it('смена места и покупка премиума переставляют «Все чаты» живьём', () => {
+    applyFolderUpdate({ folder: raw(3, 0) })
+    applyFolderUpdate({ folder: raw(4, 1) })
+    setPremium(false)
+    folders.hydrate()
+    setAppState('allChatsPos', 1)
+    expect(ids()).toEqual([ALL_FOLDER_ID, 3, 4])
+
+    setPremium(true)
+    expect(ids()).toEqual([3, ALL_FOLDER_ID, 4])
+
+    setAppState('allChatsPos', 0)
+    expect(ids()).toEqual([ALL_FOLDER_ID, 3, 4])
   })
 })
