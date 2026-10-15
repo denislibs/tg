@@ -18,7 +18,8 @@ func TestSendNackReason_Paid(t *testing.T) {
 		{domain.ErrAllowPaymentRequired{Stars: 5}, "ALLOW_PAYMENT_REQUIRED_5"},
 		{fmt.Errorf("send: %w", domain.ErrAllowPaymentRequired{Stars: 15}), "ALLOW_PAYMENT_REQUIRED_15"},
 		{domain.ErrBalanceTooLow, "BALANCE_TOO_LOW"},
-		{domain.ErrSlowmode, "slowmode"},
+		{domain.ErrSlowmodeWait{Seconds: 30}, "SLOWMODE_WAIT_30"},
+		{fmt.Errorf("send: %w", domain.ErrSlowmodeWait{Seconds: 7}), "SLOWMODE_WAIT_7"},
 		{errors.New("boom"), "failed"},
 	}
 	for _, c := range cases {

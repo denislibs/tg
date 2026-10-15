@@ -718,16 +718,19 @@ func (c *Conn) ackBody(ctx context.Context, clientMsgID string, msg domain.Messa
 // sendNackReason — причина отказа send_message для NACK. Платная отправка
 // называется кодами TG: ALLOW_PAYMENT_REQUIRED_<N> (нет согласия на плату, N —
 // сумма всего запроса; клиент переспрашивает, tweb repayRequestHandler.ts:12) и
-// BALANCE_TOO_LOW (не хватает звёзд).
+// BALANCE_TOO_LOW (не хватает звёзд); медленный режим — SLOWMODE_WAIT_<N>.
 func sendNackReason(err error) string {
 	var need domain.ErrAllowPaymentRequired
+	var wait domain.ErrSlowmodeWait
 	switch {
 	case errors.As(err, &need):
 		return need.Error()
 	case errors.Is(err, domain.ErrTooLong):
 		return "too_long"
-	case errors.Is(err, domain.ErrSlowmode):
-		return "slowmode"
+	case errors.As(err, &wait):
+		// Медленный режим: SLOWMODE_WAIT_<N>, N — остаток окна в секундах
+		// (tweb appImManager.ts:551-565).
+		return wait.Error()
 	case errors.Is(err, domain.ErrForbidden):
 		return "forbidden"
 	case errors.Is(err, domain.ErrPrivacy):

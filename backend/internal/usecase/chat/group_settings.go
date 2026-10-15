@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"slices"
 	"sync"
 	"time"
@@ -175,7 +176,7 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 		// вовсе — у оригинала SLOWMODE_MULTI_MSGS_DISABLED, tweb предупреждает
 		// заранее (showSlowModeTooltipIfNeeded({sendingFew})).
 		if in.batchUnits > 1 {
-			return domain.ErrSlowmode
+			return domain.ErrSlowmodeWait{Seconds: s.SlowmodeSeconds}
 		}
 		if in.ClientMsgID != "" {
 			if _, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
@@ -194,11 +195,17 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 			size < maxAlbumSize && time.Since(last) < albumWindow {
 			return nil
 		}
-		if e == nil && time.Since(last) < time.Duration(s.SlowmodeSeconds)*time.Second {
-			return domain.ErrSlowmode
+		if period := time.Duration(s.SlowmodeSeconds) * time.Second; e == nil && time.Since(last) < period {
+			return domain.ErrSlowmodeWait{Seconds: slowmodeLeft(period - time.Since(last))}
 		}
 	}
 	return nil
+}
+
+// slowmodeLeft — остаток окна медленного режима целыми секундами вверх, не
+// меньше 1: из него строится SLOWMODE_WAIT_<N> (tweb appImManager.ts:551-565).
+func slowmodeLeft(left time.Duration) int {
+	return max(1, int(math.Ceil(left.Seconds())))
 }
 
 // maxAlbumSize — элементов в одном альбоме (Telegram: до 10 в sendMultiMedia).

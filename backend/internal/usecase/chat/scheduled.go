@@ -280,7 +280,8 @@ func (i *Interactor) checkScheduledSlowmode(ctx context.Context, chatID, senderI
 			continue
 		}
 		if d := r.SendAt.Sub(sendAt); d < window && d > -window {
-			return domain.ErrSlowmode
+			// Сдвинуть срок надо ещё на window − |d|.
+			return domain.ErrSlowmodeWait{Seconds: slowmodeLeft(window - max(d, -d))}
 		}
 	}
 	return nil
