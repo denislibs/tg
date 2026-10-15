@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -116,4 +117,44 @@ func TestSend_SendAs_AdminOK_OutsiderForbidden(t *testing.T) {
 		t.Fatalf("outsider send-as = %v, want ErrForbidden", err)
 	}
 	_ = s
+}
+
+// Приватность пуша: автор в ленте — чат (send-as, анонимный админ), а живой
+// отправитель на проводе скрыт. Заголовок пуша — название чата-автора; имени
+// админа в нём быть не должно ни при каком исходе поиска названия.
+func TestSend_SendAs_PushTitleIsAuthorChatNotAdmin(t *testing.T) {
+	in, _, fg, gid, chID := sendAsTestSetup(t)
+	n := &fakeNotifier{}
+	in.SetNotifier(n)
+	ctx := context.Background()
+
+	// от имени канала News
+	if _, err := in.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "от канала", SendAsChatID: &chID, ClientMsgID: "p1"}); err != nil {
+		t.Fatalf("send-as канал: %v", err)
+	}
+	// анонимный админ: от имени самой группы
+	if _, err := in.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "анонимно", SendAsChatID: &gid, ClientMsgID: "p2"}); err != nil {
+		t.Fatalf("send-as группа: %v", err)
+	}
+	// обычное сообщение: заголовок пуст — имя автора добавит воркер
+	if _, err := in.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "от себя", ClientMsgID: "p3"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if got, want := n.msgTitles, []string{"News", "Team", ""}; !slices.Equal(got, want) {
+		t.Fatalf("заголовки пушей = %q, want %q", got, want)
+	}
+
+	// название чата-автора не нашлось — не имя админа, а «Telegram»
+	fg.mu.Lock()
+	card := fg.cards[chID]
+	card.Title = ""
+	fg.cards[chID] = card
+	fg.mu.Unlock()
+	n.msgTitles = nil
+	if _, err := in.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "ещё", SendAsChatID: &chID, ClientMsgID: "p4"}); err != nil {
+		t.Fatalf("send-as без названия: %v", err)
+	}
+	if len(n.msgTitles) != 1 || n.msgTitles[0] != "Telegram" {
+		t.Fatalf("без названия заголовок = %q, want [Telegram]", n.msgTitles)
+	}
 }

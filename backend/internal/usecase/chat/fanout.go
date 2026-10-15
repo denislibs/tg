@@ -238,6 +238,23 @@ func (i *Interactor) publishMessageDelivery(
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
 }
 
+// pushAuthorTitle — заголовок пуша, когда автор сообщения в ленте не пользователь:
+// отправка от имени канала или группы (send-as), анонимный админ (send-as самой
+// группой), зеркало поста в группе обсуждения. Лента рисует автором такой чат, а
+// живой отправитель (msg.SenderID) на проводе скрыт (domain.Message.fromID), поэтому
+// и в пуше стоит название чата-автора, а не имя человека. Пусто — автор обычный
+// пользователь, имя добавит воркер. Название не нашлось — «Telegram» (заголовок
+// tweb по умолчанию, push.ts:421): имя скрытого автора запасным вариантом не бывает.
+func (i *Interactor) pushAuthorTitle(ctx context.Context, msg domain.Message) string {
+	if msg.SendAsChatID == nil {
+		return ""
+	}
+	if title, err := i.chats.ChatTitle(ctx, *msg.SendAsChatID); err == nil && title != "" {
+		return title
+	}
+	return "Telegram"
+}
+
 // notifyNewMessage — пуш-уведомления о новом сообщении получателям (кроме
 // автора). Упомянутым и тем, кому ответили (mentions — те же, что пометил
 // fanOutNewMessage), мьют не мешает; тема сообщения — корень его треда.
@@ -247,12 +264,13 @@ func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, s
 		return
 	}
 	topic := pushTopicRoot(msg)
+	title := i.pushAuthorTitle(ctx, msg)
 	for _, uid := range recipients {
 		if uid == senderID {
 			continue
 		}
 		peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
-		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, mentions[uid], topic)
+		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, mentions[uid], topic, title)
 	}
 }
 
@@ -285,6 +303,7 @@ func (i *Interactor) notifyDiscussionGuests(ctx context.Context, msg domain.Mess
 		return
 	}
 	slices.Sort(guests)
+	title := i.pushAuthorTitle(ctx, msg)
 	for _, uid := range guests {
 		if i.discussionGuestThread(ctx, msg.ChatID, uid, msg.ThreadRootID, false) != nil {
 			continue
@@ -296,7 +315,7 @@ func (i *Interactor) notifyDiscussionGuests(ctx context.Context, msg domain.Mess
 		if err != nil {
 			continue
 		}
-		i.notifier.NotifyGuest(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, *msg.ThreadRootID)
+		i.notifier.NotifyGuest(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, *msg.ThreadRootID, title)
 	}
 }
 

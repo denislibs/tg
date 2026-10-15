@@ -588,3 +588,103 @@ describe('is-premium следует за карточкой me (tweb :388-397)',
     expect(document.body.classList.contains('is-premium')).toBe(false)
   })
 })
+
+// Клик по системному уведомлению (расхождение 12 шапки; tweb `uiNotificationsManager.ts:354-400`).
+// `public/sw.js` шлёт `push-click` с объектом пуша (`custom.peerId`, `custom.msg_id`);
+// вкладка сразу после подписки сообщает `push-ready` (`client/pushPing.ts`).
+describe('клик по пушу (расхождение 12; tweb uiNotificationsManager :354-400)', () => {
+  let onMessage: ((e: { data: unknown }) => void) | undefined
+  let postMessage: ReturnType<typeof vi.fn>
+  let callLog: string[]
+
+  beforeEach(() => {
+    // таймеры пинга не взводим: интервал пережил бы тест
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    callLog = []
+    postMessage = vi.fn(() => { callLog.push('push-ready') })
+    onMessage = undefined
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        controller: { postMessage },
+        addEventListener: (type: string, fn: typeof onMessage) => {
+          if(type === 'message') { onMessage = fn; callLog.push('subscribe') }
+        },
+      },
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    Reflect.deleteProperty(navigator, 'serviceWorker')
+  })
+
+  const click = (custom: Record<string, string>) => onMessage!({ data: { type: 'push-click', payload: { custom } } })
+
+  it('сразу после подписки на сообщения SW вкладка шлёт push-ready (без условия DNP)', () => {
+    construct()
+    expect(callLog).toEqual(['subscribe', 'push-ready'])
+    expect(postMessage).toHaveBeenCalledWith({ type: 'push-ready' })
+  })
+
+  it('пира нет в кэше: запрос карточки, затем setInnerPeer с клиентским номером сообщения', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    getPeers.mockClear()
+
+    click({ peerId: '42', msg_id: '5' })
+    await settle()
+
+    expect(getPeers).toHaveBeenCalledWith([42])
+    expect(setInnerPeer).toHaveBeenCalledWith(expect.objectContaining({ peerId: 42, lastMsgId: generateMessageId(5) }))
+  })
+
+  it('группа/канал: peerId со знаком "-5" остаётся ключом пира', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    getPeers.mockImplementationOnce(async() => [{ _: 'channel', id: 5, pFlags: {} }] as never)
+
+    click({ peerId: '-5', msg_id: '9' })
+    await settle()
+
+    expect(getPeers).toHaveBeenLastCalledWith([-5])
+    expect(setInnerPeer).toHaveBeenCalledWith(expect.objectContaining({ peerId: -5, lastMsgId: generateMessageId(9) }))
+  })
+
+  it('пира нет и после запроса — ничего не открывается', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    getPeers.mockImplementationOnce(async() => [undefined] as never)
+
+    click({ peerId: '42', msg_id: '5' })
+    await settle()
+
+    expect(setInnerPeer).not.toHaveBeenCalled()
+  })
+
+  it('отказ запроса карточки не роняет вкладку (необработанного отказа нет)', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    getPeers.mockRejectedValueOnce(new Error('offline'))
+
+    click({ peerId: '42', msg_id: '5' })
+    await settle()
+
+    expect(setInnerPeer).not.toHaveBeenCalled()
+  })
+
+  it('пуш без ключа пира (peerId пустой) и чужие сообщения SW — выход без запроса', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    getPeers.mockClear()
+
+    click({ peerId: '', msg_id: '5' })
+    onMessage!({ data: { type: 'sw-hello' } })
+    onMessage!({ data: { type: 'open-chat', chatId: 42 } }) // снятый тип
+    onMessage!({ data: null })
+    await settle()
+
+    expect(getPeers).not.toHaveBeenCalled()
+    expect(setInnerPeer).not.toHaveBeenCalled()
+  })
+})
