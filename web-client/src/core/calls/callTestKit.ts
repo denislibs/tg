@@ -123,6 +123,8 @@ export interface Net {
   p2pAllowed: boolean | undefined
   /** Ответ GET /calls/ice: по умолчанию STUN + TURN, как на стенде. */
   iceServers: RTCIceServer[]
+  /** Сколько раз движки спросили /calls/ice. */
+  iceFetches: number
   /** Вернуть кадры, которые надо доставить в одном тике (пусто — кадр проглочен). */
   tamper?: (from: number, to: number, f: Frame) => Frame[]
   side(id: number): Promise<Side>
@@ -139,6 +141,7 @@ export function createNet(): Net {
   const net: Net = {
     sides: new Map(),
     p2pAllowed: true,
+    iceFetches: 0,
     iceServers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:turn.test:3478?transport=udp'], username: 'u', credential: 'c' }],
     async side(id) {
       vi.resetModules()
@@ -161,7 +164,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => ({ servers: net.iceServers, ttlSeconds: 3600 }) },
+            calls: { iceConfig: async () => { net.iceFetches++; return { servers: net.iceServers, ttlSeconds: 86_400 } } },
             peers: { getUsers: async () => [] },
           },
         }),

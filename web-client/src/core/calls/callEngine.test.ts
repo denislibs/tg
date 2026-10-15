@@ -213,3 +213,17 @@ describe('callEngine: p2p_allowed → iceTransportPolicy', () => {
     expect(policies()).toEqual(['all', 'all'])
   })
 })
+
+// Креды TURN проверяются coturn на каждом запросе: кэш короткий, чтобы relay-звонок не стартовал
+// с почти истёкшими кредами и не рвался посреди разговора (tweb выдаёт креды на каждый звонок).
+describe('callEngine: кэш ICE-конфига короткий', () => {
+  it('в пределах минуты — один запрос, после — новый', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    await A.engine.iceServers()
+    expect(net.iceFetches).toBe(1)
+    await vi.advanceTimersByTimeAsync(61_000)
+    await A.engine.iceServers()
+    expect(net.iceFetches).toBe(2)
+  })
+})

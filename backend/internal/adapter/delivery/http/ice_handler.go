@@ -21,7 +21,9 @@ type ICEHandler struct {
 }
 
 func NewICEHandler(turnHost, turnSecret string) *ICEHandler {
-	return &ICEHandler{turnHost: turnHost, turnSecret: turnSecret, ttl: time.Hour}
+	// ttl — сутки: relay-звонок и групповой mesh целиком зависят от кредов TURN (coturn проверяет
+	// метку истечения на каждом Refresh/CreatePermission), звонок не должен рваться на её границе.
+	return &ICEHandler{turnHost: turnHost, turnSecret: turnSecret, ttl: 24 * time.Hour}
 }
 
 func (h *ICEHandler) Get(w http.ResponseWriter, r *http.Request) {

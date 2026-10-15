@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -160,7 +161,7 @@ func Load() (*Config, error) {
 		// без достижимого клиентам TURN_HOST они не соединяются. Старт не рвём —
 		// сервер без звонков работает, — но говорим громко.
 		if !turnHostReachable(c.TurnHost) {
-			log.Printf("WARNING: APP_ENV=production, TURN_HOST=%q недостижим для клиентов — групповые звонки и звонки с запретом P2P не соединятся", c.TurnHost)
+			log.Printf("WARNING: APP_ENV=production, TURN_HOST=%q не похож на адрес, достижимый клиентам, — групповые звонки и звонки с запретом P2P не соединятся", c.TurnHost)
 		}
 		if len(bad) > 0 {
 			return nil, fmt.Errorf("APP_ENV=production, но используются дефолтные секреты: %s — задайте их через окружение", strings.Join(bad, ", "))
@@ -175,11 +176,23 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
-// turnHostReachable — похож ли TURN_HOST на адрес, достижимый клиентам с других
-// машин: пустой и петлевой (localhost, 127.*, ::1) — нет.
+// turnHostReachable — похож ли TURN_HOST на адрес, достижимый клиентам с других машин.
+// Нет: пустой, localhost, петлевой/неопределённый/частный/link-local IP, имя без точки
+// (имя сервиса compose снаружи не разрешается), значение с портом (порт дописывает
+// ICE-хендлер: `host:3478:3478` — невалидный URL, конструктор RTCPeerConnection бросает).
 func turnHostReachable(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
-	return h != "" && h != "localhost" && h != "::1" && !strings.HasPrefix(h, "127.")
+	if h == "" || h == "localhost" {
+		return false
+	}
+	if _, _, err := net.SplitHostPort(h); err == nil {
+		return false
+	}
+	h = strings.Trim(h, "[]")
+	if ip := net.ParseIP(h); ip != nil {
+		return !(ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	}
+	return strings.Contains(h, ".")
 }
 
 // devAppEnvs — значения APP_ENV, про которые известно, что это не прод: только в

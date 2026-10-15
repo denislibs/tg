@@ -35,15 +35,19 @@ import {
 // пределах одной сети).
 const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
-// ICE-конфиг с бэка (STUN + эфемерные TURN-креды), кэш до истечения TTL.
+// ICE-конфиг с бэка (STUN + эфемерные TURN-креды). Кэш короткий: креды TURN проверяются coturn
+// на каждом запросе (Allocate, Refresh, CreatePermission), и relay-звонок, начатый с почти
+// истёкшими кредами, оборвался бы посреди разговора; у tweb они выдаются на каждый звонок
+// (callInstance.ts:676-688). Серверный TTL — сутки (ice_handler.go), кэш лишь склеивает
+// несколько pc одного входа в звонок.
+const ICE_CACHE_MS = 60_000
 let cachedIce: { servers: RTCIceServer[]; until: number } | null = null
 export async function iceServers(): Promise<RTCIceServer[]> {
   if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
   try {
     const cfg = await managers().calls.iceConfig()
     if (cfg.servers.length) {
-      // обновляем за 5 минут до истечения кредов
-      cachedIce = { servers: cfg.servers, until: Date.now() + Math.max(60, cfg.ttlSeconds - 300) * 1000 }
+      cachedIce = { servers: cfg.servers, until: Date.now() + ICE_CACHE_MS }
       return cfg.servers
     }
   } catch { /* бэк недоступен — деградация до STUN */ }

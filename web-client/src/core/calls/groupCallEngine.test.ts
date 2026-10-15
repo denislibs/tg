@@ -105,4 +105,16 @@ describe('groupCallEngine: mesh только через TURN', () => {
 
     expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER } })
   })
+
+  it('двойной вход (два клика) — один getUserMedia и один group_call_join', async () => {
+    iceServers = [TURN]
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }))
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
+    store.useGroupCallStore.getState().reset()
+
+    await Promise.all([engine.joinGroupCall(PEER), engine.joinGroupCall(PEER)])
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_join')).toHaveLength(1)
+  })
 })

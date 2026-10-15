@@ -1,6 +1,10 @@
 package config
 
 import (
+	"bytes"
+	"log"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -241,15 +245,49 @@ func TestLoad_DevPurchasesRequiresExplicitAppEnv(t *testing.T) {
 	}
 }
 
-// Звонки только через TURN (М3-2): TURN_HOST, недостижимый клиентам, в проде
-// ловится предупреждением при старте, а не молчанием.
+// Звонки только через TURN (М3-2): TURN_HOST, недостижимый клиентам, в проде ловится
+// предупреждением при старте, а не молчанием.
 func TestTurnHostReachable(t *testing.T) {
 	for host, want := range map[string]bool{
-		"": false, "  ": false, "localhost": false, "LocalHost": false, "127.0.0.1": false, "::1": false,
-		"turn.example.com": true, "203.0.113.7": true,
+		"": false, "  ": false, "localhost": false, "LocalHost": false, "127.0.0.1": false, "::1": false, "[::1]": false,
+		"0.0.0.0": false, "10.0.0.5": false, "172.16.3.4": false, "192.168.1.9": false, "169.254.1.1": false,
+		"coturn": false, "turn.example.com:3478": false, "203.0.113.7:3478": false,
+		"turn.example.com": true, "203.0.113.7": true, "2001:db8::1": true,
 	} {
 		if got := turnHostReachable(host); got != want {
 			t.Errorf("turnHostReachable(%q) = %v, want %v", host, got, want)
 		}
+	}
+}
+
+// Load в проде зовёт проверку и пишет WARNING; на достижимом хосте — тишина. Старт не рвётся.
+func TestLoad_ProdWarnsOnUnreachableTurnHost(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod")
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	t.Setenv("TURN_HOST", "localhost")
+	if _, err := Load(); err != nil {
+		t.Fatalf("прод с TURN_HOST=localhost не стартует: %v", err)
+	}
+	if !strings.Contains(buf.String(), "WARNING") || !strings.Contains(buf.String(), "TURN_HOST") {
+		t.Fatalf("нет предупреждения о TURN_HOST, лог: %q", buf.String())
+	}
+
+	buf.Reset()
+	t.Setenv("TURN_HOST", "turn.example.com")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "TURN_HOST") {
+		t.Fatalf("предупреждение на достижимом хосте: %q", buf.String())
 	}
 }
