@@ -30,6 +30,17 @@ export type { Chat, User, UserReal }
 // и лёг в зеркало одним пробуждением подписчиков.
 export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
 
+/** Статусы равны по содержимому (`_`, `expires`/`was_online`, `by_me`); порядок ключей не важен. */
+function sameStatus(a: UserStatus | undefined, b: UserStatus): boolean {
+  if (!a || a._ !== b._) return false
+  if (a._ === 'userStatusOnline' && b._ === 'userStatusOnline') return a.expires === b.expires
+  if (a._ === 'userStatusOffline' && b._ === 'userStatusOffline') return a.was_online === b.was_online
+  if ('pFlags' in a || 'pFlags' in b) {
+    return !!(a as { pFlags?: { by_me?: true } }).pFlags?.by_me === !!(b as { pFlags?: { by_me?: true } }).pFlags?.by_me
+  }
+  return true
+}
+
 /**
  * Владелец карточек пиров. Второго вывода нет: витрина (`core/peerCache.ts`) —
  * зеркало, её единственный писатель — проектор по `onPeerOps`.
@@ -63,17 +74,6 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * `onPeerOps` опционален только ради юнит-тестов самого менеджера; в проде его
  * задаёт workerCore, и это покрыто отдельным пином — workerCore.test.ts.
  */
-/** Статусы равны по содержимому (`_`, `expires`/`was_online`, `by_me`); порядок ключей не важен. */
-function sameStatus(a: UserStatus | undefined, b: UserStatus): boolean {
-  if (!a || a._ !== b._) return false
-  if (a._ === 'userStatusOnline' && b._ === 'userStatusOnline') return a.expires === b.expires
-  if (a._ === 'userStatusOffline' && b._ === 'userStatusOffline') return a.was_online === b.was_online
-  if ('pFlags' in a || 'pFlags' in b) {
-    return !!(a as { pFlags?: { by_me?: true } }).pFlags?.by_me === !!(b as { pFlags?: { by_me?: true } }).pFlags?.by_me
-  }
-  return true
-}
-
 /**
  * `onUserStatus` — приёмник статуса из карточки: порт `saveUserStatus` внутри
  * `appUsersManager.saveApiUser` (tweb `appUsersManager.ts:700`). У оригинала

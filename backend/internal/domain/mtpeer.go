@@ -400,16 +400,14 @@ type UserViewRules struct {
 }
 
 // UncheckedUserViewRules — правила, когда проверяющего приватности нет (тесты,
-// урезанная сборка): фото видно всем, номер — никому, статус «ничего не
-// известно» (userStatusEmpty) — та же мягкая деградация, что у прочих
-// опциональных зависимостей.
+// урезанная сборка): фото видно всем, номер — никому, статус карточки не
+// трогается (о присутствии ничего не известно, а userStatusEmpty значит «давно»).
 func UncheckedUserViewRules(viewerID int64, users []UserReal) UserViewRules {
 	all := make(map[int64]bool, len(users))
 	for _, u := range users {
 		all[u.ID] = true
 	}
-	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all,
-		Status: func(int64) UserStatus { return NewUserStatusEmpty() }}
+	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all}
 }
 
 // Apply доводит карточки на месте: self видит себя целиком; фото по правилу

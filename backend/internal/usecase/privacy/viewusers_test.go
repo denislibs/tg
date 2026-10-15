@@ -115,7 +115,7 @@ func TestViewUsers_UnknownPresenceLeavesStatusAlone(t *testing.T) {
 	known := domain.NewUserStatusOnline(time.Now().Add(time.Minute))
 	for name, in := range map[string]*Interactor{
 		"без источника":   New(&mapsRepo{}),
-		"источник молчит": func() *Interactor { i := New(&mapsRepo{}); i.SetPresence(silentPresence{}); return i }(),
+		"источник молчит": func() *Interactor { i := New(&mapsRepo{}); i.SetPresence(&silentPresence{}); return i }(),
 	} {
 		u := domain.NewUser(2, domain.UserFlags{})
 		u.Status = known

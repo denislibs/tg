@@ -1056,11 +1056,11 @@ export function createWorkerCore() {
     onSyncStart: () => broadcast(RT.stateSynchronizing, null),
     onSyncEnd: () => {
       broadcast(RT.stateSynchronized, null)
-      // tweb `state_synchronized` → `updateUsersStatuses` (`appUsersManager.ts:70`).
+      // tweb `state_synchronized` → `updateUsersStatuses` (`appUsersManager.ts:83`).
       peers.degradeExpiredStatuses()
     },
   })
-  // tweb `setInterval(this.updateUsersStatuses, 60000)` (`appUsersManager.ts:68`):
+  // tweb `setInterval(this.updateUsersStatuses, 60000)` (`appUsersManager.ts:81`):
   // истёкший онлайн карточки гасится даже без кадра offline.
   setInterval(() => peers.degradeExpiredStatuses(), 60_000)
   // tweb `forceGetDifference` (:185-189): идущий догон не дублируется; новый —

@@ -77,13 +77,24 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	var card domain.UserReal
 	built := false
 	if i.emit != nil {
+		// Присутствие — до транзакции: Redis под замком строки user_state держал бы
+		// доставку владельцу (каждое входящее сообщение ждёт тот же замок).
+		presence := i.presenceOf(ctx, userID)
 		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
 			// Правила читаются ВНУТРИ замка курсора владельца, а не до него: блок и
 			// смена last_seen пересчитывают статус отдельной строкой журнала
-			// (AnnounceUserTo / reannounce), и она встаёт в порядок замком. Правило,
-			// прочитанное до замка, могло бы устареть к моменту записи — снимок с
-			// большим pts затёр бы более свежий статус «давно» старым «недавно».
-			u, err := i.seenByOwner(ctx, ownerID, userID, i.viewRules(ctx, ownerID, []int64{userID}))
+			// (AnnounceUserTo), и она встаёт в порядок замком. Правило, прочитанное
+			// до замка, могло бы устареть к моменту записи — снимок с большим pts
+			// затёр бы более свежий «давно» старым «недавно». Сбой SQL здесь
+			// прерывает транзакцию, поэтому он возвращается ошибкой (с первопричиной
+			// в логе), а не гасится: строки журнала не будет, ответ ручки соберётся
+			// заново уже вне транзакции.
+			rules, err := i.accessRules(ctx, ownerID, userID)
+			if err != nil {
+				return nil, err
+			}
+			rules.Status = presence
+			u, err := i.seenByOwner(ctx, ownerID, userID, rules)
 			if err != nil {
 				return nil, err
 			}
@@ -100,22 +111,44 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	return i.seenByOwner(ctx, ownerID, userID, i.viewRules(ctx, ownerID, []int64{userID}))
 }
 
-// viewRules — правила карточки `user` (фото, номер, статус) и присутствие для
-// пачки ids глазами ownerID: тот же сборщик, что у всех витрин
-// (privacy.ViewRules → domain.UserViewRules.Apply). Сбой правила гасит то, что
-// оно охраняет (фото и номер не показываются, статус — «недавно»). Без
-// проверяющего приватности фото видно, номер скрыт, а статус карточки не
-// трогается: о присутствии ничего не известно, и «давно» клиент принял бы за
-// настоящий статус.
-func (i *Interactor) viewRules(ctx context.Context, ownerID int64, ids []int64) domain.UserViewRules {
+// accessRules — правила карточки userID глазами ownerID из БД. Без проверяющего
+// приватности: фото видно, номер скрыт, статус не трогается.
+func (i *Interactor) accessRules(ctx context.Context, ownerID, userID int64) (domain.UserViewRules, error) {
 	if i.privacy != nil {
-		return i.privacy.ViewRules(ctx, ownerID, ids)
+		return i.privacy.AccessRules(ctx, ownerID, []int64{userID})
 	}
-	all := make(map[int64]bool, len(ids))
-	for _, id := range ids {
-		all[id] = true
+	return domain.UserViewRules{ViewerID: ownerID, Photo: map[int64]bool{userID: true}, Phone: map[int64]bool{},
+		LastSeen: map[int64]bool{userID: true}}, nil
+}
+
+// presenceOf — присутствие одного пользователя (nil — не известно).
+func (i *Interactor) presenceOf(ctx context.Context, ids ...int64) func(int64) domain.UserStatus {
+	if i.privacy == nil {
+		return nil
 	}
-	return domain.UserViewRules{ViewerID: ownerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all}
+	return i.privacy.PresenceOf(ctx, ids)
+}
+
+// viewRules — правила карточки `user` (фото, номер, статус) и присутствие для
+// пачки ids глазами ownerID вне транзакции: тот же сборщик, что у всех витрин
+// (AccessRules + PresenceOf → domain.UserViewRules.Apply). Сбой правила гасит
+// то, что оно охраняет (фото и номер не показываются, статус — «недавно») и
+// пишется в лог. Без проверяющего приватности фото видно, номер скрыт, а статус
+// карточки не трогается.
+func (i *Interactor) viewRules(ctx context.Context, ownerID int64, ids []int64) domain.UserViewRules {
+	if i.privacy == nil {
+		all := make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			all[id] = true
+		}
+		return domain.UserViewRules{ViewerID: ownerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all}
+	}
+	rules, err := i.privacy.AccessRules(ctx, ownerID, ids)
+	if err != nil {
+		log.Printf("[user_update] privacy rules owner=%d ids=%d: %v", ownerID, len(ids), err)
+	}
+	rules.Status = i.privacy.PresenceOf(ctx, ids)
+	return rules
 }
 
 // seenByOwner — краткая карточка userID глазами ownerID: имя и pFlags.contact
@@ -125,9 +158,9 @@ func (i *Interactor) viewRules(ctx context.Context, ownerID int64, ids []int64) 
 // pFlags.close_friend. Читает только через ctx: зовётся и внутри транзакции с
 // замком курсора владельца.
 //
-// Статус в карточке есть всегда: клиент заменяет карточку в кэше целиком, и
-// карточка без `status` стёрла бы у него настоящий статус (tweb насчёт этого
-// держит поле живым, appUsersManager.ts:90-102).
+// Статус едет в карточке: клиент заменяет её в кэше целиком (tweb saveApiUser),
+// и без `status` он стёр бы настоящий. Поля нет, только если присутствие не
+// получено или не подключено.
 func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rules domain.UserViewRules) (domain.UserReal, error) {
 	u, err := i.repo.SeenUser(ctx, ownerID, userID)
 	if err != nil {

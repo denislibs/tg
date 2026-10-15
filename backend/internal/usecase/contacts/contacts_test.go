@@ -206,15 +206,10 @@ type fakePrivacy struct {
 	status   map[int64]domain.UserStatus
 }
 
-func (p fakePrivacy) ViewRules(_ context.Context, viewer int64, ids []int64) domain.UserViewRules {
-	rules := domain.UserViewRules{ViewerID: viewer, Status: func(id int64) domain.UserStatus {
-		if st, ok := p.status[id]; ok {
-			return st
-		}
-		return domain.NewUserStatusEmpty()
-	}}
+func (p fakePrivacy) AccessRules(_ context.Context, viewer int64, ids []int64) (domain.UserViewRules, error) {
+	rules := domain.UserViewRules{ViewerID: viewer}
 	if p.rulesErr != nil {
-		return rules
+		return rules, p.rulesErr
 	}
 	rules.Photo, rules.Phone, rules.LastSeen = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
 	for _, id := range ids {
@@ -222,7 +217,16 @@ func (p fakePrivacy) ViewRules(_ context.Context, viewer int64, ids []int64) dom
 		rules.Phone[id] = p.allow[domain.PrivacyPhoneNumber]
 		rules.LastSeen[id] = p.allow[domain.PrivacyLastSeen]
 	}
-	return rules
+	return rules, nil
+}
+
+func (p fakePrivacy) PresenceOf(_ context.Context, _ []int64) func(int64) domain.UserStatus {
+	return func(id int64) domain.UserStatus {
+		if st, ok := p.status[id]; ok {
+			return st
+		}
+		return domain.NewUserStatusEmpty()
+	}
 }
 func (p fakePrivacy) Check(_ context.Context, _, _ int64, key domain.PrivacyKey) (bool, error) {
 	return p.allow[key], nil
@@ -490,9 +494,11 @@ func TestAdd_EmitterFailureKeepsResponse(t *testing.T) {
 	}
 }
 
-// Сбой правил приватности гасит то, что они охраняют (фото, номер), но строка
-// журнала об удалении пишется и ответ не 500.
-func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
+// Сбой правил приватности внутри транзакции с замком прерывает её, поэтому
+// строки журнала нет (явный отказ с первопричиной в логе, а не строка с
+// погашенными правилами), а ответ ручки не 500: он собирается заново вне
+// транзакции с погашенными фото и номером.
+func TestDelete_PrivacyRulesFailureSkipsRowKeepsResponse(t *testing.T) {
 	i, book, log := newBookInteractor(t)
 	ctx := context.Background()
 	book.phones[cBob] = "+79990000002"
@@ -507,8 +513,8 @@ func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
 	if card.Phone != "" || card.ContactRecord() {
 		t.Fatalf("ответ = %+v", card)
 	}
-	if u, n := rowCard(t, log, cOwner); n != 2 || u.ContactRecord() || u.Phone != "" {
-		t.Fatalf("строка (n=%d) = %+v", n, u)
+	if n := len(log.rows[cOwner]); n != 0 {
+		t.Fatalf("строк журнала = %d; want 0 при сбое правил под замком", n)
 	}
 }
 
@@ -559,9 +565,14 @@ type orderPrivacy struct {
 	events *[]string
 }
 
-func (p orderPrivacy) ViewRules(ctx context.Context, v int64, ids []int64) domain.UserViewRules {
+func (p orderPrivacy) AccessRules(ctx context.Context, v int64, ids []int64) (domain.UserViewRules, error) {
 	*p.events = append(*p.events, "rules")
-	return p.fakePrivacy.ViewRules(ctx, v, ids)
+	return p.fakePrivacy.AccessRules(ctx, v, ids)
+}
+
+func (p orderPrivacy) PresenceOf(ctx context.Context, ids []int64) func(int64) domain.UserStatus {
+	*p.events = append(*p.events, "presence")
+	return p.fakePrivacy.PresenceOf(ctx, ids)
 }
 
 func TestPublishContactCard_ReadsPrivacyUnderCursorLock(t *testing.T) {
@@ -572,8 +583,9 @@ func TestPublishContactCard_ReadsPrivacyUnderCursorLock(t *testing.T) {
 	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 || events[0] != "lock" || events[1] != "rules" {
-		t.Fatalf("порядок = %v; want правила после замка курсора", events)
+	// Присутствие (Redis) — до замка, правила из БД — после него.
+	if len(events) != 3 || events[0] != "presence" || events[1] != "lock" || events[2] != "rules" {
+		t.Fatalf("порядок = %v; want presence, lock, rules", events)
 	}
 }
 
@@ -760,7 +772,7 @@ func (l afterLock) LockState(ctx context.Context, uid int64) error {
 // Гонка блок ↔ снимок: блок, ставший виден к моменту, когда мы взяли замок,
 // попадает в строку журнала (userStatusEmpty), а не «в сети», прочитанное раньше.
 func TestPublishContactCard_BlockBeforeLockIsInSnapshot(t *testing.T) {
-	i, book, log := newBookInteractor(t)
+	i, _, log := newBookInteractor(t)
 	blocked := map[int64]bool{}
 	repo := statusRepo{hiddenBy: map[int64]bool{}, blockedBy: blocked}
 	// Правило last_seen закрывает блок (как VisibleMaps в БД): hiddenBy тот же ключ.
@@ -769,7 +781,6 @@ func TestPublishContactCard_BlockBeforeLockIsInSnapshot(t *testing.T) {
 	pr.SetPresence(fixedPresence{cBob: domain.NewUserStatusOnline(time.Now().Add(time.Minute))})
 	i.SetPrivacy(pr)
 	i.SetEmitter(ownsync.New(afterLock{log, func() { blocked[cBob], hidden[cBob] = true, true }}, nil, directTx{}))
-	_ = book
 
 	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
 		t.Fatal(err)

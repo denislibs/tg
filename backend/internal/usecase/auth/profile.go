@@ -152,14 +152,35 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 		}
 	}
 	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
+	// Присутствие автора не зависит от получателя: читается один раз на всех.
+	var presence func(int64) domain.UserStatus
+	if i.privacy != nil {
+		presence = i.privacy.PresenceOf(ctx, []int64{u.ID})
+	}
+	// Правила получателя читаются и строка пишется под замком автора: блок и
+	// смена last_seen пересчитывают карточку тем же sendUserUpdate
+	// (AnnounceUserTo), и без замка снимок с устаревшим «не заблокирован» мог бы
+	// лечь в журнал ПОСЛЕ пересчёта блока и затереть его.
+	lock := &i.subjectLocks[uint64(u.ID)%uint64(len(i.subjectLocks))]
+	lock.Lock()
+	defer lock.Unlock()
 	for _, uid := range recipients {
+		// Правила получателя: аватарка, номер и статус автора глазами uid. Одним
+		// сборщиком с остальными витринами (domain.UserViewRules.Apply); сбой правил
+		// гасит фото и статус («недавно»), источника присутствия нет — поле не едет.
+		var rules domain.UserViewRules
+		if i.privacy != nil {
+			var err error
+			if rules, err = i.privacy.AccessRules(ctx, uid, []int64{u.ID}); err != nil {
+				i.logf("[user_update] privacy rules viewer=%d user=%d: %v", uid, u.ID, err)
+			}
+			rules.Status = presence
+		}
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
 			card := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid])
-			// Статус — глазами получателя (last_seen, блок, присутствие): тем же
-			// сборщиком, что у остальных витрин. Источника нет — поле не едет.
 			if i.privacy != nil {
 				cards := []domain.UserReal{card}
-				i.privacy.ViewRules(ctx, uid, []int64{u.ID}).Apply(cards)
+				rules.Apply(cards)
 				card.Status = cards[0].Status
 			}
 			if uid == u.ID {
@@ -171,7 +192,7 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 			}
 			return domain.NewUpdateUserSnapshot(card)
 		}
-		live := seen(i.photoVisible(ctx, u.ID, uid))
+		live := seen(uid == u.ID || rules.Photo[u.ID])
 		env := map[string]any{"t": "user_update", "d": live}
 		if i.updates != nil {
 			// Строка журнала — ТА ЖЕ карточка, что живой кадр: фото по правилу
@@ -201,19 +222,6 @@ func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, re
 		}
 		_ = i.pub.PublishToUser(ctx, uid, b)
 	}
-}
-
-// photoVisible — пускает ли правило profile_photo владельца зрителя к аватарке.
-// Себе — всегда; проверяющего нет — не пускаем (фото просто не едет в кадре).
-func (i *Interactor) photoVisible(ctx context.Context, ownerID, viewerID int64) bool {
-	if ownerID == viewerID {
-		return true
-	}
-	if i.privacy == nil {
-		return false
-	}
-	ok, err := i.privacy.Check(ctx, ownerID, viewerID, domain.PrivacyProfilePhoto)
-	return err == nil && ok
 }
 
 // ProfileInput carries the editable profile fields for UpdateProfile.

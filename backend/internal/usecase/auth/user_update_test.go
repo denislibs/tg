@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/messenger-denis/backend/internal/domain"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -587,13 +588,16 @@ func (statusPrivacy) Check(context.Context, int64, int64, domain.PrivacyKey) (bo
 	return true, nil
 }
 
-func (p statusPrivacy) ViewRules(_ context.Context, viewer int64, ids []int64) domain.UserViewRules {
-	r := domain.UserViewRules{ViewerID: viewer, Photo: map[int64]bool{}, Phone: map[int64]bool{}, LastSeen: map[int64]bool{},
-		Status: func(int64) domain.UserStatus { return domain.NewUserStatusOnline(time.Now().Add(time.Minute)) }}
+func (p statusPrivacy) AccessRules(_ context.Context, viewer int64, ids []int64) (domain.UserViewRules, error) {
+	r := domain.UserViewRules{ViewerID: viewer, Photo: map[int64]bool{}, Phone: map[int64]bool{}, LastSeen: map[int64]bool{}}
 	for _, id := range ids {
 		r.Photo[id], r.LastSeen[id] = true, !p.hiddenFrom[viewer]
 	}
-	return r
+	return r, nil
+}
+
+func (statusPrivacy) PresenceOf(context.Context, []int64) func(int64) domain.UserStatus {
+	return func(int64) domain.UserStatus { return domain.NewUserStatusOnline(time.Now().Add(time.Minute)) }
 }
 
 // Смена профиля: кадр и строка журнала несут статус автора глазами получателя.
@@ -629,4 +633,37 @@ func TestUserUpdate_CarriesStatusPerRecipient(t *testing.T) {
 			t.Fatalf("строка журнала %d: статус %q; want %q", uid, row.User.Status.T, tag)
 		}
 	}
+}
+
+// Строки user_update одного автора пишутся последовательно: правила получателя
+// (блок, last_seen) читаются и строка ложится под одним замком автора, поэтому
+// пересчёт блока (AnnounceUserTo) и смена профиля не пересекаются.
+func TestUserUpdate_SameAuthorSerialized(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000005", "Боб", "")
+	log := newFakeUpdateLog()
+	inside := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	log.onAppend = func(int64) {
+		once.Do(func() { close(inside); <-release })
+	}
+	i.SetUpdateLog(log)
+	i.SetPrivacy(statusPrivacy{})
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return nil, nil })
+
+	done := make(chan struct{}, 2)
+	go func() { i.sendUserUpdate(ctx, u, []int64{u.ID}); done <- struct{}{} }()
+	<-inside // первая отправка держит замок автора внутри AppendUpdate
+	second := make(chan struct{})
+	go func() { i.sendUserUpdate(ctx, u, []int64{u.ID}); close(second); done <- struct{}{} }()
+	select {
+	case <-second:
+		t.Fatal("вторая отправка того же автора прошла, пока первая держит замок")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	<-done
+	<-done
 }
