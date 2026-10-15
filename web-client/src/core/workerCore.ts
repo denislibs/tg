@@ -262,6 +262,8 @@ export function createWorkerCore() {
     // Лимит своих реакций на сообщении — ключ `reactions_user_max_*` конфига
     // приложения (tweb appReactionsManager.ts:694 `getLimit('reactions')`).
     getReactionsLimit: () => appConfig.getLimit('reactions'),
+    // Срок правки в личке — `config.edit_time_limit` (tweb canEditMessage :8382-8386).
+    getEditTimeLimit: async () => (await appConfig.getConfig()).edit_time_limit,
     // tweb appMessagesManager.ts:13503-13505: история канала
     // (`messages.channelMessages`) заводит состояние канала его pts. Стрелка
     // ленивая: воронка каналов объявлена ниже.

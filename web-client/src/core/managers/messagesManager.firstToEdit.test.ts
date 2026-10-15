@@ -18,9 +18,12 @@ function restWith(page: RawMessage[]) {
   } as unknown as RestClient
 }
 
-async function managerWith(rows: { id: number, fromId: number, out?: boolean, sticker?: boolean }[]) {
-  const page = rows.map(({ id, fromId, out }) => makeRawMessage({ id, peerId: BOB, fromId, out, text: `m${id}`, date: Math.floor(Date.now() / 1000) - 60 + id }) as RawMessage)
-  const mgr = newMessagesManager({ rest: restWith(page), getMeId: () => ME, getPeer: () => undefined })
+async function managerWith(
+  rows: { id: number, fromId: number, out?: boolean, sticker?: boolean, age?: number }[],
+  getEditTimeLimit?: () => Promise<number | undefined>,
+) {
+  const page = rows.map(({ id, fromId, out, age = 60 }) => makeRawMessage({ id, peerId: BOB, fromId, out, text: `m${id}`, date: Math.floor(Date.now() / 1000) - age + id }) as RawMessage)
+  const mgr = newMessagesManager({ rest: restWith(page), getMeId: () => ME, getPeer: () => undefined, getEditTimeLimit })
   await mgr.getHistory({ peerId: BOB, offsetId: 0, addOffset: 0, limit: 40 })
   return mgr
 }
@@ -34,6 +37,20 @@ describe('messages.getFirstMessageToEdit', () => {
     ])
     const message = await mgr.getFirstMessageToEdit({ peerId: BOB, up: true })
     expect(message?.id).toBe(cid(4))
+  })
+
+  // Срок правки в личке — `config.edit_time_limit` из конфига приложения: со сроком
+  // в час своё сообщение двухчасовой давности пропускается, и ↑ берёт более свежее.
+  it('срок правки приходит из конфига: просроченное своё пропускается', async() => {
+    const rows = [
+      { id: 5, fromId: ME, out: true, age: 7200 },
+      { id: 4, fromId: ME, out: true, age: 60 },
+    ]
+    const strict = await managerWith(rows.slice().reverse(), async() => 3600)
+    expect((await strict.getFirstMessageToEdit({ peerId: BOB, up: true }))?.id).toBe(cid(4))
+
+    const wide = await managerWith(rows.slice().reverse(), async() => 2 * 86400)
+    expect((await wide.getFirstMessageToEdit({ peerId: BOB, up: true }))?.id).toBe(cid(5))
   })
 
   it('своих нет — ничего', async() => {

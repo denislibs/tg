@@ -17,7 +17,7 @@ import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import type ChatBubbles from './bubbles'
 import type { BubblesManagers } from './bubbles'
-import { createTestChat, mountTestBubbles } from './testChat'
+import { createTestChat, fakeMenuAppConfig, mountTestBubbles } from './testChat'
 import type { ContextMenuManagers } from './contextMenu'
 
 const CHAT = 93
@@ -79,6 +79,7 @@ const menuManagers: ContextMenuManagers = {
     removeFactCheck: vi.fn().mockResolvedValue(undefined),
   },
   chats: { getReadDate: vi.fn().mockResolvedValue(null) },
+  appConfig: fakeMenuAppConfig(),
 }
 
 /** Лента с настоящим меню — в порядке `Chat.init`. */

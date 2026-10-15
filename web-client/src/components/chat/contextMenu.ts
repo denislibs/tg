@@ -242,6 +242,13 @@ import { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
 export interface ContextMenuManagers {
+  /** Конфиг приложения (воркер, `core/managers/appConfigManager.ts`): срок правки
+   *  (`config.edit_time_limit`, tweb `canEditMessage` :8382-8386) и пороги «кто
+   *  прочитал» (`chat_read_mark_*`, `canViewMessageReadParticipants` :12334-12339). */
+  appConfig: {
+    getConfig(): Promise<{ edit_time_limit?: number }>
+    getAppConfig(): Promise<{ chat_read_mark_size_threshold?: number, chat_read_mark_expire_period?: number }>
+  }
   messages: {
     /** Порт `appPollsManager.sendVote(message, [])` (:2004) — снять голос */
     votePoll(peerId: number, pollId: number, options: number[]): Promise<unknown>
@@ -344,10 +351,6 @@ function pointerPosition(e: MouseEvent | TouchEvent): { x: number, y: number } {
   const point = 'changedTouches' in e ? e.changedTouches[0] : e
   return { x: point.clientX, y: point.clientY }
 }
-
-/** tweb `appConfig.chat_read_mark_size_threshold` / `chat_read_mark_expire_period` (Telegram по умолчанию). */
-const CHAT_READ_MARK_SIZE_THRESHOLD = 100
-const CHAT_READ_MARK_EXPIRE_PERIOD = 7 * 86400
 
 export default class ChatContextMenu {
   private buttons: ChatContextMenuButton[] = []
@@ -671,7 +674,7 @@ export default class ChatContextMenu {
       // `onClick` оригинала открывает `PopupToggleReadDate`, когда время
       // скрыто приватностью; попапа у нас нет — пункт информационный.
       onClick: noop,
-      verify: () => isUser(this.peerId) && this.canViewMessageReadParticipants(),
+      verify: async() => isUser(this.peerId) && await this.canViewMessageReadParticipants(),
       localName: 'views',
       checkForClose: () => {
         return this.canViewReadTime !== undefined
@@ -723,7 +726,7 @@ export default class ChatContextMenu {
       icon: 'edit',
       text: 'Edit',
       onClick: this.onEditClick,
-      verify: () => this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
+      verify: async() => await this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
@@ -840,9 +843,9 @@ export default class ChatContextMenu {
       icon: 'stop',
       text: 'Chat.Poll.Stop',
       onClick: this.onStopPoll,
-      verify: () => {
+      verify: async() => {
         const media = this.getPollMedia()
-        return this.canEditMessage(this.message, 'poll') &&
+        return await this.canEditMessage(this.message, 'poll') &&
           !!media &&
           !media.poll.pFlags?.closed &&
           !!this.message && !this.isOutgoing(this.message)
@@ -920,8 +923,8 @@ export default class ChatContextMenu {
           void showReactedListPopup(this.message, pointerPosition(e))
         }
       },
-      verify: () => !isUser(this.peerId) &&
-        (!!this.message?.reactions?.recent_reactions?.length || this.canViewMessageReadParticipants()),
+      verify: async() => !isUser(this.peerId) &&
+        (!!this.message?.reactions?.recent_reactions?.length || await this.canViewMessageReadParticipants()),
       localName: 'views',
     }, {
       // tweb :1390-1395 — повторная оплата неудавшегося платного сообщения
@@ -1303,16 +1306,17 @@ export default class ChatContextMenu {
 
   /** Порт `appMessagesManager.canEditMessage` — общий `core/messages/canEditMessage.ts`
    *  (его же зовёт воркер для правки по ↑), карточки — из зеркала. */
-  private canEditMessage(message: MyMessage | undefined, kind: 'text' | 'poll' = 'text'): boolean {
-    return canEditMessage(message, kind, { myId: rootScope.myId, getPeer: cachedPeer })
+  private async canEditMessage(message: MyMessage | undefined, kind: 'text' | 'poll' = 'text'): Promise<boolean> {
+    const config = await this.managers.appConfig.getConfig()
+    return canEditMessage(message, kind, { myId: rootScope.myId, getPeer: cachedPeer, editTimeLimit: config.edit_time_limit })
   }
 
   /** Порт `appMessagesManager.canViewMessageReadParticipants` (:12314-12340) в
    *  объёме имеющихся фактов: `pFlags.unread`, боты, монофорумы и
    *  `pm_read_date_expire_period`/`read_dates_private` у нас не живут; пороги
-   *  `chat_read_mark_*` — константы (своего `appConfig` нет), те же, что держит
-   *  сервер (`usecase/chat/message_pin.go`). */
-  private canViewMessageReadParticipants(): boolean {
+   *  `chat_read_mark_*` — из конфига приложения (`managers.appConfig`), сервер
+   *  отдаёт те числа, которыми отказывает (`domain/limits.go`). */
+  private async canViewMessageReadParticipants(): Promise<boolean> {
     const message = this.message
     if(
       !message ||
@@ -1328,14 +1332,16 @@ export default class ChatContextMenu {
       return true
     }
 
+    const appConfig = await this.managers.appConfig.getAppConfig()
     const chat = cachedChat(message.peerId)
     const diff = tsNow(true) - message.date
-    return (chat && 'participants_count' in chat ? chat.participants_count ?? 0 : 0) <= CHAT_READ_MARK_SIZE_THRESHOLD &&
-      diff < CHAT_READ_MARK_EXPIRE_PERIOD
+    // Ключа нет (конфиг не приехал) — сравнение с `undefined` ложно, пункта нет, как у tweb.
+    return (chat && 'participants_count' in chat ? chat.participants_count ?? 0 : 0) <= appConfig.chat_read_mark_size_threshold! &&
+      diff < appConfig.chat_read_mark_expire_period!
   }
 
   /** Порт `appMessagesManager.canUpdateFactCheck` (:14514-14527). Вместо
-   *  `appConfig.can_edit_factcheck` (своего `appConfig` у нас нет) — то же
+   *  `appConfig.can_edit_factcheck` (сервер этого ключа не отдаёт) — то же
    *  правило, что у сервера (`usecase/chat/factcheck.go::requireFactCheckRight`):
    *  админ канала с `post_messages`. Одно правило на обеих сторонах, чтобы пункт
    *  не показывался тому, кому сервер откажет (аудит A5-28). */
