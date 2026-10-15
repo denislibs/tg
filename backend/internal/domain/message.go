@@ -218,11 +218,16 @@ type Message struct {
 	GeoLivePeriod  *int
 	GeoHeading     *int
 	GeoLiveStopped bool
-	// Контакт сообщения типа 'contact': снимок имени/телефона на момент отправки
-	// плюс ссылка на аккаунт (по ней клиент открывает чат/аватар).
-	ContactUserID *int64
-	ContactName   *string
-	ContactPhone  *string
+	// Контакт сообщения типа 'contact' (messageMediaContact): поля, присланные
+	// отправителем (inputMediaContact), 1:1 — телефон сервер не подставляет.
+	// ContactName — first_name, и его наличие (даже пустая строка) — признак
+	// «это визитка»; ContactUserID — аккаунт, который сервер вывел по номеру
+	// (nil — не найден или скрыт правилом added_by_phone, на проводе user_id=0).
+	ContactUserID   *int64
+	ContactName     *string
+	ContactLastName *string
+	ContactPhone    *string
+	ContactVcard    *string
 	// Reactions — агрегаты реакций (emoji, count, mine) для зрителя, наполняется
 	// read-моделью истории (не хранится на строке сообщения). Nil — реакций нет.
 	Reactions []ReactionCount

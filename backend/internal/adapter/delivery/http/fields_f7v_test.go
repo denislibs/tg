@@ -19,7 +19,7 @@ func newF7vRouter(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	chatUC := newChatUC(pool)
 	chatUC.SetBots(pgadapter.NewBotRepo(pool))
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(pool))
-	return NewRouter(newAuthUC(pool), chatUC, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, reportUC, nil, nil, nil), pool
+	return NewRouter(newAuthUC(pool), chatUC, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, reportUC, nil, nil, nil, true), pool
 }
 
 // MC-03: клиент шлёт номер нажатой кнопки как msg_id (TL

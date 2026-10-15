@@ -297,6 +297,23 @@ describe('pending: подтверждение сервера', () => {
     expect(msg.media).toMatchObject({ _: 'messageMediaWebPage' })
   })
 
+  // f6-contact: user_id визитки в бабле — клиентский (из inputMedia); сервер
+  // выводит свой по номеру (0, если скрыт), и ack, приходящий раньше эха, его
+  // подтверждает — иначе до перезагрузки у отправителя аватар/клик ведут к
+  // чужому id (tweb: `newMessage.media = updates.media`).
+  it('ack заменяет визитку серверной: user_id выводит сервер', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+    await p.sendText({
+      peerId: 1, text: '', clientMsgId: 'c1', threadId: null, type: 'contact', contact: CONTACT,
+      optimistic: { senderId: 5 },
+    })
+    const media = { _: 'messageMediaContact' as const, phone_number: '+79990000002', first_name: 'Маша', last_name: 'Иванова', vcard: 'BEGIN:VCARD', user_id: 0 }
+    const ops = p.ackPendingMessage({ client_msg_id: 'c1', id: 20, date: 5, media } as never)
+    expect((ops[0] as { msg: MessageReal }).msg.media).toMatchObject({ _: 'messageMediaContact', user_id: 0 })
+  })
+
   // Счёт истории (`historyStorage.count`) растёт на ФИНАЛЬНОМ сообщении, а не
   // на временном бабле: своя отправка — единственный путь новых сообщений в
   // «Избранном», и без этого «N messages» в его шапке стоял бы на месте.
@@ -535,6 +552,11 @@ describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
 // грузила вкладка вторым RPC (флаг awaitMedia придерживал кадр в воркере до
 // конца аплоада). Теперь и то, и другое — здесь: `ctx.send` приходит инъекцией,
 // `sendFile` владеет аплоадом целиком, как оригинальный appMessagesManager.
+const CONTACT = {
+  _: 'inputMediaContact' as const, first_name: 'Маша', last_name: 'Иванова', phone_number: '+79990000002', vcard: 'BEGIN:VCARD',
+  user_id: 42,
+}
+
 describe('sendText: бабл + кадр (порт tweb sendText → beforeMessageSending → message.send)', () => {
   it('с optimistic: заявка собрана из проводных полей, операции разосланы, бабл — ДО кадра', async () => {
     const h = makeCtx()
@@ -542,8 +564,8 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     const p = newPendingMethods(h.ctx)
 
     await p.sendText({
-      peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: cid(7), type: 'contact', contactUserId: 42,
-      optimistic: { senderId: 5, contactName: 'Маша' },
+      peerId: 1, text: 'hi', clientMsgId: 'c1', threadId: cid(7), type: 'contact', contact: CONTACT,
+      optimistic: { senderId: 5 },
     })
 
     // порядок обязателен: сперва бабл на экран, потом сеть
@@ -552,11 +574,12 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(msg.random_id).toBe('c1')
     expect(msg.fromId).toBe(5)
     // Визитка бабла — КОНСТРУКТОР `messageMediaContact` в поле `media`, а не
-    // собственный ключ `contact` рядом. Все пять параметров обязательные и
-    // стоят всегда, в том числе пустыми: телефон гидрирует сервер.
+    // собственный ключ `contact` рядом. Бабл показывает ровно те поля, что
+    // уходят на сервер (имя, ФАМИЛИЮ, телефон, vcard), а user_id берёт из
+    // inputMedia (tweb appMessagesManager.ts:4041) — на провод он не идёт.
     expect(msg.media).toEqual({
       _: 'messageMediaContact',
-      phone_number: '', first_name: 'Маша', last_name: '', vcard: '', user_id: 42,
+      phone_number: '+79990000002', first_name: 'Маша', last_name: 'Иванова', vcard: 'BEGIN:VCARD', user_id: 42,
     })
     // на провод уходят только проводные поля — служебный optimistic отрезан
     // Пакет параметров (порт tweb MessageSendingParams) проставляет свои поля
@@ -565,10 +588,24 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     // Номер корня треда уезжает на провод СЕРВЕРНЫМ — пакет несёт клиентский,
     // приведение стоит ровно в одном месте (`sendingParamsToWire`).
     expect(h.sends).toEqual([{
-      peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
+      peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contact: CONTACT,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
       replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null, allowPaidStars: null,
     }])
+  })
+
+  // Визитка превью ссылки не считает (tweb sendOther :3919-3925): иначе
+  // webPageFields.media (inputMediaWebPage) затёр бы media: inputMediaContact в кадре.
+  it('визитка с решением о превью: webPageFields не собираются', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+    await p.sendText({
+      peerId: 1, text: 'https://a.example', clientMsgId: 'c1', threadId: null, type: 'contact', contact: CONTACT,
+      noWebPage: true, invertMedia: true, optimistic: { senderId: 5 },
+    })
+    expect(h.sends[0]).not.toHaveProperty('webPageFields')
+    expect((h.emitted[0][0] as { msg: MessageReal }).msg.media?._).toBe('messageMediaContact')
   })
 
   // Гео-бабл собирается ТЕМ ЖЕ правилом, что и на бэкенде (`geoWire`): три

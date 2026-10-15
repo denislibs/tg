@@ -94,8 +94,6 @@ export interface SendOptimistic {
    *  меты файла. Взаимоисключающе с `media`: у готового документа меты нет,
    *  есть он сам — со ступенями и атрибутами. */
   document?: MyDocument
-  /** имя контакта для бабла — проводной contactUserId имени не несёт */
-  contactName?: string
   /** send-as: бабл сразу от лица выбранного канала/группы. Едет ССЫЛКА
    *  (знаковый ключ), а не снимок `{title, photo_id}`: имя и аватарку автор
    *  бабла берёт из зеркала карточек — как и у серверного эха, где `from_id`
@@ -377,18 +375,19 @@ function makeGeoMedia(geo: NonNullable<PendingNewEvt['geo']>): MessageMedia {
 }
 
 /**
- * Вложение бабла визитки. Все пять параметров схемы ОБЯЗАТЕЛЬНЫЕ и стоят
- * всегда, в том числе пустыми: телефон гидрирует сервер (приедет с эхом), и до
- * эха это пустая СТРОКА-значение, а не отсутствие параметра.
+ * Вложение бабла визитки — порт ветки `inputMediaContact` tweb
+ * (appMessagesManager.ts:4035-4045): поля берутся ровно из отправляемого
+ * `inputMediaContact`, `user_id ?? 0`. Все пять параметров схемы обязательные и
+ * стоят всегда, в том числе пустыми.
  */
 function makeContactMedia(contact: NonNullable<PendingNewEvt['contact']>): MessageMedia {
   return {
     _: 'messageMediaContact',
-    phone_number: contact.phone ?? '',
-    first_name: contact.name ?? '',
-    last_name: '',
-    vcard: '',
-    user_id: contact.user_id,
+    phone_number: contact.phone_number,
+    first_name: contact.first_name,
+    last_name: contact.last_name,
+    vcard: contact.vcard,
+    user_id: Number(contact.user_id ?? 0),
   }
 }
 
@@ -850,7 +849,10 @@ export function newPendingMethods(ctx: PendingCtx) {
     const { optimistic, noWebPage, webPage, webPageOptions, invertMedia, ...o } = input
     const { params, rest } = splitSendingParams(o)
     // tweb `sendText` :2695 (`generateOutgoingWebPage`) и :2746 (`invert_media`)
-    const webPageSend: WebPageSendOptions = { noWebPage, webPage, webPageOptions, invertMedia }
+    // Визитка — не текст со ссылкой: у tweb она идёт через `sendOther`
+    // (appMessagesManager.ts:3919-3925), превью не считается, а ключ `media` кадра
+    // занят `inputMediaContact` и не должен затираться `inputMediaWebPage`.
+    const webPageSend: WebPageSendOptions = o.contact ? {} : { noWebPage, webPage, webPageOptions, invertMedia }
     const webPageFields = sendWebPageWireFields(webPageSend)
     const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params), ...(Object.keys(webPageFields).length ? { webPageFields } : {}) }
     const send = () => ctx.send(args)
@@ -868,9 +870,10 @@ export function newPendingMethods(ctx: PendingCtx) {
       media: optimistic.media,
       document: optimistic.document,
       geo: args.geo,
-      // Телефон гидрирует сервер (приедет с эхом new_message) — в бабле пока
-      // только локальный снимок имени.
-      contact: args.contactUserId != null ? { user_id: args.contactUserId, name: optimistic.contactName ?? '', phone: '' } : undefined,
+      // Бабл визитки показывает те же поля, что уходят на сервер; user_id берётся
+      // из inputMedia, как у tweb (`inputMedia.user_id ?? '0'`, :4041), на провод
+      // он не идёт (connectionManager); серверный user_id придёт с ack.
+      contact: args.contact,
       secret: optimistic.secret,
       send_as: optimistic.sendAs,
       reply_to_id: params.replyToMsgId ?? null,
@@ -1012,10 +1015,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       if (next._ === 'message') {
         if (ack.entities) next.entities = ack.entities
         if (ack.ttl_period) next.ttl_period = ack.ttl_period
-        // Карточку плашки композера подтверждение заменяет серверной (tweb
-        // `newMessage.media = updates.media`, :2776); вложение-файл бабла — нет:
-        // его локальное превью живёт до эха.
-        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage')) next.media = saveMessageMedia(ack.media)
+        // Карточку плашки композера и визитку (её `user_id` выводит сервер по
+        // номеру) подтверждение заменяет серверными (tweb `newMessage.media =
+        // updates.media`, :2776); вложение-файл бабла — нет: его локальное
+        // превью живёт до эха.
+        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage' || next.media._ === 'messageMediaContact')) next.media = saveMessageMedia(ack.media)
       }
       return finalizePendingMessage(ack.client_msg_id, next)
     },

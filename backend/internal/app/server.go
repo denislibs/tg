@@ -120,6 +120,9 @@ func registerServer(p serverParams) {
 	// правит, поэтому источник здесь она, а не второй репозиторий.
 	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
+	// Визитка в сообщении: user_id выводится по номеру тем же поиском и правилом
+	// added_by_phone, что у «добавить контакт по номеру» (В-10).
+	p.ChatUC.SetPhoneResolver(p.ContactsUC)
 
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
@@ -442,7 +445,7 @@ func registerServer(p serverParams) {
 	seedLangPack(p.Ctx, langpackUC)
 	langpackH := httptransport.NewLangPackHandler(langpackUC)
 
-	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH, langpackH)
+	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH, langpackH, p.Cfg.DevPurchases)
 	// Позднее связывание: RouterRPC реплеит DNP rpc_req через тот же роутер.
 	// Разрывает цикл wsHandler↔router (роутеру нужен wsHandler, диспетчеру — роутер).
 	// wsHandler остаётся nil-типизированным http.Handler, если Redis не поднят —

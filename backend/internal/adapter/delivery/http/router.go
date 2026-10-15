@@ -17,7 +17,7 @@ import (
 	usecasestats "github.com/messenger-denis/backend/internal/usecase/stats"
 )
 
-func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor, reactionsH *ReactionsHandler, langpackH *LangPackHandler) http.Handler {
+func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, wsHandler http.Handler, mediaH *MediaHandler, mediaUC *usecasemedia.Interactor, pushH *PushHandler, storyH *StoryHandler, memberPresence PresenceQuery, contactsUC *usecasecontacts.Interactor, iceH *ICEHandler, notifyUC *usecasenotify.Interactor, foldersUC *usecasefolders.Interactor, pubH *PublicHandler, privacyUC *usecaseprivacy.Interactor, passkeyH *PasskeyHandler, stickersH *StickersHandler, ivH *IVHandler, reportUC *usecasereport.Interactor, statsUC *usecasestats.Interactor, reactionsH *ReactionsHandler, langpackH *LangPackHandler, devPurchases bool) http.Handler {
 	r := chi.NewRouter()
 	r.Use(requestLogger) // вместо middleware.Logger: не пишет токены в логи
 	r.Use(middleware.Recoverer)
@@ -45,6 +45,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	// Страна клиента для экрана входа (аналог help.getNearestDc).
 	r.Get("/auth/nearest_country", authH.NearestCountry)
 	r.Post("/auth/sign_import", authH.SignImport)
+	r.Post("/auth/web_token/cancel", authH.CancelWebToken)
 	if passkeyH != nil {
 		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)
 		r.Post("/auth/passkey/finish", passkeyH.FinishLogin)
@@ -104,8 +105,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Put("/me/username", ph.SetUsername)
 		pr.Get("/username/available", ph.CheckUsername)
 		pr.Put("/me/emoji_status", ph.SetEmojiStatus)
-		pr.Post("/me/premium", ph.ActivatePremium)
-		pr.Post("/me/premium/checkout", ph.Checkout)
+		if devPurchases {
+			// dev-мок: бейдж Premium без оплаты (Б-10, В-М22); в проде маршрутов нет.
+			pr.Post("/me/premium", ph.ActivatePremium)
+			pr.Post("/me/premium/checkout", ph.Checkout)
+		}
 		pr.Get("/me/premium/subscription", ph.PremiumSubscription)
 		pr.Post("/me/premium/cancel", ph.CancelPremium)
 		pr.Post("/me/photos", ph.AddPhoto)
@@ -236,7 +240,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		// Stars + Star Gifts
 		pr.Get("/stars/balance", ch.StarsBalance)
 		pr.Get("/stars/transactions", ch.StarsTransactions)
-		pr.Post("/stars/topup", ch.TopUpStars)
+		if devPurchases {
+			// dev-начисление звёзд без оплаты (Б-10, В-М22); в проде маршрута нет.
+			pr.Post("/stars/topup", ch.TopUpStars)
+		}
 		pr.Post("/chats/{peerID}/messages/{msgSeq}/unlock", ch.UnlockPaidMedia)
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)

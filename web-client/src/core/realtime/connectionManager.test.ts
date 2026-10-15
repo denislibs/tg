@@ -300,3 +300,33 @@ describe('ConnectionManager.sendTyping', () => {
     ])
   })
 })
+
+// f6-contact (В-10): визитка едет ключом `media` — inputMediaContact ровно с
+// полями схемы; `user_id` в кадр не попадает (его выводит сервер по номеру), а
+// старого плоского `contact_user_id` больше нет.
+describe('ConnectionManager — визитка', () => {
+  const startReady = () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+    return { ws, cm }
+  }
+
+  it('send_message с контактом несёт media: inputMediaContact без user_id', () => {
+    const { ws, cm } = startReady()
+    cm.sendMessage({
+      peerId: 1, text: '', clientMsgId: 'c1', type: 'contact',
+      contact: { _: 'inputMediaContact', first_name: 'Боб', last_name: 'Иванов', phone_number: '+79990000002', vcard: '', user_id: 42 },
+    })
+    const d = ws.frames.find(f => f.t === 'send_message')!.d as Record<string, unknown>
+    expect(d.type).toBe('contact')
+    expect(d.media).toEqual({ _: 'inputMediaContact', first_name: 'Боб', last_name: 'Иванов', phone_number: '+79990000002', vcard: '' })
+    expect(d).not.toHaveProperty('contact_user_id')
+  })
+
+  it('обычное сообщение media не несёт', () => {
+    const { ws, cm } = startReady()
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c1' })
+    expect((ws.frames.find(f => f.t === 'send_message')!.d as Record<string, unknown>).media).toBeUndefined()
+  })
+})

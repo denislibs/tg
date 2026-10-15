@@ -591,3 +591,32 @@ describe('PeersManager — переключение pFlags.contact', () => {
     expect(order).toEqual(['peer_op', 'toggle'])
   })
 })
+
+// tweb `appUsersManager.getContactMediaInput` (:977-988): визитка пользователя
+// глазами отправителя, `user_id: id` в том числе (:986) — из него бабл берёт
+// `user_id` (`appMessagesManager.ts:4041`). На провод он не уходит
+// (connectionManager.test.ts), сервер привязывает аккаунт по номеру (В-10).
+describe('PeersManager — getContactMediaInput', () => {
+  it('имя, фамилия, телефон отправителя; vcard пуст; user_id — id карточки', async () => {
+    const { rest } = fakeRest([user(2, { first_name: 'Боб', last_name: 'Иванов', phone: '+79990000002' })])
+    const mgr = newPeersManager({ rest })
+    await mgr.getUsers([2])
+    expect(mgr.getContactMediaInput(2)).toEqual({
+      _: 'inputMediaContact', first_name: 'Боб', last_name: 'Иванов', phone_number: '+79990000002', vcard: '', user_id: 2,
+    })
+  })
+
+  it('скрытый телефон и пустая фамилия — пустые строки, а не undefined', async () => {
+    const { rest } = fakeRest([user(3, { first_name: 'Кэрол' })])
+    const mgr = newPeersManager({ rest })
+    await mgr.getUsers([3])
+    expect(mgr.getContactMediaInput(3)).toEqual({
+      _: 'inputMediaContact', first_name: 'Кэрол', last_name: '', phone_number: '', vcard: '', user_id: 3,
+    })
+  })
+
+  it('неизвестная карточка — ошибка (tweb: getUser(id) без карточки падает)', () => {
+    const { rest } = fakeRest([])
+    expect(() => newPeersManager({ rest }).getContactMediaInput(9)).toThrow()
+  })
+})

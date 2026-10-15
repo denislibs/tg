@@ -34,7 +34,7 @@ func newContactCardRouterDB(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	contactsUC.SetMediaReader(pgadapter.NewMediaRepo(pool))
 	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
 	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC,
-		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil), pool
+		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil, true), pool
 }
 
 // profileCard — ответ /users/{id}: полная форма и краткая того же пользователя.

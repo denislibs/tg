@@ -338,6 +338,32 @@ describe('AuthManager', () => {
     ).resolves.toBe('')
   })
 
+  // POST /auth/web_token/cancel: fire-and-forget (tweb appAccountManager.ts:363-375) —
+  // ошибка сети не выходит наружу необработанным отклонением, а пишется в лог.
+  it('cancelWebToken шлёт токен на сервер и гасит отказ', async () => {
+    const calls: Array<[string, unknown]> = []
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const make = (post: (path: string, body: unknown) => Promise<unknown>) =>
+      newAuthManager({
+        rest: { post } as unknown as AuthDeps['rest'],
+        store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+      })
+    make(async (path, body) => {
+      calls.push([path, body])
+      return { _: 'boolTrue' }
+    }).cancelWebToken('tok')
+    expect(calls).toEqual([['/auth/web_token/cancel', { web_auth_token: 'tok' }]])
+
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    make(() => Promise.reject(new Error('offline'))).cancelWebToken('tok')
+    await new Promise((r) => setTimeout(r, 0))
+    process.off('unhandledRejection', unhandled)
+    expect(unhandled).not.toHaveBeenCalled()
+    expect(err).toHaveBeenCalledWith('web token cancellation error:', expect.any(Error))
+    err.mockRestore()
+  })
+
   // POST /auth/account/reset: 401/409 — дискриминированный результат, не throw
   // (HttpError не переживает границу worker-RPC).
   it('resetAccount маппит статусы сервера в результат', async () => {

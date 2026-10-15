@@ -228,7 +228,7 @@ func newPaidPair(t *testing.T, phoneA, phoneB string) paidPair {
 	t.Helper()
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signUp(t, h, pool, phoneA)
 	tokenB, idB := signUp(t, h, pool, phoneB)
 	mk := func(owner string, member int64) int64 {

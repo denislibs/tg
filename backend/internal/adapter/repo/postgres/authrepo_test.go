@@ -206,6 +206,39 @@ func TestAuthRepo_SessionListDelete(t *testing.T) {
 	}
 }
 
+// Get читает устройство по первичному ключу в рамках пользователя: чужой или
+// несуществующий id — ErrNotFound (правило свежей сессии берёт отсюда дату входа).
+func TestAuthRepo_DeviceGet(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+
+	u, _ := repo.CreateWithName(ctx, "+792", "Получение", "")
+	v, _ := repo.CreateWithName(ctx, "+793", "Чужой", "")
+	d, err := repo.Create(ctx, domain.Device{UserID: u.ID, Name: "Chrome", Platform: "browser", SystemVersion: "macOS", AppVersion: "0.1.0 (1)", TokenHash: "hash-get", IP: "1.2.3.4", Location: "Almaty"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.Get(ctx, u.ID, d.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ID != d.ID || got.UserID != u.ID || got.Name != "Chrome" || got.Platform != "browser" ||
+		got.SystemVersion != "macOS" || got.AppVersion != "0.1.0 (1)" || got.IP != "1.2.3.4" || got.Location != "Almaty" {
+		t.Fatalf("Get = %+v", got)
+	}
+	if got.CreatedAt.IsZero() || time.Since(got.CreatedAt) > time.Minute {
+		t.Fatalf("CreatedAt = %v; ожидалась только что поставленная дата", got.CreatedAt)
+	}
+	if _, err := repo.Get(ctx, v.ID, d.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужой пользователь: err = %v, want ErrNotFound", err)
+	}
+	if _, err := repo.Get(ctx, u.ID, d.ID+1000); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("нет устройства: err = %v, want ErrNotFound", err)
+	}
+}
+
 // Версия сборки в строке сессии: непустая перезаписывает прежнюю, пустая её НЕ
 // затирает. Вторая половина — предохранитель «клиент не назвался»
 // (`authrepo.go`, `CASE WHEN $2 <> ''`), и до этого теста её не проверял никто:

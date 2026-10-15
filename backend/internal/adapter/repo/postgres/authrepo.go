@@ -446,6 +446,21 @@ func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Devic
 	return out, rows.Err()
 }
 
+// Get возвращает устройство пользователя по первичному ключу.
+func (r *AuthRepo) Get(ctx context.Context, userID, deviceID int64) (domain.Device, error) {
+	var d domain.Device
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, user_id, name, platform, system_version, app_version,
+		        created_at, last_active, ip, location FROM devices
+		 WHERE id=$1 AND user_id=$2`, deviceID, userID).
+		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion,
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Device{}, domain.ErrNotFound
+	}
+	return d, err
+}
+
 // DeleteOthers removes every device of the user except keepDeviceID, returning
 // the removed rows so the caller can evict session caches and close sockets.
 func (r *AuthRepo) DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error) {
