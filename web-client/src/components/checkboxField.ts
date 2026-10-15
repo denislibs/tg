@@ -1,7 +1,8 @@
 /**
  * Порт tweb `src/components/checkboxField.ts` (корень и тумблер — по HEAD
  * 812502980: `span`, `toggleCircle`, замок, `toggleDisability`) — В ОБЪЁМЕ
- * ТРЁХ ВЫЗЫВАЮЩИХ (третий — Solid-обёртка `checkboxFieldTsx.solid.tsx`):
+ * ВЫЗЫВАЮЩИХ (среди них Solid-обёртка `checkboxFieldTsx.solid.tsx`, через неё же —
+ * `PopupPeer`, и селектор пиров `appSelectPeers.solid.tsx`):
  *  • `AppSelection.toggleElementCheckbox` строит `new CheckboxField({name,
  *    round: true})` (tweb selection.ts:359-362) и дальше трогает у него ровно
  *    два поля — `label` (кладёт в бабл) и `input` (`input.checked = …`);

@@ -25,10 +25,11 @@
 // ДО partials/ripple…row, поэтому и выдержки идут здесь, а не в хвосте: у правил равной
 // специфичности решает позиция (`.chatlist-chat.row-with-padding` base.scss:1645 против
 // `.row-with-checkbox-and-media.row-with-padding` _row.scss:479 — строка выделения
-// селектора обязана выиграть, иначе аватар ложится на имя).
+// селектора обязана выиграть, иначе аватар ложится на имя). Остальные выдержки base
+// (`.accordion*`, `.cant-select`, `hr`, …) лежат в `styles/index.scss` после `@use 'tweb'`:
+// пар равной специфичности с партиалами у них нет (сверено сборкой tweb).
 @use "code";
 @use "chatlistRow";
-@use "storiesList";
 @use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
 @use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
 @use "overlayedIcon"; // выдержка `.overlayed-icon`/`.auto-delete-icon` из base.scss:2438-2455
@@ -116,6 +117,9 @@
 @use "popups/premium"; // :110
 @use "popups/confirmation"; // :114
 
+// Не base: CSS-модуль tweb `components/stories/list.module.scss` (`:global(.stories-list)`) —
+// у tweb он приходит ПОСЛЕ глобального style.scss, поэтому здесь, в хвосте.
+@use "storiesList";
 // Страничные партиалы.
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125

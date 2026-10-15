@@ -1,5 +1,5 @@
 // Чекбокс — разметка tweb `checkboxField.ts:134-155`:
-//   label.checkbox-field[.checkbox-field-round][.checkbox-without-caption][.checkbox-disabled]
+//   label.checkbox-field[.checkbox-field-round][.checkbox-disabled]
 //     > [div.c-ripple] + input.checkbox-field-input
 //     + .checkbox-box > .checkbox-box-border + .checkbox-box-background
 //                     + svg.checkbox-box-check > use[href="#check"]
@@ -66,7 +66,6 @@ export default function Checkbox({
       className={classNames(
         'checkbox-field',
         shape === 'round' ? 'checkbox-field-round' : '',
-        'checkbox-without-caption',
         disabled ? 'checkbox-disabled' : '',
         className ?? s.root,
       )}

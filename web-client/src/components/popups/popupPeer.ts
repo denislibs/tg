@@ -1,8 +1,9 @@
 // Порт tweb `components/popups/peer.ts` (класс `PopupPeer`, 133 строки) и
 // `components/popups/simpleConfirmation.ts` (хелпер `confirmationPopup`,
-// оригинальный класс `SimpleConfirmationPopup`, 69 строк). Ни один из
-// источников не использует Solid — содержимое строится DOM'ом напрямую (нуль
-// вхождений `appendSolid`/`render` из `solid-js/web` в обоих файлах).
+// оригинальный класс `SimpleConfirmationPopup`, 69 строк). Содержимое строится
+// DOM'ом напрямую (так в `peer.ts` старой базы), кроме строки чекбокса: у tweb
+// HEAD `peer.tsx` целиком на Solid, и строка `.popup-peer-checkbox-row`
+// (`popupPeerCheckboxRow.solid.tsx`) монтируется Solid-корнем на middleware попапа.
 //
 // В оригинале `SimpleConfirmationPopup` дублирует часть `PopupPeer` вместо
 // того, чтобы им пользоваться — комментарий simpleConfirmation.ts:4
@@ -66,9 +67,8 @@
 // (у нас без `MouseEvent` первым параметром — та же урезка, что была у
 // `PopupButton.callback` изначально, см. докблок `popupPeer.ts` про
 // `titleLangArgs`). `onlyWithCheckbox` (peer.ts:22, :29, :107-124)
-// НЕ портирован — ни один вызывающий его не просит; `checkboxField.ts` объясняет, почему
-// `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
-// портирован ЦЕЛИКОМ.
+// НЕ портирован — ни один вызывающий его не просит. Рипл (`withRipple`,
+// peer.ts:98) даёт сама строка `Row` с чекбоксом.
 import PopupElement, { type PopupButton } from './popupElement'
 import type CheckboxField from '@components/checkboxField'
 import { createPopupPeerCheckboxRow } from './popupPeerCheckboxRow.solid'
