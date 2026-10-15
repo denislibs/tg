@@ -524,3 +524,80 @@ func TestSearchRepo_UserIDByUsername(t *testing.T) {
 		t.Fatalf("нет имени: err=%v; want ErrNotFound", err)
 	}
 }
+
+// Ф7-Е2: «свои» ищутся и по имени из книги контактов зрителя — так, как он
+// видит человека в списке (контакт «Мама» находится по «Мам», хотя профильное
+// имя другое). Чужой по профильному имени по-прежнему не находится, а скрытый
+// диалог («удалить чат») не делает собеседника своим.
+func TestSearchUsers_OwnByContactBookName(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7620")
+	mama := seedUser(t, pool, "+7621")     // профиль «Роберт», у зрителя — «Мама Иванова»
+	stranger := seedUser(t, pool, "+7622") // профиль «Мамонт», зрителю не контакт, без лички
+	hidden := seedUser(t, pool, "+7623")   // профиль «Мамаев», личка скрыта зрителем
+	live := seedUser(t, pool, "+7624")     // профиль «Мамин», живая личка
+
+	for id, name := range map[int64]string{mama: "Роберт", stranger: "Мамонт", hidden: "Мамаев", live: "Мамин"} {
+		if _, err := pool.Exec(ctx, `UPDATE users SET display_name=$2 WHERE id=$1`, id, name); err != nil {
+			t.Fatalf("display_name: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO contacts (owner_id, user_id, first_name, last_name) VALUES ($1, $2, 'Мама', 'Иванова')`, viewer, mama); err != nil {
+		t.Fatalf("contact: %v", err)
+	}
+	createPrivate(t, pool, viewer, live)
+	hiddenChat := createPrivate(t, pool, viewer, hidden)
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = true WHERE chat_id=$1 AND user_id=$2`, hiddenChat, viewer); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+
+	r := NewSearchRepo(pool)
+	ids := func(q string) []int64 {
+		t.Helper()
+		us, err := r.SearchUsers(ctx, viewer, q, 20)
+		if err != nil {
+			t.Fatalf("SearchUsers(%q): %v", q, err)
+		}
+		out := make([]int64, len(us))
+		for i, u := range us {
+			out[i] = u.ID
+		}
+		return out
+	}
+	has := func(got []int64, id int64) bool {
+		for _, g := range got {
+			if g == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	// «Мам»: контакт по книге (профиль «Роберт»), живая личка по профилю «Мамин».
+	// Не находятся: посторонний «Мамонт» и скрытая личка «Мамаев».
+	got := ids("Мам")
+	if !has(got, mama) || !has(got, live) || has(got, stranger) || has(got, hidden) || len(got) != 2 {
+		t.Fatalf("«Мам» = %v; want контакт %d и живая личка %d, без постороннего %d и скрытой лички %d", got, mama, live, stranger, hidden)
+	}
+	// Фамилия из книги и «имя фамилия» целиком.
+	for _, q := range []string{"Иванов", "Мама Ив", "мама иванова"} {
+		if got = ids(q); !has(got, mama) {
+			t.Fatalf("%q = %v; want контакт %d по имени из книги", q, got, mama)
+		}
+	}
+	// Профильное имя контакта по-прежнему находит его.
+	if got = ids("Роб"); !has(got, mama) {
+		t.Fatalf("«Роб» = %v; want контакт %d по профилю", got, mama)
+	}
+	// Скрытая личка не «своя» и в OwnPeers: человек идёт глобальным результатом.
+	_, own, err := r.OwnPeers(ctx, viewer, nil, []int64{mama, live, hidden, stranger})
+	if err != nil {
+		t.Fatalf("OwnPeers: %v", err)
+	}
+	if !own[mama] || !own[live] || own[hidden] || own[stranger] {
+		t.Fatalf("OwnPeers = %v; want контакт и живая личка, без скрытой лички и постороннего", own)
+	}
+}
