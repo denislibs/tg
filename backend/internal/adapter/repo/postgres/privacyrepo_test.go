@@ -213,3 +213,28 @@ func TestPrivacyRepo_PartnersAmong(t *testing.T) {
 		t.Fatalf("пустой список кандидатов = %v, %v", none, err)
 	}
 }
+
+// BlockedBy — какие из владельцев заблокировали зрителя (а не наоборот).
+func TestPrivacyRepo_BlockedBy(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewPrivacyRepo(pool)
+	ctx := context.Background()
+	viewer := seedUser(t, pool, "+7931")
+	blocker := seedUser(t, pool, "+7932")
+	blockedByViewer := seedUser(t, pool, "+7933")
+	other := seedUser(t, pool, "+7934")
+	if _, err := r.Block(ctx, blocker, viewer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Block(ctx, viewer, blockedByViewer); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := r.BlockedBy(ctx, viewer, []int64{blocker, blockedByViewer, other})
+	if err != nil {
+		t.Fatalf("BlockedBy: %v", err)
+	}
+	if len(got) != 1 || !got[blocker] {
+		t.Fatalf("BlockedBy = %v; want только %d", got, blocker)
+	}
+}

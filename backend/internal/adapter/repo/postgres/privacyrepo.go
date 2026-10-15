@@ -123,6 +123,28 @@ func (r *PrivacyRepo) IsBlocked(ctx context.Context, blockerID, blockedID int64)
 	return yes, err
 }
 
+// BlockedBy — какие из ownerIDs заблокировали viewerID (владелец закрыл зрителя).
+func (r *PrivacyRepo) BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	if len(ownerIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT blocker_id FROM user_blocks WHERE blocked_id = $1 AND blocker_id = ANY($2)`, viewerID, ownerIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error) {
 	q := querier(ctx, r.pool)
 	var total int

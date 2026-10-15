@@ -29,6 +29,13 @@ type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
 }
 
+// BlockChecker — необязательное расширение PrivacyChecker: заблокировал ли
+// владелец зрителя. Заблокированному скрытое время захода показывается как
+// userStatusEmpty («был(а) давно»), а не userStatusRecently, как при правиле.
+type BlockChecker interface {
+	HasBlocked(ctx context.Context, ownerID, viewerID int64) (bool, error)
+}
+
 // PresenceStore abstracts the online/last-seen storage (Redis in prod).
 type PresenceStore interface {
 	SetOnlineNX(ctx context.Context, userID int64, ttl time.Duration) (set bool, err error) // true if transitioned offline→online
@@ -322,18 +329,32 @@ func (m *Manager) fanoutTo(ctx context.Context, userID int64, status domain.User
 		"t": "presence",
 		"d": domain.NewUpdateUserStatus(userID, status),
 	})
-	var hidden []byte
+	var hidden, hiddenByBlock []byte
 	for _, p := range partners {
 		f := frame
 		if m.privacy != nil {
 			if ok, err := m.privacy.Check(ctx, userID, p, domain.PrivacyLastSeen); err == nil && !ok {
-				if hidden == nil {
-					hidden, _ = json.Marshal(map[string]any{
-						"t": "presence",
-						"d": domain.NewUpdateUserStatus(userID, domain.NewUserStatusRecently(false)),
-					})
+				blocked := false
+				if bc, ok := m.privacy.(BlockChecker); ok {
+					blocked, _ = bc.HasBlocked(ctx, userID, p)
 				}
-				f = hidden
+				if blocked {
+					if hiddenByBlock == nil {
+						hiddenByBlock, _ = json.Marshal(map[string]any{
+							"t": "presence",
+							"d": domain.NewUpdateUserStatus(userID, domain.HiddenUserStatus(true)),
+						})
+					}
+					f = hiddenByBlock
+				} else {
+					if hidden == nil {
+						hidden, _ = json.Marshal(map[string]any{
+							"t": "presence",
+							"d": domain.NewUpdateUserStatus(userID, domain.HiddenUserStatus(false)),
+						})
+					}
+					f = hidden
+				}
 			}
 		}
 		_ = m.pub.PublishToUser(ctx, p, f)

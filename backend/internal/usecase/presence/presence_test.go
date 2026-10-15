@@ -428,7 +428,14 @@ func (s *fakeStore) Snapshots(_ context.Context, userIDs []int64) (map[int64]Sna
 }
 
 // fakePrivacy — правило last_seen: нельзя тем, кто в deny.
-type fakePrivacy struct{ deny map[int64]bool }
+type fakePrivacy struct {
+	deny    map[int64]bool
+	blocked map[int64]bool // владелец заблокировал зрителя
+}
+
+func (f *fakePrivacy) HasBlocked(_ context.Context, _, viewerID int64) (bool, error) {
+	return f.blocked[viewerID], nil
+}
 
 func (f *fakePrivacy) Check(_ context.Context, _, viewerID int64, _ domain.PrivacyKey) (bool, error) {
 	return !f.deny[viewerID], nil
@@ -528,11 +535,19 @@ func TestManager_ReannounceToHonoursBlock(t *testing.T) {
 	_ = m.Online(ctx, 1)
 	_ = m.Offline(ctx, 1)
 
+	// Правило закрыто, но не блок — «недавно».
 	priv.deny[2] = true
 	_ = m.ReannounceTo(ctx, 1, []int64{2})
 	if got := statusTag(t, pub.last(2)); got != domain.UserStatusRecentlyTag {
-		t.Fatalf("при блоке: %q", got)
+		t.Fatalf("при правиле: %q", got)
 	}
+	// Блок — «был(а) давно»: userStatusEmpty (в tweb рисуется как ALongTimeAgo).
+	priv.blocked = map[int64]bool{2: true}
+	_ = m.ReannounceTo(ctx, 1, []int64{2})
+	if got := statusTag(t, pub.last(2)); got != domain.UserStatusEmptyTag {
+		t.Fatalf("при блоке: %q; want userStatusEmpty", got)
+	}
+	priv.blocked = nil
 	delete(priv.deny, 2)
 	_ = m.ReannounceTo(ctx, 1, []int64{2})
 	if got := statusTag(t, pub.last(2)); got != domain.UserStatusOfflineTag {

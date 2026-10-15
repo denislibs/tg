@@ -30,6 +30,8 @@ type Repo interface {
 	Block(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	IsBlocked(ctx context.Context, blockerID, blockedID int64) (bool, error)
+	// BlockedBy — какие из ownerIDs заблокировали viewerID, одним запросом.
+	BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error)
 	BlockedList(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error)
 
 	IsContact(ctx context.Context, ownerID, userID int64) (bool, error)
@@ -402,6 +404,21 @@ func (i *Interactor) afterBlockChange(ctx context.Context, userID, targetID int6
 	}
 }
 
+// BlockedBy — какие из ownerIDs заблокировали viewerID (батч). Нужен витринам,
+// чтобы отличить скрытое блоком время захода («давно») от скрытого правилом
+// («недавно»).
+func (i *Interactor) BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error) {
+	if len(ownerIDs) == 0 {
+		return map[int64]bool{}, nil
+	}
+	return i.repo.BlockedBy(ctx, viewerID, ownerIDs)
+}
+
+// HasBlocked — заблокировал ли owner пользователя viewer.
+func (i *Interactor) HasBlocked(ctx context.Context, ownerID, viewerID int64) (bool, error) {
+	return i.repo.IsBlocked(ctx, ownerID, viewerID)
+}
+
 // Blocked возвращает страницу чёрного списка и общее число записей.
 func (i *Interactor) Blocked(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error) {
 	if limit <= 0 || limit > 100 {
@@ -482,8 +499,13 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	// его книги, contact/mutual_contact), как в любом другом ответе с этим
 	// пользователем. Телефон — по правилу приватности, а не по снятому с пира
 	// phone_visibility: механизм на этот вопрос один.
+	lastSeenVisible := check(domain.PrivacyLastSeen)
+	hiddenByBlock := false
+	if !lastSeenVisible {
+		hiddenByBlock, _ = i.repo.IsBlocked(ctx, targetID, viewerID)
+	}
 	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID},
-		i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto)).SeenBy(card.ContactView)
+		i.status(ctx, u, lastSeenVisible, hiddenByBlock), check(domain.PrivacyProfilePhoto)).SeenBy(card.ContactView)
 	if check(domain.PrivacyPhoneNumber) {
 		brief.Phone = u.Phone
 	}
@@ -518,6 +540,19 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 		rules.Phone = maps[domain.PrivacyPhoneNumber]
 		rules.LastSeen = maps[domain.PrivacyLastSeen]
 	}
+	// Скрытое время захода: блок («давно») или правило («недавно») — спрашиваем,
+	// только если есть кому скрывать, и одним запросом.
+	var hidden []int64
+	for _, id := range ids {
+		if id != viewerID && !rules.LastSeen[id] {
+			hidden = append(hidden, id)
+		}
+	}
+	if len(hidden) > 0 {
+		if blocked, err := i.repo.BlockedBy(ctx, viewerID, hidden); err == nil {
+			rules.Blocked = blocked
+		}
+	}
 	// Присутствие не подключено — о статусе ничего не известно: это
 	// userStatusEmpty, а не «офлайн с нулевым временем».
 	rules.Status = func(int64) domain.UserStatus { return domain.NewUserStatusEmpty() }
@@ -549,12 +584,12 @@ func (i *Interactor) SetPresence(p PresenceSnapshot) { i.presence = p }
 // точного времени НЕТ ВОВСЕ: это userStatusRecently, то есть сама приватность
 // выражена ВЫБОРОМ КОНСТРУКТОРА, а не отдельным флагом last_seen_visible
 // рядом с обнулённым временем.
-func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible bool) domain.UserStatus {
+func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible, hiddenByBlock bool) domain.UserStatus {
 	if u.Deleted {
 		return domain.NewUserStatusEmpty()
 	}
 	if !lastSeenVisible {
-		return domain.NewUserStatusRecently(false)
+		return domain.HiddenUserStatus(hiddenByBlock)
 	}
 	if i.presence == nil {
 		return domain.NewUserStatusEmpty()

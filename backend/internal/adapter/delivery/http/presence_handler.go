@@ -34,7 +34,7 @@ func NewPresenceHandler(p PresenceQuery, privacy PrivacyQuery) *PresenceHandler 
 // Get handles GET /presence?ids=1,2,3. When presence is unavailable (no Redis)
 // everyone is reported offline with last_seen 0. Пользователи, скрывшие время
 // захода от запрашивающего (правило last_seen / блокировка), отдаются как
-// offline/0 — клиент показывает «был(а) недавно».
+// «недавно» (правило) либо «давно» (блок).
 func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var ids []int64
@@ -52,6 +52,15 @@ func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 			visible = v
 		}
 	}
+	// Скрытое блоком — «давно» (userStatusEmpty), скрытое правилом — «недавно».
+	var blocked map[int64]bool
+	if bq, ok := h.privacy.(interface {
+		BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error)
+	}); ok && len(ids) > 0 {
+		if b, err := bq.BlockedBy(r.Context(), user.ID, ids); err == nil {
+			blocked = b
+		}
+	}
 	out := make([]domain.ContactStatus, 0, len(ids))
 	for _, id := range ids {
 		allowed := true
@@ -64,7 +73,7 @@ func (h *PresenceHandler) Get(w http.ResponseWriter, r *http.Request) {
 			// Присутствие не подключено: о статусе НИЧЕГО не известно —
 			// userStatusEmpty, а не «offline с нулевым временем».
 		case !allowed:
-			status = domain.NewUserStatusRecently(false)
+			status = domain.HiddenUserStatus(blocked[id])
 		default:
 			status = domain.PresenceStatus(h.presence.Status(r.Context(), id))
 		}
