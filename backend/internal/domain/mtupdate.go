@@ -1477,6 +1477,8 @@ func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
 		order = []int64{}
 	}
 	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
+}
+
 // updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; —
 // набор установлен на другом устройстве. Тело — тот же контейнер, что ответ
 // GET набора (tweb appStickersManager.ts:80-84 кладёт его в кэш и объявляет
