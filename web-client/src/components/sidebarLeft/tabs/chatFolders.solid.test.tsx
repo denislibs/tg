@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { HttpError } from '@core/net/restClient'
 import type { Folder, FolderInvite } from '@core/managers/foldersManager'
 import type { Chat, User } from '@core/peers/peer'
@@ -675,6 +676,42 @@ describe('вкладка «Папки» — порядок (Ф7-З)', () => {
 
     await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
     await vi.waitFor(() => expect(stateIds()).toEqual([WORK.id, BOTS.id]))
+  })
+
+  it('отказ сервера и недоступный список: оптимистичный порядок возвращается из снимка', async() => {
+    setPremium(false)
+    folders.updateOrder.mockRejectedValueOnce(new Error('offline'))
+    folders.list.mockRejectedValueOnce(new Error('offline'))
+    const tab = await openList()
+
+    await dragRow(tab, 1, 0)
+
+    await vi.waitFor(() => expect(folders.list).toHaveBeenCalledOnce())
+    expect(stateIds()).toEqual([WORK.id, BOTS.id])
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+  })
+
+  it('две перестановки подряд уходят по одной, в порядке действий; эхо своих не дёргает строки', async() => {
+    setPremium(false)
+    let finishFirst!: () => void
+    folders.updateOrder.mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve }))
+    const tab = await openList()
+
+    await dragRow(tab, 1, 0) // [Боты, Работа]
+    await dragRow(tab, 1, 0) // [Работа, Боты]
+
+    expect(folders.updateOrder).toHaveBeenCalledTimes(1)
+    expect(folders.updateOrder).toHaveBeenLastCalledWith([BOTS.id, WORK.id])
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
+
+    finishFirst()
+    await vi.waitFor(() => expect(folders.updateOrder).toHaveBeenCalledTimes(2))
+    expect(folders.updateOrder).toHaveBeenLastCalledWith([WORK.id, BOTS.id])
+
+    // эхо первой перестановки приходит после второй — строки на месте
+    rootScope.dispatchEventSingle(RT.dialogFilterOrder, { _: 'updateDialogFilterOrder', order: [BOTS.id, WORK.id] })
+    await settle()
+    expect(titles(tab)).toEqual(['Работа', 'Боты'])
   })
 
   it('эхо чужого порядка (updateDialogFilterOrder) переставляет строки без перерисовки вкладки', async() => {

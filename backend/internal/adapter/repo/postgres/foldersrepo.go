@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -118,11 +119,14 @@ func (r *FoldersRepo) Count(ctx context.Context, ownerID int64) (int, error) {
 // Чужой или несуществующий id и повтор — domain.ErrInvalid, ничего не меняется.
 // Позиции перенумеровываются плотно (0..n-1). Строки владельца блокируются на
 // время чтения и записи: две параллельные перестановки идут друг за другом.
-func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64) error {
+// Возвращает true, если порядок действительно изменился (перестановка в тот же
+// порядок ничего не пишет).
+func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64) (bool, error) {
 	if len(order) == 0 {
-		return nil
+		return false, nil
 	}
-	return r.tx(ctx, func(ctx context.Context) error {
+	changed := false
+	err := r.tx(ctx, func(ctx context.Context) error {
 		q := querier(ctx, r.pool)
 		rows, err := q.Query(ctx,
 			`SELECT id FROM folders WHERE owner_id=$1 ORDER BY pos, id FOR UPDATE`, ownerID)
@@ -158,12 +162,17 @@ func (r *FoldersRepo) Reorder(ctx context.Context, ownerID int64, order []int64)
 				seq = append(seq, id)
 			}
 		}
+		if slices.Equal(seq, current) {
+			return nil
+		}
+		changed = true
 		_, err = q.Exec(ctx,
 			`UPDATE folders SET pos = v.ord - 1
 			   FROM unnest($2::bigint[]) WITH ORDINALITY AS v(id, ord)
 			  WHERE folders.id = v.id AND folders.owner_id = $1`, ownerID, seq)
 		return err
 	})
+	return changed && err == nil, err
 }
 
 // SetAllChatsPos запоминает место «Все чаты» среди папок владельца.

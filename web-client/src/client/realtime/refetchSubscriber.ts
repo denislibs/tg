@@ -14,7 +14,7 @@ import { useChatsStore } from '../../stores/chatsStore'
 import { loadNotifySettings } from '../../stores/notifyStore'
 import { onPinnedMessagesUpdate, hasPinnedMessageCached, flushPinnedMessagesCache } from '../../core/pinnedMessages'
 import { generateMessageId } from '../../core/history/messageId'
-import { applyFolderUpdate, applyOrder, type FolderUpdateEvt } from '../../stores/foldersStore'
+import { applyFolderUpdate, applyOrderFrame, loadFolders, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
 import type { Managers } from '../bootstrap'
 
@@ -122,7 +122,7 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // Порядок папок сменился на другом устройстве (tweb `filter_order`,
   // filters.ts:179-199): тело — сам `updateDialogFilterOrder`, в сеть не идём.
   rootScope.addEventListener(RT.dialogFilterOrder, (u) => {
-    applyOrder(u.order)
+    applyOrderFrame(u.order)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
   rootScope.addEventListener('rt:resync', () => {
@@ -130,5 +130,8 @@ export function registerRefetchSubscriber(managers: Managers): void {
     // Строки журнала `notify_settings` могли быть вычищены: глобальные тумблеры
     // «Уведомления» перечитываем, иначе до перезагрузки они остались бы старыми.
     void loadNotifySettings(managers)
+    // Порядок папок и их состав живут журналом (`updateDialogFilterOrder`,
+    // `folder_update`): строки, пропущенные за разрыв, уже не доиграть.
+    void loadFolders(managers, { overwrite: true }).catch(() => {})
   })
 }

@@ -6,7 +6,7 @@ import { create } from 'zustand'
 import { mapFolder, type Folder, type RawFolder } from '../core/managers/foldersManager'
 import type { Contact } from '../core/managers/contactsManager'
 import { reconcileById } from '../core/store/reconcile'
-import { useAppStateKey, useAppStateStore, setAppState } from './appState'
+import { useAppStateKey, useAppStateStore, setAppState, setAppStates } from './appState'
 // Обе константы id папок живут в core/folderIds.ts: их читают и main, и воркер
 // (`dialogsManager.getDialogs({filterId})`), второй копии значения быть не должно.
 import { ALL_FOLDER_ID } from '../core/folderIds'
@@ -159,13 +159,64 @@ export function applyOrder(order: number[]): void {
     if (f) { seq.push(f); byId.delete(id) }
   }
   for (const f of prev) if (byId.has(f.id)) seq.push(f)
-  applyFolders(seq.map((f, pos) => (f.pos === pos ? f : { ...f, pos })))
+  const sorted = seq.map((f, pos) => (f.pos === pos ? f : { ...f, pos }))
+  const r = reconcileById(prev, sorted, (f) => f.id)
   const allIdx = order.indexOf(ALL_FOLDER_ID)
-  if (allIdx >= 0) applyAllChatsPos(allIdx)
+  const allChanged = allIdx >= 0 && useAppStateStore.getState().allChatsPos !== allIdx
+  // Одной записью: два прохода подписчиков (проекция папок пересчитывает
+  // непрочитанное по всем диалогам) показали бы состояние наполовину.
+  if (r.changed && allChanged) setAppStates({ folders: r.list, allChatsPos: allIdx })
+  else if (r.changed) setAppState('folders', r.list)
+  else if (allChanged) setAppState('allChatsPos', allIdx)
 }
 
 function applyAllChatsPos(pos: number): void {
   if (useAppStateStore.getState().allChatsPos !== pos) setAppState('allChatsPos', pos)
+}
+
+/** Снимок порядка — откат оптимистичной перестановки, если сервер её не принял. */
+export function snapshotOrder(): { folders: Folder[]; allChatsPos: number } {
+  const { folders, allChatsPos } = useAppStateStore.getState()
+  return { folders, allChatsPos }
+}
+
+export function restoreOrder(snap: { folders: Folder[]; allChatsPos: number }): void {
+  setAppStates({ folders: snap.folders, allChatsPos: snap.allChatsPos })
+}
+
+// Эхо СВОЕЙ перестановки: сервер шлёт кадр и сессии-автору. Пока перестановки
+// идут одна за другой, эхо первой пришло бы после локального применения второй
+// и дёрнуло бы строки назад. Свой порядок помечается до запроса, эхо с тем же
+// порядком съедается один раз; метка гаснет сама, если эха не будет.
+const ownOrders = new Map<string, ReturnType<typeof setTimeout>>()
+const OWN_ORDER_TTL = 10_000
+
+/** Своя перестановка: применить сразу и пометить её эхо. */
+export function applyOwnOrder(order: number[]): void {
+  const key = order.join(',')
+  clearTimeout(ownOrders.get(key))
+  ownOrders.set(key, setTimeout(() => ownOrders.delete(key), OWN_ORDER_TTL))
+  applyOrder(order)
+}
+
+/** Снять метку (запрос отклонён — эха не будет). */
+export function forgetOwnOrder(order: number[]): void {
+  const key = order.join(',')
+  clearTimeout(ownOrders.get(key))
+  ownOrders.delete(key)
+}
+
+/** Кадр `updateDialogFilterOrder` с сервера (в том числе эхо своего действия). */
+export function applyOrderFrame(order: number[] | null | undefined): void {
+  const list = order ?? []
+  const key = list.join(',')
+  const timer = ownOrders.get(key)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    ownOrders.delete(key)
+    return
+  }
+  applyOrder(list)
 }
 
 /**

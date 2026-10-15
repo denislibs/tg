@@ -169,22 +169,29 @@ func TestFoldersRepo_Reorder(t *testing.T) {
 	}
 
 	// Полный порядок.
-	if err := r.Reorder(ctx, owner, []int64{ids[2], ids[0], ids[1]}); err != nil {
-		t.Fatalf("Reorder full: %v", err)
+	if changed, err := r.Reorder(ctx, owner, []int64{ids[2], ids[0], ids[1]}); err != nil || !changed {
+		t.Fatalf("Reorder full: changed=%v err=%v", changed, err)
 	}
 	eq(order(), []int64{ids[2], ids[0], ids[1]})
 
 	// Частичный: перечисленные первыми, остальные — в хвост в прежнем порядке.
-	if err := r.Reorder(ctx, owner, []int64{ids[1]}); err != nil {
-		t.Fatalf("Reorder partial: %v", err)
+	if changed, err := r.Reorder(ctx, owner, []int64{ids[1]}); err != nil || !changed {
+		t.Fatalf("Reorder partial: changed=%v err=%v", changed, err)
 	}
 	eq(order(), []int64{ids[1], ids[2], ids[0]})
 
 	// Пустой порядок — ничего не меняет.
-	if err := r.Reorder(ctx, owner, nil); err != nil {
-		t.Fatalf("Reorder empty: %v", err)
+	if changed, err := r.Reorder(ctx, owner, nil); err != nil || changed {
+		t.Fatalf("Reorder empty: changed=%v err=%v", changed, err)
 	}
 	eq(order(), []int64{ids[1], ids[2], ids[0]})
+
+	// Тот же порядок (полный и частичный префикс) — не изменение.
+	for _, same := range [][]int64{{ids[1], ids[2], ids[0]}, {ids[1]}} {
+		if changed, err := r.Reorder(ctx, owner, same); err != nil || changed {
+			t.Fatalf("Reorder same %v: changed=%v err=%v", same, changed, err)
+		}
+	}
 
 	// Чужая, несуществующая папка и повтор — ErrInvalid, порядок не тронут.
 	for name, bad := range map[string][]int64{
@@ -192,7 +199,7 @@ func TestFoldersRepo_Reorder(t *testing.T) {
 		"несуществующая": {999999},
 		"повтор":         {ids[0], ids[0]},
 	} {
-		if err := r.Reorder(ctx, owner, bad); !errors.Is(err, domain.ErrInvalid) {
+		if _, err := r.Reorder(ctx, owner, bad); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("Reorder %s: %v; want ErrInvalid", name, err)
 		}
 		eq(order(), []int64{ids[1], ids[2], ids[0]})

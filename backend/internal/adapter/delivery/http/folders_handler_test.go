@@ -94,6 +94,15 @@ func TestFoldersOrder_HTTP(t *testing.T) {
 	if ids, _ := list(tokenA); ids[0] != a2 || ids[1] != a1 {
 		t.Fatalf("порядок изменился при отказе: %v", ids)
 	}
+	// Пустое тело и пустой order — ничего не делают (без записи в журнал).
+	for _, body := range []any{map[string]any{}, map[string]any{"order": []int64{}}} {
+		if rec := reqJSONAuth(t, h, http.MethodPost, "/me/folders/order", body, tokenA); rec.Code != http.StatusOK {
+			t.Fatalf("пустой order: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	if ids, _ := list(tokenA); ids[0] != a2 || ids[1] != a1 {
+		t.Fatalf("порядок изменился от пустого order: %v", ids)
+	}
 	if rec := reqJSONAuth(t, h, http.MethodPost, "/me/folders/order", map[string]any{"order": []int64{a1}}, ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("без токена: %d; want 401", rec.Code)
 	}

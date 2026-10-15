@@ -270,3 +270,21 @@ describe('refetchSubscriber: updateDialogFilterOrder (Ф7-З)', () => {
     expect(useAppStateStore.getState().allChatsPos).toBe(1)
   })
 })
+
+describe('refetchSubscriber: rt:resync перечитывает папки (Ф7-З)', () => {
+  it('differenceTooLong — журнал порядка/состава не доиграть, список папок берётся с сервера', async () => {
+    useAppStateStore.setState({ folders: [work, fun] })
+    const m = managersWith([fun, work])
+    registerRefetchSubscriber({
+      ...m,
+      dialogs: { ...m.dialogs, refresh: vi.fn().mockResolvedValue(undefined) },
+      notify: { getSettings: vi.fn().mockResolvedValue(undefined) },
+      messages: { listPins: vi.fn() },
+    } as unknown as Managers)
+
+    rootScope.dispatchEventSingle('rt:resync', null)
+
+    await vi.waitFor(() => expect(m.folders.list).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(useAppStateStore.getState().folders.map((f) => f.id)).toEqual([work.id, fun.id]))
+  })
+})

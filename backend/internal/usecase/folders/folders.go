@@ -32,7 +32,8 @@ type Repo interface {
 	// Порядок папок (Ф7-З). Reorder: order — id папок БЕЗ 0; чужой/несуществующий
 	// id и повтор — domain.ErrInvalid. SetAllChatsPos/AllChatsPos — место «Все
 	// чаты» среди папок (число папок перед ней, 0 — первой).
-	Reorder(ctx context.Context, ownerID int64, order []int64) error
+	// Reorder возвращает true, если порядок изменился.
+	Reorder(ctx context.Context, ownerID int64, order []int64) (bool, error)
 	SetAllChatsPos(ctx context.Context, ownerID int64, pos int) error
 	AllChatsPos(ctx context.Context, ownerID int64) (int, error)
 
@@ -237,8 +238,11 @@ func (i *Interactor) Update(ctx context.Context, ownerID int64, f domain.DialogF
 // наоборот) разводит устройства навсегда. Кадр — после коммита. Журналируется
 // order как пришёл: клиент применяет его теми же правилами, что и сервер.
 func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) error {
-	if len(order) > domain.MaxFoldersPerUser+1 {
-		return domain.ErrInvalid
+	// Длину не ограничиваем: папок у пользователя бывает больше лимита создания
+	// (вступление по ссылке лимит не проверяет), а чужие id и повторы отсекает
+	// репозиторий. Пустой order — нечего переставлять.
+	if len(order) == 0 {
+		return nil
 	}
 	folderIDs := make([]int64, 0, len(order))
 	allIdx := -1
@@ -254,13 +258,27 @@ func (i *Interactor) Reorder(ctx context.Context, ownerID int64, order []int64) 
 	}
 	var pts int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		changed := false
 		if allIdx >= 0 {
-			if err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx); err != nil {
+			cur, err := i.repo.AllChatsPos(ctx, ownerID)
+			if err != nil {
 				return err
 			}
+			if cur != allIdx {
+				if err := i.repo.SetAllChatsPos(ctx, ownerID, allIdx); err != nil {
+					return err
+				}
+				changed = true
+			}
 		}
-		if err := i.repo.Reorder(ctx, ownerID, folderIDs); err != nil {
+		moved, err := i.repo.Reorder(ctx, ownerID, folderIDs)
+		if err != nil {
 			return err
+		}
+		// Перестановка в тот же порядок (повтор запроса, перетаскивание на то же
+		// место) ничего не меняет: журнал и кадры не раздуваем.
+		if !changed && !moved {
+			return nil
 		}
 		if i.updates == nil {
 			return nil

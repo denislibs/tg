@@ -1463,6 +1463,12 @@ type UpdateDialogFilterOrder struct {
 func (UpdateDialogFilterOrder) isUpdate()     {}
 func (u UpdateDialogFilterOrder) Tag() string { return u.Underscore }
 
+// NewUpdateDialogFilterOrder: id папок в схеме — int (Vector<int>), а у нас
+// BIGSERIAL; пока id папок < 2³¹ кадр кодируется в TL без потерь. nil → пустой
+// вектор, а не JSON null.
 func NewUpdateDialogFilterOrder(order []int64) UpdateDialogFilterOrder {
+	if order == nil {
+		order = []int64{}
+	}
 	return UpdateDialogFilterOrder{Underscore: UpdateDialogFilterOrderTag, Order: order}
 }

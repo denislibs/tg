@@ -78,7 +78,7 @@ import { AppEditFolderTab, type AppChatFoldersTab } from '@components/solidJsTab
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { applyOrder, loadFolders, useFoldersStore } from '@stores/foldersStore'
+import { applyOwnOrder, forgetOwnOrder, loadFolders, restoreOrder, snapshotOrder, useFoldersStore } from '@stores/foldersStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { cachedChat, cachedPeer } from '@core/peerCache'
 import { isDialogArchived } from '@core/models'
@@ -167,6 +167,7 @@ const ChatFolders = () => {
   })
   const foldersHidden = createMemo(() => !rows().length)
   let list!: HTMLDivElement
+  let sending: Promise<unknown> = Promise.resolve()
 
   const openEditFolder = (filter?: Folder) => {
     const initArgs = AppEditFolderTab.getInitArgs()
@@ -220,8 +221,17 @@ const ChatFolders = () => {
         // tweb :365-367
         const managers = tab.managers!
         const sent = isPremium() ? order : order.filter((filterId) => filterId !== ALL_FOLDER_ID)
-        applyOrder(sent)
-        void managers.folders.updateOrder(sent).catch(() => loadFolders(managers, { overwrite: true }))
+        const snapshot = snapshotOrder()
+        applyOwnOrder(sent)
+        // Запросы идут по одному, в порядке действий пользователя: параллельные
+        // POST могли бы лечь на сервер наоборот, и последнее действие пропало бы.
+        sending = sending.then(() => managers.folders.updateOrder(sent)).catch(() => {
+          // Отказ: сначала вернуть прежний порядок (перечитать список можно и
+          // без сети), потом сверить с сервером.
+          forgetOwnOrder(sent)
+          restoreOrder(snapshot)
+          return loadFolders(managers, { overwrite: true })
+        })
       },
       scrollable: tab.scrollable,
     })

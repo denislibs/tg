@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { STATE_INIT } from '../core/state/state'
 import { useAppStateStore, setStateWriter } from './appState'
-import { applyFolderUpdate, applyOrder, loadFolders, useFoldersStore } from './foldersStore'
+import {
+  applyFolderUpdate, applyOrder, applyOrderFrame, applyOwnOrder, forgetOwnOrder, loadFolders, restoreOrder, snapshotOrder,
+  useFoldersStore,
+} from './foldersStore'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import type { Folder } from '../core/managers/foldersManager'
 
@@ -117,6 +120,59 @@ describe('foldersStore.applyOrder', () => {
     applyOrder([2, 1, 3])
 
     expect(useAppStateStore.getState().allChatsPos).toBe(2)
+  })
+
+  it('перестановка премиума с «Все чаты» пишет и папки, и место — одним проходом подписчиков', () => {
+    let notified = 0
+    const off = useAppStateStore.subscribe(() => { ++notified })
+
+    applyOrder([3, 0, 1, 2])
+    off()
+
+    expect(notified).toBe(1)
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+    expect(ids()).toEqual([3, 1, 2])
+  })
+
+  it('кадр без order (null/undefined) ничего не ломает и ничего не меняет', () => {
+    const before = useAppStateStore.getState().folders
+
+    applyOrderFrame(undefined)
+    applyOrderFrame(null)
+
+    expect(useAppStateStore.getState().folders).toBe(before)
+  })
+
+  it('эхо своей перестановки съедается один раз; чужой порядок применяется', () => {
+    applyOwnOrder([3, 1, 2])
+    expect(ids()).toEqual([3, 1, 2])
+    applyOwnOrder([2, 3, 1]) // вторая перестановка, пока эхо первой ещё в пути
+    expect(ids()).toEqual([2, 3, 1])
+
+    applyOrderFrame([3, 1, 2]) // эхо первой — не дёргает строки назад
+    expect(ids()).toEqual([2, 3, 1])
+    applyOrderFrame([2, 3, 1]) // эхо второй
+    expect(ids()).toEqual([2, 3, 1])
+
+    applyOrderFrame([1, 2, 3]) // с другого устройства
+    expect(ids()).toEqual([1, 2, 3])
+    applyOrderFrame([3, 1, 2]) // метка эха уже съедена — применяется как чужое
+    expect(ids()).toEqual([3, 1, 2])
+  })
+
+  it('отказ сервера: forgetOwnOrder + restoreOrder возвращают прежний порядок и место «Все чаты»', () => {
+    useAppStateStore.setState({ allChatsPos: 2 })
+    const snap = snapshotOrder()
+    applyOwnOrder([3, 0, 1, 2])
+    expect(useAppStateStore.getState().allChatsPos).toBe(1)
+
+    forgetOwnOrder([3, 0, 1, 2])
+    restoreOrder(snap)
+
+    expect(ids()).toEqual([1, 2, 3])
+    expect(useAppStateStore.getState().allChatsPos).toBe(2)
+    applyOrderFrame([3, 0, 1, 2]) // метки нет — эхо не съедается
+    expect(ids()).toEqual([3, 1, 2])
   })
 
   it('тот же порядок повторно — ни записи на диск, ни новых ссылок (эхо своего действия)', () => {

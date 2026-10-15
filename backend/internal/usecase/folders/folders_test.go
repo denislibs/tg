@@ -44,7 +44,7 @@ func (r *fakeRepo) Update(_ context.Context, _ int64, f domain.DialogFilter) (do
 	return f, nil
 }
 func (r *fakeRepo) Delete(_ context.Context, _, _ int64) error { return nil }
-func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) error {
+func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) (bool, error) {
 	owned := []domain.DialogFilter{}
 	for id, f := range r.folders {
 		if r.owner[id] == ownerID {
@@ -58,7 +58,7 @@ func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) erro
 	seq := []int64{}
 	for _, id := range order {
 		if r.owner[id] != ownerID || r.folders[id].ID == 0 || seen[id] {
-			return domain.ErrInvalid
+			return false, domain.ErrInvalid
 		}
 		seen[id] = true
 		seq = append(seq, id)
@@ -68,12 +68,16 @@ func (r *fakeRepo) Reorder(_ context.Context, ownerID int64, order []int64) erro
 			seq = append(seq, f.ID)
 		}
 	}
+	changed := false
 	for pos, id := range seq {
 		f := r.folders[id]
+		if f.Pos != pos {
+			changed = true
+		}
 		f.Pos = pos
 		r.folders[id] = f
 	}
-	return nil
+	return changed, nil
 }
 func (r *fakeRepo) SetAllChatsPos(_ context.Context, ownerID int64, pos int) error {
 	r.allPos[ownerID] = pos

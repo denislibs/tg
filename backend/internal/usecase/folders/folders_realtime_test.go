@@ -335,3 +335,54 @@ func TestReorder_JournalFailureRollsBack(t *testing.T) {
 		t.Fatalf("allChatsPos = %d; want 3", repo.allPos[1])
 	}
 }
+
+// Перестановка в тот же порядок, пустой order и повтор «Все чаты» на том же месте
+// ничего не пишут: ни строки журнала, ни кадра.
+func TestReorder_NoOpWritesNothing(t *testing.T) {
+	uc, repo, _ := setup()
+	log := newFakeUpdateLog()
+	pub := newFakeFolderPub()
+	uc.SetUpdateLog(log)
+	uc.SetPublisher(pub)
+	ctx := context.Background()
+	ids := seedFolders(t, uc, 1, 2)
+	_ = repo.SetAllChatsPos(ctx, 1, 1)
+	logged, framed := len(log.rows[1]), len(pub.frames[1])
+
+	for name, order := range map[string][]int64{
+		"пустой":         {},
+		"nil":            nil,
+		"тот же порядок": {ids[0], ids[1]},
+		"тот же порядок с нулём": {ids[0], 0, ids[1]},
+		"только нуль на месте":   {ids[0], 0},
+	} {
+		if err := uc.Reorder(ctx, 1, order); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if len(log.rows[1]) != logged || len(pub.frames[1]) != framed {
+		t.Fatalf("no-op записал журнал/кадр: rows %d→%d frames %d→%d", logged, len(log.rows[1]), framed, len(pub.frames[1]))
+	}
+}
+
+// Папок может быть больше лимита создания (вступление по ссылке лимит не
+// проверяет): полный список из 11 папок и «Все чаты» переставляется.
+func TestReorder_MoreThanCreateLimit(t *testing.T) {
+	uc, _, _ := setup()
+	uc.repo.(*fakeRepo).nextID = 100
+	ids := make([]int64, 0, domain.MaxFoldersPerUser+1)
+	for k := 0; k <= domain.MaxFoldersPerUser; k++ {
+		f, err := uc.repo.Create(context.Background(), 1, domain.DialogFilter{Title: "f", IncludeChats: []int64{10}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Pos = k
+		uc.repo.(*fakeRepo).folders[f.ID] = f
+		ids = append(ids, f.ID)
+	}
+	order := append([]int64{0}, ids...)
+	order[1], order[2] = order[2], order[1]
+	if err := uc.Reorder(context.Background(), 1, order); err != nil {
+		t.Fatalf("Reorder: %v", err)
+	}
+}

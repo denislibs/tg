@@ -60,8 +60,6 @@ func (h *FoldersHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
-	case errors.Is(err, domain.ErrInvalid):
-		writeError(w, http.StatusBadRequest, "invalid order")
 	case errors.Is(err, usecasefolders.ErrBadTitle),
 		errors.Is(err, usecasefolders.ErrNoIncludes),
 		errors.Is(err, usecasefolders.ErrTooMany),
@@ -100,11 +98,16 @@ func (h *FoldersHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Order []int64 `json:"order"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
 	if err := h.uc.Reorder(r.Context(), user.ID, b.Order); err != nil {
+		if errors.Is(err, domain.ErrInvalid) {
+			writeError(w, http.StatusBadRequest, "invalid order")
+			return
+		}
 		h.mapErr(w, err)
 		return
 	}
