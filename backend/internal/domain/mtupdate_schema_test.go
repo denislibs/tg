@@ -161,6 +161,11 @@ func updateCases() []struct {
 			return u
 		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
+		{"набор установлен", NewUpdateNewStickerSet(NewMessagesStickerSet(
+			StickerSet{Underscore: StickerSetTag, ID: 5, Title: "Набор", ShortName: "pack"}, nil, nil))},
+		{"недавние стикеры", NewUpdateRecentStickers()},
+		{"избранные стикеры", NewUpdateFavedStickers()},
+		{"сохранённые GIF", NewUpdateSavedGifs()},
 	}
 }
 
@@ -277,6 +282,10 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		SendMessageUploadAudioActionTag,
 		UpdatePeerBlockedTag,
 		UpdatePrivacyTag,
+		UpdateNewStickerSetTag,
+		UpdateRecentStickersTag,
+		UpdateFavedStickersTag,
+		UpdateSavedGifsTag,
 	}
 
 	covered := map[string]bool{}

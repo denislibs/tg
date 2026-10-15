@@ -378,6 +378,9 @@ func registerServer(p serverParams) {
 	// Мутации адресной книги — карточка контакта строкой user_update на свои
 	// устройства владельца (журнал без условия Redis, издатель — при наличии).
 	p.ContactsUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
+	// Установка набора, недавние/избранные стикеры и сохранённые GIF — в журнал
+	// своих устройств (журнал без условия Redis, издатель — при наличии).
+	stickersUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
 	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету

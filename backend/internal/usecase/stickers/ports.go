@@ -61,7 +61,9 @@ type Repo interface {
 	BackfillPathThumbs(ctx context.Context, setID int64, thumbs map[int][]byte) error
 
 	// TouchRecent — upsert used_at=now() + обрезка списка до keep новейших.
-	TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error
+	// changed — изменился ли порядок/состав списка: false, когда этот файл уже
+	// был первым (повтор отправки того же стикера).
+	TouchRecent(ctx context.Context, userID, mediaID int64, keep int) (changed bool, err error)
 	// Recent — недавние ВМЕСТЕ со временем использования: на проводе это
 	// параллельный вектор dates контейнера messages.recentStickers.
 	Recent(ctx context.Context, userID int64, limit int) ([]domain.RecentSticker, error)
