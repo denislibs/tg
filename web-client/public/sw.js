@@ -487,8 +487,13 @@ async function isPasscodeLocked() {
   let state = await getPasscodeState()
   if (state.on && !state.key && state.inferred) {
     await new Promise((resolve) => {
-      passcodeKeyWaiters.push(resolve)
-      setTimeout(resolve, 1000)
+      const release = () => {
+        clearTimeout(timer)
+        passcodeKeyWaiters = passcodeKeyWaiters.filter((w) => w !== release)
+        resolve()
+      }
+      const timer = setTimeout(release, 1000)
+      passcodeKeyWaiters.push(release)
     })
     state = passcodeState // вкладка могла прислать состояние за время ожидания
   }
