@@ -1,6 +1,7 @@
 // src/core/realtime/connectionManager.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { newConnectionManager } from './connectionManager'
+import { generateMessageId } from '../history/messageId'
 
 function fakeWs() {
   const frames: Array<{ t: string; d?: unknown }> = []
@@ -278,5 +279,24 @@ describe('ConnectionManager.markMediaRead — вектор id', () => {
 
     const frames = ws.frames.filter(f => f.t === 'read_media').map(f => (f.d as { id: number[] }).id)
     expect(frames).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [11]])
+  })
+})
+
+// Ф-6 f6-typing (VA2-05): messages.setTyping{peer, action, top_msg_id}
+// (tweb appMessagesManager.ts:13917-13921) — тред едет СЕРВЕРНЫМ номером.
+describe('ConnectionManager.sendTyping', () => {
+  it('тред: top_msg_id = getServerMessageId(threadId); без треда ключа нет', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.sendTyping(-5, { _: 'sendMessageTypingAction' }, generateMessageId(12))
+    cm.sendTyping(-5, { _: 'sendMessageTypingAction' })
+
+    const typing = ws.frames.filter(f => f.t === 'typing').map(f => f.d)
+    expect(typing).toEqual([
+      { peer_id: -5, action: { _: 'sendMessageTypingAction' }, top_msg_id: 12 },
+      { peer_id: -5, action: { _: 'sendMessageTypingAction' } },
+    ])
   })
 })

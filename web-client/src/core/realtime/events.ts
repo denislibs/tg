@@ -643,11 +643,15 @@ export type SendMessageAction =
 export interface UserTypingEvt {
   _: 'updateUserTyping'
   user_id: number
+  /** серверный номер корня треда/темы, где печатают (`flags.0?int`); нет — вне треда */
+  top_msg_id?: number
   action: SendMessageAction
 }
 export interface ChannelUserTypingEvt {
   _: 'updateChannelUserTyping'
   channel_id: number
+  /** серверный номер корня треда/темы, где печатают (`flags.0?int`); нет — вне треда */
+  top_msg_id?: number
   from_id: Peer
   action: SendMessageAction
 }

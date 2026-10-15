@@ -32,6 +32,7 @@ describe('realtime.markMediaRead', () => {
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       threadReads: { readHistory: async () => {} },
+      isForumPeer: () => false,
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: generateMessageId(7) })
@@ -54,6 +55,7 @@ describe('realtime.markMediaRead', () => {
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       threadReads: { readHistory: async () => {} },
+      isForumPeer: () => false,
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -86,6 +88,7 @@ describe('realtime.getStatus', () => {
       broadcast: vi.fn(),
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       threadReads: { readHistory: async () => {} },
+      isForumPeer: () => false,
     })
 
     await expect(rt.getStatus()).resolves.toEqual({
@@ -146,6 +149,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
       broadcast: () => {},
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       threadReads: { readHistory: async () => {} },
+      isForumPeer: () => false,
     })
 
     const status = await rt.getStatus()
@@ -190,6 +194,7 @@ describe('realtime.markRead', () => {
       broadcast: () => {},
       channelFunnel: {} as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       threadReads,
+      isForumPeer: () => false,
     })
     return { rt, markRead, threadReads }
   }
@@ -213,5 +218,38 @@ describe('realtime.markRead', () => {
     await rt.markRead({ peerId: -5, upToId: OFFSET + 40 })
     expect(threadReads.readHistory).not.toHaveBeenCalled()
     expect(markRead).toHaveBeenCalledWith(-5, 40)
+  })
+})
+
+// Ф-6 f6-typing: tweb setTyping (appMessagesManager.ts:13873-13875) — threadId
+// остаётся только у форума, у прочих чатов печать уходит без треда.
+describe('realtime.sendTyping', () => {
+  function make(isForumPeer: (peerId: number) => boolean) {
+    const sendTyping = vi.fn()
+    const conn = { sendTyping } as unknown as Parameters<typeof newRealtime>[0]['conn']
+    const rt = newRealtime({
+      conn,
+      sync: { isSyncing: () => false },
+      syncWait: { waitForSync: async () => undefined },
+      tokens: { load: async () => undefined },
+      messages: { cacheMediaRead: vi.fn(() => []) },
+      broadcast: vi.fn(),
+      channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads: { readHistory: async () => {} },
+      isForumPeer,
+    })
+    return { rt, sendTyping }
+  }
+
+  it('форум: тема уходит в conn.sendTyping', async () => {
+    const { rt, sendTyping } = make((peerId) => peerId === -5)
+    await rt.sendTyping({ peerId: -5, threadId: generateMessageId(12) })
+    expect(sendTyping).toHaveBeenCalledWith(-5, { _: 'sendMessageTypingAction' }, generateMessageId(12))
+  })
+
+  it('не форум: тред отбрасывается', async () => {
+    const { rt, sendTyping } = make(() => false)
+    await rt.sendTyping({ peerId: -6, threadId: generateMessageId(12) })
+    expect(sendTyping).toHaveBeenCalledWith(-6, { _: 'sendMessageTypingAction' }, undefined)
   })
 })

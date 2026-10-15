@@ -1783,10 +1783,9 @@ export class AppDialogsManager {
   }
 
   /**
-   * tweb `:2931-2983`: подзаголовок с бейджами, онлайн-точка и «печатает».
-   * Звонок в группе (`processDialogForCallStatus`) — О-96. «Печатает» в теме
-   * (`setDialogTyping({threadId})`) — набора по темам в зеркале нет
-   * (расхождение 4 `autonomousDialogList/forumTopics.ts`).
+   * tweb `:2931-2983`: подзаголовок с бейджами, онлайн-точка и «печатает»
+   * (у темы форума — набор темы, `setDialogTyping({threadId})`). Звонок в
+   * группе (`processDialogForCallStatus`) — О-96.
    */
   public initDialog(dialogElement: DialogElement, options: { peerId: PeerId, isBatch?: boolean, lastMessage?: MyMessage, dialog?: SavedDialog | ForumTopic }) {
     const { peerId } = options
@@ -1808,16 +1807,13 @@ export class AppDialogsManager {
       list: this.getListContext(),
     })
 
-    if(isForumTopic(dialog)) {
-      return promise
-    }
-
     // * a row built while the peer is already typing gets no `peer_typings` event
     // * of its own, so the indicator has to be restored here — after the subtitle
     // * is rendered, and off the returned promise so it never delays the row
     void promise.then(() => setDialogTyping({
       dom: dialogElement.dom,
       peerId,
+      threadId: isForumTopic(dialog) ? dialog.id : undefined,
       middleware: dialogElement.middlewareHelper.get(),
       managers: this.managers,
     })).catch(() => {})

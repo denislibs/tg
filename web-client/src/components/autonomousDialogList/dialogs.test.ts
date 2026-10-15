@@ -486,6 +486,22 @@ describe('AutonomousDialogList: строка живёт событиями зе�
     expect(dom.lastMessageSpan.classList.contains('user-typing')).toBe(false)
   })
 
+  // Ф-6 f6-typing: печать в теме/треде лежит под ключом `peerId_threadId` и строку
+  // чата не показывает (tweb dialogs.ts:124-137 + getPeerTypings(peerId) без треда).
+  it('«печатает» в треде (ключ с threadId) строку чата не задевает', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [user(1)] }])
+    seed([dialogOf(1)])
+    await start()
+    await waitRows([1])
+    const dom = xd().getDialogElement(1)!.dom
+    await vi.waitFor(() => expect(dom.lastMessageSpan.textContent).toBe('m1'))
+
+    useChatsStore.getState().setTyping('1_4294967300', 1, { _: 'sendMessageTypingAction' }, Date.now())
+    await settle()
+    expect(dom.lastMessageSpan.querySelector('.peer-typing-container')).toBeNull()
+    expect(dom.lastMessageSpan.textContent).toBe('m1')
+  })
+
   it('онлайн — точка на аватаре (`user_update` → `setOnlineStatus`)', async () => {
     applyPeerOps([{ op: 'upsert', peers: [user(1)] }])
     seed([dialogOf(1)])

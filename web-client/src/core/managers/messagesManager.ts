@@ -221,7 +221,7 @@ export interface MessagesDeps {
   /** Оборвать активный аплоад по progressId (=clientMsgId). */
   cancelUpload?: (progressId: string) => void
   /** «Отправляет фото/файл…» на время аплоада (conn.sendTyping). */
-  sendTyping?: (peerId: number, action: SendMessageAction) => void
+  sendTyping?: (peerId: number, action: SendMessageAction, threadId?: number | null) => void
   /** Прогресс аплоада вкладкам (media:upload_progress). */
   uploadProgress?: (id: string, loaded: number, total: number, done?: boolean) => void
   /** Сообщения, УДАЛЁННЫЕ из SSOT, — снимком до эвикции. Порт связки tweb

@@ -43,7 +43,7 @@ function makeCtx() {
   const emitted: MessageOp[][] = []
   const sends: WireSendArgs[] = []
   const uploads: UploadArgs[] = []
-  const typings: { peerId: number; action: SendMessageAction }[] = []
+  const typings: { peerId: number; action: SendMessageAction; threadId?: number | null }[] = []
   const progress: { id: string; loaded: number; total: number; done?: boolean }[] = []
   const cancelled: string[] = []
   const order: string[] = []
@@ -78,7 +78,7 @@ function makeCtx() {
       send: (a: WireSendArgs) => { order.push('send'); sends.push(a) },
       upload: (a: UploadArgs) => h.upload(a),
       cancelUpload: (id: string) => { cancelled.push(id) },
-      sendTyping: (peerId: number, action: SendMessageAction) => { typings.push({ peerId, action }) },
+      sendTyping: (peerId: number, action: SendMessageAction, threadId?: number | null) => { typings.push({ peerId, action, threadId }) },
       uploadProgress: (id: string, loaded: number, total: number, done?: boolean) => { progress.push({ id, loaded, total, done }) },
     },
   }
@@ -954,6 +954,21 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
     expect(h.typings[0]).toEqual({ peerId: 1, action: { _: 'sendMessageUploadPhotoAction' } })
     expect(h.progress[0]).toEqual({ id: 'c1', loaded: 0, total: 1, done: undefined })
     expect(h.progress[h.progress.length - 1]).toEqual({ id: 'c1', loaded: 0, total: 0, done: true })
+  })
+
+  // Ф-6 f6-typing: загрузка файла в теме форума пингует «отправляет…» с тредом
+  // (tweb input.ts:3065, 3078 → setTyping(..., threadId)).
+  it('typing-пинг аплоада несёт threadId отправки', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendFile({
+      peerId: 1, clientMsgId: 'c1', senderId: 5, file: file(), type: 'photo', isMedia: true,
+      uploadAction: { _: 'sendMessageUploadPhotoAction' }, threadId: cid(12),
+    })
+
+    expect(h.typings[0]).toEqual({ peerId: 1, action: { _: 'sendMessageUploadPhotoAction' }, threadId: cid(12) })
   })
 
   // Что ломается: сорвавшийся аплоад оставлял бы бабл вечно «отправляется…», а

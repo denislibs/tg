@@ -207,9 +207,9 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     })
   }
 
-  /** `peer_typings` (`:120-133`): у форума набор показывают темы, не строка */
-  private onTypingChange(prev: Record<number, unknown>, typing: Record<number, unknown>) {
-    const peerIds = new Set([...Object.keys(prev), ...Object.keys(typing)].map(Number))
+  /** `peer_typings` (`:124-137`): у форума набор показывают темы, не строка; набор темы (ключ `peerId_threadId`) строки чата не касается */
+  private onTypingChange(prev: Record<string, unknown>, typing: Record<string, unknown>) {
+    const peerIds = new Set([...Object.keys(prev), ...Object.keys(typing)].filter((key) => !key.includes('_')).map(Number))
     const { dialogs } = useChatsStore.getState()
     peerIds.forEach((peerId) => {
       if(prev[peerId] === typing[peerId]) return
