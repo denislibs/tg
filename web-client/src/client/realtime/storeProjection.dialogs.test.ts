@@ -180,6 +180,18 @@ describe('storeProjection — тема чата живёт в карточке, 
     expect(cachedPeerFull(7)).toMatchObject({ pFlags: { blocked: true } })
   })
 
+  // Срок автоудаления живёт в той же карточке (tweb `onUpdatePeerHistoryTTL` →
+  // `modifyCachedFullPeer`): без строки `auto_delete_period_update` в проекторе
+  // карточка осталась бы со старым сроком.
+  it('auto_delete_period_update патчит ttl_period той же карточки', () => {
+    resetChatFullMirror()
+    saveChatFull(7, { _: 'userFull', id: 7 })
+
+    rootScope.dispatchEventSingle('auto_delete_period_update', { peerId: 7, period: 604800 })
+
+    expect(cachedPeerFull(7)).toMatchObject({ ttl_period: 604800 })
+  })
+
   // tweb `bubbles.ts:1144`: `dialog_flush` опустошает окно открытого чата. Воркер
   // шлёт его после очистки истории — в том числе в другие вкладки и по ответу
   // с другого устройства, поэтому окно сбрасывает проектор, а не вызывающий.

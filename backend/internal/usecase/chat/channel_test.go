@@ -293,9 +293,12 @@ func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) 
 func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
-func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
-func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
-func (c groupMembershipChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
+func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)  { return nil, nil }
+func (c groupMembershipChats) SetAutoDelete(_ context.Context, chatID int64, seconds int) error {
+	c.fg.setAutoDelete(chatID, seconds)
+	return nil
+}
 func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
 func (c groupMembershipChats) UserAutoDelete(context.Context, int64) (int, error)       { return 0, nil }
 func (c groupMembershipChats) SetUserAutoDelete(context.Context, int64, int) error      { return nil }

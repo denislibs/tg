@@ -98,6 +98,7 @@ export const UPDATE_RT = {
   updateReadStories: RT.storyRead,
   updatePeerBlocked: RT.peerBlocked,
   updatePrivacy: RT.privacy,
+  updatePeerHistoryTTL: RT.peerHistoryTTL,
 } as const satisfies Record<UpdatePredicate, string>
 
 /**
