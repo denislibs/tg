@@ -148,8 +148,12 @@ func (i *Interactor) callsOfDialogs(ctx context.Context, recs []domain.DialogRec
 func (i *Interactor) announceCallChange(ctx context.Context, chatID int64) {
 	publish := func() {
 		i.goBG("chat.callSnapshot", func(bg context.Context) {
-			if err := i.publishCallSnapshot(bg, chatID); err != nil {
+			resnap, err := i.publishCallSnapshot(bg, chatID)
+			if err != nil {
 				log.Printf("chat %d: снимок звонка: %v", chatID, err)
+			}
+			if resnap {
+				i.resnapshotLater(bg, chatID)
 			}
 		})
 	}
@@ -175,22 +179,22 @@ func (i *Interactor) announceCallChange(ctx context.Context, chatID int64) {
 // publishCallSnapshot — снимок по переходу звонка с проверкой результата.
 // Публикации одного чата ничем не упорядочены (долгий снимок мегагруппы может
 // лечь в журнал ПОСЛЕ более свежего), поэтому после публикации состояние
-// читается заново: разошлось с опубликованным или публикация не удалась —
-// исправляющий снимок откладывается (resnapshotLater), и последним в журнале
-// остаётся верный. Снимок при неизвестном состоянии не публикуется (strict).
-func (i *Interactor) publishCallSnapshot(ctx context.Context, chatID int64) error {
-	published, _, err := i.publishChatSnapshot(ctx, chatID, true)
+// читается заново. resnap=true — оно разошлось с опубликованным или проверить
+// не удалось: нужен ещё один снимок, его откладывает вызывающий (немедленный
+// путь — resnapshotLater, тик — ПОСЛЕ закрытия записи, иначе закрытие по счёту
+// аренды съело бы только что поставленную запись). Снимок при неизвестном
+// состоянии не публикуется (strict). Чат без тела channel не публикуется и не
+// сверяется — иначе звонок в личке крутил бы снимки вечно.
+func (i *Interactor) publishCallSnapshot(ctx context.Context, chatID int64) (resnap bool, err error) {
+	res, err := i.publishChatSnapshot(ctx, chatID, true)
 	if err != nil {
-		if !errors.Is(err, domain.ErrNotFound) { // удалённый чат снимка не ждёт
-			i.resnapshotLater(ctx, chatID)
-		}
-		return err
+		return !errors.Is(err, domain.ErrNotFound), err // удалённый чат снимка не ждёт
+	}
+	if !res.published {
+		return false, nil
 	}
 	now, err := i.callsAmong(ctx, []int64{chatID})
-	if err != nil || now[chatID] != published {
-		i.resnapshotLater(ctx, chatID)
-	}
-	return nil
+	return err != nil || now[chatID] != res.active, nil
 }
 
 // resnapshotLater откладывает ещё один снимок чата на окно вперёд (тик любой
@@ -221,14 +225,17 @@ func (i *Interactor) FlushDirtyCallSnapshots(ctx context.Context) (int, error) {
 	}
 	published := 0
 	for _, chatID := range ids {
-		pubErr := i.publishCallSnapshot(ctx, chatID)
-		if pubErr != nil && !errors.Is(pubErr, domain.ErrNotFound) { // удалённый чат снимка не ждёт
+		resnap, pubErr := i.publishCallSnapshot(ctx, chatID)
+		if pubErr != nil && !errors.Is(pubErr, domain.ErrNotFound) {
 			log.Printf("chat %d: отложенный снимок звонка: %v", chatID, pubErr)
 			continue // аренда истечёт — запись подберёт следующий тик
 		}
 		if err := i.groupCalls.FinishDirtySnapshot(ctx, chatID, lease, callSnapshotWindow); err != nil {
 			log.Printf("chat %d: закрытие отложенного снимка звонка: %v", chatID, err)
 			continue
+		}
+		if resnap {
+			i.resnapshotLater(ctx, chatID) // запись уже закрыта — это новая
 		}
 		if pubErr == nil {
 			published++

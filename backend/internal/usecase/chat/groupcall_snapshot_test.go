@@ -483,3 +483,79 @@ func TestCallFlags_ViewerSnapshotCarriesTheCall(t *testing.T) {
 		t.Fatalf("личный снимок без флагов звонка: %v", last)
 	}
 }
+
+// Сбой источника звонков не отнимает у зрителя личный снимок с правами: он уходит
+// без флагов, общий снимок с флагами догоняет тиком.
+func TestCallFlags_ViewerSnapshotSurvivesSourceFailure(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.calls.activeAmongErr = errors.New("redis down")
+	if err := e.in.publishViewerChatErr(ctx, e.chatID, callMember); err != nil {
+		t.Fatalf("личный снимок потерян из-за сбоя источника звонков: %v", err)
+	}
+	if n := len(e.chatUpdates(t, callMember)); n != 1 {
+		t.Fatalf("личных снимков = %d, want 1", n)
+	}
+	if e.calls.pendingDirty() != 1 {
+		t.Fatal("исправляющий снимок с флагами не отложен")
+	}
+}
+
+// Звонок в личном чате («Избранном») снимков не порождает и очередь не крутит:
+// у такого чата нет тела channel, сверять нечего.
+func TestCallSnapshot_PrivateChatDoesNotLoop(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.s.seedChat(700, domain.ChatTypePrivate, callOwner, callMember)
+	e.fg.mu.Lock()
+	e.fg.cards[700] = domain.ChatRecord{ID: 700, Type: domain.ChatTypePrivate}
+	e.fg.mu.Unlock()
+	_ = e.fg.AddMember(ctx, 700, callOwner, domain.RoleMember, 0)
+
+	if _, err := e.in.JoinGroupCall(ctx, 700, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	e.in.bg.Wait()
+	for range 3 {
+		e.clock.advance(6 * time.Second)
+		if _, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e.calls.pendingDirty() != 0 {
+		t.Fatal("звонок в личке оставил запись в очереди снимков")
+	}
+}
+
+// Исправляющий снимок из тика переживает закрытие записи, даже если публикация
+// длилась дольше аренды (счёт записи уже не отличим от «срока»).
+func TestCallSnapshot_ResnapFromFlushSurvivesFinish(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	e.in.bg.Wait()
+	_ = e.in.LeaveGroupCall(ctx, e.chatID, callOwner) // окно занято -> отложено
+	e.in.bg.Wait()
+	e.clock.advance(6 * time.Second)
+	// пока тик собирает снимок, часы уходят за аренду, а звонок возобновляется
+	e.calls.afterActiveAmong = func() {
+		e.clock.advance(callSnapshotLease)
+		_, _ = e.calls.Join(ctx, e.chatID, callMember)
+	}
+	if _, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if e.calls.pendingDirty() != 1 {
+		t.Fatal("исправляющий снимок потерян при закрытии записи")
+	}
+	e.clock.advance(6 * time.Second)
+	if n, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil || n != 1 {
+		t.Fatalf("повтор: n=%d err=%v", n, err)
+	}
+	ups := e.chatUpdates(t, callMember)
+	if f := channelFlags(t, ups[len(ups)-1]); f["call_active"] != true {
+		t.Fatalf("последний снимок не отражает идущий звонок: %v", f)
+	}
+}

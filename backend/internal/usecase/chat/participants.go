@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -211,11 +212,13 @@ func (i *Interactor) publishViewerChatErr(ctx context.Context, chatID, userID in
 	if err != nil {
 		return err
 	}
-	// В журнал уходит абсолютный снимок: при сбое источника звонков лучше не
-	// записать его вовсе, чем записать «звонка нет» и погасить иконку при догонке.
+	// Сбой источника звонков не отнимает у зрителя его права (admin_rights/
+	// banned_rights — ради них снимок и существует): он уходит без флагов, а
+	// общий снимок с флагами догонит следом (min берёт из пришедшего общее).
 	recs := []domain.ChatRecord{c}
 	if err := i.fillCallStateStrict(ctx, recs); err != nil {
-		return err
+		log.Printf("chat %d: %v", chatID, err)
+		i.resnapshotLater(ctx, chatID)
 	}
 	c = recs[0]
 	return i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "chat_update",

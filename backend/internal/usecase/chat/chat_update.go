@@ -51,45 +51,56 @@ func chatFullSnapshotPayload(tag string, peer domain.PeerID, c domain.ChatRecord
 // кадром. Снимок viewer-agnostic (viewerID=0): один payload всем и в лог.
 // Best-effort — метаданные косметические, ошибка рассылки не должна валить мутацию.
 func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {
-	_, known, err := i.publishChatSnapshot(ctx, chatID, false)
-	if err == nil && !known {
+	res, err := i.publishChatSnapshot(ctx, chatID, false)
+	if err == nil && res.published && !res.known {
 		// состояние звонка узнать не удалось, снимок ушёл без флагов — следом
 		// отправится исправляющий (иначе иконка гасла бы до следующей выдачи)
 		i.resnapshotLater(ctx, chatID)
 	}
 }
 
-// publishChatSnapshot — снимок чата в журнал и живьём. active — состояние
-// звонка, которое снимок несёт; known=false — источник звонков не ответил.
-// strict: при неизвестном состоянии не публиковать вовсе (снимок по переходу
-// звонка существует ради флагов, без них он вреден), иначе — опубликовать без
-// флагов. domain.ErrNotFound — чата уже нет.
-func (i *Interactor) publishChatSnapshot(ctx context.Context, chatID int64, strict bool) (active, known bool, err error) {
+// snapshotResult — итог publishChatSnapshot.
+type snapshotResult struct {
+	// published — снимок ушёл в журнал (у чата без тела channel и без репозитория
+	// групп снимка нет, и сверять состояние звонка с ним нечего).
+	published bool
+	// active — состояние звонка, которое снимок несёт.
+	active bool
+	// known — источник звонков ответил; false — снимок ушёл без флагов.
+	known bool
+}
+
+// publishChatSnapshot — снимок чата в журнал и живьём.
+// strict: при неизвестном состоянии звонка не публиковать вовсе (снимок по
+// переходу звонка существует ради флагов, без них он вреден), иначе —
+// опубликовать без флагов. domain.ErrNotFound — чата уже нет.
+func (i *Interactor) publishChatSnapshot(ctx context.Context, chatID int64, strict bool) (snapshotResult, error) {
 	if i.groups == nil {
-		return false, true, nil
+		return snapshotResult{}, nil
 	}
 	card, err := i.groups.Card(ctx, chatID, 0)
 	if err != nil {
-		return false, true, err
+		return snapshotResult{}, err
 	}
 	// Снимок несёт channel, а он есть только у группы и канала (у личного чата
 	// пир — человек, и `channel` с внутренним ключом строки выдавал бы наш id).
 	if !hasChannelBody(card.Type) {
-		return false, true, nil
+		return snapshotResult{}, nil
 	}
 	// Состояние звонка общее для всех зрителей, поэтому едет и в снимке без
 	// зрителя (min): клиент берёт из min общее (peersManager.mergeApiChat), и без
 	// флагов любое переименование гасило бы иконку идущего звонка.
 	recs := []domain.ChatRecord{card}
-	known = true
+	res := snapshotResult{known: true}
 	if err := i.fillCallStateStrict(ctx, recs); err != nil {
 		if strict {
-			return false, false, err
+			return snapshotResult{}, err
 		}
 		log.Printf("chat %d: %v", chatID, err)
-		known = false
+		res.known = false
 	}
 	card = recs[0]
+	res.active = card.Call.Active
 	// Канал: один channel-broadcast (O(1)) по channel-конверту вместо N+1 fan-out
 	// в per-user лог каждого подписчика. Подписчики получают кадр живым, остальные
 	// добирают снимок при открытии через /channels/{id}/difference. Группа —
@@ -98,13 +109,15 @@ func (i *Interactor) publishChatSnapshot(ctx context.Context, chatID int64, stri
 		// Ключ канала один на всех подписчиков — пер-зрительского в нём нет.
 		err = i.logAndPublishChannel(ctx, chatID, "chat_update",
 			channelUpdatePayload(domain.ToPeerID(chatID, true), card))
-		return card.Call.Active, known, err
+		res.published = err == nil
+		return res, err
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
-		return false, known, err
+		return snapshotResult{}, err
 	}
 	err = i.logAndPublishPerPeer(ctx, chatID, members, "chat_update",
 		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, card) })
-	return card.Call.Active, known, err
+	res.published = err == nil
+	return res, err
 }
