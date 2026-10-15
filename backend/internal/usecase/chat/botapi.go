@@ -272,8 +272,20 @@ func (i *Interactor) BotGetUpdates(ctx context.Context, bot domain.BotAccount, o
 	}
 }
 
+// BotSendOpts — необязательные параметры Bot API sendMessage.
+type BotSendOpts struct {
+	// Entities — разметка текста, уже переведённая в нашу модель (UTF-16).
+	Entities domain.MessageEntities
+	// ReplyToSeq — номер отвечаемого сообщения В ЭТОМ ЧАТЕ
+	// (reply_parameters.message_id | reply_to_message_id): та же единица, что
+	// message_id в ответах Bot API и SendInput.ReplyToID.
+	ReplyToSeq *int64
+	// Silent — disable_notification: без пуша и звука у получателя.
+	Silent bool
+}
+
 // BotSendMessage — бот шлёт сообщение в чат (должен быть его участником).
-func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup domain.ReplyMarkup) (domain.Message, error) {
+func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, chatID int64, text string, markup domain.ReplyMarkup, opts BotSendOpts) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, bot.BotID)
 	if err != nil {
 		return domain.Message{}, err
@@ -282,6 +294,7 @@ func (i *Interactor) BotSendMessage(ctx context.Context, bot domain.BotAccount, 
 		return domain.Message{}, domain.ErrForbidden
 	}
 	return i.Send(ctx, SendInput{ChatID: chatID, SenderID: bot.BotID, Type: "text", Text: text, ReplyMarkup: markup,
+		Entities: opts.Entities, ReplyToID: opts.ReplyToSeq, Silent: opts.Silent,
 		paidConsentNotRequired: true}) // у Bot API нет allow_paid_stars
 }
 
@@ -293,16 +306,6 @@ func (i *Interactor) BotSetWebhook(ctx context.Context, bot domain.BotAccount, u
 		return domain.ErrForbidden
 	}
 	return i.botAPI.SetWebhook(ctx, bot.BotID, url)
-}
-
-// BotSetCommands задаёт список команд бота для скоупа/языка.
-func (i *Interactor) BotSetCommands(ctx context.Context, bot domain.BotAccount, scope, lang string, cmds []domain.BotCommand) error {
-	return i.botAPI.SetCommands(ctx, bot.BotID, scope, lang, cmds)
-}
-
-// BotGetCommands читает команды бота для скоупа/языка (getMyCommands).
-func (i *Interactor) BotGetCommands(ctx context.Context, bot domain.BotAccount, scope, lang string) ([]domain.BotCommand, error) {
-	return i.botAPI.CommandsScoped(ctx, bot.BotID, scope, lang)
 }
 
 // BotSetMenuButton задаёт кнопку-меню mini-app бота.

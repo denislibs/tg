@@ -78,8 +78,16 @@ type PresenceReannouncer interface {
 	ReannounceTo(ctx context.Context, userID int64, viewers []int64) error
 }
 
+// BotInfoSource — карточка бота для userFull.bot_info (реализует usecase/chat):
+// описание, команды скоупа лички глазами зрителя и кнопка-меню; вторым
+// значением — «о боте» (userFull.about бота).
+type BotInfoSource interface {
+	BotInfo(ctx context.Context, botID, viewerID int64) (*domain.BotInfo, string, error)
+}
+
 type Interactor struct {
 	repo        Repo
+	bots        BotInfoSource       // optional: bot_info профиля бота
 	presence    PresenceSnapshot    // optional: присутствие для user.status
 	emit        *ownsync.Emitter    // optional: журнал своих устройств
 	announcer   UserAnnouncer       // optional: пересчёт карточки у собеседников
@@ -109,6 +117,10 @@ func New(repo Repo) *Interactor {
 // SetEmitter подключает журнал своих устройств; без него мутация проходит, но
 // второе устройство о ней не узнаёт.
 func (i *Interactor) SetEmitter(e *ownsync.Emitter) { i.emit = e }
+
+// SetBotInfo подключает источник bot_info для профиля бота; без него профиль
+// бота отдаётся как у обычного пользователя.
+func (i *Interactor) SetBotInfo(b BotInfoSource) { i.bots = b }
 
 // SetAnnouncer подключает пересчёт карточки у собеседников.
 func (i *Interactor) SetAnnouncer(a UserAnnouncer) { i.announcer = a }
@@ -472,6 +484,19 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	full.ThemeEmoticon, _ = i.repo.ChatTheme(ctx, viewerID, targetID)
 	if check(domain.PrivacyAbout) {
 		full.About = u.Bio
+	}
+	// Бот: описание, команды и «о боте» публичны — правила приватности bio на
+	// них не распространяются. Сбой источника не роняет профиль: карточка уйдёт
+	// без bot_info, клиент покажет её как у человека.
+	if u.IsBot && i.bots != nil {
+		if info, about, err := i.bots.BotInfo(ctx, targetID, viewerID); err != nil {
+			log.Printf("privacy: bot_info bot=%d: %v", targetID, err)
+		} else {
+			full.BotInfo = info
+			if about != "" { // служебному боту без учётки о себе нечего сказать: остаётся био
+				full.About = about
+			}
+		}
 	}
 	if u.Birthday != nil && check(domain.PrivacyBirthday) {
 		// Одна форма дня рождения на весь провод — конструктор birthday. Прежде
