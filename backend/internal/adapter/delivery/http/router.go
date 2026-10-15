@@ -45,6 +45,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	// Страна клиента для экрана входа (аналог help.getNearestDc).
 	r.Get("/auth/nearest_country", authH.NearestCountry)
 	r.Post("/auth/sign_import", authH.SignImport)
+	r.Post("/auth/web_token/cancel", authH.CancelWebToken)
 	if passkeyH != nil {
 		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)
 		r.Post("/auth/passkey/finish", passkeyH.FinishLogin)

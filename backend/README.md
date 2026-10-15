@@ -125,6 +125,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `POST /auth/password/recover/confirm` | подтвердить код, снять пароль, выдать сессию |
 | `POST /auth/account/reset` | сброс аккаунта, когда почты для восстановления нет: первый вызов планирует удаление (`409 2fa_confirm_wait` + `retry_after`), вызов после истечения окна — исполняет (`200 {"ok":true}`); вход владельца отменяет (`409 2fa_recent_confirm`) |
 | `POST /auth/sign_import` | обменять веб-токен (`#?tgWebAuthToken=`) на сессию |
+| `POST /auth/web_token/cancel` | сжечь веб-токен, который клиент не стал импортировать |
 | `POST /auth/export_login_token` | QR-логин: выпуск/опрос кода и выдача сессии по ключу входа (`X-Login-Key`) |
 | `GET /media/{mediaID}/content` | скачать медиа (авторизация через `?token=`) |
 | `GET /langpack/languages` · `GET /langpack/languages/{code}` | языки пакета (`langpack.getLanguages` / `getLanguage`) |
