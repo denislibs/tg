@@ -60,36 +60,66 @@ type BotChat struct {
 
 // BotGroupLists — списки команд бота (язык "") для набора групп, прочитанные
 // одним запросом: безадресные скоупы, списки чата и записи chat_member. Из них
-// Resolve собирает тело для рядового и для админа по приоритету Bot API без
-// запросов на каждую группу.
+// ResolveGroup/ResolvePrivate собирают тело для участника по приоритету Bot API
+// без запросов на каждую группу или личку.
 type BotGroupLists struct {
-	Global map[string][]BotCommand           // default, all_group_chats, all_chat_administrators
+	Global map[string][]BotCommand           // default, all_private_chats, all_group_chats, all_chat_administrators
 	Chat   map[int64]map[string][]BotCommand // chatID -> chat | chat_administrators
 	Member map[int64]map[int64][]BotCommand  // chatID -> userID -> chat_member
 }
 
-// Resolve — список для участника без собственной записи chat_member:
-// группа: chat_administrators(chat) [админ] → chat(chat) → all_chat_administrators
-// [админ] → all_group_chats → default.
+// ResolveGroup — список для участника группы без собственной записи chat_member
+// и скоуп-победитель ("" — списка нет): chat_administrators(chat) [админ] →
+// chat(chat) → all_chat_administrators [админ] → all_group_chats → default.
+func (l BotGroupLists) ResolveGroup(chatID int64, staff bool) ([]BotCommand, string) {
+	if staff {
+		if cs := l.Chat[chatID][BotScopeChatAdministrator]; len(cs) > 0 {
+			return cs, BotScopeChatAdministrator
+		}
+	}
+	if cs := l.Chat[chatID][BotScopeChat]; len(cs) > 0 {
+		return cs, BotScopeChat
+	}
+	if staff {
+		if cs := l.Global[BotScopeAllChatAdmins]; len(cs) > 0 {
+			return cs, BotScopeAllChatAdmins
+		}
+	}
+	if cs := l.Global[BotScopeAllGroupChats]; len(cs) > 0 {
+		return cs, BotScopeAllGroupChats
+	}
+	return l.Global[BotScopeDefault], BotScopeDefault
+}
+
+// Resolve — ResolveGroup без названия победителя.
 func (l BotGroupLists) Resolve(chatID int64, staff bool) []BotCommand {
-	try := func(cs []BotCommand) bool { return len(cs) > 0 }
-	if staff {
-		if cs := l.Chat[chatID][BotScopeChatAdministrator]; try(cs) {
-			return cs
+	cs, _ := l.ResolveGroup(chatID, staff)
+	return cs
+}
+
+// ResolvePrivate — список для личной переписки с ботом и скоуп-победитель:
+// all_private_chats → default.
+func (l BotGroupLists) ResolvePrivate() ([]BotCommand, string) {
+	if cs := l.Global[BotScopeAllPrivateChats]; len(cs) > 0 {
+		return cs, BotScopeAllPrivateChats
+	}
+	return l.Global[BotScopeDefault], BotScopeDefault
+}
+
+// BotScopeRank — место скоупа в приоритете: меньше — важнее. Для группы:
+// chat_member, chat_administrators, chat, all_chat_administrators, all_group_chats, default;
+// для лички: all_private_chats, default. Неизвестный скоуп — самый слабый.
+func BotScopeRank(scope string, group bool) int {
+	order := []string{BotScopeAllPrivateChats, BotScopeDefault}
+	if group {
+		order = []string{BotScopeChatMember, BotScopeChatAdministrator, BotScopeChat, BotScopeAllChatAdmins, BotScopeAllGroupChats, BotScopeDefault}
+	}
+	for n, s := range order {
+		if s == scope {
+			return n
 		}
 	}
-	if cs := l.Chat[chatID][BotScopeChat]; try(cs) {
-		return cs
-	}
-	if staff {
-		if cs := l.Global[BotScopeAllChatAdmins]; try(cs) {
-			return cs
-		}
-	}
-	if cs := l.Global[BotScopeAllGroupChats]; try(cs) {
-		return cs
-	}
-	return l.Global[BotScopeDefault]
+	return len(order)
 }
 
 // BotRecipient — участник чата бота, которому уходит updateBotCommands.

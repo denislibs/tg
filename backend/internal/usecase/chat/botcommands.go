@@ -59,7 +59,9 @@ func (i *Interactor) BotDeleteCommands(ctx context.Context, bot domain.BotAccoun
 	if err := checkCommandLang(lang); err != nil {
 		return err
 	}
-	if err := i.checkCommandScope(ctx, bot.BotID, scope); err != nil {
+	// Участие пользователя при снятии записи chat_member не проверяется: вышедший
+	// из группы пользователь иначе оставил бы запись навсегда.
+	if err := i.checkCommandScope(ctx, bot.BotID, scope, false); err != nil {
 		return err
 	}
 	changed, err := i.botAPI.DeleteCommands(ctx, bot.BotID, scope, lang)
@@ -92,7 +94,7 @@ func (i *Interactor) setBotCommands(ctx context.Context, botID int64, scope doma
 	if err := checkCommandLang(lang); err != nil {
 		return err
 	}
-	if err := i.checkCommandScope(ctx, botID, scope); err != nil {
+	if err := i.checkCommandScope(ctx, botID, scope, true); err != nil {
 		return err
 	}
 	changed, err := i.botAPI.SetCommands(ctx, botID, scope, lang, cmds)
@@ -137,7 +139,7 @@ func checkCommandLang(lang string) error {
 // checkCommandScope: тип известен, адрес на месте (domain.BotCommandScope.Valid),
 // а адресный скоуп указывает на группу, где состоит бот. Скоуп `chat` личного
 // чата не поддерживается: в личке действуют только all_private_chats и default.
-func (i *Interactor) checkCommandScope(ctx context.Context, botID int64, scope domain.BotCommandScope) error {
+func (i *Interactor) checkCommandScope(ctx context.Context, botID int64, scope domain.BotCommandScope, requireUser bool) error {
 	if !scope.Valid() {
 		return domain.ErrInvalid
 	}
@@ -158,7 +160,7 @@ func (i *Interactor) checkCommandScope(ctx context.Context, botID int64, scope d
 	if !ok {
 		return domain.ErrForbidden
 	}
-	if scope.UserID != 0 {
+	if scope.UserID != 0 && requireUser {
 		if ok, err = i.chats.IsMember(ctx, scope.ChatID, scope.UserID); err != nil {
 			return err
 		} else if !ok {
@@ -169,19 +171,31 @@ func (i *Interactor) checkCommandScope(ctx context.Context, botID int64, scope d
 }
 
 // botFanoutRuns — идущие рассылки updateBotCommands по ботам. Рассылка одна на
-// бота: пока она идёт, новое изменение лишь помечает её «грязной» (с объединением
-// скоупов), и по завершении проход повторяется по свежему состоянию. Без этого
+// бота: пока она идёт, новое изменение встаёт в очередь (различные скоупы), и по
+// завершении каждый проходится по свежему состоянию. Без этого
 // две параллельные рассылки читали бы список в одном порядке, а писали журнал в
 // другом, и у части получателей последней оставалась бы устаревшая подсказка.
+//
+// Реплика одна: замок и очередь живут в памяти процесса. Запись списка при любом
+// числе реплик защищена advisory-замком в БД, а вот порядок рассылок двух
+// реплик одного бота не гарантирован — у него при нескольких репликах пришлось
+// бы брать межпроцессный замок на проход.
 type botFanoutRuns struct {
 	mu   sync.Mutex
 	runs map[int64]*botFanoutRun
 }
 
 type botFanoutRun struct {
-	dirty   bool
-	pending domain.BotCommandScope
+	pending []domain.BotCommandScope // различные скоупы, пришедшие за время прохода
 }
+
+// botFanoutPendingMax — сколько различных скоупов копится за проход; сверх —
+// один полный пересчёт (botScopeAll), который никого не пропускает.
+const botFanoutPendingMax = 64
+
+// botScopeAll — внутренний «скоуп»: пересчитать у всех и ничего не пропускать
+// (ни владельцев chat_member, ни победивших скоупов). Наружу не выходит.
+const botScopeAll = "all"
 
 // botCommandsChanged — единая точка после смены списка команд: updateBotCommands
 // всем, чья подсказка могла поменяться. Зовётся ПОСЛЕ коммита записи и только
@@ -191,7 +205,10 @@ type botFanoutRun struct {
 //
 // lang != "": язык зрителя у нас всегда пустой (колонки языка в users нет), и
 // список для конкретного языка пользователям не виден, — рассылать нечего.
-// scope сужает адресатов (см. fanoutBotCommands).
+// scope сужает адресатов (см. fanoutBotCommands). Изменения, пришедшие за время
+// прохода, проходятся отдельно каждое по своему скоупу — склеивать разные скоупы
+// нельзя: сужение у них разное, а запись chat_member одного пользователя не
+// покрывается ни одним общим проходом.
 func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScope, lang string) {
 	if lang != "" || i.bots == nil || i.updates == nil {
 		return
@@ -199,10 +216,12 @@ func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScop
 	runs := &i.botFanouts
 	runs.mu.Lock()
 	if r, ok := runs.runs[botID]; ok {
-		if r.dirty && r.pending != scope {
-			r.pending = domain.BotCommandScope{} // разные скоупы — шире всех: default
-		} else if !r.dirty {
-			r.pending, r.dirty = scope, true
+		switch {
+		case slices.Contains(r.pending, scope):
+		case len(r.pending) >= botFanoutPendingMax:
+			r.pending = []domain.BotCommandScope{{Type: botScopeAll}}
+		default:
+			r.pending = append(r.pending, scope)
 		}
 		runs.mu.Unlock()
 		return
@@ -215,20 +234,34 @@ func (i *Interactor) botCommandsChanged(botID int64, scope domain.BotCommandScop
 	runs.mu.Unlock()
 
 	i.goBG("bot_commands_fanout", func(context.Context) {
-		cur := scope
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), botCommandsFanoutTimeout)
-			if err := i.fanoutBotCommands(ctx, botID, cur); err != nil {
-				log.Printf("bot_commands: fanout bot=%d: %v", botID, err)
-			}
-			cancel()
+		// Запись снимается при любом выходе, и при панике (её гасит goBG): иначе
+		// бот навсегда остался бы «в рассылке» и новые изменения только копились.
+		defer func() {
 			runs.mu.Lock()
-			if !r.dirty {
+			if runs.runs[botID] == r {
+				delete(runs.runs, botID)
+			}
+			runs.mu.Unlock()
+		}()
+		todo := []domain.BotCommandScope{scope}
+		for {
+			for _, sc := range todo {
+				ctx, cancel := context.WithTimeout(context.Background(), botCommandsFanoutTimeout)
+				if err := i.fanoutBotCommands(ctx, botID, sc); err != nil {
+					log.Printf("bot_commands: fanout bot=%d: %v", botID, err)
+				}
+				cancel()
+			}
+			// «Пусто — выйти» и снятие записи под одним замком: изменение, пришедшее
+			// между проверкой и выходом, начало бы новый проход, а не легло в очередь
+			// уже завершённого.
+			runs.mu.Lock()
+			if len(r.pending) == 0 {
 				delete(runs.runs, botID)
 				runs.mu.Unlock()
 				return
 			}
-			cur, r.dirty = r.pending, false
+			todo, r.pending = r.pending, nil
 			runs.mu.Unlock()
 		}
 	})
@@ -308,11 +341,9 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 	for _, r := range recipients {
 		byChat[r.ChatID] = append(byChat[r.ChatID], r)
 	}
-	var lists domain.BotGroupLists
-	if len(groupIDs) > 0 {
-		if lists, err = i.bots.GroupLists(ctx, botID, groupIDs); err != nil {
-			return err
-		}
+	lists, err := i.bots.GroupLists(ctx, botID, groupIDs)
+	if err != nil {
+		return err
 	}
 
 	batches := map[string]*commandBatch{}
@@ -325,8 +356,8 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 		b.users = append(b.users, uid)
 	}
 
-	var privateCmds []domain.BotCommand
-	privateLoaded := false
+	all := scope.Type == botScopeAll
+	changed := scope.Norm()
 	sort.Slice(chatIDs, func(a, b int) bool { return chatIDs[a] < chatIDs[b] })
 	for _, chatID := range chatIDs {
 		rs := byChat[chatID]
@@ -334,14 +365,13 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 			continue
 		}
 		if types[chatID] == domain.ChatTypePrivate {
-			if !privateLoaded {
-				if privateCmds, err = i.bots.CommandsFor(ctx, botID, 0, 0, false, ""); err != nil {
-					return err
-				}
-				privateLoaded = true
+			cmds, winner := lists.ResolvePrivate()
+			// Победил скоуп выше изменившегося — подсказка у лички не поменялась.
+			if !all && domain.BotScopeRank(winner, false) < domain.BotScopeRank(changed, false) {
+				continue
 			}
 			for _, r := range rs {
-				add("private", domain.NewPeerUser(botID), privateCmds, r.UserID)
+				add("private", domain.NewPeerUser(botID), cmds, r.UserID)
 			}
 			continue
 		}
@@ -350,28 +380,34 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 		member := lists.Member[chatID]
 		for _, r := range rs {
 			own := member[r.UserID]
-			switch scope.Norm() {
-			case domain.BotScopeChatMember:
-				if r.UserID != scope.UserID {
-					continue
-				}
-			case domain.BotScopeChatAdministrator, domain.BotScopeAllChatAdmins:
-				if !r.Staff {
-					continue
+			if !all {
+				switch changed {
+				case domain.BotScopeChatMember:
+					if r.UserID != scope.UserID {
+						continue
+					}
+				case domain.BotScopeChatAdministrator, domain.BotScopeAllChatAdmins:
+					if !r.Staff {
+						continue
+					}
 				}
 			}
 			if len(own) > 0 {
-				if scope.Norm() != domain.BotScopeChatMember {
+				if !all && changed != domain.BotScopeChatMember {
 					continue // собственная запись chat_member важнее изменившегося скоупа
 				}
 				add(fmt.Sprintf("group/%d/member/%d", chatID, r.UserID), peer, own, r.UserID)
+				continue
+			}
+			cmds, winner := lists.ResolveGroup(chatID, r.Staff)
+			if !all && domain.BotScopeRank(winner, true) < domain.BotScopeRank(changed, true) {
 				continue
 			}
 			variant := "plain"
 			if r.Staff {
 				variant = "staff"
 			}
-			add(fmt.Sprintf("group/%d/%s", chatID, variant), peer, lists.Resolve(chatID, r.Staff), r.UserID)
+			add(fmt.Sprintf("group/%d/%s", chatID, variant), peer, cmds, r.UserID)
 		}
 	}
 
@@ -414,7 +450,7 @@ func (i *Interactor) fanoutBotCommands(ctx context.Context, botID int64, scope d
 
 func scopeReachesPrivate(s domain.BotCommandScope) bool {
 	switch s.Norm() {
-	case domain.BotScopeDefault, domain.BotScopeAllPrivateChats:
+	case domain.BotScopeDefault, domain.BotScopeAllPrivateChats, botScopeAll:
 		return true
 	}
 	return false

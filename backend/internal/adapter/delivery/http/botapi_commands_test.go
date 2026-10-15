@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -269,5 +271,84 @@ func TestBotAPI_BadCommandParamsAreRejected(t *testing.T) {
 	// Объект, присланный строкой с JSON (form-стиль), читается.
 	if code, res := e.call(t, "setMyCommands", map[string]any{"commands": `[{"command":"two","description":"Два"}]`}); code != 200 {
 		t.Fatalf("commands JSON-строкой: %d %v", code, res)
+	}
+}
+
+func (e botAPIEnv) callRaw(t *testing.T, method, contentType, body string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/bot/"+e.token+"/"+method, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, req)
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+// Тело, которое не разобралось как JSON, — не «нет параметров»: deleteMyCommands
+// с обрезанным телом не должен снимать default, а форма (urlencoded/multipart),
+// которую принимает Bot API, читается.
+func TestBotAPI_CommandsBodyForms(t *testing.T) {
+	e := newBotAPIEnv(t, "+79990000635")
+	chatID := e.group(t)
+	ctx := context.Background()
+	count := func(where string) int {
+		var n int
+		if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM bot_commands WHERE bot_id = $1 AND `+where, e.bot).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if code, _ := e.call(t, "setMyCommands", map[string]any{"commands": []map[string]string{{"command": "start", "description": "Старт"}}}); code != 200 {
+		t.Fatal("setMyCommands default")
+	}
+
+	// Обрезанный JSON и мусор — 400, default цел.
+	for _, body := range []string{`{"scope":{"type":"chat","chat_id":`, `not json`, `[1,2]`} {
+		if code, _ := e.callRaw(t, "deleteMyCommands", "application/json", body); code != http.StatusBadRequest {
+			t.Errorf("тело %q: код %d; want 400", body, code)
+		}
+	}
+	if count(`scope = 'default'`) != 1 {
+		t.Fatal("нечитаемое тело deleteMyCommands сняло default")
+	}
+	// Слишком большое тело — 413.
+	big := `{"commands":"` + strings.Repeat("x", 300<<10) + `"}`
+	if code, _ := e.callRaw(t, "setMyCommands", "application/json", big); code != http.StatusRequestEntityTooLarge {
+		t.Errorf("большое тело: код %d; want 413", code)
+	}
+
+	// Form-urlencoded: scope и commands — строки с JSON.
+	form := url.Values{}
+	form.Set("scope", `{"type":"chat","chat_id":`+itoa(chatID)+`}`)
+	form.Set("commands", `[{"command":"only_here","description":"Тут"}]`)
+	if code, res := e.callRaw(t, "setMyCommands", "application/x-www-form-urlencoded", form.Encode()); code != 200 {
+		t.Fatalf("form setMyCommands: %d %v", code, res)
+	}
+	if count(`scope = 'chat' AND scope_chat_id = `+itoa(chatID)) != 1 {
+		t.Fatal("form-запрос потерял адрес скоупа")
+	}
+	delForm := url.Values{}
+	delForm.Set("scope", `{"type":"chat","chat_id":`+itoa(chatID)+`}`)
+	if code, res := e.callRaw(t, "deleteMyCommands", "application/x-www-form-urlencoded", delForm.Encode()); code != 200 {
+		t.Fatalf("form deleteMyCommands: %d %v", code, res)
+	}
+	if count(`scope = 'chat'`) != 0 || count(`scope = 'default'`) != 1 {
+		t.Fatal("form deleteMyCommands снял не тот скоуп")
+	}
+
+	// Multipart.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("commands", `[{"command":"mp","description":"Мультипарт"}]`)
+	_ = mw.Close()
+	if code, res := e.callRaw(t, "setMyCommands", mw.FormDataContentType(), buf.String()); code != 200 {
+		t.Fatalf("multipart setMyCommands: %d %v", code, res)
+	}
+	got, _ := e.call(t, "getMyCommands", map[string]any{})
+	if got != 200 {
+		t.Fatal("getMyCommands после multipart")
 	}
 }

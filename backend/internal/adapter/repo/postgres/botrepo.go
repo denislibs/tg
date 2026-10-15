@@ -181,7 +181,7 @@ func (r *BotRepo) ChatRecipients(ctx context.Context, botID int64, chatIDs []int
 	return out, rows.Err()
 }
 
-// GroupLists — списки бота (язык "") для набора групп ОДНИМ запросом:
+// GroupLists — списки бота (язык "") для набора чатов ОДНИМ запросом:
 // безадресные скоупы, chat/chat_administrators этих групп и записи chat_member.
 // Приоритет раскладывает domain.BotGroupLists.Resolve — запроса на группу нет.
 func (r *BotRepo) GroupLists(ctx context.Context, botID int64, chatIDs []int64) (domain.BotGroupLists, error) {
@@ -193,7 +193,7 @@ func (r *BotRepo) GroupLists(ctx context.Context, botID int64, chatIDs []int64) 
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT scope, scope_chat_id, scope_user_id, command, description FROM bot_commands
 		  WHERE bot_id = $1 AND language_code = ''
-		    AND ((scope_chat_id = 0 AND scope_user_id = 0 AND scope IN ('default','all_group_chats','all_chat_administrators'))
+		    AND ((scope_chat_id = 0 AND scope_user_id = 0 AND scope IN ('default','all_private_chats','all_group_chats','all_chat_administrators'))
 		      OR (scope IN ('chat','chat_administrators') AND scope_chat_id = ANY($2) AND scope_user_id = 0)
 		      OR (scope = 'chat_member' AND scope_chat_id = ANY($2)))
 		  ORDER BY sort, command`, botID, chatIDs)

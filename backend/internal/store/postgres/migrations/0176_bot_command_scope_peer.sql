@@ -18,7 +18,19 @@ $$;
 
 -- Боты группы для её карточки (channelFull.bot_info): боты редки, поэтому обход
 -- идёт со стороны ботов — частичный индекс по users, затем chat_members_pkey.
--- CONCURRENTLY — не блокировать запись в users при rolling-деплое.
+-- CONCURRENTLY — не блокировать запись в users при rolling-деплое. Оборванное
+-- построение оставляет НЕГОДНЫЙ индекс, который IF NOT EXISTS молча пропустил бы:
+-- его сначала убираем.
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+                WHERE c.relname = 'idx_users_bots' AND NOT i.indisvalid) THEN
+        DROP INDEX idx_users_bots;
+    END IF;
+END
+$$;
+-- +goose StatementEnd
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_bots ON users (id) WHERE is_bot;
 
 -- +goose Down

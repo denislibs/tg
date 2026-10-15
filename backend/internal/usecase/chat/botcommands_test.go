@@ -26,6 +26,10 @@ type botCmdWorld struct {
 	members map[int64]map[int64]string // chatID -> userID -> роль (боты тоже)
 	// fetches — выборки команд: по чатам (CommandsFor*) и GroupLists (ключ -1).
 	fetches map[int64]int
+	// gate — если не nil, BotChats ждёт его закрытия (держит рассылку «идущей»).
+	gate chan struct{}
+	// panicOnce — следующий BotChats паникует (проверка снятия записи рассылки).
+	panicOnce bool
 }
 
 type botCmdKey struct {
@@ -109,6 +113,17 @@ func (f fakeBotRepo) CommandsForBots(_ context.Context, botIDs []int64, chatID, 
 
 func (f fakeBotRepo) BotChats(_ context.Context, botID int64, types []string, limit int) ([]domain.BotChat, error) {
 	f.w.mu.Lock()
+	gate := f.w.gate
+	if f.w.panicOnce {
+		f.w.panicOnce = false
+		f.w.mu.Unlock()
+		panic("boom")
+	}
+	f.w.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
+	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	var ids []int64
 	for chatID, ms := range f.w.members {
@@ -170,7 +185,7 @@ func (f fakeBotRepo) GroupLists(_ context.Context, botID int64, chatIDs []int64)
 			continue
 		}
 		switch k.scope.Type {
-		case domain.BotScopeDefault, domain.BotScopeAllGroupChats, domain.BotScopeAllChatAdmins:
+		case domain.BotScopeDefault, domain.BotScopeAllPrivateChats, domain.BotScopeAllGroupChats, domain.BotScopeAllChatAdmins:
 			out.Global[k.scope.Type] = cs
 		case domain.BotScopeChat, domain.BotScopeChatAdministrator:
 			if slices.Contains(chatIDs, k.scope.ChatID) {
@@ -419,17 +434,18 @@ func TestSetMyCommands_GroupBodiesByRole(t *testing.T) {
 	e.set(t, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat")
 
 	chatPeer := domain.ToPeerID(200, true)
-	// Админы видят chat_administrators, рядовые — chat; у пользователя 4 своя
-	// запись chat_member важнее изменившегося скоупа: ему кадр не нужен.
-	want := map[int64][]string{1: {"adm"}, 2: {"adm"}, 3: {"chat"}, 5: {"chat"}}
-	for uid, cmds := range want {
+	// Тело (а): список chat получают рядовые. Админам он перекрыт
+	// chat_administrators, пользователю 4 — его записью chat_member: им кадр не нужен.
+	for _, uid := range []int64{3, 5} {
 		rows := e.rows(t, uid)
-		if len(rows) != 1 || rows[0].Peer != chatPeer || !reflect.DeepEqual(rows[0].Cmds, cmds) {
-			t.Errorf("пользователь %d: %+v; want peerChannel(200) %v", uid, rows, cmds)
+		if len(rows) != 1 || rows[0].Peer != chatPeer || !reflect.DeepEqual(rows[0].Cmds, []string{"chat"}) {
+			t.Errorf("рядовой %d: %+v; want peerChannel(200) [chat]", uid, rows)
 		}
 	}
-	if n := len(e.rows(t, 4)); n != 0 {
-		t.Errorf("пользователь с записью chat_member получил %d строк; want 0", n)
+	for _, uid := range []int64{1, 2, 4} {
+		if n := len(e.rows(t, uid)); n != 0 {
+			t.Errorf("пользователь %d с перекрывающим списком получил %d строк; want 0", uid, n)
+		}
 	}
 	// Одна выборка списков на все группы бота, а не запрос на чат.
 	if n := e.w.fetches[-1]; n != 1 {
@@ -439,27 +455,30 @@ func TestSetMyCommands_GroupBodiesByRole(t *testing.T) {
 		t.Fatalf("запросов команд на чат: %d; want 0", n)
 	}
 
-	// Тело (в): смена записи chat_member — ровно одному её владельцу.
-	e.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "", "for4_v2")
-	for _, uid := range []int64{1, 2, 3, 5} {
-		if n := len(e.rows(t, uid)); n != 1 {
-			t.Errorf("пользователь %d получил лишнюю строку после chat_member другого: %d", uid, n)
+	// Тело (б): смена списка админов — только админам.
+	e.set(t, domain.BotCommandScope{Type: "chat_administrators", ChatID: 200}, "", "adm2")
+	for _, uid := range []int64{1, 2} {
+		rows := e.rows(t, uid)
+		if len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"adm2"}) {
+			t.Errorf("админ %d: %+v; want [adm2]", uid, rows)
 		}
 	}
-	rows := e.rows(t, 4)
-	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"for4_v2"}) {
-		t.Fatalf("пользователь 4: %+v; want [for4_v2]", rows)
-	}
-
-	// Сменился список админов — рядовые (3, 5) не получают ничего.
-	e.set(t, domain.BotCommandScope{Type: "chat_administrators", ChatID: 200}, "", "adm2")
 	for _, uid := range []int64{3, 5} {
 		if n := len(e.rows(t, uid)); n != 1 {
 			t.Errorf("рядовой %d получил строку на смену списка админов: %d", uid, n)
 		}
 	}
-	if rows := e.rows(t, 1); len(rows) != 2 || !reflect.DeepEqual(rows[1].Cmds, []string{"adm2"}) {
-		t.Fatalf("админ 1: %+v; want вторая строка [adm2]", rows)
+
+	// Тело (в): смена записи chat_member — ровно одному её владельцу.
+	e.set(t, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "", "for4_v2")
+	rows := e.rows(t, 4)
+	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"for4_v2"}) {
+		t.Fatalf("пользователь 4: %+v; want [for4_v2]", rows)
+	}
+	for _, uid := range []int64{1, 2, 3, 5} {
+		if n := len(e.rows(t, uid)); n > 1 {
+			t.Errorf("пользователь %d получил лишнюю строку после chat_member другого: %d", uid, n)
+		}
 	}
 }
 
@@ -720,5 +739,118 @@ func TestChatFullContainer_BotInfoOfGroupBots(t *testing.T) {
 	}
 	if bi := out.FullChat.BotInfo; len(bi) != 1 || bi[0].Commands[0].Command != "adm" {
 		t.Fatalf("создатель: bot_info = %+v; want [adm]", bi)
+	}
+}
+
+// Изменения, пришедшие, пока рассылка идёт, проходятся каждое по своему скоупу:
+// запись chat_member одного пользователя не теряется в общем «default».
+func TestSetMyCommands_ScopesQueuedDuringFanoutAreAllDelivered(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	e.chat(200, domain.ChatTypeGroup, map[int64]string{3: domain.RoleMember, 4: domain.RoleMember, 42: domain.RoleMember})
+	e.chat(201, domain.ChatTypeGroup, map[int64]string{6: domain.RoleMember, 42: domain.RoleMember})
+	gate := make(chan struct{})
+	e.w.gate = gate
+	ctx := context.Background()
+	set := func(scope domain.BotCommandScope, cmd string) {
+		if err := e.in.BotSetCommands(ctx, e.bot, scope, "", []domain.BotCommand{{Command: cmd}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(domain.BotCommandScope{}, "base")                                            // рассылка стартует и ждёт ворота
+	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine") // встаёт в очередь
+	set(domain.BotCommandScope{Type: "chat", ChatID: 201}, "only201")                // встаёт в очередь
+	set(domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "mine") // повтор той же записи не плодит проход
+	close(gate)
+	e.in.bg.Wait()
+
+	last := func(uid int64) []string {
+		rows := e.rows(t, uid)
+		if len(rows) == 0 {
+			return nil
+		}
+		return rows[len(rows)-1].Cmds
+	}
+	if got := last(4); !reflect.DeepEqual(got, []string{"mine"}) {
+		t.Fatalf("владелец chat_member: %v; want [mine]", got)
+	}
+	if got := last(6); !reflect.DeepEqual(got, []string{"only201"}) {
+		t.Fatalf("участник чата 201: %v; want [only201]", got)
+	}
+	if got := last(3); !reflect.DeepEqual(got, []string{"base"}) {
+		t.Fatalf("рядовой чата 200: %v; want [base]", got)
+	}
+	if got := last(7); !reflect.DeepEqual(got, []string{"base"}) {
+		t.Fatalf("личка: %v; want [base]", got)
+	}
+	// Базовый проход его не касается (своя запись важнее), своя — ровно одна строка.
+	if n := len(e.rows(t, 4)); n != 1 {
+		t.Fatalf("у владельца chat_member строк %d; want 1", n)
+	}
+}
+
+// Паника в рассылке не оставляет бота «в рассылке» навсегда.
+func TestSetMyCommands_PanicInFanoutDoesNotWedgeBot(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	e.w.panicOnce = true
+	e.set(t, domain.BotCommandScope{}, "", "first")
+	if n := len(e.rows(t, 7)); n != 0 {
+		t.Fatalf("после паники строк %d; want 0", n)
+	}
+	e.set(t, domain.BotCommandScope{}, "", "second")
+	if rows := e.rows(t, 7); len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"second"}) {
+		t.Fatalf("после паники рассылка не работает: %+v", rows)
+	}
+}
+
+// Удаление chat_member возвращает владельцу тело (а)/(б).
+func TestDeleteMyCommands_ChatMemberFallsBackToRoleBody(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(200, domain.ChatTypeGroup, map[int64]string{1: domain.RoleAdmin, 4: domain.RoleMember, 42: domain.RoleMember})
+	e.w.put(42, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat")
+	e.w.put(42, domain.BotCommandScope{Type: "chat_administrators", ChatID: 200}, "", "adm")
+	e.w.put(42, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 4}, "", "mine")
+	e.w.put(42, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: 1}, "", "mine_adm")
+
+	for _, uid := range []int64{1, 4} {
+		if err := e.in.BotDeleteCommands(context.Background(), e.bot, domain.BotCommandScope{Type: "chat_member", ChatID: 200, UserID: uid}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.in.bg.Wait()
+	if rows := e.rows(t, 4); len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"chat"}) {
+		t.Fatalf("рядовой после снятия записи: %+v; want [chat]", rows)
+	}
+	if rows := e.rows(t, 1); len(rows) != 1 || !reflect.DeepEqual(rows[0].Cmds, []string{"adm"}) {
+		t.Fatalf("админ после снятия записи: %+v; want [adm]", rows)
+	}
+}
+
+// Смена скоупа, который у получателя перекрыт более важным, кадра не даёт.
+func TestSetMyCommands_ShadowedScopeSendsNothing(t *testing.T) {
+	e := newBotCmdEnv(t)
+	e.chat(100, domain.ChatTypePrivate, map[int64]string{7: "member", 42: "member"})
+	e.chat(200, domain.ChatTypeGroup, map[int64]string{1: domain.RoleAdmin, 3: domain.RoleMember, 42: domain.RoleMember})
+	e.w.put(42, domain.BotCommandScope{Type: "all_private_chats"}, "", "pm")
+	e.w.put(42, domain.BotCommandScope{Type: "all_group_chats"}, "", "group")
+	e.w.put(42, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat")
+
+	e.set(t, domain.BotCommandScope{Type: "default"}, "", "def")
+	for _, uid := range []int64{7, 1, 3} {
+		if n := len(e.rows(t, uid)); n != 0 {
+			t.Fatalf("default перекрыт, а пользователь %d получил %d строк", uid, n)
+		}
+	}
+	// all_group_chats перекрыт chat(200) у обоих, а в личке его нет вовсе.
+	e.set(t, domain.BotCommandScope{Type: "all_group_chats"}, "", "group2")
+	if n := len(e.rows(t, 3)) + len(e.rows(t, 1)) + len(e.rows(t, 7)); n != 0 {
+		t.Fatalf("all_group_chats перекрыт chat(200): строк %d", n)
+	}
+	// chat(200) побеждает у рядового — кадр есть; админу не нужен, если у него chat_administrators.
+	e.w.put(42, domain.BotCommandScope{Type: "chat_administrators", ChatID: 200}, "", "adm")
+	e.set(t, domain.BotCommandScope{Type: "chat", ChatID: 200}, "", "chat2")
+	if len(e.rows(t, 3)) != 1 || len(e.rows(t, 1)) != 0 {
+		t.Fatalf("chat(200): рядовой %d строк (want 1), админ %d (want 0)", len(e.rows(t, 3)), len(e.rows(t, 1)))
 	}
 }

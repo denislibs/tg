@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,6 +44,53 @@ func decodeBody(r *http.Request) map[string]json.RawMessage {
 		_ = json.NewDecoder(r.Body).Decode(&m)
 	}
 	return m
+}
+
+// decodeStrictBody читает параметры метода из тела: JSON (по умолчанию),
+// application/x-www-form-urlencoded или multipart/form-data — все три формы, что
+// принимает Bot API. Пустое тело — пустые параметры (значения могут прийти в
+// query). Нечитаемое или слишком большое тело — код ошибки (400 / 413), а не
+// тихо пустой набор. Значения форм ложатся строками JSON: объект, присланный
+// строкой, разворачивает jsonParam.
+func decodeStrictBody(r *http.Request) (map[string]json.RawMessage, int) {
+	m := map[string]json.RawMessage{}
+	if r.Body == nil || r.Body == http.NoBody {
+		return m, 0
+	}
+	fail := func(err error) (map[string]json.RawMessage, int) {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return nil, http.StatusRequestEntityTooLarge
+		}
+		return nil, http.StatusBadRequest
+	}
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	switch ct {
+	case "application/x-www-form-urlencoded", "multipart/form-data":
+		var err error
+		if ct == "multipart/form-data" {
+			err = r.ParseMultipartForm(botCommandsBodyLimit)
+		} else {
+			err = r.ParseForm()
+		}
+		if err != nil {
+			return fail(err)
+		}
+		for k, v := range r.PostForm {
+			if len(v) > 0 {
+				raw, _ := json.Marshal(v[0])
+				m[k] = raw
+			}
+		}
+		return m, 0
+	}
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		if errors.Is(err, io.EOF) {
+			return map[string]json.RawMessage{}, 0 // тело из одних пробелов
+		}
+		return fail(err)
+	}
+	return m, 0
 }
 
 // param достаёт значение сначала из тела, затем из query (?k=).
@@ -107,11 +156,21 @@ func (h *BotAPIHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		botErr(w, http.StatusTooManyRequests, "Too Many Requests: retry later")
 		return
 	}
+	body := map[string]json.RawMessage{}
 	if strings.HasSuffix(method, "MyCommands") {
-		// Список команд копируется в журнал каждого получателя: тело ограничено.
+		// Список команд копируется в журнал каждого получателя: тело ограничено, а
+		// непрочитанное тело — ошибка: молчаливо пустые параметры означали бы
+		// «scope: default» и «commands: []», то есть снять список default.
 		r.Body = http.MaxBytesReader(w, r.Body, botCommandsBodyLimit)
+		var code int
+		if body, code = decodeStrictBody(r); code != 0 {
+			botErr(w, code, "Bad Request: can't parse request body")
+			return
+		}
+	} else {
+		body = decodeBody(r)
 	}
-	p := bodyParams{body: decodeBody(r), query: r.URL.Query()}
+	p := bodyParams{body: body, query: r.URL.Query()}
 
 	switch method {
 	case "getMe":
