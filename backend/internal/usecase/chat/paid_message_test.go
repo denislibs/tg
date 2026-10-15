@@ -433,3 +433,37 @@ func TestRefundScheduledBatch_LocksBalancesInUserIDOrder(t *testing.T) {
 		t.Fatalf("порядок блокировок %v, want [2 3 5]", got)
 	}
 }
+
+// Повтор уже принятой отправки: чек-лист и отложенный опрос (ветка scheduled.ByClientMsgID) —
+// принятое возвращается без отказа по балансу и без новых строк.
+func TestPaidChecklistAndScheduledPoll_RetryOfAcceptedSendIsIdempotent(t *testing.T) {
+	f := newPaidFixture(t)
+	ctx := context.Background()
+	f.topUp(t, 2, 10)
+	list := func() (domain.Message, error) {
+		return f.in.SendChecklist(ctx, SendChecklistInput{ChatID: f.cid, SenderID: 2, Title: "t", Items: []string{"a"}, ClientMsgID: "l-1", AllowPaidStars: 5})
+	}
+	sched := func() (domain.Message, error) {
+		return f.in.SendPoll(ctx, SendPollInput{ChatID: f.cid, SenderID: 2, Question: "q", Options: []string{"a", "b"}, ClientMsgID: "sp-1", AllowPaidStars: 5, ScheduleDate: future()})
+	}
+	l1, err := list()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s1, err := sched()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// баланса не осталось: 10 − 5 (чек-лист) − 5 (отложенный опрос)
+	if f.balance(2) != 0 {
+		t.Fatalf("баланс %d, want 0", f.balance(2))
+	}
+	l2, err := list()
+	if err != nil || l2.ID != l1.ID || len(f.lists.lists) != 1 {
+		t.Fatalf("повтор чек-листа: id %d/%d err=%v строк %d", l2.ID, l1.ID, err, len(f.lists.lists))
+	}
+	s2, err := sched()
+	if err != nil || s2.Seq != s1.Seq || len(f.polls.polls) != 1 || f.sched.count() != 1 {
+		t.Fatalf("повтор отложенного опроса: seq %d/%d err=%v опросов %d строк очереди %d", s2.Seq, s1.Seq, err, len(f.polls.polls), f.sched.count())
+	}
+}
