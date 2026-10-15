@@ -20,6 +20,9 @@ var (
 	// ErrNoShareable — в папке нет чатов, которыми можно поделиться по ссылке
 	// (публичных групп/каналов среди include_chats).
 	ErrNoShareable = errors.New("folder has no shareable public group/channel chats")
+	// ErrInviteSlugExpired — ссылки нет (отозвана или не существовала): tweb
+	// `INVITE_SLUG_EXPIRED` (internalLinkProcessor.ts:1437).
+	ErrInviteSlugExpired = errors.New("folder invite slug expired")
 )
 
 type Repo interface {
@@ -365,7 +368,7 @@ func (i *Interactor) RevokeInvite(ctx context.Context, ownerID int64, slug strin
 // PreviewInvite — экран вступления по ссылке: заголовок папки + карточки
 // расшаренных чатов. Чат, ставший приватным, не показывается (см. admissible).
 func (i *Interactor) PreviewInvite(ctx context.Context, slug string) (title string, chats []domain.FolderInviteChat, err error) {
-	inv, err := i.repo.GetFolderInviteBySlug(ctx, slug)
+	inv, err := i.inviteBySlug(ctx, slug)
 	if err != nil {
 		return "", nil, err
 	}
@@ -396,9 +399,18 @@ func (i *Interactor) PreviewInvite(ctx context.Context, slug string) (title stri
 // ссылки (нельзя вступить в произвольный чат по чужому slug). Чат, ставший
 // приватным, пропускается до вступления (см. admissible).
 func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, chatIDs []int64) error {
-	inv, err := i.repo.GetFolderInviteBySlug(ctx, slug)
+	inv, err := i.inviteBySlug(ctx, slug)
 	if err != nil {
 		return err
+	}
+	// Вступление создаёт папку: при полном списке отказ приходит до вступления
+	// в чаты (tweb DIALOG_FILTERS_TOO_MUCH, sharedFolderInvite.tsx:212).
+	n, err := i.repo.Count(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if n >= domain.MaxFoldersPerUser {
+		return ErrTooMany
 	}
 	allowed := make(map[int64]bool, len(inv.ChatIDs))
 	for _, id := range inv.ChatIDs {
@@ -479,6 +491,15 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		i.emitFolderUpdate(ctx, userID, map[string]any{"folder": i.folderJSON(ctx, userID, created)})
 	}
 	return nil
+}
+
+// inviteBySlug — приглашение по slug; нет такого — ErrInviteSlugExpired.
+func (i *Interactor) inviteBySlug(ctx context.Context, slug string) (domain.FolderInvite, error) {
+	inv, err := i.repo.GetFolderInviteBySlug(ctx, slug)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.FolderInvite{}, ErrInviteSlugExpired
+	}
+	return inv, err
 }
 
 // ownedFolder возвращает папку folderID пользователя ownerID; domain.ErrNotFound

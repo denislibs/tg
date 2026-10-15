@@ -60,10 +60,17 @@ func (h *FoldersHandler) mapErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
+	// Отказы, которые клиент различает по `error.text` (ApiError.type tweb):
+	// editFolder.tsx:480, :686-689 и sharedFolderInvite.tsx:212,
+	// internalLinkProcessor.ts:1437.
+	case errors.Is(err, usecasefolders.ErrTooMany):
+		writeError(w, http.StatusBadRequest, "DIALOG_FILTERS_TOO_MUCH")
+	case errors.Is(err, usecasefolders.ErrNoShareable):
+		writeError(w, http.StatusBadRequest, "PEERS_LIST_EMPTY")
+	case errors.Is(err, usecasefolders.ErrInviteSlugExpired):
+		writeError(w, http.StatusBadRequest, "INVITE_SLUG_EXPIRED")
 	case errors.Is(err, usecasefolders.ErrBadTitle),
-		errors.Is(err, usecasefolders.ErrNoIncludes),
-		errors.Is(err, usecasefolders.ErrTooMany),
-		errors.Is(err, usecasefolders.ErrNoShareable):
+		errors.Is(err, usecasefolders.ErrNoIncludes):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal")
