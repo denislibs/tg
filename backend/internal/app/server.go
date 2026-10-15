@@ -442,7 +442,7 @@ func registerServer(p serverParams) {
 	seedLangPack(p.Ctx, langpackUC)
 	langpackH := httptransport.NewLangPackHandler(langpackUC)
 
-	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH, langpackH)
+	router := httptransport.NewRouter(p.AuthUC, p.ChatUC, wsHandler, mediaHandler, mediaUC, pushHandler, storyHandler, memberPresence, p.ContactsUC, httptransport.NewICEHandler(p.Cfg.TurnHost, p.Cfg.TurnSecret), notifyUC, foldersUC, pubH, privacyUC, passkeyH, stickersH, ivHandler, reportUC, statsUC, reactionsH, langpackH, p.Cfg.DevPurchases)
 	// Позднее связывание: RouterRPC реплеит DNP rpc_req через тот же роутер.
 	// Разрывает цикл wsHandler↔router (роутеру нужен wsHandler, диспетчеру — роутер).
 	// wsHandler остаётся nil-типизированным http.Handler, если Redis не поднят —

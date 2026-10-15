@@ -148,7 +148,7 @@ func TestAddMemberPrivacyRestricted_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newChatUC(pool)
 	uc.SetPrivacy(denyChatInvite{})
-	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), uc, nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, _ := signUp(t, h, pool, "+79990002011")
 	_, idB := signUp(t, h, pool, "+79990002012")
 

@@ -54,7 +54,7 @@ func signInToken(t *testing.T, h http.Handler, phone string) (string, int64) {
 
 func TestProfileEndpoints_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	token, userID := signInToken(t, h, "+79990000001")
 
 	// PATCH /me — set names, bio, birthday. phone_visibility здесь больше нет:
@@ -188,7 +188,7 @@ type photosListWire struct {
 // действительно пропадает из списка, а не остаётся молчаливым no-op.
 func TestDeletePhoto_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	token, userID := signInToken(t, h, "+79990000030")
 	id501 := seedMedia(t, pool, userID, "image/jpeg")
 	id502 := seedMedia(t, pool, userID, "image/jpeg")
@@ -257,7 +257,7 @@ func TestSetAvatarPreview_HTTP(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	authUC := newAuthUC(pool)
 	authUC.SetAvatarPreviewer(httpFakePreviewer{preview: []byte{0xff, 0xd8, 0xff, 0xe0, 5}})
-	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(authUC, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	token, userID := signInToken(t, h, "+79990000021")
 	mediaID := seedMedia(t, pool, userID, "image/jpeg")
 
@@ -277,7 +277,7 @@ func TestSetAvatarPreview_HTTP(t *testing.T) {
 // проходит.
 func TestAddPhoto_ForeignMediaIs404(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	tokenA, idA := signInToken(t, h, "+79990000061")
 	_, idB := signInToken(t, h, "+79990000062")
 	foreign := seedMedia(t, pool, idB, "image/jpeg")
@@ -303,7 +303,7 @@ func TestAddPhoto_ForeignMediaIs404(t *testing.T) {
 // владельца, DELETE /me не вызывается клиентом (удаление — 2FA-сброс).
 func TestRouter_RemovedProfileRoutes(t *testing.T) {
 	pool := postgres.NewTestDB(t)
-	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, true)
 	token, id := signInToken(t, h, "+79990000063")
 	own := seedMedia(t, pool, id, "image/jpeg")
 
