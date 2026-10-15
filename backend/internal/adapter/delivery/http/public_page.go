@@ -57,6 +57,9 @@ func NewPublicHandler(uc *usecasepublic.Interactor, media *usecasemedia.Interact
 // проксирует хост PublicLinkOrigin целиком.
 func (h *PublicHandler) Mount(r chi.Router) {
 	r.Use(middleware.StripSlashes)
+	// Неизвестный путь хоста страниц читает человек в браузере: страница, а не
+	// JSON `METHOD_INVALID` корневого роутера (router.go).
+	r.NotFound(h.notFoundPage)
 	r.Get("/", h.Root)
 	r.Get("/{username}", h.Page)
 	r.Get("/{username}/photo", h.Photo)
@@ -69,6 +72,14 @@ func (h *PublicHandler) Mount(r chi.Router) {
 	r.Get("/addstickers/{name}", h.StickerSet)
 	r.Get("/addemoji/{name}", h.StickerSet)
 	r.Get("/addlist/{slug}", h.AddList)
+}
+
+// notFoundPage — HTML 404 для пути, которого у хоста страниц нет.
+func (h *PublicHandler) notFoundPage(w http.ResponseWriter, _ *http.Request) {
+	h.render(w, http.StatusNotFound, pageView{
+		PageTitle: "Messenger", NoIndex: true, OGTitle: "Messenger",
+		ButtonText: "Открыть Messenger", ButtonHref: h.app + "/",
+	})
 }
 
 // Root — корень хоста страниц: у t.me это редирект на сайт, у нас — в клиент.
