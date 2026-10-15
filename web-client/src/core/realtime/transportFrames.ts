@@ -14,7 +14,7 @@
 //     транспорт. Апдейтами они не станут — это решение, а не долг.
 //
 //   • ПРЕДМЕТ НЕ ПОРТИРОВАН — долг с именем и номером: `folder_update` (#51,
-//     ждёт порта самой папки), `geo_live_update`, `story_*`,
+//     ждёт порта самой папки), `story_*`,
 //     `suggested_post_update` (#52). Эти уйдут отсюда, когда появятся их
 //     объекты.
 //
@@ -32,7 +32,6 @@ export const TRANSPORT_FRAMES = {
   // ── предмет не портирован, но курсор кадр несёт (#51) ──
   folder_update: { kind: 'logged' },
   // ── предмет не портирован, курсора нет (#52) ──
-  geo_live_update:       { kind: 'ephemeral', rt: RT.geoLiveUpdate },
   suggested_post_update: { kind: 'ephemeral', rt: RT.suggestedPost },
   // ── транспорт (решение Р6) ──
   message_ack:         { kind: 'ephemeral', rt: RT.ack },
