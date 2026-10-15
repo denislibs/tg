@@ -450,7 +450,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    */
   function getContactMediaInput(userId: number): InputMedia.inputMediaContact {
     const user = cache.get(userId)
-    if (user?._ !== 'user') throw new Error(`getContactMediaInput: нет карточки пользователя ${userId}`)
+    if (user?._ !== 'user') throw new Error(`getContactMediaInput: no user card for ${userId}`)
     return {
       _: 'inputMediaContact',
       first_name: user.first_name ?? '',
