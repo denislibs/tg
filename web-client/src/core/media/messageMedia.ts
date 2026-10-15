@@ -685,7 +685,7 @@ export function saveDocument(doc: MyDocument): MyDocument {
  *
  * Зовётся РОВНО ОДИН РАЗ на каждый приехавший объект: на границе разбора
  * сообщения (`mapMessage`) и на границе каждого кадра, несущего вложение
- * (`cacheGeoLive`/`cachePoll`/`cacheChecklist`/`cacheGiveaway`/`cacheWebPage`).
+ * (`cachePoll`/`cacheChecklist`/`cacheGiveaway`/`cacheWebPage`).
  * Перевод номера не идемпотентен, поэтому второго вызова быть не должно.
  */
 export function saveMessageMedia(media: MessageMedia | undefined): MessageMedia | undefined {

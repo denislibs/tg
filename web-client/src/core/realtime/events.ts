@@ -148,7 +148,6 @@ export const RT = {
   groupCall: 'rt:group_call',
   livestream: 'rt:livestream',
   botCallbackAnswer: 'rt:bot_callback_answer',
-  geoLiveUpdate: 'rt:geo_live_update',
   webPageUpdate: 'rt:web_page_update',
   factCheckUpdate: 'rt:factcheck_update',
   secretRequest: 'rt:secret_chat_request',
@@ -278,21 +277,11 @@ export interface EditMessageEvt {
   message: RawMyMessage
   pts?: number
 }
-// Live-обновление координат гео-трансляции (geo_live_update). Координаты едут
-// ТЕМ ЖЕ конструктором, что и в самом сообщении (`messageMediaGeoLive` под
-// ключом `media`); собственный ключ `geo` с плоской точкой внутри был второй
-// формой гео на проводе.
-//
-// Время обновления едет ОТДЕЛЬНЫМ ключом edit_date, а не внутри вложения: одно
-// и то же поле прежде значило и «время правки», и «время обновления координат».
-// Оно же решает, каким приедет `period` остановленной трансляции, поэтому едут
-// они парой.
-export interface GeoLiveUpdateEvt { peer_id: PeerId; id: number; media: MessageMedia; edit_date?: number }
 // Догоняющее серверное превью ссылки (web_page_update): строится после
 // отправки, кадр патчит уже отрисованное сообщение карточкой web page.
 //
 // Карточка приезжает ТЕМ ЖЕ конструктором, что и в самом сообщении
-// (`messageMediaWebPage` под ключом `media`) — ровно как у `geo_live_update`,
+// (`messageMediaWebPage` под ключом `media`) — ровно как у
 // `poll_update` и остальных кадров с вложением. Собственного ключа `web_page`
 // с плоским снимком read-модели (`site_name`/`photo_id`/`photo_w`/`photo_blur`)
 // на проводе больше нет, а вместе с ним исчез и переходник на границе, который

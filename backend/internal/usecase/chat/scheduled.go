@@ -1214,40 +1214,55 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 // отвергнутого отложенного (решение пользователя 2026-10-11) или снятого
 // самим автором (2026-10-12): тем же
 // движением баланса, что и списание (chargePaidMessage), в обратную сторону.
-// Получатель (владелец группы) отдаёт полученное, но не больше своего
-// баланса (атомарно, TakeUpTo): звёзды он мог уже потратить, а
-// отрицательного баланса нет —
-// осознанное отступление, в tweb не видно, как поступает сервер Telegram.
+// Получатель (владелец группы) отдаёт полученное, но не больше своего баланса
+// (атомарно, TakeUpTo): звёзды он мог уже потратить, а отрицательного баланса
+// нет. Автору возвращается ровно то, что снято с получателя: иначе возврат
+// печатал бы звёзды (сообщник тратит полученное, автор снимает отложенное и
+// получает полную сумму). Непогашенный остаток автору не возмещается -
+// осознанное отступление, в tweb не видно, как поступает сервер Telegram
+// (решение пользователя 2026-10-15). PaidTo == 0 - получателя нет, возврат
+// полный.
 // balances — новые балансы для updateStarsBalance после коммита (клиент
 // tweb обновляет баланс по нему, appPaymentsManager.ts:33-35, :420-428).
 func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMessage, balances map[int64]int64) error {
 	if i.stars == nil || r.PaidStars <= 0 {
 		return nil
 	}
-	bal, err := i.stars.AddBalance(ctx, r.SenderID, r.PaidStars)
+	refund := r.PaidStars
+	if r.PaidTo != 0 {
+		taken, cbal, err := i.stars.TakeUpTo(ctx, r.PaidTo, r.PaidStars)
+		if err != nil {
+			return err
+		}
+		if taken > 0 {
+			balances[r.PaidTo] = cbal
+		}
+		if taken < r.PaidStars {
+			log.Printf("scheduled: возврат %d из %d звёзд автору %d: получатель %d потратил остальное", taken, r.PaidStars, r.SenderID, r.PaidTo)
+		}
+		refund = taken
+	}
+	if refund <= 0 {
+		return nil
+	}
+	bal, err := i.stars.AddBalance(ctx, r.SenderID, refund)
 	if err != nil {
 		return err
 	}
 	balances[r.SenderID] = bal
-	if r.PaidTo == 0 {
-		return nil
-	}
-	cbal, err := i.stars.TakeUpTo(ctx, r.PaidTo, r.PaidStars)
-	if err != nil {
-		return err
-	}
-	balances[r.PaidTo] = cbal
 	return nil
 }
 
 // refundScheduledBatch — возврат за набор строк одной транзакцией: строки балансов всех
 // участвующих берутся заранее по возрастанию user_id (lockBalances), иначе порядок строк
 // набора ломал бы общий порядок блокировок и взаимоблокировал бы возврат с платной отправкой.
-func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64) error {
+func (i *Interactor) refundScheduledBatch(ctx context.Context, rows []domain.ScheduledMessage, balances map[int64]int64, alsoLock ...int64) error {
 	if i.stars == nil {
 		return nil
 	}
-	var ids []int64
+	// alsoLock - балансы того же вызывающего (вклад розыгрышей при удалении
+	// канала): одним проходом с остальными, иначе общий порядок блокировок рвётся.
+	ids := append([]int64(nil), alsoLock...)
 	for _, r := range rows {
 		if r.PaidStars > 0 {
 			ids = append(ids, r.SenderID, r.PaidTo)
@@ -1285,15 +1300,16 @@ func (i *Interactor) lockScheduledForPublish(ctx context.Context, id int64) erro
 
 // refundScheduledOfChat — удаление группы: оплаченные отложенные чата
 // снимаются и возвращаются авторам (в транзакции удаления).
-func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64) error {
+func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64, alsoLock ...int64) error {
 	if i.scheduled == nil || i.stars == nil {
-		return nil
+		// Очереди нет, но балансы вызывающего всё равно берутся одним проходом.
+		return i.lockBalances(ctx, alsoLock...)
 	}
 	rows, err := i.scheduled.TakePaidByChat(ctx, chatID)
 	if err != nil {
 		return err
 	}
-	return i.refundScheduledBatch(ctx, rows, balances)
+	return i.refundScheduledBatch(ctx, rows, balances, alsoLock...)
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли

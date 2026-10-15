@@ -64,12 +64,14 @@ type Interactor struct {
 	setInstalled SetInstalledFunc
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
-	suggested    SuggestedPostRepo
-	premium      PremiumRepo
-	contactPics  ContactPhotoLookup
-	phones       PhoneResolver
-	presence     PresenceQuery
-	botHub       *botPendingHub
+	// premiumGiveaways — разрешены ли розыгрыши Premium (только под DEV_PURCHASES).
+	premiumGiveaways bool
+	suggested        SuggestedPostRepo
+	premium          PremiumRepo
+	contactPics      ContactPhotoLookup
+	phones           PhoneResolver
+	presence         PresenceQuery
+	botHub           *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
 	peerAddrs *peerAddrCache
 	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).

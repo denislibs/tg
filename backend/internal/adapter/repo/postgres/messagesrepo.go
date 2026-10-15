@@ -980,8 +980,8 @@ func (r *MessagesRepo) UpdateGeoLive(ctx context.Context, msgID int64, lat, lng 
 		`UPDATE messages
 		    SET geo_lat=$2, geo_lng=$3, edited_at=now(),
 		        geo_meta = COALESCE(geo_meta,'{}'::jsonb)
-		                   || jsonb_strip_nulls(jsonb_build_object('heading',$4::int,'stopped',$5::bool))
-		  WHERE id=$1
+		                   || jsonb_strip_nulls(jsonb_build_object('heading',$4::int,'stopped',CASE WHEN $5::bool THEN true END))
+		  WHERE id=$1 AND deleted_at IS NULL
 		 RETURNING `+messageCols,
 		msgID, lat, lng, heading, stopped))
 }

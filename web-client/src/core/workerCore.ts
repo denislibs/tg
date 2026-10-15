@@ -58,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt, type NewStickerSetEvt, type PeerHistoryTTLEvt, type BotCommandsEvt, type PresenceEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -713,6 +713,10 @@ export function createWorkerCore() {
     // не заводить исключение в общей проводке (потребителей у него на витрине
     // сейчас нет).
     updateUserSnapshot:             (p) => peers.applyUserUpdate((p as UserUpdateEvt).user),
+    // Присутствие — поле карточки (tweb `appUsersManager.ts:90-102`): владелец
+    // карточек правит `status`, а стор присутствия получает тот же кадр
+    // широковещательно ниже. Карточки нет — выход.
+    updateUserStatus:               (p) => peers.setUserStatus((p as PresenceEvt).user_id, (p as PresenceEvt).status),
   }
 
   // Отражение апдейта в SSOT + broadcast (без арифметики pts — её делает
@@ -1053,8 +1057,15 @@ export function createWorkerCore() {
     // synchronized — автомат витрины (Задача 3) переключает текст «Обновление…» на
     // время догона. Проводка проверена workerCore.connectionStatus.test.ts.
     onSyncStart: () => broadcast(RT.stateSynchronizing, null),
-    onSyncEnd: () => broadcast(RT.stateSynchronized, null),
+    onSyncEnd: () => {
+      broadcast(RT.stateSynchronized, null)
+      // tweb `state_synchronized` → `updateUsersStatuses` (`appUsersManager.ts:83`).
+      peers.degradeExpiredStatuses()
+    },
   })
+  // tweb `setInterval(this.updateUsersStatuses, 60000)` (`appUsersManager.ts:81`):
+  // истёкший онлайн карточки гасится даже без кадра offline.
+  setInterval(() => peers.degradeExpiredStatuses(), 60_000)
   // tweb `forceGetDifference` (:185-189): идущий догон не дублируется; новый —
   // сбрасывает придержанные кадры (tweb getDifference чистит pendingPtsUpdates).
   // Отказ глотаем: курсор не сдвинулся, следующий кадр с дырой или реконнект
@@ -1164,18 +1175,6 @@ export function createWorkerCore() {
         const ops = type === 'message_ack'
           ? messages.ackPendingMessage(payload as AckEvt)
           : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id, (payload as MessageErrorEvt).reason)
-        if (ops.length) broadcast(RT.messageOp, { ops })
-      }
-      // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без
-      // pts, `transportFrames.ts:35`, предмет не портирован #52), поэтому в
-      // воронку и в реестр CACHE не попадает. Владельца это не отменяет:
-      // координаты живут в сообщении, а сообщением владеет messages —
-      // применяем РОВНО ОДИН РАЗ здесь и объявляем операцией. Прежде окно правил
-      // сырой кадр на витрине (storeProjection → applyGeoLive), то есть мимо
-      // операций и мимо зеркала, а `messages.cacheGeoLive` не звался ниоткуда.
-      // return НЕТ по той же причине, что и выше: сырой кадр летит дальше.
-      if (type === 'geo_live_update') {
-        const ops = messages.cacheGeoLive(payload as GeoLiveUpdateEvt)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
       // Сообщение личного чата: возможна E2E-расшифровка enc_body перед воронкой.

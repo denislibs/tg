@@ -394,7 +394,8 @@ type UserViewRules struct {
 	// которым выражено скрытие правилом: заблокированный видит «давно». nil —
 	// не спрошено (скрытие считается правилом).
 	Blocked map[int64]bool
-	// Status — присутствие пользователя (точный статус); nil — источника нет.
+	// Status — присутствие пользователя (точный статус); nil — источника нет, а
+	// nil из самой функции — присутствие этого пользователя не получено.
 	Status func(userID int64) UserStatus
 }
 
@@ -432,7 +433,11 @@ func (r UserViewRules) Apply(users []UserReal) {
 		case !self && !r.LastSeen[u.ID]:
 			u.Status = HiddenUserStatus(r.Blocked[u.ID])
 		case r.Status != nil:
-			u.Status = r.Status(u.ID)
+			// nil — присутствие не известно (источник недоступен): поле не
+			// трогаем, а не выдаём незнание за «давно».
+			if st := r.Status(u.ID); st != nil {
+				u.Status = st
+			}
 		}
 	}
 }

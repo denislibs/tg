@@ -306,7 +306,8 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 	}
 	var refs domain.PeerRefs
 	installed := map[int64]bool{} // set_id → установлен ли сейчас (кэш на одну разницу)
-	for _, r := range rows {
+	snapshots := i.currentSnapshotStatuses(ctx, viewerID, rows)
+	for idx, r := range rows {
 		var body map[string]any
 		if json.Unmarshal(r.Payload, &body) != nil {
 			continue
@@ -320,6 +321,11 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 		}
 		if tag == domain.UpdateNewStickerSetTag && !i.stickerSetStillInstalled(ctx, viewerID, body, installed) {
 			continue // набор снят после установки: кадра о снятии нет (В-5), строка устарела
+		}
+		if st, ok := snapshots[idx]; ok {
+			if user, _ := body["user"].(map[string]any); user != nil {
+				user["status"] = st
+			}
 		}
 		switch {
 		case tag == "" && r.Type != "":
@@ -346,6 +352,55 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 		chats = mergeChats(chats, c)
 	}
 	return msgs, others, users, chats, nil
+}
+
+// currentSnapshotStatuses — ТЕКУЩИЙ статус пользователей из строк
+// `updateUserSnapshot` глазами зрителя (ключ — индекс строки).
+//
+// Строка журнала замораживает статус на момент записи, а разница выдаётся
+// позже: у оригинала вектор `users` ответа собирается в момент запроса, и
+// клиент получает свежее присутствие. Наш апдейт несёт карточку внутри, поэтому
+// тот же смысл достигается заменой её статуса при выдаче — тем же сборщиком, что
+// у остальных витрин (viewUsers): last_seen, блок и присутствие СЕЙЧАС. Остальные
+// поля строки (имя, фото, номер) остаются как записаны. Без проверяющего
+// приватности или без известного статуса строка отдаётся как есть.
+func (i *Interactor) currentSnapshotStatuses(ctx context.Context, viewerID int64, rows []journalRow) map[int]json.RawMessage {
+	if i.privacy == nil {
+		return nil
+	}
+	var (
+		idx   []int
+		cards []domain.UserReal
+	)
+	for n, r := range rows {
+		var body struct {
+			Tag  string          `json:"_"`
+			User json.RawMessage `json:"user"`
+		}
+		if json.Unmarshal(r.Payload, &body) != nil || body.Tag != domain.UpdateUserSnapshotTag {
+			continue
+		}
+		var u domain.UserReal
+		if json.Unmarshal(body.User, &u) != nil || u.ID == 0 {
+			continue
+		}
+		u.Status = nil // строка статус заморозила — ниже он берётся заново
+		idx, cards = append(idx, n), append(cards, u)
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	i.viewUsers(ctx, viewerID, cards)
+	out := make(map[int]json.RawMessage, len(cards))
+	for k, n := range idx {
+		if cards[k].Status == nil {
+			continue
+		}
+		if raw, err := json.Marshal(cards[k].Status); err == nil {
+			out[n] = raw
+		}
+	}
+	return out
 }
 
 // messageKey — адрес сообщения в теле кадра с сообщением (message.peer_id +

@@ -1,3 +1,6 @@
+# ТОЛЬКО ДЛЯ РАЗРАБОТКИ И СТЕНДА, не для прода: статичный OTP, дефолтные секреты
+# и DEV_PURCHASES=true (звёзды и Premium без оплаты). В проде задайте
+# APP_ENV=production и свои секреты - сервер с дефолтными значениями не стартует.
 services:
   postgres:
     image: postgres:16-alpine
@@ -83,7 +86,8 @@ services:
       TURN_HOST: "${TURN_HOST:-localhost}"
       TURN_SECRET: "${TURN_SECRET:-dev-turn-secret-change-me}"
       DEV_OTP_CODE: "12345"
-      # dev-начисление звёзд и мок Premium (в проде не включать)
+      APP_ENV: "${APP_ENV:-development}"
+      # dev-начисление звёзд и мок Premium (в проде не включать; требует явного APP_ENV)
       DEV_PURCHASES: "true"
       MINIO_ENDPOINT: "minio:9000"
       MINIO_ACCESS_KEY: "minioadmin"

@@ -6,12 +6,15 @@ import "time"
 // сообщения; сообщение типа 'giveaway' ссылается на него через
 // messages.giveaway_id (как poll_id для опросов).
 type Giveaway struct {
-	ID           int64
-	ChatID       int64
-	CreatorID    int64
-	PrizeKind    string // "premium" | "stars"
-	Months       int    // срок premium-подписки (PrizeKind == "premium")
-	Stars        int64  // звёзд каждому победителю (PrizeKind == "stars")
+	ID        int64
+	ChatID    int64
+	CreatorID int64
+	PrizeKind string // "premium" | "stars"
+	Months    int    // срок premium-подписки (PrizeKind == "premium")
+	Stars     int64  // ОБЩАЯ сумма розыгрыша звёзд (PrizeKind == "stars"); победителю - Stars / WinnersCount
+	// Deposit — внесённый создателем вклад (= Stars): из него платятся
+	// призы и возвращаются неразданные места. 0 у премиум-розыгрыша.
+	Deposit      int64
 	WinnersCount int
 	UntilDate    time.Time
 	// CreatedAt — когда розыгрыш ЗАПУЩЕН. Колонка giveaways.created_at

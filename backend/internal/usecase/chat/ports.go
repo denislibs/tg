@@ -1179,8 +1179,8 @@ type StarsRepo interface {
 	// возвращает новый баланс. При недостатке средств — domain.ErrForbidden.
 	AddBalance(ctx context.Context, userID, delta int64) (int64, error)
 	// TakeUpTo атомарно снимает с баланса до max звёзд (не уводя в минус);
-	// возвращает новый баланс.
-	TakeUpTo(ctx context.Context, userID, max int64) (int64, error)
+	// возвращает, сколько снято на самом деле, и новый баланс.
+	TakeUpTo(ctx context.Context, userID, max int64) (taken, balance int64, err error)
 	// Catalog — доступные для покупки подарки (без распроданных сверху).
 	Catalog(ctx context.Context) ([]domain.StarGift, error)
 	// GiftByID — позиция каталога по id.
@@ -1222,13 +1222,21 @@ type BoostRepo interface {
 type GiveawayRepo interface {
 	Create(ctx context.Context, g domain.Giveaway) (domain.Giveaway, error)
 	ByID(ctx context.Context, id int64) (domain.Giveaway, error)
-	// Participate добавляет участника (идемпотентно).
+	// Participate добавляет участника в активный розыгрыш до срока (идемпотентно);
+	// закрытый или просроченный - domain.ErrForbidden.
 	Participate(ctx context.Context, giveawayID, userID int64) error
+	// ClaimActiveStarsByChat закрывает (захватом строк) незавершённые звёздные
+	// розыгрыши чата с вкладом и возвращает их: вклад вернёт вызывающий.
+	ClaimActiveStarsByChat(ctx context.Context, chatID int64) ([]domain.Giveaway, error)
+	// LockChat - блокировка строки чата до конца транзакции (последний шаг перед удалением).
+	LockChat(ctx context.Context, chatID int64) error
 	IsParticipant(ctx context.Context, giveawayID, userID int64) (bool, error)
 	ParticipantCount(ctx context.Context, id int64) (int, error)
 	ParticipantIDs(ctx context.Context, id int64) ([]int64, error)
-	// Finish помечает розыгрыш завершённым и сохраняет победителей.
-	Finish(ctx context.Context, id int64, winnerIDs []int64) error
+	// Finish помечает активный розыгрыш завершённым и сохраняет победителей.
+	// claimed=false — розыгрыш уже закрыт (параллельным читателем): призы
+	// выдаёт только тот, кто получил true.
+	Finish(ctx context.Context, id int64, winnerIDs []int64) (claimed bool, err error)
 }
 
 // SuggestedPostRepo хранит предложенные в канал посты (таблица suggested_posts).

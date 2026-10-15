@@ -140,8 +140,7 @@ const APPLY: Projector = {
   // двойное применение (patch операцией ЗДЕСЬ + applyXUpdate той же строкой).
   // Этап «один писатель окна»: на эту же операцию переведено ВСЁ остальное, что
   // раньше правило окно из сырого кадра или из ответа ручки, —
-  // `edit_message` (messages.cacheEdit), `geo_live_update`
-  // (messages.cacheGeoLive, перехват эфемерного кадра в workerCore::onFrame),
+  // `edit_message` (messages.cacheEdit; им же едет и движение live-локации),
   // `reaction` вместе с платной ⭐-реакцией (messages.cacheReaction /
   // react/unreact / sendStarReaction), свой голос в опросе и отметка в
   // чек-листе (votePoll / toggleChecklistItem / addChecklistItems), «проверка
@@ -225,14 +224,13 @@ const APPLY: Projector = {
   // Правило приватности одного ключа (tweb `onUpdatePrivacy`, `appPrivacyManager.ts:12-19`):
   // зеркало одно — `privacyStore`, роль кэша `privacy[key]`.
   privacy_update: (e) => { applyPrivacyUpdate(e) },
-  // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
-  // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
-  // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки
-  // здесь были вторым, main-side применением тех же кадров — и вдобавок
-  // единственным: до зеркала главного потока (`core/history/messagesMirror.ts`)
-  // они не доезжали вовсе, поэтому императивная лента правки не видела.
-  // Гео-кадр эфемерный (без pts) и в реестр CACHE не попадает — владелец
-  // перехватывает его в `workerCore.ts::onFrame` рядом с `message_ack`.
+  // [RT.editMessage] здесь БОЛЬШЕ НЕТ: правку (в том числе координаты live-
+  // локации, tweb `updateEditMessage` → `bubbles.ts updateGeo`) применяет
+  // владелец окна (`messages.cacheEdit`) и объявляет её операцией
+  // `rt:message_op`. Строка здесь была вторым, main-side применением того же
+  // кадра — и вдобавок единственным: до зеркала главного потока
+  // (`core/history/messagesMirror.ts`) оно не доезжало вовсе, поэтому
+  // императивная лента правки не видела.
   // Новый баланс звёзд; удаление истории.
   // Баланс едет КОНСТРУКТОРОМ starsAmount: у оригинала звёзды дробные (nanos),
   // и «целое число звёзд» — частный случай, а не форма. Дробную часть витрина

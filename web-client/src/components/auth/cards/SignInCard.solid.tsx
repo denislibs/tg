@@ -190,8 +190,14 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
     setBusy(true)
     try {
       const { session, options } = await managers.auth.passkeyLoginBegin()
-      const assertion = await getPasskeyAssertion(options)
-      await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      const assertion = await getPasskeyAssertion(JSON.parse(options.data))
+      const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).
+      if (res.passwordNeeded) {
+        navigate({ name: 'password', payload: { token: res.passwordToken, hint: res.hint } })
+        return
+      }
+      if (!res.user) throw new Error('unexpected passkey login outcome')
       void toIm()
     } catch (err) {
       // tweb PasskeyLoginButton показывает тост и остаётся на карточке

@@ -1,15 +1,19 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
+	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
 )
 
 // newContactsUC builds the contacts usecase from the postgres adapter for tests.
@@ -121,4 +125,124 @@ func decodeBook(t *testing.T, rec *httptest.ResponseRecorder) contactBook {
 		t.Fatalf("разбор книги: %v (%s)", err, rec.Body.String())
 	}
 	return out
+}
+
+// onlineNow — присутствие для теста: все «в сети».
+type onlineNow struct{}
+
+func (onlineNow) Status(context.Context, int64) (bool, time.Time, time.Time) {
+	return true, time.Now().Add(time.Minute), time.Now()
+}
+
+func (onlineNow) Statuses(_ context.Context, ids []int64) map[int64]domain.UserStatus {
+	out := make(map[int64]domain.UserStatus, len(ids))
+	for _, id := range ids {
+		out[id] = domain.NewUserStatusOnline(time.Now().Add(time.Minute))
+	}
+	return out
+}
+
+// P0 №2: карточки GET /contacts и ответа добавления несут `status`. Клиент
+// заменяет карточку в кэше целиком; без поля «Добавить участников» показывало
+// «был(а) давно» у контакта, который в сети.
+func TestContactsCards_CarryStatus_HTTP(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
+	privacyUC.SetPresence(onlineNow{})
+	contactsUC := newContactsUC(pool)
+	contactsUC.SetPrivacy(privacyUC)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil, false)
+
+	tokenA, idA := signInToken(t, h, "+79990000011")
+	tokenB, idB := signInToken(t, h, "+79990000012")
+	statusOf := func(rec *httptest.ResponseRecorder) string {
+		t.Helper()
+		book := decodeBook(t, rec)
+		if len(book.Users) != 1 {
+			t.Fatalf("карточек = %d: %s", len(book.Users), rec.Body.String())
+		}
+		st, _ := book.Users[0]["status"].(map[string]any)
+		tag, _ := st["_"].(string)
+		return tag
+	}
+
+	rec := reqJSONAuth(t, h, http.MethodPost, "/contacts", map[string]any{"contact_id": idB, "first_name": "Егор"}, tokenA)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := statusOf(rec); got != "userStatusOnline" {
+		t.Fatalf("ответ добавления: статус %q; want userStatusOnline", got)
+	}
+	rec = reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)
+	if got := statusOf(rec); got != "userStatusOnline" {
+		t.Fatalf("GET /contacts: статус %q; want userStatusOnline (%s)", got, rec.Body.String())
+	}
+
+	// Контакт скрыл время захода и заблокировал зрителя: статус — «давно».
+	if rec := reqJSONAuth(t, h, http.MethodPut, "/me/privacy/privacyKeyStatusTimestamp", map[string]any{
+		"rules": []map[string]any{{"_": "privacyValueDisallowAll"}},
+	}, tokenB); rec.Code != http.StatusOK {
+		t.Fatalf("last_seen: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := statusOf(reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)); got != "userStatusRecently" {
+		t.Fatalf("скрыто правилом: %q; want userStatusRecently", got)
+	}
+	if rec := reqJSONAuth(t, h, http.MethodPost, "/me/blocked", map[string]any{"user_id": idA}, tokenB); rec.Code != http.StatusOK {
+		t.Fatalf("block: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := statusOf(reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA)); got != "userStatusEmpty" {
+		t.Fatalf("заблокировал: %q; want userStatusEmpty", got)
+	}
+}
+
+// Блок при открытом правиле last_seen («все»): блок закрывает всё, и контакт,
+// заблокировавший зрителя, виден со статусом «давно» (userStatusEmpty) — в
+// GET /contacts и в карточке из ответа DELETE /contacts/{id}, которая до этого
+// несёт обычный «в сети».
+func TestContactsCards_BlockWithOpenRule_HTTP(t *testing.T) {
+	pool := postgres.NewTestDB(t)
+	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
+	privacyUC.SetPresence(onlineNow{})
+	contactsUC := newContactsUC(pool)
+	contactsUC.SetPrivacy(privacyUC)
+	h := NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC, NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil, false)
+
+	tokenA, idA := signInToken(t, h, "+79990000021")
+	tokenB, idB := signInToken(t, h, "+79990000022")
+	add := func() {
+		t.Helper()
+		if rec := reqJSONAuth(t, h, http.MethodPost, "/contacts", map[string]any{"contact_id": idB, "first_name": "Егор"}, tokenA); rec.Code != http.StatusCreated {
+			t.Fatalf("add: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+	tagOf := func(card map[string]any) string {
+		st, _ := card["status"].(map[string]any)
+		tag, _ := st["_"].(string)
+		return tag
+	}
+
+	add()
+	rec := reqJSONAuth(t, h, http.MethodDelete, "/contacts/"+itoa(idB), nil, tokenA)
+	var del struct {
+		Users []map[string]any `json:"users"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &del); err != nil || rec.Code != http.StatusOK || len(del.Users) != 1 {
+		t.Fatalf("delete: %d %s (%v)", rec.Code, rec.Body.String(), err)
+	}
+	if got := tagOf(del.Users[0]); got != "userStatusOnline" {
+		t.Fatalf("карточка из Delete: статус %q; want userStatusOnline", got)
+	}
+
+	add()
+	if rec := reqJSONAuth(t, h, http.MethodPost, "/me/blocked", map[string]any{"user_id": idA}, tokenB); rec.Code != http.StatusOK {
+		t.Fatalf("block: %d %s", rec.Code, rec.Body.String())
+	}
+	book := decodeBook(t, reqJSONAuth(t, h, http.MethodGet, "/contacts", nil, tokenA))
+	if len(book.Users) != 1 || tagOf(book.Users[0]) != "userStatusEmpty" {
+		t.Fatalf("GET /contacts после блока: %v; want userStatusEmpty", book.Users)
+	}
+	rec = reqJSONAuth(t, h, http.MethodDelete, "/contacts/"+itoa(idB), nil, tokenA)
+	if err := json.Unmarshal(rec.Body.Bytes(), &del); err != nil || len(del.Users) != 1 || tagOf(del.Users[0]) != "userStatusEmpty" {
+		t.Fatalf("карточка из Delete после блока: %s", rec.Body.String())
+	}
 }

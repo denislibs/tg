@@ -6,7 +6,7 @@
 // вкладка «Заблокированные» (`sidebarLeft/tabs/blockedUsers.solid.tsx`) и хаб
 // «Конфиденциальность» не узнали бы о блокировке из шапки чата.
 //
-// Приём — тот же, что в workerCore.geoLiveFrame.test.ts: частичный vi.mock
+// Приём — тот же, что в workerCore.scheduledFrames.test.ts: частичный vi.mock
 // фабрики менеджера перехватывает её зависимости; само содержимое события
 // покрыто у владельца (`managers/privacyManager.test.ts`).
 import 'fake-indexeddb/auto'

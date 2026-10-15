@@ -122,7 +122,22 @@ func Load() (*Config, error) {
 	// Fail-fast: в проде дефолтные секреты — это доступ к чужому медиа (форж
 	// media-токена на MEDIA_URL_SECRET), TURN и хранилищу, плюс статичный OTP.
 	// Не даём серверу стартовать молча с ними.
-	if getenv("APP_ENV", "development") == "production" {
+	// APP_ENV сравнивается без учёта регистра и пробелов: «Production » - это
+	// прод, а не «незнакомое окружение», в котором fail-fast молча не сработал бы.
+	appEnv := strings.ToLower(strings.TrimSpace(getenv("APP_ENV", "development")))
+	if appEnv == "" {
+		appEnv = "development"
+	}
+	// DEV_PURCHASES (звёзды и Premium без оплаты) - только при ЯВНО заданном
+	// непрод-окружении: пустой или незнакомый APP_ENV (опечатка «prod», забытая
+	// переменная в проде) - отказ старта.
+	if c.DevPurchases && appEnv != "production" {
+		raw := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+		if !devAppEnvs[raw] {
+			return nil, fmt.Errorf("DEV_PURCHASES=true требует явного APP_ENV из development/dev/local/test (задано %q) — звёзды и Premium без оплаты", raw)
+		}
+	}
+	if appEnv == "production" {
 		var bad []string
 		if c.MediaURLSecret == defMediaURLSecret {
 			bad = append(bad, "MEDIA_URL_SECRET")
@@ -152,6 +167,11 @@ func Load() (*Config, error) {
 	}
 	return c, nil
 }
+
+// devAppEnvs — значения APP_ENV, про которые известно, что это не прод: только в
+// них разрешён DEV_PURCHASES. Любое другое непустое значение (опечатка вроде
+// «prod») при включённом флаге - отказ старта.
+var devAppEnvs = map[string]bool{"development": true, "dev": true, "local": true, "test": true}
 
 // Дефолтные (dev-)значения секретов — общие для getenv-дефолтов выше и fail-fast
 // проверки, чтобы не разъехались.

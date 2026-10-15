@@ -1817,9 +1817,13 @@ func (r fakeMsgs) UpdateGeoLive(_ context.Context, msgID int64, lat, lng float64
 	now := time.Now()
 	for chatID, msgs := range r.s.messages {
 		for idx, m := range msgs {
-			if m.ID == msgID {
+			if m.ID == msgID && !m.Deleted {
 				m.GeoLat, m.GeoLng = &lat, &lng
-				m.GeoHeading, m.GeoLiveStopped = heading, stopped
+				// как SQL: heading без значения не стирает прежний, «стоп» не снимается
+				if heading != nil {
+					m.GeoHeading = heading
+				}
+				m.GeoLiveStopped = m.GeoLiveStopped || stopped
 				m.EditedAt = &now
 				r.s.messages[chatID][idx] = m
 				return m, nil

@@ -199,8 +199,10 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `DATABASE_URL` | (обязательна) | строка подключения Postgres |
 | `REDIS_URL` | `redis://localhost:6379` | подключение Redis |
 | `DEV_OTP_CODE` | `12345` | OTP-код в dev-режиме |
+| `WEBAUTHN_RP_ID` | `localhost` | RP ID ключей доступа (WebAuthn). Должен равняться хосту, с которого открыт клиент, или быть его регистрируемым суффиксом: для `https://localhost` подходит значение по умолчанию, для стенда `https://web.telegram.localhost` — `web.telegram.localhost` (иначе браузер отвечает `SecurityError`). Меняет RP ID — ранее заведённые ключи перестают подходить |
+| `WEBAUTHN_ORIGINS` | список localhost-origin'ов | разрешённые origin'ы клиента через запятую (должны содержать адрес, с которого открыт клиент) |
 | `ACCOUNT_RESET_WAIT` | `168h` | окно ожидания сброса аккаунта («забыли пароль» без почты). Укорачивать только на стенде: в проде короче недели старт запрещён |
-| `DEV_PURCHASES` | `false` | dev-начисление звёзд и мок Premium без оплаты (`POST /stars/topup`, `/me/premium`, `/me/premium/checkout`). Включать только на стенде и в разработке: при `APP_ENV=production` старт запрещён |
+| `DEV_PURCHASES` | `false` | dev-начисление звёзд и мок Premium без оплаты (`POST /stars/topup`, `/me/premium`, `/me/premium/checkout`). Включать только на стенде и в разработке: требует явного `APP_ENV` из `development`/`dev`/`local`/`test` (пустой или незнакомый - отказ старта), при `APP_ENV=production` старт запрещён |
 | `SEED_DEMO` | `false` | посев демо-стенда при старте: 20 профилей + каналы, группы, посты, опросы, закрепления и реакции (`internal/demoseed`) |
 | `MEDIA_URL_SECRET` | `dev-media-url-secret-change-me` | секрет подписи токенов скачивания медиа |
 | `MINIO_ENDPOINT` | `localhost:9000` | адрес MinIO |

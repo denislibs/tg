@@ -229,6 +229,49 @@ describe('AuthManager', () => {
     await expect(auth.signIn('+7 700', '12345', 'web', 'browser')).resolves.toMatchObject({ user: { user: { id: 1 } } })
   })
 
+  // Вход по ключу доступа (tweb passkeyLoginButton.tsx:38-41, :63-77).
+  describe('вход по ключу доступа', () => {
+    const FINISH_URL = '/auth/passkey/finish?session=s1&device=web&platform=browser'
+
+    function passkeyDeps(finishResponse: unknown) {
+      const { d, token } = deps()
+      const onMeChanged = vi.fn()
+      const posts: string[] = []
+      const rest = {
+        ...(d as unknown as { rest: object }).rest,
+        post: async (path: string) => {
+          posts.push(path)
+          if (path === '/auth/passkey/begin') return { _: 'auth.passkeyLoginOptions', session: 's1', options: { _: 'dataJSON', data: '{"publicKey":{}}' } }
+          if (path === FINISH_URL) return finishResponse
+          throw new Error('unexpected ' + path)
+        },
+      }
+      return { d: { ...d, rest } as unknown as AuthDeps, token, onMeChanged, posts }
+    }
+
+    it('begin отдаёт auth.passkeyLoginOptions как есть: session и dataJSON', async () => {
+      const { d } = passkeyDeps(null)
+      await expect(newAuthManager(d).passkeyLoginBegin()).resolves.toEqual({
+        _: 'auth.passkeyLoginOptions', session: 's1', options: { _: 'dataJSON', data: '{"publicKey":{}}' },
+      })
+    })
+
+    it('finish при облачном пароле: шаг пароля, сессия НЕ сохраняется', async () => {
+      const { d, token, onMeChanged } = passkeyDeps({ _: 'auth.passwordNeeded', password_token: 't', hint: 'h' })
+      const r = await newAuthManager({ ...d, onMeChanged }).passkeyLoginFinish('s1', {}, 'web', 'browser')
+      expect(r).toEqual({ passwordNeeded: true, passwordToken: 't', hint: 'h' })
+      expect(token()).toBeNull()
+      expect(onMeChanged).not.toHaveBeenCalled()
+    })
+
+    it('finish без облачного пароля: сессия сохранена, исход — user', async () => {
+      const { d, token } = passkeyDeps({ _: 'auth.authorization', token: 'PK', user: briefWire(1, '+700') })
+      const r = await newAuthManager(d).passkeyLoginFinish('s1', {}, 'web', 'browser')
+      expect(r).toMatchObject({ user: { user: { id: 1 } } })
+      expect(token()).toBe('PK')
+    })
+  })
+
   // auth.exportLoginToken: ключ входа едет заголовком, except_ids — аккаунты этого
   // устройства (tweb SignQRCard.tsx:136-142, AccountController.getUserIds).
   it('exportLoginToken шлёт except_ids из реестра аккаунтов и ключ входа заголовком', async () => {

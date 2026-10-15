@@ -162,6 +162,7 @@ func TestLoad_PublicLinkOrigins(t *testing.T) {
 func TestLoad_DevPurchases(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/db")
 
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("DEV_PURCHASES", "")
 	if c, err := Load(); err != nil || c.DevPurchases {
 		t.Fatalf("по умолчанию DevPurchases = %v, %v; want false", c != nil && c.DevPurchases, err)
@@ -188,5 +189,54 @@ func TestLoad_ProdRejectsDevPurchases(t *testing.T) {
 	t.Setenv("DEV_PURCHASES", "")
 	if _, err := Load(); err != nil {
 		t.Fatalf("прод без DEV_PURCHASES отвергнут: %v", err)
+	}
+}
+
+// APP_ENV сравнивается без учёта регистра и пробелов: «Production » - прод, и
+// DEV_PURCHASES в нём запрещён, как и дефолтные секреты.
+func TestLoad_AppEnvNormalized(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("MEDIA_URL_SECRET", "real-media-secret-xyz")
+	t.Setenv("TURN_SECRET", "real-turn-secret-xyz")
+	t.Setenv("MINIO_ACCESS_KEY", "realkey")
+	t.Setenv("MINIO_SECRET_KEY", "realsecret")
+	t.Setenv("DEV_OTP_CODE", "disabled-in-prod")
+
+	t.Setenv("APP_ENV", "Production ")
+	t.Setenv("DEV_PURCHASES", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal(`APP_ENV="Production " + DEV_PURCHASES принят`)
+	}
+	// fail-fast на дефолтных секретах тоже срабатывает на нормализованном значении.
+	t.Setenv("DEV_PURCHASES", "")
+	t.Setenv("MEDIA_URL_SECRET", "")
+	if _, err := Load(); err == nil {
+		t.Fatal(`APP_ENV="Production " не включил проверку дефолтных секретов`)
+	}
+}
+
+// DEV_PURCHASES=true требует явного APP_ENV из development/dev/local/test:
+// пустой, пробельный и незнакомый («prod») - отказ старта.
+func TestLoad_DevPurchasesRequiresExplicitAppEnv(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("DEV_PURCHASES", "true")
+
+	for _, env := range []string{"", "  ", "prod", "staging"} {
+		t.Setenv("APP_ENV", env)
+		if _, err := Load(); err == nil {
+			t.Fatalf("APP_ENV=%q + DEV_PURCHASES принят", env)
+		}
+	}
+	for _, env := range []string{"development", "Dev", "local", " test "} {
+		t.Setenv("APP_ENV", env)
+		if _, err := Load(); err != nil {
+			t.Fatalf("APP_ENV=%q + DEV_PURCHASES отвергнут: %v", env, err)
+		}
+	}
+	// Без флага пустое/незнакомое окружение стартует, как и раньше.
+	t.Setenv("DEV_PURCHASES", "")
+	t.Setenv("APP_ENV", "prod")
+	if _, err := Load(); err != nil {
+		t.Fatalf("APP_ENV=prod без флага отвергнут: %v", err)
 	}
 }

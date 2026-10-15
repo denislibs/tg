@@ -126,12 +126,20 @@ func (i *Interactor) RemovePassword(ctx context.Context, userID int64, current s
 	return i.pw.SetPassword(ctx, userID, nil, "", "")
 }
 
-// MintPasskeySession выдаёт сессию после успешной WebAuthn-аутентификации
-// (вход по ключу доступа — второй фактор не спрашивается, как в Telegram).
-func (i *Interactor) MintPasskeySession(ctx context.Context, userID int64, deviceName, platform string) (SignInResult, error) {
+// PasskeySignIn — вход после успешной WebAuthn-проверки. Ключ доступа не
+// отменяет облачный пароль: при включённом пароле сессия не выдаётся, клиент
+// получает шаг пароля (tweb passkeyLoginButton.tsx:63-71 — SESSION_PASSWORD_NEEDED
+// ведёт на карточку пароля); у нас этот шаг — успешный ответ
+// `auth.passwordNeeded`, как у sign_in и sign_import. Пароля нет — сессия.
+func (i *Interactor) PasskeySignIn(ctx context.Context, userID int64, deviceName, platform string) (SignInResult, error) {
 	user, err := i.users.GetByID(ctx, userID)
 	if err != nil {
 		return SignInResult{}, err
+	}
+	if res, needed, err := i.startPasswordStep(ctx, userID); err != nil {
+		return SignInResult{}, err
+	} else if needed {
+		return res, nil
 	}
 	return i.mintSession(ctx, user, deviceName, platform)
 }
