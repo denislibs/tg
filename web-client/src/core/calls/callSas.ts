@@ -27,10 +27,23 @@ export function canonicalFingerprints(fps: RawFingerprint[]): string[] {
   return [...set].sort()
 }
 
-/** Набор из SDP (`a=fingerprint:` всех уровней), канонический. */
+const SDP_FP_LINE = /^a=fingerprint:([A-Za-z0-9-]+) ([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2})+)$/
+
+/**
+ * Набор из SDP (`a=fingerprint:` всех уровней), канонический. РАЗБОР СТРОГИЙ: любая строка, где
+ * встречается «fingerprint» (без учёта регистра), обязана совпасть с точным видом
+ * `a=fingerprint:<алгоритм> <HEX:HEX…>`, иначе бросает. Причина: браузер может разбирать SDP
+ * мягче нашего регэкспа (пробел после двоеточия, табуляция, хвостовой пробел, одиночный \r) и
+ * принять отпечаток, который мы «не увидели»: DTLS пустил бы посредника при честной на вид сверке.
+ */
 export function extractDtlsFingerprints(sdp: string): string[] {
   const out: RawFingerprint[] = []
-  for (const m of sdp.matchAll(/^a=fingerprint:(\S+)\s+(\S+)\s*$/gim)) out.push({ algorithm: m[1], value: m[2] })
+  for (const line of sdp.split(/\r?\n/)) {
+    if (!/fingerprint/i.test(line)) continue
+    const m = SDP_FP_LINE.exec(line)
+    if (!m) throw new Error('malformed a=fingerprint line in SDP')
+    out.push({ algorithm: m[1], value: m[2] })
+  }
   return canonicalFingerprints(out)
 }
 

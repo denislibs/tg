@@ -131,13 +131,17 @@ function failE2E(phase: E2EPhase) {
   finish('failed')
 }
 
-function enqueue(fn: (alive: () => boolean) => Promise<void>) {
+// fatal: любая ошибка звена фатальна для звонка (звенья протокола); иначе только провал
+// проверки (E2EFail) фатален, а случайная ошибка pc по ходу звонка пишется в консоль.
+function enqueue(fn: (alive: () => boolean) => Promise<void>, fatal = false) {
   const g = gen
   const alive = () => g === gen && !!store().call
   frameChain = frameChain.then(() => (alive() ? fn(alive) : undefined)).catch((e: unknown) => {
     if (g !== gen) return
-    if (e instanceof E2EFail) failE2E('after-answer')
-    else console.warn('[call] frame handler failed', e)
+    if (fatal || e instanceof E2EFail) {
+      console.warn('[call] protocol step failed', e)
+      failE2E('after-answer')
+    } else console.warn('[call] frame handler failed', e)
   })
 }
 
@@ -161,7 +165,8 @@ async function deriveDhFp(peerPubB64: string): Promise<Uint8Array> {
 
 // Свой localDescription обязан нести ровно свой сертификат.
 function ownDescriptionMatches(desc: RTCSessionDescription | null): boolean {
-  return !!ident && !!desc && sameFingerprints(extractDtlsFingerprints(desc.sdp), ident.fps)
+  if (!ident || !desc) return false
+  try { return sameFingerprints(extractDtlsFingerprints(desc.sdp), ident.fps) } catch { return false }
 }
 
 function sendFrame(type: string, data: Record<string, unknown>) {
@@ -390,19 +395,24 @@ async function handleSignal(d: Record<string, unknown>, alive: () => boolean) {
     // обещанных, — подмена (или нарушенный порядок): звонок рвётся.
     if (!dhFp || !peerFps) throw new E2EFail('sdp before dh_reveal')
     if ((sdp.type !== 'offer' && sdp.type !== 'answer') || typeof sdp.sdp !== 'string') throw new E2EFail('bad sdp')
-    if (!sameFingerprints(extractDtlsFingerprints(sdp.sdp), peerFps)) throw new E2EFail('sdp fingerprint mismatch')
+    let sdpFps: string[]
+    try { sdpFps = extractDtlsFingerprints(sdp.sdp) } catch { throw new E2EFail('malformed sdp fingerprint') }
+    if (!sameFingerprints(sdpFps, peerFps)) throw new E2EFail('sdp fingerprint mismatch')
     // perfect negotiation: impolite (звонящий) игнорирует чужой offer при glare,
     // polite (отвечающий) откатывает свой — ровно как rollback в tweb.
     const collision = sdp.type === 'offer' && (makingOffer || pc.signalingState !== 'stable')
     ignoreOffer = !polite && collision
     if (ignoreOffer) return
-    await pc.setRemoteDescription(sdp)
-    for (const c of pendingCandidates) await pc.addIceCandidate(c).catch(() => {})
+    const p = pc
+    await p.setRemoteDescription(sdp)
+    if (!alive() || pc !== p) return // звонок закончился (или начался новый) посреди переговоров
+    for (const c of pendingCandidates) await p.addIceCandidate(c).catch(() => {})
     pendingCandidates = []
     if (sdp.type === 'offer') {
-      await pc.setLocalDescription()
-      if (!ownDescriptionMatches(pc.localDescription)) throw new E2EFail('own sdp fingerprint mismatch')
-      sendFrame('call_signal', { sdp: pc.localDescription!.toJSON() })
+      await p.setLocalDescription()
+      if (!alive() || pc !== p) return
+      if (!ownDescriptionMatches(p.localDescription)) throw new E2EFail('own sdp fingerprint mismatch')
+      sendFrame('call_signal', { sdp: p.localDescription!.toJSON() })
     }
     return
   }
@@ -416,7 +426,8 @@ async function handleSignal(d: Record<string, unknown>, alive: () => boolean) {
 // Ответ звонящему на call_accept: набор и ключ отвечающего, раскрытие своего ключа и SAS.
 async function onCallAccept(d: Record<string, unknown>, alive: () => boolean) {
   const call = store().call
-  if (!call || !call.outgoing || call.phase !== 'outgoing' || !ident || !dhPubRaw || peerFps) return
+  if (!call || !call.outgoing || !ident || !dhPubRaw || peerFps) return // ранний или повторный call_accept
+  clearRingTimer()
   const calleeFps = parsePeerFingerprints(d.dtls)
   if (typeof d.dh !== 'string' || !calleeFps) throw new E2EFail('call_accept without dh/dtls')
   const fp = await deriveDhFp(d.dh)
@@ -488,7 +499,7 @@ export function accept() {
     }
     sendFrame('call_accept', { dh: b64FromBytes(dhPubRaw!), dtls: ident!.fps })
     store().patch({ phase: 'connecting' })
-    enqueue((alive) => startRtc(call.video, alive))
+    enqueue((alive) => startRtc(call.video, alive), true)
   })()
 }
 
@@ -703,9 +714,11 @@ export function handleFrame(evt: CallFrameEvt) {
 
   switch (t) {
     case 'call_accept':
-      if (call.outgoing && call.phase === 'outgoing') {
-        clearRingTimer()
-        enqueue((alive) => onCallAccept(d, alive))
+      if (call.outgoing && call.phase === 'outgoing' && ident && dhPubRaw) { // call_request уже ушёл
+        // 'connecting' сразу: кадры call_signal отвечающего, пришедшие, пока звено крутит
+        // криптографию, должны встать в очередь за ним, а не быть отброшены фильтром по фазе
+        store().patch({ phase: 'connecting' })
+        enqueue((alive) => onCallAccept(d, alive), true)
       }
       break
     case 'call_decline':

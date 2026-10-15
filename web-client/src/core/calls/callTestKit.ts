@@ -52,11 +52,13 @@ export class FakePC {
   onconnectionstatechange: (() => void) | null = null
   transceivers: Array<{ receiver: { track: { kind: string } } }> = []
   closed = false
+  tracks: unknown[] = []
+  ice: unknown[] = []
   constructor(config: RTCConfiguration = {}) { this.config = config; FakePC.all.push(this) }
   get cert() { return (this.config.certificates?.[0] as unknown as { tag: string } | undefined)?.tag ?? '' }
   private negotiate() { queueMicrotask(() => { if (!this.closed && this.signalingState === 'stable') this.onnegotiationneeded?.() }) }
   addTransceiver(kind: string) { this.transceivers.push({ receiver: { track: { kind } } }); this.negotiate() }
-  addTrack(track: { kind: string }) { this.transceivers.push({ receiver: { track: { kind: track.kind } } }); this.negotiate(); return {} }
+  addTrack(track: { kind: string }) { this.tracks.push(track); this.transceivers.push({ receiver: { track: { kind: track.kind } } }); this.negotiate(); return {} }
   getTransceivers() { return this.transceivers }
   getSenders() { return [] }
   createDataChannel() { return {} }
@@ -73,7 +75,7 @@ export class FakePC {
     this.remoteDescription = { type: d.type, sdp: d.sdp ?? '', toJSON: () => ({ type: d.type, sdp: d.sdp ?? '' }) }
     this.signalingState = d.type === 'offer' ? 'have-remote-offer' : 'stable'
   }
-  async addIceCandidate() {}
+  async addIceCandidate(c: unknown) { this.ice.push(c) }
   close() { this.closed = true }
   setState(st: RTCPeerConnectionState) { this.connectionState = st; this.onconnectionstatechange?.() }
 }

@@ -75,8 +75,8 @@ describe('подмена отпечатков после обещания (по�
   })
 
   it('а2) подмена согласованная: dtls в dh_reveal и a=fingerprint в offer одним набором — коммитмент ловит', async () => {
-    net.tamper = (_f, _t, f) => {
-      if (f.type !== 'call_signal') return [f]
+    net.tamper = (_f, to, f) => {
+      if (to !== 2 || f.type !== 'call_signal') return [f]
       if (f.data.dh_reveal) return [{ ...f, data: { ...f.data, dtls: [FAKE_FP] } }]
       if ((f.data.sdp as { type?: string } | undefined)?.type === 'offer') {
         return [{ ...f, data: { ...f.data, sdp: { type: 'offer', sdp: sdpWithFp(FAKE_FP) } } }]
@@ -101,10 +101,12 @@ describe('подмена отпечатков после обещания (по�
   })
 
   it('б2) подмена согласованная (call_accept и SDP-answer одним посредником): эмодзи у сторон РАЗНЫЕ', async () => {
-    net.tamper = (_f, _t, f) => {
+    net.tamper = (_f, to, f) => {
       if (f.type === 'call_accept') return [{ ...f, data: { ...f.data, dtls: [FAKE_FP] } }]
-      if (f.type === 'call_signal' && (f.data.sdp as { type?: string } | undefined)?.type === 'answer') {
-        return [{ ...f, data: { ...f.data, sdp: { type: 'answer', sdp: sdpWithFp(FAKE_FP) } } }]
+      // весь SDP отвечающего (его offer при glare и answer) — с отпечатком посредника
+      const sdp = f.data.sdp as { type?: RTCSdpType } | undefined
+      if (to === 1 && f.type === 'call_signal' && sdp?.type) {
+        return [{ ...f, data: { ...f.data, sdp: { type: sdp.type, sdp: sdpWithFp(FAKE_FP) } } }]
       }
       return [f]
     }
@@ -114,9 +116,9 @@ describe('подмена отпечатков после обещания (по�
   })
 
   it('в) a=fingerprint в SDP заменён, dtls нетронут: получатель рвёт звонок', async () => {
-    net.tamper = (_f, _t, f) => {
+    net.tamper = (_f, to, f) => {
       const sdp = f.data.sdp as { type?: string } | undefined
-      if (f.type === 'call_signal' && sdp?.type === 'offer') {
+      if (to === 2 && f.type === 'call_signal' && sdp?.type === 'offer') {
         return [{ ...f, data: { ...f.data, sdp: { type: 'offer', sdp: sdpWithFp(FAKE_FP) } } }]
       }
       return [f]
@@ -128,9 +130,9 @@ describe('подмена отпечатков после обещания (по�
   })
 
   it('SDP-answer с чужим отпечатком рвёт звонок у звонящего', async () => {
-    net.tamper = (_f, _t, f) => {
+    net.tamper = (_f, to, f) => {
       const sdp = f.data.sdp as { type?: string } | undefined
-      if (f.type === 'call_signal' && sdp?.type === 'answer') {
+      if (to === 1 && f.type === 'call_signal' && sdp?.type === 'answer') {
         return [{ ...f, data: { ...f.data, sdp: { type: 'answer', sdp: sdpWithFp(FAKE_FP) } } }]
       }
       return [f]
@@ -148,6 +150,81 @@ describe('подмена отпечатков после обещания (по�
       d: { call_id: B.call()!.callId, from_user_id: 1, sdp: { type: 'offer', sdp: sdpWithFp(FAKE_FP) } },
     } as never)
     await until(() => B.call()?.endReason === 'failed', 'B failed on renegotiation')
+  })
+})
+
+describe('скрытый отпечаток в SDP (браузер разбирает мягче нашего регэкспа)', () => {
+  it.each([
+    ['пробел после двоеточия', (fp: string) => `a=fingerprint: ${fp}`],
+    ['табуляция', (fp: string) => `a=fingerprint:\t${fp}`],
+    ['хвостовой пробел', (fp: string) => `a=fingerprint:${fp} `],
+  ])('offer с обещанным отпечатком и скрытым вторым (%s): звонок рвётся', async (_n, hidden) => {
+    net.tamper = (_f, to, f) => {
+      const sdp = f.data.sdp as { type?: string; sdp?: string } | undefined
+      if (to === 2 && f.type === 'call_signal' && sdp?.type === 'offer') {
+        return [{ ...f, data: { ...f.data, sdp: { type: 'offer', sdp: `${sdp.sdp}${hidden(FAKE_FP)}\r\n` } } }]
+      }
+      return [f]
+    }
+    const { B } = await startPair(net)
+    await until(() => B.call()?.endReason === 'failed', 'B failed on hidden fingerprint')
+    expect(reasonsOf(B.frames('call_end'))).toEqual(['disconnect'])
+  })
+})
+
+describe('порядок и гонки очереди', () => {
+  it('call_signal отвечающего сразу за call_accept не теряется (встаёт в очередь за звеном звонящего)', async () => {
+    net.tamper = (_f, to, f) => {
+      if (to === 1 && f.type === 'call_signal' && f.data.media) return [] // настоящие media-state отвечающего не мешают
+      if (to !== 1 || f.type !== 'call_accept') return [f]
+      const media: Frame = { type: 'call_signal', data: { to_user_id: 1, call_id: f.data.call_id, media: { muted: true, cam_on: false } } }
+      return [f, media]
+    }
+    const { A } = await connectPair(net)
+    await until(() => A.call()?.remoteMuted === true, 'media-state after call_accept applied')
+  })
+
+  it('ранний call_accept до отправки call_request игнорируется и не снимает таймер звонка', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const A = await net.side(1)
+      FakePC.generateCertificate = () => new Promise(() => {}) // подготовка не завершится
+      A.engine.startOutgoing(PEER_OF(2), false)
+      A.engine.handleFrame({ t: 'call_accept', d: { call_id: A.call()!.callId, from_user_id: 2, dh: 'x', dtls: ['sha-256 AA'] } } as never)
+      expect(A.call()!.phase).toBe('outgoing')
+      await vi.advanceTimersByTimeAsync(45_000)
+      expect(reasonsOf(A.frames('call_end'))).toEqual(['missed'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('повторный accept() не отправляет второй call_accept', async () => {
+    const A = await net.side(1); const B = await net.side(2)
+    A.engine.startOutgoing(PEER_OF(2), false)
+    await until(() => B.call()?.phase === 'incoming', 'incoming')
+    B.engine.accept()
+    B.engine.accept()
+    await until(() => B.frames('call_accept').length > 0, 'call_accept')
+    await settle()
+    expect(B.frames('call_accept')).toHaveLength(1)
+  })
+
+  it('свой localDescription с чужим отпечатком: call_end disconnect, SDP наружу не уходит', async () => {
+    const orig = FakePC.prototype.setLocalDescription
+    FakePC.prototype.setLocalDescription = async function (this: FakePC) {
+      await orig.call(this)
+      this.localDescription = { type: this.localDescription!.type, sdp: sdpWithFp(FAKE_FP), toJSON() { return { type: this.type, sdp: this.sdp } } }
+    }
+    try {
+      const { A, B } = await startPair(net)
+      // подмена действует на pc обеих сторон; хотя бы одна рвёт звонок, SDP с чужим отпечатком наружу не уходит
+      await until(() => A.call()?.endReason === 'failed' || B.call()?.endReason === 'failed', 'someone failed on own sdp')
+      expect([...A.frames('call_signal'), ...B.frames('call_signal')].filter((f) => f.data.sdp)).toHaveLength(0)
+      expect([...reasonsOf(A.frames('call_end')), ...reasonsOf(B.frames('call_end'))]).toContain('disconnect')
+    } finally {
+      FakePC.prototype.setLocalDescription = orig
+    }
   })
 })
 
@@ -308,5 +385,49 @@ describe('getUserMedia вне очереди кадров', () => {
     await settle()
     expect(stop).toHaveBeenCalled()
     void B
+  })
+
+  it('ICE обрабатывается, пока getUserMedia висит', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => new Promise(() => {}) },
+    })
+    const { A, B } = await connectPair(net)
+    const callerFps = (A.frames('call_signal').find((f) => f.data.dh_reveal)!.data.dtls as string[])[0]
+    const callId = B.call()!.callId
+    B.engine.handleFrame({ t: 'call_signal', d: { call_id: callId, from_user_id: 1, sdp: { type: 'offer', sdp: sdpWithFp(callerFps) } } } as never)
+    await until(() => !!pcOf(B)?.remoteDescription, 'offer applied while gUM pending')
+    B.engine.handleFrame({ t: 'call_signal', d: { call_id: callId, from_user_id: 1, ice: { candidate: 'x' } } } as never)
+    await until(() => pcOf(B)!.ice.length === 1, 'ice applied while gUM pending')
+  })
+
+  it('поздний getUserMedia прошлого звонка не добавляет треки в pc нового', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const resolvers: Array<(s: unknown) => void> = []
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: () => new Promise((r) => { resolvers.push(r) }) },
+      })
+      const stop = vi.fn()
+      const oldTrack = { kind: 'audio', stop }
+      const { A } = await connectPair(net)
+      A.engine.hangup()
+      await vi.advanceTimersByTimeAsync(2000) // экран прошлого звонка убран
+      expect(A.call()).toBeNull()
+      const B2 = net.sides.get(2)!
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(B2.call()).toBeNull()
+      A.engine.startOutgoing(PEER_OF(2), false)
+      await until(() => B2.call()?.phase === 'incoming', 'second call incoming')
+      B2.engine.accept()
+      await until(() => !!A.call()?.e2eFingerprint && FakePC.mains().length >= 4, 'second call connecting')
+      resolvers[0]({ getTracks: () => [oldTrack], getVideoTracks: () => [] })
+      await settle()
+      expect(stop).toHaveBeenCalled()
+      expect(FakePC.mains().every((p) => !p.tracks.includes(oldTrack))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

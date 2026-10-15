@@ -26,6 +26,29 @@ describe('callSas: отпечатки DTLS', () => {
   })
 })
 
+describe('callSas: строгий разбор SDP (браузер может быть мягче регэкспа)', () => {
+  const ok = 'v=0\r\na=fingerprint:sha-256 AB:CD\r\n'
+  it('канонический вид принимается, в том числе с LF и без хвостового перевода', () => {
+    expect(extractDtlsFingerprints(ok)).toEqual(['sha-256 AB:CD'])
+    expect(extractDtlsFingerprints('a=fingerprint:sha-256 ab:cd')).toEqual(['sha-256 AB:CD'])
+    expect(extractDtlsFingerprints('v=0\na=fingerprint:sha-256 AB:CD\nm=audio\n')).toEqual(['sha-256 AB:CD'])
+  })
+  it.each([
+    ['пробел после двоеточия', 'a=fingerprint: sha-256 AB:CD\r\n'],
+    ['табуляция', 'a=fingerprint:\tsha-256 AB:CD\r\n'],
+    ['пробел перед двоеточием', 'a=fingerprint :sha-256 AB:CD\r\n'],
+    ['хвостовой пробел', 'a=fingerprint:sha-256 AB:CD \r\n'],
+    ['два пробела между алгоритмом и значением', 'a=fingerprint:sha-256  AB:CD\r\n'],
+    ['одиночный \\r внутри строки', 'a=foo\ra=fingerprint:sha-256 AB:CD\r\n'],
+    ['необычный регистр ключа', 'A=FINGERPRINT:sha-256 AB:CD\r\n'],
+    ['значение не hex', 'a=fingerprint:sha-256 ZZ:CD\r\n'],
+    ['значение без двоеточий', 'a=fingerprint:sha-256 ABCD\r\n'],
+    ['слово fingerprint в другом атрибуте', 'a=x-fingerprint:sha-256 AB:CD\r\n'],
+  ])('отвергает: %s', (_n, extra) => {
+    expect(() => extractDtlsFingerprints(ok + extra)).toThrow()
+  })
+})
+
 describe('callSas: parsePeerFingerprints (чужой кадр)', () => {
   it('принимает канонический набор', () => {
     expect(parsePeerFingerprints(['sha-1 01:02', 'sha-256 AB:CD'])).toEqual(['sha-1 01:02', 'sha-256 AB:CD'])
