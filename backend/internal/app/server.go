@@ -408,6 +408,9 @@ func registerServer(p serverParams) {
 	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Блок и правила приватности — в журнал своих устройств (без условия Redis).
 	privacyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
+	// «Новый вход» — updateNewAuthorization на остальные устройства владельца
+	// (журнал без условия Redis, издатель — при наличии).
+	p.AuthUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Мутации адресной книги — карточка контакта строкой user_update на свои
 	// устройства владельца (журнал без условия Redis, издатель — при наличии).
 	p.ContactsUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))

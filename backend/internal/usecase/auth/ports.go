@@ -97,9 +97,19 @@ type DeviceRepo interface {
 	// Get — устройство пользователя по id; нет такого — domain.ErrNotFound.
 	Get(ctx context.Context, userID, deviceID int64) (domain.Device, error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Device, error)
-	Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error)
+	// HasSessions — есть ли у пользователя сессии: признак
+	// «новый вход» — спрашивать есть кого, только если уже есть другие сессии. До Create.
+	HasSessions(ctx context.Context, userID int64) (bool, error)
+	// Confirm снимает флаг unconfirmed. changed — флаг был поднят и снят сейчас;
+	// domain.ErrNotFound — такой сессии у пользователя нет (одним запросом
+	// отличается от «уже подтверждена»: changed=false, nil).
+	Confirm(ctx context.Context, userID, deviceID int64) (changed bool, err error)
+	// Delete удаляет сессию и возвращает её строку (хеш токена — для кэша,
+	// Unconfirmed/CreatedAt — для снятия запроса «это вы?»). found=false — нет такой.
+	Delete(ctx context.Context, userID, deviceID int64) (d domain.Device, found bool, err error)
 	// DeleteOthers removes every device of the user except keepDeviceID and
-	// returns the removed rows (ids + token hashes, for cache/WS eviction).
+	// returns the removed rows (ids, token hashes, Unconfirmed/CreatedAt — for
+	// cache/WS eviction and for taking back the "was it you?" prompts).
 	DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error)
 	// DeleteAll removes every device of the user and returns the removed rows
 	// (ids + token hashes), so the caller can evict caches and close sockets. Used
@@ -121,8 +131,12 @@ type PasswordRepo interface {
 	// почту восстановления.
 	Password(ctx context.Context, userID int64) (hash *string, hint, email string, err error)
 	SetPassword(ctx context.Context, userID int64, hash *string, hint, email string) error
-	SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error
-	PasswordTokenUser(ctx context.Context, tokenHash string) (int64, error) // domain.ErrNotFound если нет/истёк
+	// SavePasswordToken — approved: вход одобрила уже вошедшая сессия (QR, веб-токен),
+	// признак переживает шаг пароля и доходит до mintSession. Повторное сохранение
+	// того же токена (продление) approved не перезаписывает.
+	SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time, approved bool) error
+	// PasswordTokenUser — владелец живого токена и его approved; domain.ErrNotFound если нет/истёк.
+	PasswordTokenUser(ctx context.Context, tokenHash string) (userID int64, approved bool, err error)
 	DeletePasswordToken(ctx context.Context, tokenHash string) error
 }
 

@@ -213,7 +213,10 @@ describe('assets/tgs — состав статики не разъехался �
   // Пятнадцатый — `UtyanDiscussion` (tweb `public/assets/tgs/UtyanDiscussion.json`
   // дословно): заставка вкладки обсуждения (`sidebarRight/tabs/chatDiscussion.solid.tsx`,
   // П-1 0б-5); PNG — тем же генератором.
-  it('в public/assets/tgs/ лежат все 15 json (Этап 0 + LoveLetter + Folders_Shared + StatsEmoji + UtyanDiscussion) и все 15 png (часть 2 фолбэка)', () => {
+  // Шестнадцатый — `hand_stop` (tweb `public/assets/tgs/hand_stop.json` дословно): стикер
+  // попапа «вход предотвращён» (`sidebarLeft/newAuthorization.solid.tsx`, М1-3); PNG — тем же
+  // генератором.
+  it('в public/assets/tgs/ лежат все 16 json (Этап 0 + LoveLetter + Folders_Shared + StatsEmoji + UtyanDiscussion + hand_stop) и все 16 png (часть 2 фолбэка)', () => {
     const files = readdirSync(TGS_DIR).sort()
     const names = [
       'Folders_1',
@@ -230,6 +233,7 @@ describe('assets/tgs — состав статики не разъехался �
       'UtyanLinks',
       'UtyanPasscode',
       'UtyanSearch',
+      'hand_stop',
       'key',
     ]
     expect(files).toEqual(

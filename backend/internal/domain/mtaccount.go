@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Аккаунт: сессии устройств, контакты, уведомления, фотогалерея.
 //
 // Четыре витрины, у каждой конструктор в схеме уже был, а ехала она безымянной
@@ -62,8 +64,9 @@ type Authorization struct {
 // у оригинала оно приходит из реестра api_id, а не от самого клиента).
 const AppName = "Telegram Web"
 
-// NewAuthorization — сессия устройства глазами владельца.
-func NewAuthorization(d Device, current bool) Authorization {
+// NewAuthorization — сессия устройства глазами владельца. now нужен для флага
+// unconfirmed: он гаснет сам через AuthorizationAutoconfirmPeriod (Device.IsUnconfirmed).
+func NewAuthorization(d Device, current bool, now time.Time) Authorization {
 	// Ноль — адрес «этой самой» сессии, см. докблок выше.
 	hash := d.ID
 	if current {
@@ -98,6 +101,11 @@ func NewAuthorization(d Device, current bool) Authorization {
 	out.PFlags = map[string]bool{}
 	if current {
 		out.PFlags["current"] = true
+	}
+	// У текущей строки флаг тоже ставится: клиент её сам не показывает как запрос
+	// (tweb appAccountManager.ts:285, `!authorization.pFlags.current`).
+	if d.IsUnconfirmed(now) {
+		out.PFlags["unconfirmed"] = true
 	}
 	return out
 }

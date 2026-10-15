@@ -87,8 +87,9 @@
 //     `suggestionContainer` создаётся в `startDialogs()` (у tweb — в конце
 //     `onStateLoaded`, `:1384-1388`), и
 //     в него сразу рисует `renderPendingSuggestion` (задача 2-5 волны 7);
-//     `destroy()` гасит этот корень. `authorizationContainer` (`:1390-1394`,
-//     плашка «новый вход») не заводится — у колонки её нет.
+//     `destroy()` гасит этот корень. `authorizationContainer` (`:1390-1394`, плашка
+//     «новый вход», `renderNewAuthorization`) создаётся следом и препендится выше
+//     `suggestionContainer`, как у tweb; `destroy()` гасит и его корень.
 //     Гидрация стора (`hydrateFilters`, `:1026-1035`) зовётся ДО ряда: полосе к
 //     первому `onClick(0)` нужна вкладка «Все чаты» (у tweb её гарантирует
 //     порядок `onStateLoaded`); `destroy()` проекцию гасит (`dispose`).
@@ -174,6 +175,7 @@ import DialogsContextMenu from '@components/dialogsContextMenu'
 import { getProxiedManagers, type Managers } from '@/client/bootstrap'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import { renderPendingSuggestion } from '@components/sidebarLeft/pendingSuggestion.solid'
+import { renderNewAuthorization } from '@components/sidebarLeft/newAuthorization.solid'
 import { render } from 'solid-js/web'
 import StoriesList from '@components/stories/list.solid'
 import appSidebarLeft from '@components/sidebarLeft'
@@ -903,6 +905,9 @@ export class AppDialogsManager {
   private foldersOverlay!: HTMLElement
   private suggestionContainer: HTMLElement | undefined
   private disposeSuggestion: (() => void) | undefined
+  /** tweb `:1390-1394` — плашка «новый вход» (М1-3) */
+  private authorizationContainer: HTMLElement | undefined
+  private disposeAuthorization: (() => void) | undefined
   /** tweb `:834-837` — ряд историй (задача 2-6) */
   private storiesListContainer: HTMLDivElement | undefined
   private disposeStories: (() => void) | undefined
@@ -1085,6 +1090,11 @@ export class AppDialogsManager {
     this.suggestionContainer = document.createElement('div')
     this.foldersOverlay.prepend(this.suggestionContainer)
     this.disposeSuggestion = renderPendingSuggestion(this.suggestionContainer)
+
+    // `:1390-1394` — плашка «новый вход» (`renderNewAuthorization`), расхождение 8
+    this.authorizationContainer = document.createElement('div')
+    this.foldersOverlay.prepend(this.authorizationContainer)
+    this.disposeAuthorization = renderNewAuthorization(this.authorizationContainer, this.managers)
   }
 
   public destroy() {
@@ -1108,6 +1118,8 @@ export class AppDialogsManager {
     this.disposeTabs = undefined
     this.disposeSuggestion?.()
     this.disposeSuggestion = undefined
+    this.disposeAuthorization?.()
+    this.disposeAuthorization = undefined
     // `:1326-1329`
     this.disposeStories?.()
     this.disposeStories =
@@ -1158,6 +1170,7 @@ export class AppDialogsManager {
     this.chatsContainer.classList.remove('has-filters')
     useHasFolders()[1](false) // расхождение 12
     this.suggestionContainer = undefined
+    this.authorizationContainer = undefined
     this.host = undefined
 
     folders.dispose()
