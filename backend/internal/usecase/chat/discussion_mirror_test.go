@@ -400,11 +400,11 @@ func TestPostComment_AlbumLazyMirror_NonFirstFrame_SameThread(t *testing.T) {
 	}
 
 	// Комментируем НЕ первый, а второй кадр — первым обращением к альбому.
-	c2, err := i.PostComment(ctx, ch, a2.ID, 8, "к второму кадру", "c2")
+	c2, err := i.PostComment(ctx, ch, a2.ID, 8, "к второму кадру", "c2", 0)
 	if err != nil {
 		t.Fatalf("PostComment(a2) вернул ошибку вместо ленивой дозаводки зеркала альбома: %v", err)
 	}
-	c1, err := i.PostComment(ctx, ch, a1.ID, 8, "к первому кадру", "c1")
+	c1, err := i.PostComment(ctx, ch, a1.ID, 8, "к первому кадру", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment(a1) вернул ошибку: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestPostComment_AlbumLazyMirror_NoOrphanedMirrors(t *testing.T) {
 	}
 
 	// Единственное обращение к альбому — комментарий ко ВТОРОМУ элементу.
-	if _, err := i.PostComment(ctx, ch, a2.ID, 8, "hi", ""); err != nil {
+	if _, err := i.PostComment(ctx, ch, a2.ID, 8, "hi", "", 0); err != nil {
 		t.Fatalf("PostComment(a2): %v", err)
 	}
 

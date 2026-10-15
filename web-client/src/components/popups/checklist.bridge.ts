@@ -16,16 +16,24 @@ import { createElement } from 'react'
 import CreateChecklistPopup, { type NewChecklistData } from '@components/CreateChecklistPopup'
 import { openPopup } from '@stores/popupStore'
 import type { Managers } from '@/client/bootstrap'
+import { PAYMENT_REJECTED, type PreparedPaymentResult } from '@components/chat/paidMessagesInterceptor'
 
 export default function showChecklistPopup(options: {
-  chat: { peerId: PeerId, managers: Managers },
+  chat: {
+    peerId: PeerId, managers: Managers,
+    /** tweb `checklist.tsx:201` — согласие на плату за сообщение чек-листа */
+    input: { paidMessageInterceptor: { prepareStarsForPayment(messageCount: number): Promise<PreparedPaymentResult> } },
+  },
 }) {
   const { chat } = options
   openPopup((p) => createElement(CreateChecklistPopup, {
     onClose: p.destroy,
-    onCreate: (c: NewChecklistData) => {
+    onCreate: async(c: NewChecklistData) => {
+      // tweb :201-203 — отказ от оплаты оставляет попап открытым
+      const preparedPaymentResult = await chat.input.paidMessageInterceptor.prepareStarsForPayment(1)
+      if(preparedPaymentResult === PAYMENT_REJECTED) return
       p.destroy()
-      void chat.managers.messages.sendChecklist(chat.peerId, { ...c, clientMsgId: crypto.randomUUID() })
+      void chat.managers.messages.sendChecklist(chat.peerId, { ...c, clientMsgId: crypto.randomUUID(), confirmedPaymentResult: preparedPaymentResult })
     },
   }))
 }

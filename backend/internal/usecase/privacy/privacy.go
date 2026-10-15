@@ -6,21 +6,32 @@ package privacy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 )
 
 // Repo — хранилище правил, блокировок и справок о контактах/пользователях.
 type Repo interface {
 	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) // только сохранённые
-	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) error
+	// Upsert — true, если правило вставлено или изменилось (то же правило не меняет
+	// ничего). «Изменилось» решает база одним выражением: чтение до записи вне замка
+	// проиграло бы гонку двух устройств.
+	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) (bool, error)
 	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) // domain.ErrNotFound → дефолт
 
-	Block(ctx context.Context, blockerID, blockedID int64) error
+	// Block — false, если запись уже была (повторный блок ничего не меняет).
+	Block(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	Unblock(ctx context.Context, blockerID, blockedID int64) (bool, error)
 	IsBlocked(ctx context.Context, blockerID, blockedID int64) (bool, error)
+	// BlockedBy — какие из ownerIDs заблокировали viewerID, одним запросом.
+	BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error)
 	BlockedList(ctx context.Context, userID int64, offset, limit int) ([]domain.BlockedUser, int, error)
 
 	IsContact(ctx context.Context, ownerID, userID int64) (bool, error)
@@ -49,12 +60,61 @@ type Repo interface {
 	PeerFullState(ctx context.Context, viewerID, targetID int64) (domain.PeerFullState, error)
 }
 
-type Interactor struct {
-	repo     Repo
-	presence PresenceSnapshot // optional: присутствие для user.status
+// UserAnnouncer пересылает карточку пользователя заново, когда её ВИД у
+// получателей поменялся без правки записи (реализует usecase/auth).
+type UserAnnouncer interface {
+	// AnnounceUser — самому и всем партнёрам.
+	AnnounceUser(ctx context.Context, userID int64) error
+	// AnnounceUserTo — только названным зрителям из числа партнёров.
+	AnnounceUserTo(ctx context.Context, userID int64, viewers []int64) error
 }
 
-func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
+// PresenceReannouncer пересылает статус присутствия заново (реализует
+// usecase/presence).
+type PresenceReannouncer interface {
+	// Reannounce — всем партнёрам.
+	Reannounce(ctx context.Context, userID int64) error
+	// ReannounceTo — только названным зрителям из числа партнёров.
+	ReannounceTo(ctx context.Context, userID int64, viewers []int64) error
+}
+
+type Interactor struct {
+	repo        Repo
+	presence    PresenceSnapshot    // optional: присутствие для user.status
+	emit        *ownsync.Emitter    // optional: журнал своих устройств
+	announcer   UserAnnouncer       // optional: пересчёт карточки у собеседников
+	reannouncer PresenceReannouncer // optional: пересчёт статуса у собеседников (нужен Redis)
+	// async запускает пересчёт у собеседников вне запроса: он идёт по всем
+	// партнёрам с проверкой правила на каждого. Подменяется в тестах.
+	async func(func())
+	// flights — пересчёт у собеседников «один на (пользователь, ключ)»: пока он идёт,
+	// новая смена того же правила лишь помечает его грязным, и по завершении
+	// проход повторяется. Без этого два быстрых PUT запускали бы две горутины, и
+	// старая могла дописать собеседникам вид по прежнему правилу ПОСЛЕ новой.
+	flightsMu sync.Mutex
+	flights   map[flightKey]*flight
+}
+
+type flightKey struct {
+	userID int64
+	key    domain.PrivacyKey
+}
+
+type flight struct{ dirty bool }
+
+func New(repo Repo) *Interactor {
+	return &Interactor{repo: repo, async: func(f func()) { go f() }, flights: map[flightKey]*flight{}}
+}
+
+// SetEmitter подключает журнал своих устройств; без него мутация проходит, но
+// второе устройство о ней не узнаёт.
+func (i *Interactor) SetEmitter(e *ownsync.Emitter) { i.emit = e }
+
+// SetAnnouncer подключает пересчёт карточки у собеседников.
+func (i *Interactor) SetAnnouncer(a UserAnnouncer) { i.announcer = a }
+
+// SetReannouncer подключает пересчёт статуса у собеседников.
+func (i *Interactor) SetReannouncer(r PresenceReannouncer) { i.reannouncer = r }
 
 // ErrBadRule — неизвестный ключ или недопустимое значение.
 var ErrBadRule = errors.New("invalid privacy rule")
@@ -101,7 +161,15 @@ func (i *Interactor) Rule(ctx context.Context, userID int64, key domain.PrivacyK
 	return domain.DefaultPrivacyRule(key), nil
 }
 
-// SetRule валидирует и сохраняет правило одного ключа целиком.
+// SetRule валидирует и сохраняет правило одного ключа целиком. Мутация
+// закоммичена до записи в журнал: сбой журнала или пересчёта ответ не портит
+// (клиент получает результат ответом, второе устройство — при следующей
+// синхронизации) и пишется в лог.
+//
+// Дальше: своим устройствам — строка updatePrivacy со снимком, перечитанным под
+// блокировкой журнала; собеседникам — пересчёт того, что правило меняет у них
+// на экране (tweb таких кадров не знает, но применяет любой updateUserStatus и
+// любую карточку user — значит, сервер сам шлёт новый статус и карточку).
 func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) (domain.PrivacyRuleRecord, error) {
 	if !domain.ValidPrivacyKey(r.Key) || !domain.ValidPrivacyValue(r.Key, r.Value) {
 		return domain.PrivacyRuleRecord{}, ErrBadRule
@@ -109,10 +177,115 @@ func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.Privacy
 	// Сам себе пользователь всегда «виден» — себя в списках не храним.
 	r.AllowUserIDs = dropID(r.AllowUserIDs, userID)
 	r.DenyUserIDs = dropID(r.DenyUserIDs, userID)
-	if err := i.repo.Upsert(ctx, userID, r); err != nil {
+	// Исключения хранятся отсортированными: порядок id не должен делать то же
+	// правило «изменённым».
+	r.AllowUserIDs = sortedCopy(r.AllowUserIDs)
+	r.DenyUserIDs = sortedCopy(r.DenyUserIDs)
+	changed, err := i.repo.Upsert(ctx, userID, r)
+	if err != nil {
 		return domain.PrivacyRuleRecord{}, err
 	}
+	// Правило не изменилось — другим устройствам и собеседникам сообщать нечего:
+	// повторное сохранение того же не должно раздувать журналы партнёров.
+	if !changed {
+		return r, nil
+	}
+	// Мутация закоммичена: журнал и пересчёт не должен оборвать закрытый клиентом
+	// запрос.
+	ctx, cancel := detached(ctx, syncTimeout)
+	defer cancel()
+	err = i.emit.EmitSnapshot(ctx, userID, "privacy_update", func(ctx context.Context) (map[string]any, error) {
+		cur, err := i.repo.Get(ctx, userID, r.Key)
+		if errors.Is(err, domain.ErrNotFound) {
+			cur, err = domain.DefaultPrivacyRule(r.Key), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		u, ok := domain.NewUpdatePrivacy(cur)
+		if !ok {
+			return nil, ErrBadRule
+		}
+		return bodyOf(u)
+	})
+	if err != nil {
+		log.Printf("ownsync: privacy_update user=%d key=%s: %v", userID, r.Key, err)
+	}
+	i.recomputeForPeers(ctx, userID, r.Key)
 	return r, nil
+}
+
+// Срок записи в журнал после коммита — секунды. У полного пересчёта у тысяч
+// партнёров общего срока нет: дедлайн стоит на каждую пачку получателей внутри
+// AnnounceUser/Reannounce, иначе проход обрывался бы на хвосте.
+const syncTimeout = 15 * time.Second
+
+// detached — контекст, переживающий отмену запроса: мутация уже закоммичена, и
+// закрытая клиентом вкладка не должна лишать второе устройство строки журнала.
+func detached(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), d)
+}
+
+// recomputeForPeers — пересчёт у собеседников после смены правила: «был(а)»
+// живёт в статусе присутствия, фото — в карточке user. Остальные ключи
+// собеседники узнают при следующей загрузке профиля.
+func (i *Interactor) recomputeForPeers(ctx context.Context, userID int64, key domain.PrivacyKey) {
+	var run func(context.Context) error
+	switch {
+	case key == domain.PrivacyLastSeen && i.reannouncer != nil:
+		run = func(ctx context.Context) error { return i.reannouncer.Reannounce(ctx, userID) }
+	case key == domain.PrivacyProfilePhoto && i.announcer != nil:
+		run = func(ctx context.Context) error { return i.announcer.AnnounceUser(ctx, userID) }
+	default:
+		return
+	}
+	fk := flightKey{userID, key}
+	i.flightsMu.Lock()
+	if f, ok := i.flights[fk]; ok {
+		f.dirty = true // идущий проход повторится сам и увидит новое правило
+		i.flightsMu.Unlock()
+		return
+	}
+	f := &flight{}
+	i.flights[fk] = f
+	i.flightsMu.Unlock()
+
+	ctx = context.WithoutCancel(ctx)
+	i.async(func() {
+		for {
+			if err := run(ctx); err != nil {
+				log.Printf("privacy: recompute %s user=%d: %v", key, userID, err)
+			}
+			i.flightsMu.Lock()
+			if !f.dirty {
+				delete(i.flights, fk)
+				i.flightsMu.Unlock()
+				return
+			}
+			f.dirty = false
+			i.flightsMu.Unlock()
+		}
+	})
+}
+
+// bodyOf — тело строки журнала из конструктора домена (ownsync принимает карту
+// с дискриминатором `_`).
+func bodyOf(v any) (map[string]any, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	return m, json.Unmarshal(raw, &m)
+}
+
+func sortedCopy(ids []int64) []int64 {
+	if ids == nil {
+		return nil
+	}
+	out := slices.Clone(ids)
+	slices.Sort(out)
+	return out
 }
 
 func dropID(ids []int64, id int64) []int64 {
@@ -167,18 +340,83 @@ func (i *Interactor) VisibleMaps(ctx context.Context, viewerID int64, ownerIDs [
 	return i.repo.VisibleMaps(ctx, viewerID, ownerIDs, keys...)
 }
 
-// Block добавляет пользователя в чёрный список.
+// Block добавляет пользователя в чёрный список. Своим устройствам уходит
+// updatePeerBlocked; заблокированному — не он, а пересчитанные карточка (фото
+// закрыто) и статус («недавно»): ему пересылают вид, а не факт блока. Пересчёт
+// адресный, одному человеку: вид меняется только для него. Повторный блок
+// ничего не меняет — ни строки, ни пересчёта.
 func (i *Interactor) Block(ctx context.Context, userID, targetID int64) error {
 	if userID == targetID {
 		return ErrSelfBlock
 	}
-	return i.repo.Block(ctx, userID, targetID)
+	changed, err := i.repo.Block(ctx, userID, targetID)
+	if err != nil {
+		return err
+	}
+	if changed {
+		i.afterBlockChange(ctx, userID, targetID)
+	}
+	return nil
 }
 
 // Unblock убирает пользователя из чёрного списка.
 func (i *Interactor) Unblock(ctx context.Context, userID, targetID int64) error {
-	_, err := i.repo.Unblock(ctx, userID, targetID)
-	return err
+	changed, err := i.repo.Unblock(ctx, userID, targetID)
+	if err != nil {
+		return err
+	}
+	if changed {
+		i.afterBlockChange(ctx, userID, targetID)
+	}
+	return nil
+}
+
+// afterBlockChange — следствия закоммиченной смены блокировки: строка журнала
+// себе и пересчёт вида у заблокированного. Сбои пишутся в лог.
+//
+// Тело строки — СОСТОЯНИЕ пары (блокирован ли сейчас), а не сигнал: его
+// перечитывают под замком журнала (EmitSnapshot). Иначе два устройства, почти
+// одновременно блокирующие и разблокирующие, записали бы строки в порядке,
+// обратном коммитам, и оба показывали бы устаревшее состояние до перезагрузки.
+func (i *Interactor) afterBlockChange(ctx context.Context, userID, targetID int64) {
+	ctx, cancel := detached(ctx, syncTimeout)
+	defer cancel()
+	err := i.emit.EmitSnapshot(ctx, userID, "peer_blocked", func(ctx context.Context) (map[string]any, error) {
+		blocked, err := i.repo.IsBlocked(ctx, userID, targetID)
+		if err != nil {
+			return nil, err
+		}
+		return bodyOf(domain.NewUpdatePeerBlocked(domain.NewPeerUser(targetID), blocked))
+	})
+	if err != nil {
+		log.Printf("ownsync: peer_blocked user=%d target=%d: %v", userID, targetID, err)
+	}
+	viewers := []int64{targetID}
+	if i.announcer != nil {
+		if err := i.announcer.AnnounceUserTo(ctx, userID, viewers); err != nil {
+			log.Printf("privacy: announce user=%d to=%d: %v", userID, targetID, err)
+		}
+	}
+	if i.reannouncer != nil {
+		if err := i.reannouncer.ReannounceTo(ctx, userID, viewers); err != nil {
+			log.Printf("privacy: reannounce user=%d to=%d: %v", userID, targetID, err)
+		}
+	}
+}
+
+// BlockedBy — какие из ownerIDs заблокировали viewerID (батч). Нужен витринам,
+// чтобы отличить скрытое блоком время захода («давно») от скрытого правилом
+// («недавно»).
+func (i *Interactor) BlockedBy(ctx context.Context, viewerID int64, ownerIDs []int64) (map[int64]bool, error) {
+	if len(ownerIDs) == 0 {
+		return map[int64]bool{}, nil
+	}
+	return i.repo.BlockedBy(ctx, viewerID, ownerIDs)
+}
+
+// HasBlocked — заблокировал ли owner пользователя viewer.
+func (i *Interactor) HasBlocked(ctx context.Context, ownerID, viewerID int64) (bool, error) {
+	return i.repo.IsBlocked(ctx, ownerID, viewerID)
 }
 
 // Blocked возвращает страницу чёрного списка и общее число записей.
@@ -261,8 +499,13 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	// его книги, contact/mutual_contact), как в любом другом ответе с этим
 	// пользователем. Телефон — по правилу приватности, а не по снятому с пира
 	// phone_visibility: механизм на этот вопрос один.
+	lastSeenVisible := check(domain.PrivacyLastSeen)
+	hiddenByBlock := false
+	if !lastSeenVisible {
+		hiddenByBlock, _ = i.repo.IsBlocked(ctx, targetID, viewerID)
+	}
 	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID},
-		i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto)).SeenBy(card.ContactView)
+		i.status(ctx, u, lastSeenVisible, hiddenByBlock), check(domain.PrivacyProfilePhoto)).SeenBy(card.ContactView)
 	if check(domain.PrivacyPhoneNumber) {
 		brief.Phone = u.Phone
 	}
@@ -297,6 +540,19 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 		rules.Phone = maps[domain.PrivacyPhoneNumber]
 		rules.LastSeen = maps[domain.PrivacyLastSeen]
 	}
+	// Скрытое время захода: блок («давно») или правило («недавно») — спрашиваем,
+	// только если есть кому скрывать, и одним запросом.
+	var hidden []int64
+	for _, id := range ids {
+		if id != viewerID && !rules.LastSeen[id] {
+			hidden = append(hidden, id)
+		}
+	}
+	if len(hidden) > 0 {
+		if blocked, err := i.repo.BlockedBy(ctx, viewerID, hidden); err == nil {
+			rules.Blocked = blocked
+		}
+	}
 	// Присутствие не подключено — о статусе ничего не известно: это
 	// userStatusEmpty, а не «офлайн с нулевым временем».
 	rules.Status = func(int64) domain.UserStatus { return domain.NewUserStatusEmpty() }
@@ -328,12 +584,12 @@ func (i *Interactor) SetPresence(p PresenceSnapshot) { i.presence = p }
 // точного времени НЕТ ВОВСЕ: это userStatusRecently, то есть сама приватность
 // выражена ВЫБОРОМ КОНСТРУКТОРА, а не отдельным флагом last_seen_visible
 // рядом с обнулённым временем.
-func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible bool) domain.UserStatus {
+func (i *Interactor) status(ctx context.Context, u domain.UserRecord, lastSeenVisible, hiddenByBlock bool) domain.UserStatus {
 	if u.Deleted {
 		return domain.NewUserStatusEmpty()
 	}
 	if !lastSeenVisible {
-		return domain.NewUserStatusRecently(false)
+		return domain.HiddenUserStatus(hiddenByBlock)
 	}
 	if i.presence == nil {
 		return domain.NewUserStatusEmpty()

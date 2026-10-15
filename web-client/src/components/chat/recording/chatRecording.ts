@@ -22,9 +22,7 @@
 //  3. Без предмета: эфемерный режим (`verifyEphemeralCommand`, `pinnedEphemeralSendingParams`);
 //     запрет голосовых в приватности собеседника заранее (`userFull.voice_messages_forbidden`
 //     → тост `Chat.SendVoice.PrivacyError`) — признака у клиента нет, запрет проверяет сервер
-//     (`ErrPrivacy`, Б-135); `inputState`/`onRecording` — их читателей у нас нет. Плата за
-//     сообщение (`prepareStarsForPayment(1)`) только подтверждается: `confirmedPaymentResult`
-//     в пакет некуда положить (шапка `core/managers/messages/sendingParams.ts`).
+//     (`ErrPrivacy`, Б-135); `inputState`/`onRecording` — их читателей у нас нет.
 //  4. Право — `send_media` (расхождение 5 шапки `input.ts`): отдельного `send_voices` у нас нет.
 //  5. Тип записи читается из `appSettings.recordingMediaType` (лист таблицы
 //     `stores/appSettings.solid.ts`), а не из `chat.appSettings`: у нашего `Chat` поля нет.
@@ -344,11 +342,13 @@ export default class ChatRecording {
   }) {
     // Пакет снимается ДО `onMessageSent` (тот сбрасывает `scheduleDate`): отложенная
     // запись — тот же `sendFile` с `scheduleDate` пакета (tweb :216-248, :293-326).
-    const sendingParams: MessageSendingParams = this.input.getMessageSendingParams()
+    const baseParams: MessageSendingParams = this.input.getMessageSendingParams()
     const { peerId } = this.input.chat
 
-    // tweb :223-228, :299-303 (расхождение 3)
-    if(await this.input.paidMessageInterceptor.prepareStarsForPayment(1) === PAYMENT_REJECTED) return
+    // tweb :223-228, :299-303 (расхождение 3): цена одного сообщения уезжает пакетом
+    const preparedPaymentResult = await this.input.paidMessageInterceptor.prepareStarsForPayment(1)
+    if(preparedPaymentResult === PAYMENT_REJECTED) return
+    const sendingParams: MessageSendingParams = { ...baseParams, confirmedPaymentResult: preparedPaymentResult }
 
     this.input.onMessageSent(false, true)
 

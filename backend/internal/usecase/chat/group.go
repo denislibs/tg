@@ -24,7 +24,7 @@ func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r d
 	if i.groups == nil {
 		return domain.ErrForbidden // no group repo (e.g. private chat) ⇒ no admin rights
 	}
-	m, err := i.groups.GetMember(ctx, chatID, userID)
+	m, err := i.memberOrCreator(ctx, chatID, userID)
 	if err != nil {
 		return domain.ErrForbidden // not a member ⇒ forbidden
 	}
@@ -189,14 +189,21 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil || !joined {
 		return err
 	}
-	i.announceChannelJoin(ctx, chatID, userID)
-	_ = i.groups.SetJoinInfo(ctx, chatID, userID, actorID, false)
-	targetID := userID
-	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
+	i.afterMemberAdded(ctx, chatID, actorID, userID)
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
 	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{next: i.participantNow(ctx, chatID, userID)})
 	return nil
+}
+
+// afterMemberAdded — хвост добавления участника другим (после коммита строки):
+// подписка сокетов на канал, кто позвал, служебка «добавил(а)». Снимок чата и
+// кадр участника шлёт вызывающий: у AddMember кадр участника «не было → роль», у
+// PromoteAdmin — «не было → админ», один на оба действия сразу.
+func (i *Interactor) afterMemberAdded(ctx context.Context, chatID, actorID, userID int64) {
+	i.announceChannelJoin(ctx, chatID, userID)
+	_ = i.groups.SetJoinInfo(ctx, chatID, userID, actorID, false)
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{userID}))
 }
 
 // RemoveMember kicks userID (needs BAN_USERS) or self-leave (actor == userID).
@@ -294,6 +301,13 @@ func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID i
 // самого актора (кроме владельца) — у Telegram RIGHT_FORBIDDEN. Назначивший
 // запоминается: править этого админа дальше сможет он и владелец.
 //
+// Цель может быть и не участником: tweb зовёт editAdmin для отсутствующего
+// человека без приглашения (appChatsManager.ts:856-880; бот админом —
+// addBotToChat.ts:41-58, :117-135), других вызовов у клиента нет. Такая цель
+// сперва вступает так же, как приглашённая (admit: приватность приглашений —
+// ErrPrivacy, бана — только актор с ban_users), вступление и права — одна
+// транзакция, служебка «добавил(а)» и один кадр участника «не было → админ».
+//
 // rank — подпись (Б-117); nil — не менять: клиент без поля (сборка до Ф-3б из
 // кэша сервис-воркера) иначе стирал бы подпись при любой правке прав.
 // Владелец правит только СВОЮ подпись: роль и права у него неизменны (tweb
@@ -302,7 +316,7 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if actorID == userID {
 		return i.setOwnRank(ctx, chatID, actorID, rank)
 	}
-	actor, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, true)
+	actor, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, false)
 	if err != nil {
 		return err
 	}
@@ -314,9 +328,36 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if target.Role == domain.RoleAdmin && target.PromotedBy != 0 {
 		promotedBy = target.PromotedBy // правка прав не переназначает админа
 	}
+	if target.Role == "" {
+		// Не участник — это ввод в чат: право звать и существование человека
+		// проверяются так же, как у AddMember (без второго — нарушение внешнего
+		// ключа и 500).
+		if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermAddMembers, domain.RightInviteUsers); err != nil {
+			return err
+		}
+		if us, e := i.groups.UsersByIDs(ctx, 0, []int64{userID}); e != nil {
+			return e
+		} else if len(us) == 0 {
+			return domain.ErrNotFound
+		}
+	}
 	prev := i.participantNow(ctx, chatID, userID)
-	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights, promotedBy); err != nil {
+	joined := false
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if target.Role == "" {
+			j, e := i.admit(ctx, chatID, userID, actorID, admitAdded)
+			if e != nil {
+				return e
+			}
+			joined = j
+		}
+		return i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights, promotedBy)
+	})
+	if err != nil {
 		return err
+	}
+	if joined {
+		i.afterMemberAdded(ctx, chatID, actorID, userID)
 	}
 	// Повышение снимает личные ограничения, как у Telegram: иначе после
 	// разжалования прежнее ограничение «воскресло» бы (ревью #404 п. 11).
@@ -329,7 +370,7 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 			return err
 		}
 	}
-	i.publishChatUpdate(ctx, chatID) // состав админов изменился
+	i.publishChatUpdate(ctx, chatID) // состав админов (и участников) изменился
 	i.afterRightsChange(ctx, chatID, actorID, userID, prev)
 	return nil
 }
@@ -390,21 +431,37 @@ func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID in
 	return nil
 }
 
-func (i *Interactor) EditInfo(ctx context.Context, chatID, actorID int64, title, about, username string) error {
+// EditTitle — channels.editTitle / messages.editChatTitle (tweb
+// appChatsManager.ts:922-937): только название, право change_info. Смена
+// названия — служебное сообщение (messageActionChatEditTitle); его fan-out
+// заодно обновляет диалог у всех участников live. То же название —
+// ни служебки, ни рассылки.
+func (i *Interactor) EditTitle(ctx context.Context, chatID, actorID int64, title string) error {
 	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	old, _ := i.groups.Card(ctx, chatID, actorID)
-	if err := i.groups.EditInfo(ctx, chatID, title, about, username); err != nil {
+	changed, err := i.groups.EditTitle(ctx, chatID, title)
+	if err != nil || !changed {
 		return err
 	}
-	// Смена названия — сервисное сообщение (tweb messageActionChatEditTitle); его
-	// fan-out заодно обновляет диалог у всех участников live.
-	if old.Title != "" && old.Title != title {
-		// Новое название — параметр конструктора: прежде его не ехало вовсе.
-		i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatEditTitle(title))
+	// Новое название — параметр конструктора: прежде его не ехало вовсе.
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatEditTitle(title))
+	i.publishChatUpdate(ctx, chatID)
+	return nil
+}
+
+// EditAbout — messages.editChatAbout (tweb appChatsManager.ts:939-950): только
+// описание, право change_info; служебки у него нет. Публичное имя меняет один
+// SetChatType (channels.updateUsername — право change_type у владельца).
+func (i *Interactor) EditAbout(ctx context.Context, chatID, actorID int64, about string) error {
+	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
+		return err
 	}
-	i.publishChatUpdate(ctx, chatID) // title/about/username изменились
+	changed, err := i.groups.EditAbout(ctx, chatID, about)
+	if err != nil || !changed {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
 	return nil
 }
 

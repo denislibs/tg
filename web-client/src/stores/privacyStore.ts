@@ -4,7 +4,8 @@
 // Счётчика чёрного списка здесь нет: хаб читает первую страницу сам и
 // перечитывает её на `peer_block` (tweb `privacyAndSecurity.tsx:320-337`).
 import { create } from 'zustand'
-import type { PrivacyKey, PrivacyRule, PrivacyValue } from '../core/managers/privacyManager'
+import { fromPrivacyRules, privacyKeyOfTag, type PrivacyKey, type PrivacyRule, type PrivacyValue } from '../core/managers/privacyManager'
+import type { PrivacyEvt } from '../core/realtime/events'
 
 // Дефолты зеркалят бэкенд (domain.DefaultPrivacyValue): номер и день рождения —
 // контактам, остальное — всем.
@@ -42,6 +43,16 @@ export const usePrivacyStore = create<PrivacyState>((set) => ({
   // оптимистичное обновление из экрана правила
   setRule: (rule) => set((st) => ({ rules: { ...st.rules, [rule.key]: rule } })),
 }))
+
+/**
+ * Событие `privacy_update` (tweb `appPrivacyManager` :12-19, `rootScope.ts:166`):
+ * правило одного ключа сменилось — кладём в кэш. Ключ приходит конструктором
+ * схемы; незнакомый конструктор стор не трогает.
+ */
+export function applyPrivacyUpdate(u: PrivacyEvt): void {
+  const key = privacyKeyOfTag(u.key._)
+  if (key) usePrivacyStore.getState().setRule(fromPrivacyRules(key, u.rules))
+}
 
 export async function loadPrivacy(managers: {
   privacy: { rules(): Promise<PrivacyRule[]> }

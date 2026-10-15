@@ -149,6 +149,17 @@ func updateCases() []struct {
 			NewChannelParticipantBanned(9, 7, 0, AllMemberPerms, time.Time{}, true), nil, nil)},
 		{"заявки", NewUpdatePendingJoinRequests(NewPeerChannel(5), 2, []int64{9, 10})},
 		{"заявок нет", NewUpdatePendingJoinRequests(NewPeerChannel(5), 0, nil)},
+		{"заблокировали", NewUpdatePeerBlocked(NewPeerUser(9), true)},
+		{"разблокировали", NewUpdatePeerBlocked(NewPeerUser(9), false)},
+		{"правило приватности", func() any {
+			u, _ := NewUpdatePrivacy(PrivacyRuleRecord{Key: PrivacyLastSeen, Value: PrivacyContacts,
+				AllowUserIDs: []int64{9}, DenyUserIDs: []int64{10}})
+			return u
+		}()},
+		{"правило приватности, наш ключ", func() any {
+			u, _ := NewUpdatePrivacy(PrivacyRuleRecord{Key: PrivacyReadTime, Value: PrivacyNobody})
+			return u
+		}()},
 		{"теги «Избранного»", NewUpdateSavedReactionTags()},
 	}
 }
@@ -264,6 +275,8 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		SendMessageUploadPhotoActionTag,
 		SendMessageUploadVideoActionTag,
 		SendMessageUploadAudioActionTag,
+		UpdatePeerBlockedTag,
+		UpdatePrivacyTag,
 	}
 
 	covered := map[string]bool{}

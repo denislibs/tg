@@ -71,13 +71,18 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
  * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
  */
-export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onContactToggle }: {
+export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum, onContactToggle, onSelfUser }: {
   rest: Pick<RestClient, 'get'>
   onPeerOps?: (ops: PeerOp[]) => void
   onUserStatus?: (evt: PresenceEvt) => void
   /** tweb `chat_toggle_forum` (`appChatsManager.ts:268`, `:304-306`): у
    *  известной карточки чата сменился `pFlags.forum`. Слушает хранилище тем. */
   onChatToggleForum?: (peerId: PeerId, enabled: boolean) => void
+  /** Своя карточка пришла кадром `user_update` (другое устройство сменило
+   *  эмодзи-статус, включило Premium). Приёмник — `me` воркера: tweb держит
+   *  себя в том же кэше `users`, а у нас `me` живёт отдельно, и карточки «я» в
+   *  кэше пиров может не быть вовсе. */
+  onSelfUser?: (user: UserReal) => void
   /** tweb `onContactUpdated(userId, newContact, wasContact)` (`appUsersManager.ts:
    *  738-754`): у карточки сменился `pFlags.contact`. Владелец книги двигает
    *  индекс и объявляет `contacts_update`. */
@@ -355,6 +360,10 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    */
   function applyUserUpdate(user: UserReal): void {
     if (!user) return
+    // Своя карточка идёт в `me` воркера: tweb держит себя в том же кэше `users`
+    // (`saveApiUser` :663-782, `checkPremium` :793-800 сверяет признак Premium
+    // именно у неё), а у нас `me` живёт отдельно.
+    if (user.pFlags?.self) onSelfUser?.(user)
     const key = peerKey(user)
     const known = cache.has(key)
     const saved = save([user])

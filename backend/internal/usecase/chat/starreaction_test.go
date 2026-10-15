@@ -102,9 +102,9 @@ func TestStarReaction_ChargesCreditsAndAccumulates(t *testing.T) {
 	ctx := context.Background()
 	chatID, msgID := seedStarReactionMsg(t, in)
 
-	// Без звёзд — ErrPaidRequired.
-	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false); err != domain.ErrPaidRequired {
-		t.Fatalf("star react without stars = %v; want ErrPaidRequired", err)
+	// Без звёзд — ErrBalanceTooLow.
+	if _, _, _, err := in.SendStarReaction(ctx, chatID, msgID, 2, 10, false); err != domain.ErrBalanceTooLow {
+		t.Fatalf("star react without stars = %v; want ErrBalanceTooLow", err)
 	}
 
 	// Пополняем 50 и жмём 10: -10 у отправителя(2), +10 автору(1), агрегат 10.

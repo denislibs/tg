@@ -343,20 +343,25 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 	return id, nil
 }
 
-func (r *fakeGroupRepo) AddMember(_ context.Context, chatID, userID int64, role string, rights domain.Rights) error {
+func (r *fakeGroupRepo) AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error {
+	_, err := r.InsertMember(ctx, chatID, userID, role, rights)
+	return err
+}
+
+func (r *fakeGroupRepo) InsertMember(_ context.Context, chatID, userID int64, role string, rights domain.Rights) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.members[chatID] == nil {
 		r.members[chatID] = map[int64]domain.Member{}
 	}
 	if _, ok := r.members[chatID][userID]; ok {
-		return nil // ON CONFLICT DO NOTHING
+		return false, nil // ON CONFLICT DO NOTHING
 	}
 	r.members[chatID][userID] = domain.Member{ChatID: chatID, UserID: userID, Role: role, Rights: rights}
 	c := r.cards[chatID]
 	c.MemberCount++
 	r.cards[chatID] = c
-	return nil
+	return true, nil
 }
 
 func (r *fakeGroupRepo) RemoveMember(_ context.Context, chatID, userID int64) error {
@@ -553,18 +558,30 @@ func (r *fakeGroupRepo) Cards(ctx context.Context, viewerID int64, ids []int64) 
 	return out, nil
 }
 
-func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, username string) error {
+func (r *fakeGroupRepo) EditTitle(_ context.Context, chatID int64, title string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.cards[chatID]
 	if !ok {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
+	changed := c.Title != title
 	c.Title = title
-	c.About = about
-	c.Username = username
 	r.cards[chatID] = c
-	return nil
+	return changed, nil
+}
+
+func (r *fakeGroupRepo) EditAbout(_ context.Context, chatID int64, about string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return false, domain.ErrNotFound
+	}
+	changed := c.About != about
+	c.About = about
+	r.cards[chatID] = c
+	return changed, nil
 }
 
 func (r *fakeGroupRepo) SetPhoto(_ context.Context, chatID, mediaID int64) error {

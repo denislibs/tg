@@ -42,6 +42,7 @@ import type { Managers } from '@/client/bootstrap'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 import type { SendMessageAction } from '@core/realtime/events'
 import { ChatType } from '@components/chat/chatType'
+import { PAYMENT_REJECTED, type PreparedPaymentResult } from '@components/chat/paidMessagesInterceptor'
 
 /** tweb `newMedia.tsx` `WillAttachType` в объёме выбора файлов, вставки и сброса. */
 export type WillAttachType = 'media' | 'document'
@@ -74,6 +75,8 @@ export interface NewMediaChat {
     onHelperCancel(): void
     /** tweb `input.ts:4493-4497` — снимает разовые флаги пакета (время, повтор, без звука) */
     resetSendingFlags(): void
+    /** tweb `newMedia.tsx:1033` — согласие на плату за все сообщения выборки */
+    paidMessageInterceptor: { prepareStarsForPayment(messageCount: number): Promise<PreparedPaymentResult> }
   }
 }
 
@@ -169,12 +172,12 @@ function send(
   files: File[],
   caption: string,
   asFile: boolean,
+  payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
-  force = false,
 ) {
   try {
-    performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
+    performSend(chat, files, caption, asFile, payment, paidPrice, spoilers)
   } finally {
     chat.input.resetSendingFlags()
   }
@@ -186,19 +189,14 @@ function performSend(
   files: File[],
   caption: string,
   asFile: boolean,
+  payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
-  force = false,
 ) {
-  // tweb :1013-1018 — в ленте отложенных сперва время; оно ляжет в пакет
-  // (`scheduleDate`), и вся выборка уйдёт в очередь отложенных
-  if(chat.type === ChatType.Scheduled && !force) {
-    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, paidPrice, spoilers, true))
-    return
-  }
-
-  // tweb :1022 — пакет один на всю выборку
-  const sendingParams = chat.input.getMessageSendingParams()
+  // tweb :1022 — пакет один на всю выборку; согласие на плату (`payment`) спросил попап
+  // ДО закрытия (`NewMediaPopupHost.onSend`), цена одного сообщения уезжает пакетом
+  // `confirmedPaymentResult` в каждый кадр
+  const sendingParams: MessageSendingParams = { ...chat.input.getMessageSendingParams(), confirmedPaymentResult: payment }
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).
   const asAlbum = !asFile &&
     files.length > 1 &&
@@ -265,8 +263,26 @@ function NewMediaPopupHost(props: {
     initialAsFile: props.willAttachType === 'document',
     onClose: props.destroy,
     onSend: (caption: string, asFile: boolean, paidPrice?: number | null, spoilers?: boolean[]) => {
-      props.destroy()
-      send(props.chat, filesRef.current, caption, asFile, paidPrice, spoilers)
+      // tweb :1032-1036 — согласие на плату за все сообщения выборки; отказ оставляет попап
+      // открытым (`return` до `context.hide()`, :1112): выборка и подпись не теряются
+      const files = filesRef.current
+      const ask = () => props.chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length).then((payment) => {
+        if(payment === PAYMENT_REJECTED) {
+          // tweb `send` снимает разовые флаги в `finally` и при отказе оплаты (:902-908): выбранное
+          // календарём время не должно достаться следующему сообщению (опросу, голосовому)
+          props.chat.input.resetSendingFlags()
+          return
+        }
+        props.destroy()
+        send(props.chat, files, caption, asFile, payment, paidPrice, spoilers)
+      })
+      // tweb :1013-1018 — в ленте отложенных сперва время (попап открыт: отмена календаря
+      // выборку не теряет); оно ляжет в пакет (`scheduleDate`), затем согласие и закрытие
+      if(props.chat.type === ChatType.Scheduled) {
+        void props.chat.input.scheduleSending(() => { void ask() })
+        return
+      }
+      void ask()
     },
   })
 }

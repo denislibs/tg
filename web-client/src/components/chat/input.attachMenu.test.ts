@@ -13,6 +13,7 @@ import type { MyMessage } from '@core/models'
 import { filterButtonMenuItems } from '@components/buttonMenuToggle'
 import type { ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
 import { ChatType } from './chatType'
+import { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 
 const newMedia = vi.hoisted(() => ({
   show: vi.fn(),
@@ -218,13 +219,32 @@ describe('ChatInput: меню вложений', () => {
     expect(openCreatePollPopup).toHaveBeenCalledTimes(1)
 
     const payload = { question: 'Вопрос?', options: ['да', 'нет'], anonymous: true, multiple: false, quiz: false }
-    openCreatePollPopup.mock.calls[0][0].onSubmit(payload)
+    await openCreatePollPopup.mock.calls[0][0].onSubmit(payload)
     expect(managers.messages.sendPoll).toHaveBeenCalledTimes(1)
     expect(managers.messages.sendPoll.mock.calls[0]).toEqual([GROUP, expect.objectContaining({
       ...payload,
       clientMsgId: expect.any(String),
       replyToMsgId: null,
     })])
+  })
+
+  // Ф7-Г (MC-06), tweb input.ts:1247-1251: опрос в платный чат сперва спрашивает
+  // согласие на плату, цена одного сообщения уезжает пакетом; отказ — опроса нет.
+  it('опрос в платный чат: согласие уезжает пакетом confirmedPaymentResult, отказ не отправляет', async() => {
+    mounted = await mountInput(GROUP)
+    const { input, managers } = mounted
+    const prepare = vi.spyOn(input.paidMessageInterceptor, 'prepareStarsForPayment')
+    await Promise.resolve(itemByText(input, 'Poll').onClick!(new MouseEvent('click')))
+    const payload = { question: 'Вопрос?', options: ['да', 'нет'], anonymous: true, multiple: false, quiz: false }
+
+    prepare.mockResolvedValueOnce({ starsAmount: 5, canUndo: false })
+    await openCreatePollPopup.mock.calls[0][0].onSubmit(payload)
+    expect(prepare).toHaveBeenCalledWith(1)
+    expect((managers.messages.sendPoll.mock.calls[0] as unknown[])[1]).toMatchObject({ confirmedPaymentResult: { starsAmount: 5, canUndo: false } })
+
+    prepare.mockResolvedValueOnce(PAYMENT_REJECTED)
+    await openCreatePollPopup.mock.calls[0][0].onSubmit(payload)
+    expect(managers.messages.sendPoll).toHaveBeenCalledTimes(1)
   })
 
   it('чек-лист открывает попап для чата', async() => {

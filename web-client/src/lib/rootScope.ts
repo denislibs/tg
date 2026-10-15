@@ -19,6 +19,7 @@ import type {
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt, SavedReactionTagsEvt,
   ViewsUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
+  PrivacyEvt,
   ReadDiscussionEvt,
 } from '@core/realtime/events'
 import type { Dialog, MyMessage } from '@core/models'
@@ -260,6 +261,13 @@ export type BroadcastEvents = {
   'scheduled_new': [MyMessage]
   'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
 
+  // tweb rootScope.ts — запрос на повторную оплату платного сообщения (имя оригинала
+  // с опечаткой): отправка отвергнута `ALLOW_PAYMENT_REQUIRED_<N>`, сумма согласия
+  // меньше цены. Шлёт воркер (`messages/repayRequestHandler.ts`), слушает перехватчик
+  // чата (`chat/priceChangedInterceptor`); `fulfill_repaid_message` — запрос закрыт.
+  'insufficent_stars_for_message': [{ requestId: number; messageCount: number; peerId: PeerId; /** цена одного сообщения из отказа сервера */ starsAmount: number }]
+  'fulfill_repaid_message': [{ requestId: number }]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
@@ -302,6 +310,12 @@ export type BroadcastEvents = {
   // Подписчики — плашка закрепа (`chat/pinnedMessage.solid.tsx`), лента экрана закрепов.
   'peer_pinned_messages': [{ peerId: PeerId; threadId?: number; mids?: number[]; pinned?: boolean; unpinAll?: true }]
   'peer_pinned_hidden': [{ peerId: PeerId; threadId?: number; maxId: number }]
+  // Наше транспортное событие (в tweb воркера нет, `resetPinnedMessagesCache` зовётся
+  // из `handleDeletedMessages` прямо, appMessagesManager.ts:14078-14080): воркер удалил
+  // сообщение(я). `mids` — клиентские номера всех удалённых, `pinned` — те из них, что
+  // воркер знает закреплёнными. Шлётся на каждое удаление; подписчик
+  // (`client/realtime/refetchSubscriber.ts`) решает по кэшу закрепов вкладки.
+  'peer_pinned_deleted': [{ peerId: PeerId; mids: number[]; pinned: number[] }]
 
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).
@@ -330,6 +344,11 @@ export type BroadcastEvents = {
   // (`notifyManager.updateNotifySettings`). Пер-чатные идут `rt:dialog_op`.
   // Подписчики — `notifyStore` (проектор) и вкладка «Уведомления и звуки».
   'notify_settings': [NotifyTypeUpdate]
+  // tweb rootScope.ts:166 `privacy_update` (`Update.updatePrivacy`): правило одного
+  // ключа сменилось — с другого устройства (журнал `privacy_update`) либо местный
+  // апдейт после своего PUT (`privacyManager.setRule`). Подписчик — проектор
+  // (`stores/privacyStore.ts`).
+  'privacy_update': [PrivacyEvt]
 }
 
 export type BroadcastEventsListeners = {

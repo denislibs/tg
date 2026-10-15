@@ -14,6 +14,7 @@ import (
 //   - цель не владелец (его не трогает никто);
 //   - чужого админа правит только владелец или тот, кто его назначил (tweb
 //     canEditAdmin: creator ∨ promoted_by == я; у Telegram — USER_ADMIN_INVALID);
+//   - актор — участник или вышедший создатель (memberOrCreator);
 //   - requireMember — цель обязана быть участником (иначе domain.ErrNotFound,
 //     у Telegram USER_NOT_PARTICIPANT); бан бывает и не-участнику.
 //
@@ -26,7 +27,7 @@ func (i *Interactor) manageTarget(ctx context.Context, chatID, actorID, targetID
 	if i.groups == nil {
 		return actor, target, domain.ErrForbidden
 	}
-	actor, err = i.groups.GetMember(ctx, chatID, actorID)
+	actor, err = i.memberOrCreator(ctx, chatID, actorID)
 	if err != nil || !domain.HasRight(actor.Role, actor.Rights, need) {
 		return actor, target, domain.ErrForbidden
 	}
@@ -36,6 +37,15 @@ func (i *Interactor) manageTarget(ctx context.Context, chatID, actorID, targetID
 	target, err = i.groups.GetMember(ctx, chatID, targetID)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
+		// Вышедший создатель — всё ещё владелец: его не трогает никто, и вернуть
+		// его в чат чужой ролью (promote/ban) нельзя.
+		cid, e := i.groups.CreatorID(ctx, chatID)
+		if e != nil && !errors.Is(e, domain.ErrNotFound) {
+			return actor, domain.Member{}, e
+		}
+		if e == nil && cid != 0 && cid == targetID {
+			return actor, domain.Member{}, domain.ErrForbidden
+		}
 		if requireMember {
 			return actor, domain.Member{}, domain.ErrNotFound
 		}

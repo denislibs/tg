@@ -448,22 +448,54 @@ func (h *GroupHandler) DemoteAdmin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-func (h *GroupHandler) EditInfo(w http.ResponseWriter, r *http.Request) {
+// EditTitle — PUT /chats/{peerID}/title: channels.editTitle /
+// messages.editChatTitle оригинала (tweb appChatsManager.ts:922-937). Ответ —
+// Updates с карточкой чата глазами зрителя в chats[0] (та же форма, что у Join);
+// служебка о смене названия доезжает кадром WS. Пустое название — 400: отказ
+// tweb здесь не разбирает, имени Telegram не вводим.
+func (h *GroupHandler) EditTitle(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
 	var b struct {
-		Title    string `json:"title"`
-		About    string `json:"about"`
-		Username string `json:"username"`
+		Title string `json:"title"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || strings.TrimSpace(b.Title) == "" {
+		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := h.uc.EditInfo(r.Context(), chatID, user.ID, b.Title, b.About, b.Username); err != nil {
+	if err := h.uc.EditTitle(r.Context(), chatID, user.ID, b.Title); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	c, err := h.uc.ChatCard(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	updates := domain.NewUpdates(nil, nil, time.Now())
+	updates.Chats = []domain.Chat{c.ToChannel()}
+	writeJSON(w, http.StatusOK, updates)
+}
+
+// EditAbout — PUT /chats/{peerID}/about: messages.editChatAbout оригинала
+// (tweb appChatsManager.ts:939-950), ответ Bool.
+func (h *GroupHandler) EditAbout(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	var b struct {
+		About string `json:"about"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.EditAbout(r.Context(), chatID, user.ID, b.About); err != nil {
 		h.mapErr(w, err)
 		return
 	}

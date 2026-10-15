@@ -48,7 +48,7 @@ func TestUsernameNamespace_SharedBetweenUsersAndChats(t *testing.T) {
 	if free, err := groups.UsernameAvailable(ctx, "shared_name", chatID); err != nil || free {
 		t.Fatalf("имя пользователя свободно для чата: free=%v err=%v", free, err)
 	}
-	if err := groups.EditInfo(ctx, chatID, "C", "", "shared_name"); !isUniqueViolation(err) {
-		t.Fatalf("EditInfo отдал чату имя пользователя: err = %v; want unique_violation", err)
+	if err := groups.SetType(ctx, chatID, true, "shared_name"); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("SetType отдал чату имя пользователя: err = %v; want ErrConflict", err)
 	}
 }

@@ -82,14 +82,19 @@ func registerServer(p serverParams) {
 
 	// Конфиденциальность: правила «кто видит/может» + чёрный список. Гейтит
 	// отправку/звонки/приглашения в чате, телефоны контактов и last seen.
-	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(p.Pool))
+	privacyRepo := pgadapter.NewPrivacyRepo(p.Pool)
+	privacyUC := usecaseprivacy.New(privacyRepo)
 	p.ChatUC.SetPrivacy(privacyUC)
 	p.ContactsUC.SetPrivacy(privacyUC)
 	// Кадр user_update несёт конструктор `user`, а в нём photo: без правила
 	// profile_photo аватарка уехала бы мимо приватности.
 	p.AuthUC.SetPrivacy(privacyUC)
 	// …и он же ГЛАЗАМИ ПОЛУЧАТЕЛЯ: имя из его книги и pFlags.contact.
-	p.AuthUC.SetContactViewer(pgadapter.NewPrivacyRepo(p.Pool))
+	p.AuthUC.SetContactViewer(privacyRepo)
+	// Блок пересчитывает карточку одному человеку: «партнёр ли он» — точечным
+	// запросом, а не выборкой всех партнёров.
+	p.AuthUC.SetPartnersAmong(privacyRepo.PartnersAmong)
+	privacyUC.SetAnnouncer(p.AuthUC)
 
 	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
 	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
@@ -248,6 +253,9 @@ func registerServer(p serverParams) {
 		p.AuthUC.SetRevocationNotifier(publisher)
 		presenceMgr = usecasepresence.NewManager(rtredis.NewPresenceStore(p.Redis.Client), publisher, p.ChatUC.ChatPartners, 35*time.Second)
 		presenceMgr.SetPrivacy(privacyUC)
+		presenceMgr.SetPartnersAmong(privacyRepo.PartnersAmong)
+		// Смена правила last_seen и блок пересчитывают статус у собеседников.
+		privacyUC.SetReannouncer(presenceMgr)
 		// user.status полной карточки профиля (GET /users/{id}) — из того же
 		// источника присутствия, что и ручка /presence.
 		privacyUC.SetPresence(presenceMgr)
@@ -365,6 +373,8 @@ func registerServer(p serverParams) {
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
 	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
+	// Блок и правила приватности — в журнал своих устройств (без условия Redis).
+	privacyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Мутации адресной книги — карточка контакта строкой user_update на свои
 	// устройства владельца (журнал без условия Redis, издатель — при наличии).
 	p.ContactsUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))

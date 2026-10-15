@@ -183,6 +183,7 @@ func (i *Interactor) BotSendMedia(ctx context.Context, bot domain.BotAccount, ch
 	return i.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: bot.BotID, Type: msgType,
 		Text: caption, Entities: entities, MediaID: &mediaID, ReplyMarkup: markup,
+		paidConsentNotRequired: true, // у Bot API нет allow_paid_stars
 	})
 }
 

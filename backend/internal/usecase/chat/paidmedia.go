@@ -132,19 +132,13 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 			var authorBal int64
 			var authorCredited bool
 			err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-				b, e := i.stars.AddBalance(ctx, userID, -price)
-				if e == domain.ErrForbidden {
-					return domain.ErrPaidRequired // недостаточно звёзд
-				}
+				// Общий порядок блокировок строк балансов (moveStars).
+				b, ab, e := i.moveStars(ctx, userID, seller, price)
 				if e != nil {
-					return e
+					return e // ErrBalanceTooLow — недостаточно звёзд
 				}
 				bal = b
 				if seller != 0 && seller != userID {
-					ab, e := i.stars.AddBalance(ctx, seller, price)
-					if e != nil {
-						return e
-					}
 					authorBal, authorCredited = ab, true
 				}
 				if _, e := i.paidMedia.Unlock(ctx, offer.OfferID, userID); e != nil {

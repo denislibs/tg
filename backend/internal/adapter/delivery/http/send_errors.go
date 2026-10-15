@@ -26,12 +26,28 @@ func writeSendError(w http.ResponseWriter, err error, notFound string) {
 		writeError(w, http.StatusTooManyRequests, "slowmode")
 	case errors.Is(err, domain.ErrPrivacy):
 		writeError(w, http.StatusForbidden, "privacy")
-	case errors.Is(err, domain.ErrPaidRequired):
-		writeError(w, http.StatusPaymentRequired, "paid_required")
+	case writePaidError(w, err):
 	case errors.Is(err, domain.ErrScheduleTooMuch):
 		// Лимит очереди отложенных чата (Telegram SCHEDULE_TOO_MUCH).
 		writeError(w, http.StatusBadRequest, "SCHEDULE_TOO_MUCH")
 	default:
 		writeError(w, http.StatusInternalServerError, "send failed")
 	}
+}
+
+// writePaidError — отказы платной отправки: нет согласия на плату — 403
+// ALLOW_PAYMENT_REQUIRED_<N> (N — сумма всего запроса, клиент по нему
+// переспрашивает, tweb repayRequestHandler.ts:12), не хватает звёзд — 400
+// BALANCE_TOO_LOW. false — ошибка не из этого семейства.
+func writePaidError(w http.ResponseWriter, err error) bool {
+	var need domain.ErrAllowPaymentRequired
+	switch {
+	case errors.As(err, &need):
+		writeError(w, http.StatusForbidden, need.Error())
+	case errors.Is(err, domain.ErrBalanceTooLow):
+		writeError(w, http.StatusBadRequest, "BALANCE_TOO_LOW")
+	default:
+		return false
+	}
+	return true
 }

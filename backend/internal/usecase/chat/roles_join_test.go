@@ -59,7 +59,7 @@ func TestJoin_ChannelGivesSubscriberWithoutGroupRights(t *testing.T) {
 	if r := roleOf(t, fg, ch, 8); r != domain.RoleSubscriber {
 		t.Fatalf("вступивший в канал по ссылке: роль %q, ждали subscriber", r)
 	}
-	if err := i.EditInfo(ctx, ch, 8, "захват", "", ""); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.EditTitle(ctx, ch, 8, "захват"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("подписчик переименовал канал: %v", err)
 	}
 	// Добавление админом и снятие админа — тоже подписчик.
@@ -80,7 +80,7 @@ func TestJoin_ChannelGivesSubscriberWithoutGroupRights(t *testing.T) {
 	}
 	// Строка 'member' в канале (до миграции 0137) прав группы не даёт.
 	setMember(fg, ch, 10, domain.RoleMember, 0, 0)
-	if err := i.EditInfo(ctx, ch, 10, "захват", "", ""); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.EditTitle(ctx, ch, 10, "захват"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("member в канале переименовал его: %v", err)
 	}
 }
@@ -162,12 +162,17 @@ func TestPromoteDemote_TargetGate(t *testing.T) {
 	if err := i.DemoteAdmin(ctx, g, 7, 10); err != nil {
 		t.Fatalf("владелец не снял админа: %v", err)
 	}
-	// Не участник — ErrNotFound, а не «невидимый админ».
-	if err := i.PromoteAdmin(ctx, g, 7, 99, domain.RightBanUsers, nil); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("повышение не-участника = %v, ждали ErrNotFound", err)
+	// Не участник (MC-12, tweb editAdmin без приглашения): вступает и становится
+	// админом одной строкой — не «невидимым админом» без членства.
+	if err := i.PromoteAdmin(ctx, g, 7, 98, domain.RightBanUsers, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("назначение несуществующего пользователя = %v, ждали ErrNotFound", err)
 	}
-	if _, err := fg.GetMember(ctx, g, 99); err == nil {
-		t.Fatal("не-участник появился в чате")
+	fg.users[99] = domain.UserReal{ID: 99, FirstName: "Гость"}
+	if err := i.PromoteAdmin(ctx, g, 7, 99, domain.RightBanUsers, nil); err != nil {
+		t.Fatalf("назначение не-участника = %v", err)
+	}
+	if m, err := fg.GetMember(ctx, g, 99); err != nil || m.Role != domain.RoleAdmin || m.Rights != domain.RightBanUsers {
+		t.Fatalf("не-участник после назначения: %+v err=%v", m, err)
 	}
 }
 
@@ -225,7 +230,7 @@ func TestJoin_BanHoldsOnEveryPath(t *testing.T) {
 	// (а) комментарий и ответ в тред не возвращают забаненного. Отказ даёт
 	// гейт чтения обсуждения (RequireChannelCommentsRead): забаненному в группе
 	// обсуждения комментарии канала не видны — ErrNotFound, как CHANNEL_PRIVATE.
-	if _, err := i.PostComment(ctx, ch, post.ID, 8, "я вернулся", ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.PostComment(ctx, ch, post.ID, 8, "я вернулся", "", 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("комментарий забаненного = %v, ждали ErrNotFound", err)
 	}
 	if _, err := i.Send(ctx, SendInput{ChatID: gid, SenderID: 8, Text: "я вернулся", ThreadRootID: &root}); !errors.Is(err, domain.ErrNotFound) {
@@ -305,7 +310,7 @@ func TestMemberCan_PersonalRestriction(t *testing.T) {
 	g := newGroupWith(t, i, fg, 8)
 	denied := domain.PermPinMessages | domain.PermChangeInfo | domain.PermAddMembers
 	_ = fg.SetRestriction(ctx, domain.MemberRestriction{ChatID: g, UserID: 8, DeniedRights: denied, RestrictedBy: 7})
-	if err := i.EditInfo(ctx, g, 8, "новое", "", ""); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.EditTitle(ctx, g, 8, "новое"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("ограниченный сменил инфо: %v", err)
 	}
 	if err := i.AddMember(ctx, g, 8, 9); !errors.Is(err, domain.ErrForbidden) {
@@ -316,7 +321,7 @@ func TestMemberCan_PersonalRestriction(t *testing.T) {
 	}
 	past := time.Now().Add(-time.Minute)
 	_ = fg.SetRestriction(ctx, domain.MemberRestriction{ChatID: g, UserID: 8, DeniedRights: denied, UntilDate: &past, RestrictedBy: 7})
-	if err := i.EditInfo(ctx, g, 8, "новое", "", ""); err != nil {
+	if err := i.EditTitle(ctx, g, 8, "новое"); err != nil {
 		t.Fatalf("истёкшее ограничение всё ещё действует: %v", err)
 	}
 }
@@ -542,7 +547,7 @@ func TestRestricted_ReadErrorDenies(t *testing.T) {
 	ctx := context.Background()
 	g := newGroupWith(t, i, fg, 8)
 	i.groups = restrictionErrGroups{fg}
-	if err := i.EditInfo(ctx, g, 8, "новое", "", ""); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.EditTitle(ctx, g, 8, "новое"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("правка инфо при сбое чтения ограничения = %v, ждали ErrForbidden", err)
 	}
 	if err := i.checkSendAllowed(ctx, SendInput{ChatID: g, SenderID: 8, Text: "т"}); !errors.Is(err, domain.ErrForbidden) {

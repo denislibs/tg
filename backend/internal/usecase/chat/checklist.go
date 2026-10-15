@@ -25,6 +25,9 @@ type SendChecklistInput struct {
 	OthersCanAdd     bool
 	OthersCanMark    bool
 	ClientMsgID      string
+	// AllowPaidStars — согласие на плату в платной группе (tweb шлёт чек-лист
+	// как sendMedia с inputMediaTodo и allow_paid_stars), как SendInput.AllowPaidStars.
+	AllowPaidStars int64
 }
 
 // SendChecklist валидирует и отправляет чек-лист: создаёт checklist, затем
@@ -52,23 +55,33 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 	if len(items) == 0 || len(items) > maxChecklistItems {
 		return domain.Message{}, domain.ErrTooLong
 	}
-	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
+	ok, err := i.isMemberOrCreator(ctx, in.ChatID, in.SenderID)
 	if err != nil {
 		return domain.Message{}, err
 	}
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
 	}
-	c, err := i.checklists.Create(ctx, domain.Checklist{
-		ChatID: in.ChatID, Title: title, Items: items,
-		OthersCanAdd: in.OthersCanAdd, OthersCanMark: in.OthersCanMark,
-	})
-	if err != nil {
-		return domain.Message{}, err
+	// Повтор принятой отправки (тот же client_msg_id) строки не создаёт и оплату не
+	// переспрашивает — Send отдаст принятое сообщение. Иначе отказ оплаты — до строки
+	// чек-листа: каждый отказ оставлял бы сироту (гонка роста цены — допустима).
+	var checklistID *int64
+	if !i.sendAlreadyAccepted(ctx, in.ChatID, in.SenderID, in.ClientMsgID, false) {
+		if err := i.precheckPaid(ctx, in.ChatID, in.SenderID, in.AllowPaidStars); err != nil {
+			return domain.Message{}, err
+		}
+		c, err := i.checklists.Create(ctx, domain.Checklist{
+			ChatID: in.ChatID, Title: title, Items: items,
+			OthersCanAdd: in.OthersCanAdd, OthersCanMark: in.OthersCanMark,
+		})
+		if err != nil {
+			return domain.Message{}, err
+		}
+		checklistID = &c.ID
 	}
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "checklist",
-		ClientMsgID: in.ClientMsgID, ChecklistID: &c.ID,
+		ClientMsgID: in.ClientMsgID, ChecklistID: checklistID, AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
 		return domain.Message{}, err

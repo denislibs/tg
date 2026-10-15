@@ -120,10 +120,10 @@ describe('пакет параметров отправки: ни один пут
   // целиком. Список полей здесь — не украшение: пропусти `sendingParamsToWire`
   // одно поле, и путь будет «передавать пакет», а поле молча не уедет (ровно
   // это годами происходило с `effect` — он был в SendArgs и не попадал в кадр).
-  it('пакет разворачивается ровно в десять проводных полей', async () => {
+  it('пакет разворачивается ровно в одиннадцать проводных полей', async () => {
     const { sendingParamsToWire } = await import('./managers/messages/sendingParams')
     expect(Object.keys(sendingParamsToWire({})).sort()).toEqual([
-      'effect', 'replyQuoteOffset', 'replyQuoteText', 'replyToId', 'replyToPeerId',
+      'allowPaidStars', 'effect', 'replyQuoteOffset', 'replyQuoteText', 'replyToId', 'replyToPeerId',
       'scheduleDate', 'scheduleRepeatPeriod', 'sendAsPeerId', 'silent', 'threadRootId',
     ])
   })

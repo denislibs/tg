@@ -37,12 +37,22 @@ const maxBioLen = 70
 // книге, получает имя из книги и pFlags.contact — и в живом кадре, и в строке
 // журнала, которую переиграет getDifference.
 func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
+	i.emitUserCard(ctx, u, true)
+}
+
+// emitUserCard — рассылка карточки; withSelf=false опускает свои устройства
+// (удалённый аккаунт: его сессии отозваны, кадр им не нужен — как в tweb, где
+// удалённый клиент получает AUTH_KEY_UNREGISTERED и выходит).
+func (i *Interactor) emitUserCard(ctx context.Context, u domain.UserRecord, withSelf bool) {
 	if i.pub == nil && i.updates == nil {
 		return
 	}
 	// Recipients: own devices first, then shared-chat peers (dedup not needed —
 	// partners excludes self).
-	recipients := []int64{u.ID}
+	var recipients []int64
+	if withSelf {
+		recipients = append(recipients, u.ID)
+	}
 	if i.partners != nil {
 		partners, err := i.partners(ctx, u.ID)
 		if err != nil {
@@ -50,6 +60,88 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 		}
 		recipients = append(recipients, partners...)
 	}
+	i.sendUserUpdate(ctx, u, recipients)
+}
+
+// announceBatch — сколько получателей обслуживается по одному чтению записи.
+// Пересчёт идёт минуты (O(партнёров) проверок правила и записей журнала), и
+// карточка, прочитанная один раз в начале, к концу устарела бы: правка профиля,
+// вклинившаяся за это время, затёрлась бы у партнёров, до которых цикл дошёл
+// позже, строкой с БОЛЬШИМ pts.
+//
+// Окно гонки сужено до одной пачки, а не закрыто: правка, вклинившаяся внутрь
+// пачки, всё ещё может быть перекрыта строкой с большим pts (тот же класс гонки,
+// что у двух подряд идущих правок профиля в emitUserUpdate). Дедлайн ставится на
+// пачку, а не на весь проход: проход по десяткам тысяч партнёров не должен
+// обрываться в середине, оставляя хвост со старым видом.
+var announceBatch = 200
+
+const announceBatchTimeout = 30 * time.Second
+
+// AnnounceUser пересылает карточку пользователя заново ему самому и всем
+// партнёрам — когда её ВИД поменялся без правки самой записи (правило
+// приватности фото профиля: у каждого получателя карточка собирается по
+// правилу заново). Запись читается свежей на каждой пачке получателей.
+func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
+	var partners []int64
+	if i.partners != nil {
+		var err error
+		if partners, err = i.partners(ctx, userID); err != nil {
+			return err
+		}
+	}
+	for first := true; first || len(partners) > 0; first = false {
+		u, err := i.users.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		n := min(announceBatch, len(partners))
+		recipients := append([]int64(nil), partners[:n]...)
+		if first {
+			recipients = append([]int64{u.ID}, recipients...)
+		}
+		partners = partners[n:]
+		bctx, cancel := context.WithTimeout(ctx, announceBatchTimeout)
+		i.sendUserUpdate(bctx, u, recipients)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AnnounceUserTo — то же, но только названным зрителям и только тем из них, кто
+// партнёр (пересечение viewers ∩ партнёры): блок меняет вид карточки для
+// одного человека, и рассылка O(партнёров) тут лишняя. Не-партнёру карточка не
+// уходит: у него её нет, поправлять нечего, а живой кадр выдал бы момент блока.
+// Сам владелец получает свою строку, как при любой смене профиля.
+func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers []int64) error {
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
+	u, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	recipients := []int64{u.ID}
+	if len(viewers) > 0 && i.partnersIn != nil {
+		partners, err := i.partnersIn(ctx, u.ID, viewers)
+		if err != nil {
+			return err
+		}
+		recipients = append(recipients, partners...)
+	}
+	i.sendUserUpdate(ctx, u, recipients)
+	return nil
+}
+
+// sendUserUpdate кладёт в журнал и рассылает карточку u каждому из recipients
+// (первым идёт сам владелец).
+func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, recipients []int64) {
 	views := map[int64]domain.ContactView{}
 	if i.contacts != nil {
 		v, err := i.contacts.ContactViews(ctx, u.ID, recipients)
@@ -62,7 +154,15 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
 	for _, uid := range recipients {
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
-			return domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid]))
+			card := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid])
+			if uid == u.ID {
+				// Себе карточка с номером — как у tweb self (users.getUsers([inputUserSelf])):
+				// кадр заменяет карточку в кэше целиком, и без phone второе
+				// устройство потеряло бы номер. Остальным получателям его
+				// решает правило PrivacyPhoneNumber, а не этот кадр.
+				card.Phone = u.Phone
+			}
+			return domain.NewUpdateUserSnapshot(card)
 		}
 		live := seen(i.photoVisible(ctx, u.ID, uid))
 		env := map[string]any{"t": "user_update", "d": live}
@@ -153,13 +253,31 @@ func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string)
 	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
 		return domain.UserRecord{}, errors.New("emoji status too long")
 	}
-	return i.users.SetEmojiStatus(ctx, id, emoji)
+	u, changed, err := i.users.SetEmojiStatus(ctx, id, emoji)
+	// Повтор того же значения ничего не меняет — рассылка P получателям зря
+	// (tweb: `changedEmojiStatus`, appUsersManager.ts:728-729).
+	if err == nil && changed {
+		i.emitUserUpdate(ctx, u) // статус виден партнёрам и второму устройству
+	}
+	return u, err
 }
 
 // ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
 // "purchase" is faked, there's no billing — activating simply grants the badge.
 func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.UserRecord, error) {
-	return i.users.SetPremium(ctx, id, true)
+	return i.grantPremium(ctx, id)
+}
+
+// grantPremium включает значок и рассылает карточку, если он реально сменился
+// (продление подписки и повторная активация лишних строк журнала не пишут: tweb
+// реагирует на `changedPremium`, appUsersManager.ts:731). Значок приходит в
+// карточке `user` (tweb `checkPremium` :793-800).
+func (i *Interactor) grantPremium(ctx context.Context, id int64) (domain.UserRecord, error) {
+	u, changed, err := i.users.SetPremium(ctx, id, true)
+	if err == nil && changed {
+		i.emitUserUpdate(ctx, u)
+	}
+	return u, err
 }
 
 // CheckoutPremium runs the mock card checkout for a plan: it validates the plan,
@@ -189,7 +307,7 @@ func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID strin
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
-	user, err := i.users.SetPremium(ctx, id, true)
+	user, err := i.grantPremium(ctx, id)
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}

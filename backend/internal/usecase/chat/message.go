@@ -133,15 +133,32 @@ func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (m
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
 func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
+	// leftCreator — вышедший создатель пишет в свой чат (tweb hasRights.ts:6-7).
+	// Гость обсуждения пишет только в тред, поэтому без треда вопрос задаём
+	// сразу, а в треде — лишь когда путь гостя отказал (тема форума, тред
+	// комментариев своей группы): горячий путь комментариев лишних чтений не
+	// получает. Публикация отложенного по расписанию создателя в чат не
+	// возвращает.
+	leftCreator := false
+	if err == nil && !ok && in.ThreadRootID == nil && !in.fromSchedule {
+		leftCreator, err = i.isChatCreator(ctx, in.ChatID, in.SenderID)
+	}
 	if err != nil {
 		return domain.Message{}, err
 	}
 	// guest — не участник пишет гостем обсуждения: в тред комментариев, без
 	// вступления (requireDiscussionGuest).
-	guest := !ok
+	guest := !ok && !leftCreator
 	if guest {
-		if err := i.requireDiscussionGuest(ctx, in.ChatID, in.SenderID, in.ThreadRootID); err != nil {
-			return domain.Message{}, err
+		if gerr := i.requireDiscussionGuest(ctx, in.ChatID, in.SenderID, in.ThreadRootID); gerr != nil {
+			if in.ThreadRootID == nil || in.fromSchedule {
+				return domain.Message{}, gerr
+			}
+			isCreator, cerr := i.isChatCreator(ctx, in.ChatID, in.SenderID)
+			if cerr != nil || !isCreator {
+				return domain.Message{}, gerr
+			}
+			leftCreator, guest = true, false
 		}
 	}
 	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
@@ -343,6 +360,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// действие (звонок, например, гейтится правилом звонков на call_request).
 	// Действие ПО ЗАПРОСУ пользователя (userAction) — та же отправка.
 	if in.Action == nil || in.userAction {
+		// Вышедший создатель возвращается в чат (строка creator, служебка
+		// «вступил(а)») ПОСЛЕ проверок содержимого и ДО проверки прав отправки:
+		// отвергнутая раньше отправка состав не меняет, а права проверяются
+		// уже по строке участника. Служебка от его имени (назначение админа)
+		// его не возвращает — она пишется без членства.
+		if leftCreator {
+			if err := i.rejoinCreator(ctx, in.ChatID, in.SenderID); err != nil {
+				return domain.Message{}, err
+			}
+		}
 		switch {
 		case broadcast:
 			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника
@@ -460,8 +487,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			}
 		}
 		// Платные сообщения (Telegram paid messages): списываем звёзды ПЕРЕД
-		// вставкой, в той же транзакции (нехватка → ErrPaidRequired откатывает всё).
-		c, e := i.chargePaidMessage(ctx, in)
+		// вставкой, в той же транзакции: согласие отправителя на плату
+		// (ErrAllowPaymentRequired) и баланс (ErrBalanceTooLow) откатывают всё.
+		price, e := i.paidPriceFor(ctx, in, 1)
+		if e != nil {
+			return e
+		}
+		c, e := i.chargePaidMessage(ctx, in.ChatID, in.SenderID, price)
 		if e != nil {
 			return e
 		}
@@ -702,7 +734,7 @@ func (i *Interactor) documentKind(ctx context.Context, mediaID int64) (string, e
 // is skipped (the caller owns that guarantee — mediaID is NOT verified here); chat
 // membership, slowmode and send-privacy still apply through Send (a non-member
 // yields domain.ErrNotFound). The message type follows the media mime.
-func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error {
+func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string, allowPaidStars int64) error {
 	msgType := "photo"
 	if dims, err := i.mediaAccess.DimsByIDs(ctx, []int64{mediaID}); err == nil {
 		if d, ok := dims[mediaID]; ok && strings.HasPrefix(d.Mime, "video/") {
@@ -711,7 +743,7 @@ func (i *Interactor) SendStoryShare(ctx context.Context, chatID, senderID, media
 	}
 	_, err := i.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: senderID, Type: msgType,
-		Text: caption, MediaID: &mediaID, skipMediaOwner: true,
+		Text: caption, MediaID: &mediaID, skipMediaOwner: true, AllowPaidStars: allowPaidStars,
 	})
 	return err
 }

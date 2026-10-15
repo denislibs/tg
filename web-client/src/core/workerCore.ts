@@ -10,6 +10,7 @@ import { attachStreamBridge } from './net/dnp/streamBridge'
 import { AppConfig } from '../config/app'
 import { newHealthManager } from './managers/healthManager'
 import { TokenStore } from './auth/tokenStore'
+import deepEqual from '@helpers/object/deepEqual'
 import { newAuthManager, type PeerProfile } from './managers/authManager'
 import { newProfileManager } from './managers/profileManager'
 import { newPremiumManager } from './managers/premiumManager'
@@ -31,7 +32,7 @@ import { newThreadReads } from './managers/threadReads'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
-import { newPrivacyManager } from './managers/privacyManager'
+import { newPrivacyManager, privacyFrameKey, type PeerBlockEvt } from './managers/privacyManager'
 import { newStarsManager } from './managers/starsManager'
 import { newBoostsManager } from './managers/boostsManager'
 import { newStickersManager } from './managers/stickersManager'
@@ -57,7 +58,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt, type PeerBlockedEvt, type PrivacyEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -212,6 +213,30 @@ export function createWorkerCore() {
     },
     broadcast: (event, payload) => broadcast(event, payload),
   })
+  // Закреп удалён вместе с сообщением (tweb :14078-14080, `resetPinnedMessagesCache`):
+  // кэш закрепов живёт на главном потоке и сообщений вне окна воркера не знает, поэтому
+  // воркер шлёт вкладкам номера удалённых и те из них, что сам знает закреплёнными
+  // (`peer_pinned_deleted`). Вектор кадра `updateDeletePeerMessages` расходится по
+  // номерам (`evictAndBuildRemoveOps`), а очистка истории шлёт кадры по 1000 номеров, —
+  // события одного пира склеены в одно на микротаске: после операций окна того же кадра
+  // и с одним обработчиком на вкладке вместо обработчика на каждый номер. `broadcast` объявлен ниже — вызов ленивый.
+  const pinnedDeleted = new Map<number, { mids: number[]; pinned: number[] }>()
+  const queuePinnedDeleted = (peerId: number, mids: number[], pinned: number[]) => {
+    let batch = pinnedDeleted.get(peerId)
+    if (!batch) {
+      batch = { mids: [], pinned: [] }
+      pinnedDeleted.set(peerId, batch)
+      if (pinnedDeleted.size === 1) {
+        queueMicrotask(() => {
+          const flush = [...pinnedDeleted]
+          pinnedDeleted.clear()
+          for (const [id, b] of flush) broadcast('peer_pinned_deleted', { peerId: id, ...b })
+        })
+      }
+    }
+    batch.mids.push(...mids)
+    batch.pinned.push(...pinned)
+  }
   // decryptSecret дергает secret лениво — стрелка вызывается только на fetch истории
   // (после инициализации модуля), поэтому forward-ссылка на объявленный ниже secret безопасна.
   // broadcast объявлен ниже — стрелка дергает его лениво (оптимистичные мутации
@@ -262,8 +287,9 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted, missing) => {
+    onMessagesDeleted: (peerId, deleted, missing, mids) => {
       dialogs.applyDeletedMessages(peerId, deleted, missing)
+      queuePinnedDeleted(peerId, mids, deleted.filter((m) => m.pFlags.pinned).map((m) => m.id))
       // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
       // объявлен ниже — стрелка дёргает его лениво
       forumTopics.applyDeletedMessages(peerId, deleted)
@@ -418,6 +444,16 @@ export function createWorkerCore() {
     rest,
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
+    // Своё обновление карточки с другого устройства (эмодзи-статус, Premium):
+    // `me` обновляется и без записи в кэше пиров. Сверка по id — запоздавший кадр
+    // прежнего аккаунта не подменяет карточку нынешнего. Равная карточка (кадр
+    // сервера, продублировавший то, что `me` уже знает) rt:me не будит; кадр
+    // собственной мутации часто обгоняет HTTP-ответ, тогда второй rt:me от
+    // `onMeChanged` неизбежен и безвреден — вкладки сравнивают значения.
+    onSelfUser: (u) => {
+      if (!me || u.id !== me.user.id || deepEqual(me.user, u)) return
+      setMe({ ...me, user: u })
+    },
     // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата
     // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192),
     // выключенный форум — и окна тредов (appMessagesManager.ts:921-932).
@@ -499,9 +535,24 @@ export function createWorkerCore() {
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
     onContactsUpdate: (userId) => broadcast('contacts_update', userId),
   })
-  // `peer_block` — событие tweb `toggleBlock` (`appUsersManager.ts:520-536`);
-  // broadcast объявлен ниже — стрелка дёргает его лениво.
-  const privacy = newPrivacyManager({ rest, peers, onPeerBlock: (e) => broadcast('peer_block', e) })
+  // Местный апдейт после своего ответа (tweb `apiUpdatesManager.processLocalUpdate`,
+  // `toggleBlock` :520-536, `setPrivacy` :30-56) идёт тем же `dispatch`, что живой
+  // кадр: `peer_block` и `privacy_update` вкладкам рассылает он. `dispatch` ниже —
+  // стрелка дёргает его лениво. Счётчик кадров по предмету — защита от затирания
+  // свежего кадра местным апдейтом, собранным из опоздавшего ответа.
+  // Считаются только кадры сервера: местный апдейт первого запроса не должен
+  // гасить защиту второго запроса того же предмета.
+  const privacyFrames: Record<string, number> = {}
+  let localPrivacyUpdate = false
+  const privacy = newPrivacyManager({
+    rest,
+    peers,
+    processLocalUpdate: (u) => {
+      localPrivacyUpdate = true
+      try { dispatch(u._, u) } finally { localPrivacyUpdate = false }
+    },
+    frameVersion: (key) => privacyFrames[key] ?? 0,
+  })
   // Черновики — порт `appDraftsManager`: черновик чата — поле диалога
   // (`dialogs.applyDraft`), черновик треда — словарь менеджера и строка темы
   // (`forumTopics.applyDraft`); вкладкам — `draft_updated` (tweb rootScope.ts:162).
@@ -681,6 +732,23 @@ export function createWorkerCore() {
     if (twin) { dispatch(twin._, twin, meta); return }
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
+    }
+    // Блок и правило приватности (журнал `peer_blocked` / `privacy_update`, а
+    // также местный апдейт после своего ответа): события tweb `peer_block`
+    // (`appProfileManager.ts:1506-1533` — тело из `pFlags`) и `privacy_update`
+    // (`appPrivacyManager.ts:12-19` — тело само апдейт). Сырой кадр дальше не идёт.
+    if (pred === 'updatePeerBlocked') {
+      const e = d as PeerBlockedEvt
+      if (!localPrivacyUpdate) privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      const evt: PeerBlockEvt = { peerId: getPeerId(e.peer_id), blocked: e.pFlags?.blocked ? true : undefined }
+      broadcast('peer_block', evt, meta)
+      return
+    }
+    if (pred === 'updatePrivacy') {
+      const e = d as PrivacyEvt
+      if (!localPrivacyUpdate) privacyFrames[privacyFrameKey(e)] = (privacyFrames[privacyFrameKey(e)] ?? 0) + 1
+      broadcast('privacy_update', e, meta)
+      return
     }
     // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
     // `onUpdateDeleteScheduledMessages`, appMessagesManager.ts:11773-11815):
@@ -1030,11 +1098,13 @@ export function createWorkerCore() {
       // раньше это делала каждая вкладка у себя из сырого кадра.
       // return НЕТ сознательно: сырой кадр летит дальше (PASS_THROUGH внизу) — у
       // него остались другие потребители, звук «пак» на ack
-      // (client/realtime/soundSubscriber.ts) и тост paid_required на ошибке.
+      // (client/realtime/soundSubscriber.ts). Причина отказа (`reason`) едет владельцу:
+      // по `ALLOW_PAYMENT_REQUIRED_<N>` он заводит запрос на повторную оплату
+      // (messages/repayRequestHandler.ts).
       if (type === 'message_ack' || type === 'message_error') {
         const ops = type === 'message_ack'
           ? messages.ackPendingMessage(payload as AckEvt)
-          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id)
+          : messages.failPendingMessage((payload as MessageErrorEvt).client_msg_id, (payload as MessageErrorEvt).reason)
         if (ops.length) broadcast(RT.messageOp, { ops })
       }
       // geo_live_update: тот же класс, что и два кадра выше — эфемерный (без

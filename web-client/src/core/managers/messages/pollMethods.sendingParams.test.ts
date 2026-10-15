@@ -10,6 +10,8 @@
 // висящая плашка уводит в ответ уже следующее сообщение.
 import { describe, it, expect, vi } from 'vitest'
 import { newPollMethods } from './pollMethods'
+import { newRepayRequestHandler } from './repayRequestHandler'
+import { HttpError } from '../../net/restClient'
 
 function ctx() {
   const post = vi.fn(async (_url: string, _body: Record<string, unknown>) => ({
@@ -64,5 +66,47 @@ describe('sendPoll: пакет параметров разворачиваетс
     expect(await m.sendPoll(1, { ...poll, clientMsgId: 'c1', scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })).toBeUndefined()
     expect(post.mock.calls[0]).toEqual(['/chats/1/polls', expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
     expect(applyScheduledUpdates).toHaveBeenCalledWith(updates)
+  })
+
+  // Ф7-Г (MC-06): согласие на плату — `allow_paid_stars` тела /polls и /checklists
+  // (tweb appPollsManager.ts:1133, :1149).
+  it('sendPoll и sendChecklist несут allow_paid_stars из confirmedPaymentResult', async () => {
+    const post = vi.fn(async () => ({}))
+    const m = newPollMethods({ rest: { post } as never, patchMsg: () => {}, getMeId: () => 5, opWindowsFor: () => [], emitOps: () => {}, readMsg: () => undefined })
+    await m.sendPoll(1, { ...poll, clientMsgId: 'c1', confirmedPaymentResult: { starsAmount: 5 } }).catch(() => {})
+    expect(post.mock.calls[0]).toEqual(['/chats/1/polls', expect.objectContaining({ allow_paid_stars: 5 })])
+    await m.sendChecklist(1, { title: 't', items: ['a'], othersCanAdd: false, othersCanMark: false, confirmedPaymentResult: { starsAmount: 5 } }).catch(() => {})
+    expect(post.mock.calls[1]).toEqual(['/chats/1/checklists', expect.objectContaining({ allow_paid_stars: 5 })])
+  })
+
+  // 403 ALLOW_PAYMENT_REQUIRED у опроса/чек-листа — запрос на повторную оплату
+  // (тот же tryRegisterRequest, что у пересылки); вызывающему ошибки нет.
+  it('403 ALLOW_PAYMENT_REQUIRED у опроса и чек-листа заводит запрос и повторяет с новой суммой', async () => {
+    const events: [string, unknown][] = []
+    const repay = newRepayRequestHandler({ dispatch: (e, p) => { events.push([e, p]) } })
+    let n = 0
+    const post = vi.fn(async (_url: string, _body: Record<string, unknown>) => {
+      if (n++ < 2) throw new HttpError(403, 'ALLOW_PAYMENT_REQUIRED_5', 'ALLOW_PAYMENT_REQUIRED_5')
+      return { id: 1, peer_id: 1, seq: 1, sender_id: 5, type: 'poll', text: '', reply_to_id: null, media_id: null, created_at: '2026-01-01T00:00:00Z' }
+    })
+    const m = newPollMethods({ rest: { post } as never, patchMsg: () => {}, getMeId: () => 5, opWindowsFor: () => [], emitOps: () => {}, readMsg: () => undefined, repay })
+
+    expect(await m.sendPoll(1, { ...poll, clientMsgId: 'c1', confirmedPaymentResult: { starsAmount: 5 } })).toBeUndefined()
+    expect(await m.sendChecklist(1, { title: 't', items: ['a'], othersCanAdd: false, othersCanMark: false })).toBeUndefined()
+    expect(events.map(([e]) => e)).toEqual(['insufficent_stars_for_message', 'insufficent_stars_for_message'])
+
+    repay.confirmRepayRequest(1, { starsAmount: 8 })
+    await Promise.resolve()
+    expect(post.mock.calls[2]).toEqual(['/chats/1/polls', expect.objectContaining({ allow_paid_stars: 8 })])
+    // чек-лист повторяется с новым client_msg_id? нет: тот же вызов, новая сумма
+    repay.confirmRepayRequest(2, { starsAmount: 9 })
+    await Promise.resolve()
+    expect(post.mock.calls[3]).toEqual(['/chats/1/checklists', expect.objectContaining({ allow_paid_stars: 9 })])
+  })
+
+  it('прочие отказы опроса бросаются', async () => {
+    const post = vi.fn(async () => { throw new HttpError(400, 'invalid poll', 'invalid') })
+    const m = newPollMethods({ rest: { post } as never, patchMsg: () => {}, getMeId: () => 5, opWindowsFor: () => [], emitOps: () => {}, readMsg: () => undefined, repay: newRepayRequestHandler({ dispatch: () => {} }) })
+    await expect(m.sendPoll(1, { ...poll, clientMsgId: 'c1' })).rejects.toBeInstanceOf(HttpError)
   })
 })

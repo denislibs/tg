@@ -47,6 +47,7 @@ import { saveMessages, loadMessages, deletePersistedMessage } from '../store/per
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
 import { newPendingMethods } from './messages/pending'
+import { newRepayRequestHandler, registerHttpRepay, type ConfirmedPaymentResult } from './messages/repayRequestHandler'
 import { sendingParamsToWire, type MessageSendingParams } from './messages/sendingParams'
 import { newReactionMethods } from './messages/reactionMethods'
 import type { MessagesCtx } from './messages/ctx'
@@ -229,8 +230,11 @@ export interface MessagesDeps {
    *  удалённые непрочитанные входящие. Спросить «было ли оно непрочитанным»
    *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр.
    *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
-   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
-  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
+   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). `mids` — клиентские
+   *  номера ВСЕХ удалённых, в том числе неизвестных SSOT: закреп вне окна воркер
+   *  не знает, а вкладка сверяет номер со своим кэшем закрепов
+   *  (`peer_pinned_deleted`, tweb :14078-14080). */
+  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number, mids: number[]) => void
   /** Бейджи «@»/❤ диалога или темы, их обнуление, курсор журнала, `read_media` и
    *  местный кадр прочтения — зависимости `readMessages`/`readMentions`
    *  (tweb appMessagesManager.ts:9519-9650), см. `MessagesCtx`. */
@@ -436,7 +440,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const keys = opWindowsFor(peerId, msgId)
     const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
-    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1)
+    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1, [msgId])
     // tweb `handleDeletedMessages` (:14082): удалённое из треда перечитывает пост
     if (known) updateMessageRepliesIfNeeded(known)
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
@@ -500,8 +504,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   const sortScheduled = (storage: Map<number, MyMessage>): MyMessage[] =>
     [...storage.values()].sort((a, b) => a.date - b.date || a.id - b.id)
 
+  // Запросы на повторную оплату (tweb `RepayRequestHandler`): события уходят
+  // вкладкам, подтверждение приходит их RPC (`confirmRepayRequest` ниже).
+  const repay = newRepayRequestHandler({ dispatch: (event, payload) => broadcast?.(event, payload) })
   const ctx = {
-    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf,
+    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf, repay,
     // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
     applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
   }
@@ -524,6 +531,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     cancelUpload: cancelUpload ?? (() => {}),
     sendTyping: sendTyping ?? (() => {}),
     uploadProgress: uploadProgress ?? (() => {}),
+    repay,
   })
 
   /** tweb `onUpdateNewScheduledMessage` (`:11773-11802`). Хранилища нет —
@@ -926,7 +934,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     void updateMessage(+postPeerId, +mid).catch(() => {})
   }
 
-  return {
+  const api = {
     ...newReactionMethods(ctx),
     ...newPollMethods(ctx),
     ...newTranslationMethods(ctx),
@@ -936,6 +944,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // настоящие, как `messagesStorage` + `historyStorage.history` в оригинале.
     // Поэтому у него свой ctx, а не общий MessagesCtx.
     ...pending,
+
+    /** tweb `confirmRepayRequest` (appMessagesManager): пользователь согласился
+     *  заплатить новую цену — повтор отправки получает сумму. */
+    confirmRepayRequest(id: number, confirmedPaymentResult?: ConfirmedPaymentResult): void {
+      repay.confirmRepayRequest(id, confirmedPaymentResult)
+    },
+    /** tweb `cancelRepayRequest`: отказ от повторной оплаты. */
+    cancelRepayRequest(id: number): void {
+      repay.cancelRepayRequest(id)
+    },
 
     /**
      * Форум выключили — окна тредов чата сбрасываются (`chat_toggle_forum` →
@@ -1416,25 +1434,40 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
     // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions);
     // silent и threadId — как у tweb forwardMessagesInner (`silent`,
-    // `top_msg_id` = корень темы/треда у приёмника).
+    // `top_msg_id` = корень темы/треда у приёмника). `noRepay` — вызывающий сам
+    // отвечает за отказ оплаты (мост пересылки не показывает плашки в чужом чате).
     async forwardMessages(
       toPeerId: number,
       fromPeerId: number,
       msgIds: number[],
-      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null; confirmedPaymentResult?: { starsAmount: number } | null; noRepay?: boolean },
     ): Promise<MyMessage[]> {
-      const r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
-        from_peer_id: fromPeerId,
-        ids: msgIds.map(getServerMessageId),
-        drop_author: opts?.dropAuthor ?? false,
-        drop_caption: opts?.dropCaption ?? false,
-        silent: opts?.silent ?? false,
-        top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
-        // tweb `messages.forwardMessages{schedule_date, schedule_repeat_period}`
-        // (appMessagesManager.ts:5641-5660)
-        schedule_date: opts?.scheduleDate || 0,
-        schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
-      })
+      let r: MessagesContainer | ScheduledUpdates
+      try {
+        r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
+          from_peer_id: fromPeerId,
+          ids: msgIds.map(getServerMessageId),
+          drop_author: opts?.dropAuthor ?? false,
+          drop_caption: opts?.dropCaption ?? false,
+          silent: opts?.silent ?? false,
+          top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
+          // tweb `messages.forwardMessages{schedule_date, schedule_repeat_period}`
+          // (appMessagesManager.ts:5641-5660)
+          schedule_date: opts?.scheduleDate || 0,
+          schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
+          // tweb `allow_paid_stars: starsAmount * mids.length` (:5634) — за ВСЮ пачку
+          allow_paid_stars: opts?.confirmedPaymentResult ? opts.confirmedPaymentResult.starsAmount * msgIds.length : undefined,
+        })
+      } catch (err) {
+        // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
+        // (tweb :5805 → `tryRegisterRequest` с повтором `forwardMessagesInner`):
+        // подсказка о смене цены и «Resend» повторят пересылку с новой суммой.
+        if (!opts?.noRepay && registerHttpRepay(repay, err, {
+          peerId: toPeerId, messageCount: msgIds.length,
+          repay: (confirmedPaymentResult) => { void api.forwardMessages(toPeerId, fromPeerId, msgIds, { ...opts, confirmedPaymentResult }).catch(() => {}) },
+        })) return []
+        throw err
+      }
       // Отложенные копии — не история: ответ — `Updates` с
       // `updateNewScheduledMessage` (tweb `processUpdateMessage`), они и ложатся
       // в ленту отложенных.
@@ -2005,6 +2038,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
 
   }
+  return api
 }
 
 export type MessagesManager = ReturnType<typeof newMessagesManager>
