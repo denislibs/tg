@@ -59,6 +59,9 @@ services:
   # эфемерные креды через GET /calls/ice (схема coturn use-auth-secret).
   # TURN_HOST у backend должен указывать на адрес, ДОСТУПНЫЙ клиентам
   # (в проде — публичный IP/домен этой машины).
+  # Весь медиатрафик групповых звонков (mesh) и звонков с запретом P2P идёт через
+  # TURN: порядка 2·N·(N−1) портов на звонок из N участников (udp- и tcp-URL), поэтому
+  # диапазон 200 портов (N≈10); при росте — расширять или переходить на SFU (В-М17).
   coturn:
     image: coturn/coturn:4.6-alpine
     restart: unless-stopped
@@ -69,12 +72,12 @@ services:
       --use-auth-secret
       --static-auth-secret=${TURN_SECRET:-dev-turn-secret-change-me}
       --realm=messenger
-      --min-port=49160 --max-port=49200
+      --min-port=49160 --max-port=49359
       --no-cli
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"
-      - "49160-49200:49160-49200/udp"
+      - "49160-49359:49160-49359/udp"
 
   backend:
     build: ./backend

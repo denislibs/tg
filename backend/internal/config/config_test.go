@@ -240,3 +240,16 @@ func TestLoad_DevPurchasesRequiresExplicitAppEnv(t *testing.T) {
 		t.Fatalf("APP_ENV=prod без флага отвергнут: %v", err)
 	}
 }
+
+// Звонки только через TURN (М3-2): TURN_HOST, недостижимый клиентам, в проде
+// ловится предупреждением при старте, а не молчанием.
+func TestTurnHostReachable(t *testing.T) {
+	for host, want := range map[string]bool{
+		"": false, "  ": false, "localhost": false, "LocalHost": false, "127.0.0.1": false, "::1": false,
+		"turn.example.com": true, "203.0.113.7": true,
+	} {
+		if got := turnHostReachable(host); got != want {
+			t.Errorf("turnHostReachable(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
