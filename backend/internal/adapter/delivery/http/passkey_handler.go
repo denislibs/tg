@@ -122,7 +122,7 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		webauthn.WithExclusions(webauthn.Credentials(wu.credentials).CredentialDescriptors()),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"session": h.putSession(session), "options": options})
@@ -148,7 +148,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 	}
 	raw, err := json.Marshal(cred)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	// Имя ключа — браузер/ОС создавшего устройства (tweb показывает модель).
@@ -171,7 +171,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, passkeyJSON(pk))
@@ -210,7 +210,7 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -226,12 +226,12 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	options, session, err := h.wa.BeginDiscoverableLogin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	raw, err := json.Marshal(options)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewAuthPasskeyLoginOptions(string(raw), h.putSession(session)))

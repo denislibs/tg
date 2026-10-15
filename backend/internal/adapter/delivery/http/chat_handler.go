@@ -225,7 +225,7 @@ func (h *ChatHandler) UpdateGeoLive(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "not allowed")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "update failed")
+		writeDomainError(w, err, "update failed")
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -463,7 +463,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if terr != nil {
-		writeError(w, http.StatusInternalServerError, "send failed")
+		writeDomainError(w, terr, "send failed")
 		return
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
@@ -516,7 +516,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "history failed")
+			writeDomainError(w, err, "history failed")
 			return
 		}
 		writeHistory(w, r, h.svc, chatID, a.Count, a.Messages)
@@ -533,7 +533,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("history failed chat=%d: %v", chatID, err)
-		writeError(w, http.StatusInternalServerError, "history failed")
+		writeDomainError(w, err, "history failed")
 		return
 	}
 	writeHistory(w, r, h.svc, chatID, res.Count, res.Messages)
@@ -597,12 +597,12 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "history failed")
+		writeDomainError(w, err, "history failed")
 		return
 	}
 	wire, users, chats, err := h.svc.MessagesContainer(r.Context(), h.meID(r), found)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not render messages")
+		writeDomainError(w, err, "could not render messages")
 		return
 	}
 	bySeq := make(map[int64]domain.MTMessage, len(wire))
@@ -641,7 +641,7 @@ func (h *ChatHandler) Read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "read failed")
+		writeDomainError(w, err, "read failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -670,7 +670,7 @@ func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "read date failed")
+		writeDomainError(w, err, "read date failed")
 		return
 	}
 	// Дата в СЕКУНДАХ эпохи — как у всех дат схемы; строка RFC 3339 ушла.
@@ -716,7 +716,7 @@ func (h *ChatHandler) readInTopic(w http.ResponseWriter, r *http.Request, read f
 	case errors.Is(err, domain.ErrTopicIDInvalid):
 		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, failure)
+		writeDomainError(w, err, failure)
 	default:
 		writeJSON(w, http.StatusOK, res)
 	}
@@ -757,7 +757,7 @@ func (h *ChatHandler) DeleteHistory(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "delete history failed")
+		writeDomainError(w, err, "delete history failed")
 	default:
 		writeJSON(w, http.StatusOK, res)
 	}
@@ -809,7 +809,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "edit failed")
+		writeDomainError(w, err, "edit failed")
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -855,7 +855,7 @@ func (h *ChatHandler) SetFactCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "set fact check failed")
+		writeDomainError(w, err, "set fact check failed")
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -881,7 +881,7 @@ func (h *ChatHandler) RemoveFactCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "remove fact check failed")
+		writeDomainError(w, err, "remove fact check failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -914,7 +914,7 @@ func (h *ChatHandler) TranscribeMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "transcribe failed")
+		writeDomainError(w, err, "transcribe failed")
 		return
 	}
 	// «Ещё расшифровывается» — ФЛАГ конструктора: его отсутствие и есть «готово».
@@ -941,7 +941,7 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		writeDomainError(w, err, "delete failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -985,7 +985,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	// в том чате нет, отваливаются здесь, а не превращаются в чужие ключи.
 	msgIDs, _, err := msgSeqIDs(r.Context(), h.svc, fromChatID, body.Seqs)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "forward failed")
+		writeDomainError(w, err, "forward failed")
 		return
 	}
 	if len(msgIDs) == 0 {
@@ -1002,7 +1002,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if terr != nil {
-		writeError(w, http.StatusInternalServerError, "forward failed")
+		writeDomainError(w, terr, "forward failed")
 		return
 	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
@@ -1059,7 +1059,7 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "pin failed")
+		writeDomainError(w, err, "pin failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
@@ -1099,7 +1099,7 @@ func (h *ChatHandler) UnpinAll(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "unpin all failed")
+		writeDomainError(w, err, "unpin all failed")
 	default:
 		writeJSON(w, http.StatusOK, res)
 	}
@@ -1120,7 +1120,7 @@ func (h *ChatHandler) ListPins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list pins")
+		writeDomainError(w, err, "could not list pins")
 		return
 	}
 	writeMessagesAll(w, r, h.svc, msgs)
@@ -1146,7 +1146,7 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load viewers")
+		writeDomainError(w, err, "could not load viewers")
 		return
 	}
 	// Ответ — ВЕКТОР объявленных строк (`readParticipantDate`), а не список
@@ -1174,7 +1174,7 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load mention")
+		writeDomainError(w, err, "could not load mention")
 		return
 	}
 	// Ответ — САМ номер: обёртка `{"id": …}` конструктора не имеет, а `int`
@@ -1215,7 +1215,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "media history failed")
+		writeDomainError(w, err, "media history failed")
 		return
 	}
 	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
@@ -1261,7 +1261,7 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "search counters failed")
+		writeDomainError(w, err, "search counters failed")
 		return
 	}
 	for _, c := range counters {
@@ -1303,7 +1303,7 @@ func (h *ChatHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "search failed")
+		writeDomainError(w, err, "search failed")
 		return
 	}
 	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
@@ -1323,7 +1323,7 @@ func (h *ChatHandler) MessageByDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "lookup failed")
+		writeDomainError(w, err, "lookup failed")
 		return
 	}
 	// Ответ — АДРЕС сообщения этой даты, то есть его номер в чате, и едет он
@@ -1348,7 +1348,7 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "calendar failed")
+		writeDomainError(w, err, "calendar failed")
 		return
 	}
 	// Контейнер схемы вместо вектора безымянных словарей: отрезки дней и САМИ
@@ -1469,7 +1469,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if terr != nil {
-		writeError(w, http.StatusInternalServerError, "could not send poll")
+		writeDomainError(w, terr, "could not send poll")
 		return
 	}
 	m, err := h.svc.SendPoll(r.Context(), usecasechat.SendPollInput{
@@ -1524,7 +1524,7 @@ func (h *ChatHandler) VotePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not vote")
+		writeDomainError(w, err, "could not vote")
 		return
 	}
 	// Опрос уезжает ТЕМ ЖЕ конструктором, что и внутри сообщения, и БЕЗ
@@ -1549,7 +1549,7 @@ func (h *ChatHandler) ClosePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not close poll")
+		writeDomainError(w, err, "could not close poll")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -1613,7 +1613,7 @@ func (h *ChatHandler) ToggleChecklistItem(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not toggle item")
+		writeDomainError(w, err, "could not toggle item")
 		return
 	}
 	writeJSON(w, http.StatusOK, info.ToMedia())
@@ -1647,7 +1647,7 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not add items")
+		writeDomainError(w, err, "could not add items")
 		return
 	}
 	writeJSON(w, http.StatusOK, info.ToMedia())
@@ -1696,7 +1696,7 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not list scheduled")
+		writeDomainError(w, err, "could not list scheduled")
 		return
 	}
 	out := make([]domain.MTMessage, 0, len(list))
@@ -2274,7 +2274,7 @@ func (h *ChatHandler) ListReactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		writeDomainError(w, err, "could not load reactions")
 		return
 	}
 	// Агрегат реакций сообщения — конструктор `messageReactions`, тот же, что
@@ -2310,7 +2310,7 @@ func (h *ChatHandler) ReactionUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		writeDomainError(w, err, "could not load reactions")
 		return
 	}
 	// Строки — конструкторы `messagePeerReaction` (пир + дата + реакция), а
@@ -2346,7 +2346,7 @@ func (h *ChatHandler) SendAs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load send-as")
+		writeDomainError(w, err, "could not load send-as")
 		return
 	}
 	// Раскладка channels.sendAsPeers: ССЫЛКИ на пиры отдельно, их тела —
@@ -2468,7 +2468,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "star reaction failed")
+		writeDomainError(w, err, "star reaction failed")
 		return
 	}
 	// Баланса рядом больше нет: его владелец — кадр `updateStarsBalance`.
@@ -2493,7 +2493,7 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load star reaction")
+		writeDomainError(w, err, "could not load star reaction")
 		return
 	}
 	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top, false)
@@ -2686,7 +2686,7 @@ func (h *ChatHandler) SetChatAutoDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewDefaultHistoryTTL(b.Period))
@@ -2718,7 +2718,7 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	// Эхо запроса ответом не является: тему прислал сам клиент, и второй раз
@@ -2807,7 +2807,7 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	case err != nil:
 		log.Printf("saveDraft failed chat=%d: %v", chatID, err)
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

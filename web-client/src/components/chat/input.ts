@@ -147,6 +147,7 @@ import parseEntities from '@lib/richtext/parseEntities'
 import parseMarkdown from '@lib/richtext/parseMarkdown'
 import { MARKDOWN_ENTITIES, mergeEntities } from '@lib/richtext/entities'
 import forEachReverse from '@helpers/array/forEachReverse'
+import isSlowModeWaitError from '@helpers/isSlowModeWaitError'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
 import splitStringByLength from '@helpers/string/splitStringByLength'
 import sliceMessageEntities from '@helpers/sliceMessageEntities'
@@ -766,7 +767,7 @@ export default class ChatInput {
               clientMsgId: crypto.randomUUID(),
               ...sendingParams,
               confirmedPaymentResult: preparedPaymentResult,
-            }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+            }).catch((err) => { if(!isSlowModeWaitError(err)) toastNew({ langPackKey: 'Error.AnError' }) })
           },
         })
       },
@@ -2754,7 +2755,7 @@ export default class ChatInput {
         ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
         scheduleDate: sendingParams.scheduleDate, scheduleRepeatPeriod: sendingParams.scheduleRepeatPeriod,
         confirmedPaymentResult: sendingParams.confirmedPaymentResult,
-      }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+      }).catch((err) => { if(!isSlowModeWaitError(err)) toastNew({ langPackKey: 'Error.AnError' }) })
     }
 
     return { value, messageCount }

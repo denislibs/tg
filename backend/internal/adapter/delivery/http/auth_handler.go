@@ -236,7 +236,7 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "phone_number_occupied")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "sign up failed")
+		writeDomainError(w, err, "sign up failed")
 		return
 	}
 	writeSignInResult(w, res)
@@ -278,7 +278,7 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusServiceUnavailable, "password recovery unavailable")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "password recovery failed")
+		writeDomainError(w, err, "password recovery failed")
 		return
 	}
 	// `resend_after` рядом больше нет: паузу повторной отправки держит сервер
@@ -319,7 +319,7 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusServiceUnavailable, "password recovery unavailable")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "password recovery failed")
+		writeDomainError(w, err, "password recovery failed")
 		return
 	}
 	writeSignInResult(w, res)
@@ -364,7 +364,7 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "account reset unavailable")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "account reset failed")
+		writeDomainError(w, err, "account reset failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -413,7 +413,7 @@ func (h *AuthHandler) SignImport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "web token login unavailable")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "sign import failed")
+		writeDomainError(w, err, "sign import failed")
 		return
 	}
 	writeSignInResult(w, res)
@@ -441,7 +441,7 @@ func (h *AuthHandler) CancelWebToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "web token login unavailable")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "cancel failed")
+		writeDomainError(w, err, "cancel failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -465,7 +465,7 @@ func (h *AuthHandler) NewWebAuthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not issue web token")
+		writeDomainError(w, err, "could not issue web token")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewAuthWebAuthToken(token, expiresAt))
@@ -583,7 +583,7 @@ func (h *AuthHandler) ExportLoginToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "AUTH_TOKEN_EXPIRED")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "export login token failed")
+		writeDomainError(w, err, "export login token failed")
 		return
 	}
 	switch {
@@ -598,7 +598,7 @@ func (h *AuthHandler) ExportLoginToken(w http.ResponseWriter, r *http.Request) {
 		// `token` у схемы БАЙТЫ; ссылку для сканера строит клиент от своего origin.
 		raw, err := hex.DecodeString(res.Pending.Token)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "export login token failed")
+			writeDomainError(w, err, "export login token failed")
 			return
 		}
 		writeJSON(w, http.StatusOK, domain.NewAuthLoginToken(raw, res.Pending.ExpiresAt))
@@ -634,7 +634,7 @@ func (h *AuthHandler) AcceptLoginToken(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, usecaseauth.ErrQRUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "accept login token failed")
+		writeDomainError(w, err, "accept login token failed")
 	default:
 		writeJSON(w, http.StatusOK, authz)
 	}

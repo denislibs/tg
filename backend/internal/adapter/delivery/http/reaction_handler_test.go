@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
-	"testing"
 )
 
 // Ф7-И1 (MC-08): реакция, которую чат не принимает, — 400 REACTION_INVALID.

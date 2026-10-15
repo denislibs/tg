@@ -15,19 +15,17 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// Ф7-И1: ручка, у которой 500 — единственный исход ошибки usecase, считает
-// отказ (нет объекта, нет прав, неверный аргумент) сбоем сервера. Такой 500
-// клиент вправе повторять (tweb apiManager.ts:800-808), и детерминированный
-// отказ зациклил бы запрос. Охранный тест: функция пакета, у которой все
-// `writeError` — 500 либо разбор входа (400/401), а 500 есть, обязана быть в
-// списке исключений ниже. Новая ручка с такой формой краснит тест — её ветку
-// ошибки надо пустить через writeDomainError.
-func TestHandlers_NoOnly500Outcome(t *testing.T) {
-	// Исключения: 500 здесь не ошибка usecase.
+// Общая охрана: `writeError(…, 500, …)` пишет только разборщик (fallback
+// writeDomainError) и перечисленные исключения. Любая другая ветка — в том числе
+// цепочка `if errors.Is(…) {403}; if err != nil {500}` и `switch … default` —
+// превращает новый отказ usecase (ErrSlowmodeWait, ErrPrivacy, плата, …) в
+// детерминированный 500, который клиент вправе повторять (tweb
+// apiManager.ts:800-808). Ловятся и `http.StatusInternalServerError`, и литерал 500.
+func TestNo500OutsideDomainError(t *testing.T) {
 	allowed := map[string]string{
-		"PublicHandler.internalError":      "хелпер публичных страниц: сбой чтения, не отказ usecase",
-		"PasskeyHandler.BeginRegistration": "ошибка библиотеки webauthn",
-		"PasskeyHandler.BeginLogin":        "ошибка библиотеки webauthn / json.Marshal",
+		"writeDomainError":   "сам разборщик",
+		"writeLangPackError": "свой закрытый перечень имён langpack.*",
+		"internalError":      "хелпер публичных страниц: сбой чтения, не отказ usecase",
 	}
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
@@ -39,104 +37,35 @@ func TestHandlers_NoOnly500Outcome(t *testing.T) {
 		for _, f := range pkg.Files {
 			for _, d := range f.Decls {
 				fd, ok := d.(*ast.FuncDecl)
-				if !ok || fd.Body == nil {
+				if !ok || fd.Body == nil || allowed[fd.Name.Name] != "" {
 					continue
 				}
-				total, five, soft := 0, 0, 0
 				ast.Inspect(fd.Body, func(n ast.Node) bool {
 					c, ok := n.(*ast.CallExpr)
-					if !ok {
+					if !ok || len(c.Args) < 2 {
 						return true
 					}
-					if id, ok := c.Fun.(*ast.Ident); !ok || id.Name != "writeError" || len(c.Args) < 2 {
+					if id, ok := c.Fun.(*ast.Ident); !ok || id.Name != "writeError" {
 						return true
 					}
-					total++
-					if sel, ok := c.Args[1].(*ast.SelectorExpr); ok {
-						switch sel.Sel.Name {
-						case "StatusInternalServerError":
-							five++
-						case "StatusBadRequest", "StatusUnauthorized":
-							soft++
+					switch a := c.Args[1].(type) {
+					case *ast.SelectorExpr:
+						if a.Sel.Name == "StatusInternalServerError" {
+							bad = append(bad, fset.Position(c.Pos()).String())
+						}
+					case *ast.BasicLit:
+						if a.Value == "500" {
+							bad = append(bad, fset.Position(c.Pos()).String())
 						}
 					}
 					return true
 				})
-				if five == 0 || five+soft != total {
-					continue
-				}
-				name := fd.Name.Name
-				if fd.Recv != nil && len(fd.Recv.List) > 0 {
-					recv := fd.Recv.List[0].Type
-					if star, ok := recv.(*ast.StarExpr); ok {
-						recv = star.X
-					}
-					if id, ok := recv.(*ast.Ident); ok {
-						name = id.Name + "." + name
-					}
-				}
-				if _, ok := allowed[name]; !ok {
-					bad = append(bad, name)
-				}
 			}
 		}
 	}
 	sort.Strings(bad)
 	if len(bad) > 0 {
-		t.Fatalf("ручки, где 500 — единственный исход (пустить ошибку через writeDomainError):\n  %s", strings.Join(bad, "\n  "))
-	}
-}
-
-// Вторая форма той же ошибки: переключатель отказов usecase (`switch { case
-// errors.Is(…): … default: writeError(500) }`) — «неизвестный» отказ уходил 500, и
-// ErrSlowmodeWait/ErrPrivacy/плата из новых путей становились детерминированным
-// 500. Ветка default обязана идти через writeDomainError.
-func TestErrorSwitches_DefaultIsDomainError(t *testing.T) {
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	allowed := map[string]bool{
-		"writeDomainError":   true, // сам разборщик
-		"writeLangPackError": true, // свой закрытый перечень имён langpack.*
-		"ExportLoginToken":   true, // 500 — сбой hex-разбора, не отказ usecase
-	}
-	var bad []string
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, d := range f.Decls {
-				fd, ok := d.(*ast.FuncDecl)
-				if !ok || fd.Body == nil {
-					continue
-				}
-				ast.Inspect(fd.Body, func(n ast.Node) bool {
-					cc, ok := n.(*ast.CaseClause)
-					if !ok || cc.List != nil { // только default
-						return true
-					}
-					for _, st := range cc.Body {
-						ast.Inspect(st, func(m ast.Node) bool {
-							c, ok := m.(*ast.CallExpr)
-							if !ok || len(c.Args) < 2 {
-								return true
-							}
-							if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "writeError" {
-								if sel, ok := c.Args[1].(*ast.SelectorExpr); ok && sel.Sel.Name == "StatusInternalServerError" && !allowed[fd.Name.Name] {
-									bad = append(bad, fset.Position(c.Pos()).String())
-								}
-							}
-							return true
-						})
-					}
-					return true
-				})
-			}
-		}
-	}
-	sort.Strings(bad)
-	if len(bad) > 0 {
-		t.Fatalf("default-ветка отказов пишет 500 мимо writeDomainError:\n  %s", strings.Join(bad, "\n  "))
+		t.Fatalf("writeError(…500…) мимо writeDomainError (пустить ошибку через разборщик):\n  %s", strings.Join(bad, "\n  "))
 	}
 }
 

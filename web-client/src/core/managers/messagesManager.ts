@@ -508,6 +508,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // Запросы на повторную оплату (tweb `RepayRequestHandler`): события уходят
   // вкладкам, подтверждение приходит их RPC (`confirmRepayRequest` ниже).
   const repay = newRepayRequestHandler({ dispatch: (event, payload) => broadcast?.(event, payload) })
+  // Одно событие на HTTP-вызов (tweb шлёт `message_error` на каждое сообщение пачки,
+  // appMessagesManager.ts:5805-5838); после заведённого запроса оплаты (`registerHttpRepay`)
+  // события нет. Потребитель один — попап медленного режима, ему этого достаточно.
   const reportSendError = (peerId: number, err: unknown): void => {
     if (err instanceof HttpError) broadcast?.(RT.messageSendError, { peerId, error: { type: err.type } })
   }

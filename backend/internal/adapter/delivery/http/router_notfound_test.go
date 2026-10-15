@@ -86,10 +86,20 @@ func TestRouter_PublicHost_NotFoundIsHTML(t *testing.T) {
 // Хост страниц и неразрешённый метод отвечает HTML, а не JSON корня.
 func TestRouter_PublicHost_MethodNotAllowedIsHTML(t *testing.T) {
 	rec := doReq(t, notFoundRouter(), http.MethodPost, "/tme/alice", nil, nil)
-	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("= %d", rec.Code)
+	if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") == "" {
+		t.Fatalf("= %d Allow=%q, want 405 с Allow", rec.Code, rec.Header().Get("Allow"))
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") || strings.Contains(rec.Body.String(), "METHOD_INVALID") {
 		t.Fatalf("Content-Type %q, тело %s", ct, rec.Body.String())
+	}
+}
+
+// HEAD на страницу хоста — как GET (а не «страницы нет»).
+func TestRouter_PublicHost_HeadIsLikeGet(t *testing.T) {
+	h := notFoundRouter()
+	get := doReq(t, h, http.MethodGet, "/tme/", nil, nil)
+	head := doReq(t, h, http.MethodHead, "/tme/", nil, nil)
+	if head.Code != get.Code {
+		t.Fatalf("HEAD %d, GET %d", head.Code, get.Code)
 	}
 }

@@ -171,7 +171,7 @@ func (h *ProfileHandler) SetUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "set username failed")
+		writeDomainError(w, err, "set username failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(user))
@@ -328,7 +328,7 @@ func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cancel failed")
+		writeDomainError(w, err, "cancel failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
@@ -382,7 +382,7 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[profile] add photo user=%d media=%d: %v", u.ID, body.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "add photo failed")
+		writeDomainError(w, err, "add photo failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewPhotosPhoto(galleryPhoto(photo)))
@@ -436,7 +436,7 @@ func (h *ProfileHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete photo failed")
+		writeDomainError(w, err, "delete photo failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

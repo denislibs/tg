@@ -67,7 +67,7 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load set")
+		writeDomainError(w, err, "could not load set")
 		return
 	}
 	writeJSON(w, http.StatusOK, usecasestickers.SetWire(set, sts))
@@ -96,7 +96,7 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load set")
+		writeDomainError(w, err, "could not load set")
 		return
 	}
 	writeJSON(w, http.StatusOK, set)
@@ -114,7 +114,7 @@ func (h *StickersHandler) Install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not install set")
+		writeDomainError(w, err, "could not install set")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -180,7 +180,7 @@ func (h *StickersHandler) CreateSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create set")
+		writeDomainError(w, err, "could not create set")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
@@ -216,7 +216,7 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[stickers] add sticker user=%d set=%d media=%d: %v", h.meID(r), id, b.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "could not add sticker")
+		writeDomainError(w, err, "could not add sticker")
 		return
 	}
 	// Тем же конструктором, что и выборки набора: добавленный стикер клиент
@@ -274,7 +274,7 @@ func (h *StickersHandler) Fave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not fave")
+		writeDomainError(w, err, "could not fave")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -305,7 +305,7 @@ func (h *StickersHandler) Use(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not record use")
+		writeDomainError(w, err, "could not record use")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -351,7 +351,7 @@ func (h *StickersHandler) SaveGif(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[stickers] save gif user=%d media=%d: %v", h.meID(r), b.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "could not save gif")
+		writeDomainError(w, err, "could not save gif")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

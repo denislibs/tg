@@ -32,6 +32,7 @@ import { startClient } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
 import { toastNew } from '@components/toast'
+import isSlowModeWaitError from '@helpers/isSlowModeWaitError'
 import { i18n, join } from '@lib/langPack'
 import { peerTitle } from '@core/peerCache'
 import { resolveChatRightsActions } from '@core/peers/filterByRights'
@@ -91,7 +92,7 @@ async function sendMessageWithForward(peerId: PeerId, forwarding: ForwardPeerIdM
   } catch(err) {
     console.error('forward failed', { peerId }, err)
     // Отказ (в том числе выросшая цена платного чата) не должен выглядеть ушедшей пересылкой.
-    toastNew({ langPackKey: 'Error.AnError' })
+    if(!isSlowModeWaitError(err)) toastNew({ langPackKey: 'Error.AnError' })
     return false
   }
 }

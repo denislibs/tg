@@ -52,7 +52,7 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		return
 	case err != nil:
 		log.Printf("[contacts] set custom photo user=%d contact=%d media=%d: %v", u.ID, userID, body.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "set contact photo failed")
+		writeDomainError(w, err, "set contact photo failed")
 		return
 	}
 	// Ответ — «получилось». Номер фото был ЭХОМ запроса: клиент прислал его
@@ -77,7 +77,7 @@ func (h *ContactPhotoHandler) ClearCustomPhoto(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "clear contact photo failed")
+		writeDomainError(w, err, "clear contact photo failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

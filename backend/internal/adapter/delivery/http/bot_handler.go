@@ -22,7 +22,7 @@ func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "inline failed")
+		writeDomainError(w, err, "inline failed")
 		return
 	}
 	out := make([]domain.BotInlineResult, 0, len(results))
@@ -93,7 +93,7 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "callback failed")
+		writeDomainError(w, err, "callback failed")
 		return
 	}
 	// «Показать плашкой» — ФЛАГ: прежде ехало булево поле `alert: false`, то
@@ -118,7 +118,7 @@ func (h *ChatHandler) BotStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start failed")
+		writeDomainError(w, err, "start failed")
 		return
 	}
 	// Ответ — КОНСТРУКТОР ключа, как у создания приватного чата.

@@ -57,10 +57,14 @@ func NewPublicHandler(uc *usecasepublic.Interactor, media *usecasemedia.Interact
 // проксирует хост PublicLinkOrigin целиком.
 func (h *PublicHandler) Mount(r chi.Router) {
 	r.Use(middleware.StripSlashes)
+	r.Use(middleware.GetHead) // HEAD отвечает как GET: превьюеры и мониторинги шлют его
 	// Неизвестный путь хоста страниц читает человек в браузере: страница, а не
 	// JSON `METHOD_INVALID` корневого роутера (router.go).
 	r.NotFound(h.notFoundPage)
-	r.MethodNotAllowed(h.notFoundPage)
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Allow", "GET, HEAD")
+		h.render(w, http.StatusMethodNotAllowed, notFoundView(h))
+	})
 	r.Get("/", h.Root)
 	r.Get("/{username}", h.Page)
 	r.Get("/{username}/photo", h.Photo)
@@ -78,10 +82,14 @@ func (h *PublicHandler) Mount(r chi.Router) {
 // notFoundPage — HTML 404 для пути или метода, которых у хоста страниц нет (страницы
 // читает человек в браузере, а не клиент API).
 func (h *PublicHandler) notFoundPage(w http.ResponseWriter, _ *http.Request) {
-	h.render(w, http.StatusNotFound, pageView{
+	h.render(w, http.StatusNotFound, notFoundView(h))
+}
+
+func notFoundView(h *PublicHandler) pageView {
+	return pageView{
 		PageTitle: "Messenger", NoIndex: true, OGTitle: "Messenger",
 		ButtonText: "Открыть Messenger", ButtonHref: h.app + "/",
-	})
+	}
 }
 
 // Root — корень хоста страниц: у t.me это редирект на сайт, у нас — в клиент.
