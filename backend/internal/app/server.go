@@ -96,6 +96,8 @@ func registerServer(p serverParams) {
 	// запросом, а не выборкой всех партнёров.
 	p.AuthUC.SetPartnersAmong(privacyRepo.PartnersAmong)
 	privacyUC.SetAnnouncer(p.AuthUC)
+	// userFull.bot_info профиля бота: описание и команды отдаёт chat-usecase.
+	privacyUC.SetBotInfo(p.ChatUC)
 
 	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
 	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего
