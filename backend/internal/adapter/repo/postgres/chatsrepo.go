@@ -1082,14 +1082,19 @@ func (r *ChatsRepo) VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq 
 // SetDialogHidden — см. ChatRepo.SetDialogHidden.
 func (r *ChatsRepo) SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET dialog_hidden = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, userID, hidden)
+		`UPDATE chat_members
+		    SET dialog_hidden = $3,
+		        pinned_at = CASE WHEN $3 THEN NULL ELSE pinned_at END,
+		        archived  = CASE WHEN $3 THEN false ELSE archived END
+		  WHERE chat_id = $1 AND user_id = $2`, chatID, userID, hidden)
 	return err
 }
 
 // ShowDialogs — см. ChatRepo.ShowDialogs.
 func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET dialog_hidden = false WHERE chat_id = $1 AND dialog_hidden`, chatID)
+		`UPDATE chat_members SET dialog_hidden = false, pinned_at = NULL, archived = false
+		  WHERE chat_id = $1 AND dialog_hidden`, chatID)
 	return err
 }
 

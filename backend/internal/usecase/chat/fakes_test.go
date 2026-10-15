@@ -34,6 +34,7 @@ type member struct {
 	// mutedUntil — срок мьюта, а не булево: «навсегда» это domain.MuteUntilForever.
 	mutedUntil *time.Time
 	archived   bool
+	pinned     bool // pinned_at IS NOT NULL
 	hidden     bool // dialog_hidden: «удалить чат» в личке
 }
 
@@ -509,6 +510,9 @@ func (r fakeChats) SetDialogHidden(_ context.Context, chatID, userID int64, hidd
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.hidden = hidden
+		if hidden { // как ChatsRepo.SetDialogHidden: скрытие снимает закреп и архив
+			m.pinned, m.archived = false, false
+		}
 	}
 	return nil
 }
@@ -521,6 +525,9 @@ func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
 	}
 	r.s.showDialogsCalls[chatID]++
 	for _, m := range r.s.members[chatID] {
+		if m.hidden { // возврат строки сбрасывает закреп и архив (ChatsRepo.ShowDialogs)
+			m.pinned, m.archived = false, false
+		}
 		m.hidden = false
 	}
 	return nil
@@ -1787,8 +1794,22 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) (bool, err
 	if r.s.hidden[userID][msgID] {
 		return false, nil
 	}
+	// Как MessagesRepo.HideForUser: строку скрытия получает только видимое
+	// зрителю сообщение (не удалено у всех, выше его горизонта очистки).
+	visible := false
+	for chatID, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.ID == msgID {
+				mem := r.s.members[chatID][userID]
+				visible = !m.Deleted && (mem == nil || m.Seq > mem.clearedSeq)
+			}
+		}
+	}
+	if !visible {
+		return false, nil
+	}
 	r.s.hidden[userID][msgID] = true
-	// Как MessagesRepo.HideForUser: скрытое уходит из счётчиков скрывшего.
+	// Скрытое уходит из счётчиков скрывшего.
 	for chatID, msgs := range r.s.messages {
 		for _, m := range msgs {
 			if m.ID != msgID {
