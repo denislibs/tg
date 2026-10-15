@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -164,6 +165,42 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	// без неё (afterSelfJoin).
 	i.afterSelfJoin(ctx, id, userID)
 	return nil
+}
+
+// ResolveUsername — contacts.resolveUsername: точное @имя (без учёта регистра)
+// в общем пространстве имён пользователей и публичных чатов (миграция 0134) →
+// ссылка на пир плюс его карточка глазами зрителя. Нет такого имени —
+// domain.ErrNotFound. Чат ищется первым: имена не пересекаются, порядок
+// безразличен, но публичных чатов в ссылках t.me больше.
+func (i *Interactor) ResolveUsername(ctx context.Context, viewerID int64, username string) (domain.ContactsResolvedPeer, error) {
+	username = domain.NormalizeUsername(username)
+	chatID, err := i.search.PublicChatByUsername(ctx, username)
+	switch {
+	case err == nil:
+		cards, err := i.chatCards(ctx, viewerID, []int64{chatID})
+		if err != nil {
+			return domain.ContactsResolvedPeer{}, err
+		}
+		if len(cards) == 0 {
+			return domain.ContactsResolvedPeer{}, domain.ErrNotFound
+		}
+		ch := cards[0].ToChannel()
+		return domain.NewContactsResolvedPeer(domain.NewPeer(ch.PeerID()), []domain.Chat{ch}, nil), nil
+	case !errors.Is(err, domain.ErrNotFound):
+		return domain.ContactsResolvedPeer{}, err
+	}
+	userID, err := i.search.UserIDByUsername(ctx, username)
+	if err != nil {
+		return domain.ContactsResolvedPeer{}, err
+	}
+	users, err := i.groups.UsersByIDs(ctx, viewerID, []int64{userID})
+	if err != nil {
+		return domain.ContactsResolvedPeer{}, err
+	}
+	if len(users) == 0 {
+		return domain.ContactsResolvedPeer{}, domain.ErrNotFound
+	}
+	return domain.NewContactsResolvedPeer(domain.NewPeerUser(userID), nil, users), nil
 }
 
 // PeerSearchResult — выдача поиска пиров (contacts.search): «свои»

@@ -39,13 +39,63 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]in
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
-// SearchUsers — пользователи по @username/имени профиля, карточки глазами
-// viewerID (userSeenCols).
+// SearchUsers — пользователи по префиксу для contacts.search; карточки глазами
+// viewerID (userSeenCols). По @username ищется среди ВСЕХ, по имени профиля —
+// только среди СВОИХ (контакты зрителя ∪ собеседники по личке): иначе имя было
+// бы вектором перебора людей (Ф7-Е, MC-14, решение В-8; tweb отдаёт чужих
+// отдельным вектором `results`, appUsersManager.ts:1182-1214). Два запроса с
+// ORDER BY вместо одного OR: выдача детерминирована, а чужие по @username не
+// вытесняют своих из limit. Множество «своих» (то же правило, что ветки
+// пользователей в OwnPeers — менять вместе) материализуется в массив и берётся
+// по users_pkey: форма `IN (подзапрос)` планировщик разворачивал в полный
+// Seq Scan по users и chats. Слияние — «свои по имени» первыми, затем по
+// @username, без повторов, всего не больше limit.
 func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userSeenCols("u.", "$4")+`
-		   FROM users u WHERE u.username ILIKE $1 OR u.display_name ILIKE $2 LIMIT $3`, like, like, limit, viewerID)
+	own, err := r.queryUsers(ctx,
+		`SELECT `+userSeenCols("u.", "$3")+`
+		   FROM users u
+		  WHERE u.display_name ILIKE $1 AND u.id = ANY(ARRAY(
+		        SELECT ct.user_id FROM contacts ct WHERE ct.owner_id = $3
+		        UNION
+		        SELECT other.user_id FROM chat_members me
+		          JOIN chat_members other ON other.chat_id = me.chat_id AND other.user_id <> $3
+		         WHERE me.user_id = $3
+		           AND EXISTS (SELECT 1 FROM chats c WHERE c.id = me.chat_id AND c.type = 'private')))
+		  ORDER BY u.display_name, u.id LIMIT $2`, like, limit, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	if len(own) >= limit {
+		return own, nil
+	}
+	// limit строк хватает: повторов среди них не больше len(own), значит новых
+	// не меньше limit-len(own).
+	byUsername, err := r.queryUsers(ctx,
+		`SELECT `+userSeenCols("u.", "$3")+`
+		   FROM users u WHERE u.username ILIKE $1
+		  ORDER BY u.username, u.id LIMIT $2`, like, limit, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[int64]bool, len(own))
+	for _, u := range own {
+		seen[u.ID] = true
+	}
+	for _, u := range byUsername {
+		if len(own) == limit {
+			break
+		}
+		if !seen[u.ID] {
+			own = append(own, u)
+		}
+	}
+	return own, nil
+}
+
+// queryUsers собирает карточки userSeenCols из запроса с колонками userSeenCols.
+func (r *SearchRepo) queryUsers(ctx context.Context, sql string, args ...any) ([]domain.UserReal, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +186,18 @@ func (r *SearchRepo) OwnPeers(ctx context.Context, viewerID int64, chatIDs, user
 		}
 	}
 	return chats, users, rows.Err()
+}
+
+// UserIDByUsername — пользователь по точному @имени (users.username — CITEXT,
+// `=` без учёта регистра и по уникальному индексу).
+func (r *SearchRepo) UserIDByUsername(ctx context.Context, username string) (int64, error) {
+	var id int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT id FROM users WHERE username=$1`, username).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return id, err
 }
 
 func (r *SearchRepo) PublicChatByUsername(ctx context.Context, username string) (int64, error) {
