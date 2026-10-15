@@ -265,3 +265,35 @@ func TestWorker_SenderNameOncePerBatch(t *testing.T) {
 		t.Fatalf("имя автора запрошено %d раз на три задания", enrich.nameCalls)
 	}
 }
+
+// Приватность: пуш о сообщении send-as / анонимного админа / поста канала несёт
+// заголовок чата-автора (Job.Title), а имя живого отправителя не запрашивается и в
+// тело не попадает; в группе у custom нет from_id (только channel_id).
+func TestBuildPayload_HiddenAuthorLeaksNeitherNameNorID(t *testing.T) {
+	enrich := &fakeEnricher{names: map[int64]string{9: "Админ Секретов"}}
+	q := &fakeQueue{}
+	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, PeerID: -3, Seq: 5, SenderID: 9, Title: "Новости", Text: "пост", Preview: true})
+	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{7: {{Endpoint: "e", P256dh: "p", Auth: "a"}}}}
+	sender := &fakeSender{status: http.StatusCreated}
+	if err := NewWorker(q, subs, sender, enrich).ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+	body := string(sender.sent[0].payload)
+	if strings.Contains(body, "Секретов") || strings.Contains(body, "from_id") {
+		t.Fatalf("в теле пуша виден скрытый автор: %s", body)
+	}
+	if enrich.nameCalls != 0 {
+		t.Fatalf("имя скрытого автора запрашивалось %d раз", enrich.nameCalls)
+	}
+}
+
+// Notifier кладёт заголовок чата-автора в задание.
+func TestNotifier_TitlePassedToJob(t *testing.T) {
+	q := &fakeQueue{}
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{}}, q)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "Команда")
+	n.NotifyGuest(context.Background(), 8, 3, 6, 9, "hi", -3, 11, "Команда")
+	if len(q.jobs) != 2 || q.jobs[0].Job.Title != "Команда" || q.jobs[1].Job.Title != "Команда" {
+		t.Fatalf("задания = %+v, want Title=Команда у обоих", q.jobs)
+	}
+}

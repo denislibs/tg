@@ -948,6 +948,7 @@ Register the current device's browser push subscription.
   `channel_id` (группа/канал — положительный id, знак добавляет SW). Строки, как у tweb.
 - `loc_key` — `MESSAGE_TEXT` или `MESSAGE_NOTEXT` (нет текста). Message Preview выключен:
   нет `loc_key`, `loc_args`, `description` — SW показывает «Telegram» и общий текст.
+- `title` — автор, как его видит лента: пользователь; при send-as, анонимном админе и посте канала — название чата-автора (живой отправитель не раскрывается).
 - Нет ключа пира (старое задание очереди) — клик открывает приложение без перехода.
 - Не шлются: `badge`, `peer_id`, `id`, `sender`, `text`, `user_id`, `silent`.
 

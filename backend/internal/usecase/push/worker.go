@@ -102,6 +102,10 @@ const (
 //
 // Отличия от оригинала (объявлены): `user_id` (мультиаккаунт) и `silent` не
 // производятся; заголовок группы — имя автора без названия чата.
+// Автор скрыт (send-as, анонимный админ, пост канала) — заголовок задаёт
+// Job.Title, имя живого отправителя не запрашивается вовсе, а у группы адрес
+// только channel_id: ни `title`, ни `custom` его не выдают (tweb читает автора
+// только из title/loc_args, push.ts:421-424).
 func (w *Worker) buildPayload(ctx context.Context, job Job, names map[int64]string) map[string]any {
 	title := job.Title
 	if title == "" {

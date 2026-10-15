@@ -163,7 +163,7 @@ func TestNotifier_EnqueuesWhenOfflineAndUnmuted(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{}}, q)
 
-	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "")
 
 	if len(q.jobs) != 1 {
 		t.Fatalf("expected 1 enqueued job, got %d", len(q.jobs))
@@ -180,7 +180,7 @@ func TestNotifier_PreviewOffPropagatesToJob(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{noPreview: map[int64]bool{7: true}}, q)
 
-	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "")
 
 	if len(q.jobs) != 1 {
 		t.Fatalf("expected 1 enqueued job, got %d", len(q.jobs))
@@ -194,7 +194,7 @@ func TestNotifier_SkipsWhenOnline(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{7: true}}, &fakeNotify{}, q)
 
-	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "")
 
 	if len(q.jobs) != 0 {
 		t.Fatalf("expected no enqueue when online, got %d", len(q.jobs))
@@ -209,11 +209,11 @@ func TestNotifier_GuestPushedEvenOnline(t *testing.T) {
 	nf := &fakeNotify{muted: map[int64]bool{8: true}}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{7: true, 8: true}}, nf, q)
 
-	n.NotifyGuest(context.Background(), 7, 3, 5, 9, "reply", -3, 11)
+	n.NotifyGuest(context.Background(), 7, 3, 5, 9, "reply", -3, 11, "")
 	if len(q.jobs) != 1 || q.jobs[0].Job.RecipientID != 7 {
 		t.Fatalf("онлайн-гостю нет пуша: %+v", q.jobs)
 	}
-	n.NotifyGuest(context.Background(), 8, 3, 6, 9, "reply", -3, 11)
+	n.NotifyGuest(context.Background(), 8, 3, 6, 9, "reply", -3, 11, "")
 	if len(q.jobs) != 1 {
 		t.Fatalf("гостю с отказом настроек пуш ушёл: %+v", q.jobs)
 	}
@@ -223,7 +223,7 @@ func TestNotifier_SkipsWhenMuted(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{7: true}}, q)
 
-	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "")
 
 	if len(q.jobs) != 0 {
 		t.Fatalf("expected no enqueue when muted, got %d", len(q.jobs))
@@ -234,7 +234,7 @@ func TestNotifier_SkipsOnMuteCheckError(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{err: errors.New("db down")}, q)
 
-	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0)
+	n.NotifyNewMessage(context.Background(), 7, 3, 5, 9, "hi", -3, false, 0, "")
 
 	if len(q.jobs) != 0 {
 		t.Fatalf("expected no enqueue on mute-check error, got %d", len(q.jobs))
