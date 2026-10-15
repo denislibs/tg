@@ -1444,3 +1444,27 @@ func (u UpdateSavedReactionTags) Tag() string { return u.Underscore }
 func NewUpdateSavedReactionTags() UpdateSavedReactionTags {
 	return UpdateSavedReactionTags{Underscore: UpdateSavedReactionTagsTag}
 }
+
+// ── Автоудаление чата (Ф-6, f6-ttl) — блок в конце по правилу горячих файлов ──
+
+const UpdatePeerHistoryTTLTag = "updatePeerHistoryTTL"
+
+// updatePeerHistoryTTL#bb9bb9a5 flags:# peer:Peer ttl_period:flags.0?int = Update;
+//
+// Срок автоудаления чата сменился (messages.setHistoryTTL, любое устройство
+// любой стороны). Нуль — «выключено» — выражается ОТСУТСТВИЕМ ключа: tweb кладёт
+// `update.ttl_period` в диалог и в полную карточку как есть (appProfileManager.ts
+// :1541-1558). Своего pts у конструктора нет — курсор едет в конверте. Личке и
+// группе; у broadcast-канала срок едет снимком карточки (chat_update).
+type UpdatePeerHistoryTTL struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	TTLPeriod  int    `json:"ttl_period,omitempty"`
+}
+
+func (UpdatePeerHistoryTTL) isUpdate()     {}
+func (u UpdatePeerHistoryTTL) Tag() string { return u.Underscore }
+
+func NewUpdatePeerHistoryTTL(peer Peer, ttlPeriod int) UpdatePeerHistoryTTL {
+	return UpdatePeerHistoryTTL{Underscore: UpdatePeerHistoryTTLTag, Peer: peer, TTLPeriod: ttlPeriod}
+}

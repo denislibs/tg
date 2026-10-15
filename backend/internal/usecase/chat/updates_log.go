@@ -143,7 +143,7 @@ func (i *Interactor) appendPerPeer(ctx context.Context, chatID int64, recipients
 // окне его TTL показала бы старое («закрепил, обновил — не закреплено»).
 var dialogRowFrames = map[string]bool{
 	"chat_update": true, "dialog_pin": true, "dialog_archive": true,
-	"dialog_mute": true, "draft_update": true,
+	"dialog_mute": true, "draft_update": true, "peer_history_ttl": true,
 }
 
 // invalidateDialogs сбрасывает кэш снимка диалогов пользователям, у которых

@@ -52,8 +52,42 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 	if err := i.chats.SetAutoDelete(ctx, chatID, seconds); err != nil {
 		return err
 	}
+	i.publishHistoryTTL(ctx, chatID, actorID, seconds)
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionSetMessagesTTL(seconds))
 	return nil
+}
+
+// publishHistoryTTL объявляет новый срок автоудаления чата вторым устройствам
+// и собеседникам (tweb `updatePeerHistoryTTL`, appProfileManager.ts:1541-1558:
+// `ttl_period` в полной карточке и в диалоге + событие `auto_delete_period_update`).
+//
+// Личка и группа — строка `peer_history_ttl` в журнале каждого участника (пир в
+// теле свой у каждого). Broadcast-канал (В-3 Ф-6) — снимок карточки журналом
+// канала: у подписчиков нет per-user веера, а `ttl_period` уже едет в
+// `chat_full.full_chat`; клиент сравнивает его со строкой диалога. Кэш диалогов
+// подписчиков канала не сбрасывается (O(подписчиков)) — живёт до своего TTL;
+// сбрасывается только кэш того, кто поставил срок.
+//
+// Best-effort, как у темы чата: запись уже закоммичена, сбой журнала не должен
+// вернуться ошибкой запроса.
+func (i *Interactor) publishHistoryTTL(ctx context.Context, chatID, actorID int64, seconds int) {
+	if i.isBroadcast(ctx, chatID) {
+		i.invalidateDialogs(ctx, actorID)
+		i.publishChatUpdate(ctx, chatID)
+		return
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return
+	}
+	_ = i.logAndPublishPerPeer(ctx, chatID, members, "peer_history_ttl",
+		func(peer domain.PeerID) map[string]any {
+			body := map[string]any{"_": domain.UpdatePeerHistoryTTLTag, "peer": domain.NewPeer(peer)}
+			if seconds > 0 { // «выключено» — отсутствие ключа
+				body["ttl_period"] = seconds
+			}
+			return body
+		})
 }
 
 // PurgeExpiredMessages удаляет «для всех» сообщения с истёкшим auto_delete_at:
