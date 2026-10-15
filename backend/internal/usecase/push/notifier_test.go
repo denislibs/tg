@@ -148,18 +148,11 @@ func (s *fakeSender) Send(_ context.Context, sub domain.PushSubscription, payloa
 }
 
 type fakeEnricher struct {
-	names      map[int64]string
-	badges     map[int64]int
-	badgeCalls int
+	names map[int64]string
 }
 
 func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, error) {
 	return e.names[userID], nil
-}
-
-func (e *fakeEnricher) UnreadBadge(_ context.Context, userID int64) (int, error) {
-	e.badgeCalls++
-	return e.badges[userID], nil
 }
 
 // --- notifier tests ---

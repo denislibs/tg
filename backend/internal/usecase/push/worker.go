@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -37,13 +38,10 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// Бейдж получателя — один раз на пачку: он считается по всем его чатам,
-	// а у поста канала заданий одному получателю в пачке бывает несколько.
-	badges := map[int64]int{}
 	for _, qj := range jobs {
 		// Ack only when the job is handled or is a poison pill; a transient
 		// failure leaves it pending for redelivery (at-least-once).
-		if w.handle(ctx, qj.Job, badges) {
+		if w.handle(ctx, qj.Job) {
 			_ = w.queue.Ack(ctx, qj.ID)
 		}
 	}
@@ -53,7 +51,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 // handle processes one job. Returns true if the message should be ACKed
 // (delivered or no subscriptions) and false on a transient error that warrants
 // redelivery.
-func (w *Worker) handle(ctx context.Context, job Job, badges map[int64]int) bool {
+func (w *Worker) handle(ctx context.Context, job Job) bool {
 	subs, err := w.subs.ForUser(ctx, job.RecipientID)
 	if err != nil {
 		return false // transient DB error — retry later
@@ -61,7 +59,7 @@ func (w *Worker) handle(ctx context.Context, job Job, badges map[int64]int) bool
 	if len(subs) == 0 {
 		return true // nobody to push to
 	}
-	payload, _ := json.Marshal(w.buildPayload(ctx, job, badges))
+	payload, _ := json.Marshal(w.buildPayload(ctx, job))
 	retry := false
 	for _, sub := range subs {
 		status, err := w.sender.Send(ctx, sub, payload)
@@ -78,9 +76,18 @@ func (w *Worker) handle(ctx context.Context, job Job, badges map[int64]int) bool
 	return !retry
 }
 
-// buildPayload enriches the job with sender name + unread badge for the client.
-// С выключенным Message Preview текст в пуш не попадает (tweb: nopreview —
-// клиент покажет generic-текст).
+// Значения loc_key тела пуша. tweb читает только НАЛИЧИЕ ключа (push.ts:439-443:
+// без него — заголовок «Telegram» и общий текст), поэтому других ключей, как у
+// настоящего Telegram (MESSAGE_PHOTO, CHAT_MESSAGE_TEXT …), не вводим.
+const (
+	locKeyText   = "MESSAGE_TEXT"
+	locKeyNoText = "MESSAGE_NOTEXT"
+)
+
+// buildPayload собирает тело Web Push в форме PushNotificationObject tweb
+// (lib/serviceWorker/push.ts:30-54): title, description, loc_key/loc_args и
+// custom{msg_id, from_id | channel_id}. С выключенным Message Preview нет ни
+// loc_key, ни loc_args, ни description — клиент покажет общий текст.
 //
 // Конструктором `message` этот payload НЕ становится, и основание одно —
 // предмет ДРУГОЙ: это тело Web Push-уведомления, которое читает service worker
@@ -89,30 +96,36 @@ func (w *Worker) handle(ctx context.Context, job Job, badges map[int64]int) bool
 // место, где это законно, и ровно то же исключение, что у публичной страницы
 // /u/{username}. Ровно так устроен и оригинал: push-payload у него свой
 // (title/body/custom), а не Message.
-func (w *Worker) buildPayload(ctx context.Context, job Job, badges map[int64]int) map[string]any {
-	senderName := job.Title
-	if senderName == "" {
-		senderName, _ = w.enrich.SenderName(ctx, job.SenderID)
+//
+// Отличия от оригинала (объявлены): `user_id` (мультиаккаунт) и `silent` не
+// производятся; заголовок группы — имя автора без названия чата.
+func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
+	title := job.Title
+	if title == "" {
+		title, _ = w.enrich.SenderName(ctx, job.SenderID)
 	}
-	badge, ok := badges[job.RecipientID]
-	if !ok {
-		badge, _ = w.enrich.UnreadBadge(ctx, job.RecipientID)
-		badges[job.RecipientID] = badge
-	}
-	text := job.Text
-	if !job.Preview {
-		text = ""
-	}
-	p := map[string]any{
-		"id":     job.Seq,
-		"sender": map[string]any{"name": senderName},
-		"text":   text, "badge": badge,
-	}
+	custom := map[string]any{"msg_id": strconv.FormatInt(job.Seq, 10)}
 	// Ключ пира кладём, только когда он есть: у задания, застрявшего в очереди с
-	// прошлой версии, поля нет, и "peer_id": 0 отправил бы клиента в НЕ ТОТ чат.
-	// Отсутствие ключа он трактует как «уведомление без адреса», что безопасно.
-	if job.PeerID != domain.NullPeerID {
-		p["peer_id"] = job.PeerID
+	// прошлой версии, поля нет, и "from_id": "0" отправил бы клиента в НЕ ТОТ чат.
+	// Отсутствие ключа tweb трактует как «уведомление без адреса» (peerId '').
+	// Группы и каналы у нас — megagroup-каналы, ключ пира peerChannel: положительный
+	// id, минус добавит fillPushObject (push.ts:403-418).
+	switch {
+	case job.PeerID == domain.NullPeerID:
+	case job.PeerID.IsAnyChat():
+		custom["channel_id"] = strconv.FormatInt(job.PeerID.ToChatID(), 10)
+	default:
+		custom["from_id"] = strconv.FormatInt(job.PeerID.ToUserID(), 10)
+	}
+	p := map[string]any{"title": title, "custom": custom}
+	if job.Preview {
+		locKey := locKeyText
+		if job.Text == "" {
+			locKey = locKeyNoText
+		}
+		p["loc_key"] = locKey
+		p["loc_args"] = []string{title, job.Text}
+		p["description"] = job.Text
 	}
 	return p
 }
