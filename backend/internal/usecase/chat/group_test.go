@@ -885,15 +885,53 @@ func (r *fakeInviteRepo) GetByToken(_ context.Context, token string) (domain.Inv
 	return domain.InviteLink{}, domain.ErrNotFound
 }
 
-func (r *fakeInviteRepo) List(_ context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error) {
+func (r *fakeInviteRepo) GetInChat(_ context.Context, chatID int64, token string) (domain.InviteLink, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, l := range r.links {
+		if l.ChatID == chatID && l.Token == token {
+			return l, nil
+		}
+	}
+	return domain.InviteLink{}, domain.ErrNotFound
+}
+
+func (r *fakeInviteRepo) ListBy(_ context.Context, chatID, createdBy int64, revoked bool) ([]domain.InviteLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []domain.InviteLink
 	for _, l := range r.links {
-		if l.ChatID == chatID && l.Revoked == revoked {
+		if l.ChatID == chatID && l.CreatedBy == createdBy && l.Revoked == revoked {
 			out = append(out, l)
 		}
 	}
+	return out, nil
+}
+
+func (r *fakeInviteRepo) CountsByAdmin(_ context.Context, chatID int64) ([]domain.AdminInvites, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	byAdmin := map[int64]*domain.AdminInvites{}
+	for _, l := range r.links {
+		if l.ChatID != chatID {
+			continue
+		}
+		a := byAdmin[l.CreatedBy]
+		if a == nil {
+			a = &domain.AdminInvites{AdminID: l.CreatedBy}
+			byAdmin[l.CreatedBy] = a
+		}
+		if l.Revoked {
+			a.Revoked++
+		} else {
+			a.Active++
+		}
+	}
+	out := make([]domain.AdminInvites, 0, len(byAdmin))
+	for _, a := range byAdmin {
+		out = append(out, *a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].AdminID < out[j].AdminID })
 	return out, nil
 }
 
@@ -923,11 +961,11 @@ func (r *fakeInviteRepo) Delete(_ context.Context, chatID int64, token string) e
 	return nil
 }
 
-func (r *fakeInviteRepo) DeleteAllRevoked(_ context.Context, chatID int64) error {
+func (r *fakeInviteRepo) DeleteRevokedBy(_ context.Context, chatID, createdBy int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for id, l := range r.links {
-		if l.ChatID == chatID && l.Revoked {
+		if l.ChatID == chatID && l.CreatedBy == createdBy && l.Revoked {
 			delete(r.links, id)
 		}
 	}
@@ -1583,11 +1621,11 @@ func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
 	link, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
 
 	// Active list contains the new link; revoked list doesn't.
-	act, err := i.ListInvites(ctx, id, 7, false)
+	act, err := i.ListInvites(ctx, id, 7, 0, false)
 	if err != nil || !hasToken(act, link.Token) {
 		t.Fatalf("active list = %+v err=%v", act, err)
 	}
-	if rev, err := i.ListInvites(ctx, id, 7, true); err != nil || hasToken(rev, link.Token) {
+	if rev, err := i.ListInvites(ctx, id, 7, 0, true); err != nil || hasToken(rev, link.Token) {
 		t.Fatalf("revoked list (before) = %+v err=%v", rev, err)
 	}
 
@@ -1596,15 +1634,15 @@ func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
 	if _, err := i.EditInvite(ctx, id, 7, link.Token, domain.InviteEdit{Revoked: &revoked}); err != nil {
 		t.Fatal(err)
 	}
-	if act, _ := i.ListInvites(ctx, id, 7, false); hasToken(act, link.Token) {
+	if act, _ := i.ListInvites(ctx, id, 7, 0, false); hasToken(act, link.Token) {
 		t.Fatalf("active list still has revoked link = %+v", act)
 	}
-	if rev, _ := i.ListInvites(ctx, id, 7, true); !hasToken(rev, link.Token) {
+	if rev, _ := i.ListInvites(ctx, id, 7, 0, true); !hasToken(rev, link.Token) {
 		t.Fatalf("revoked list missing link = %+v", rev)
 	}
 
 	// non-admin forbidden on both list and delete.
-	if _, err := i.ListInvites(ctx, id, 8, true); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := i.ListInvites(ctx, id, 8, 0, true); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-admin list = %v, want ErrForbidden", err)
 	}
 	if err := i.DeleteInvite(ctx, id, 8, link.Token); !errors.Is(err, domain.ErrForbidden) {
@@ -1615,7 +1653,7 @@ func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
 	if err := i.DeleteInvite(ctx, id, 7, link.Token); err != nil {
 		t.Fatal(err)
 	}
-	if rev, _ := i.ListInvites(ctx, id, 7, true); hasToken(rev, link.Token) {
+	if rev, _ := i.ListInvites(ctx, id, 7, 0, true); hasToken(rev, link.Token) {
 		t.Fatalf("revoked list still has deleted link = %+v", rev)
 	}
 }
@@ -1634,19 +1672,19 @@ func TestDeleteAllRevoked(t *testing.T) {
 	}
 	active, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
 
-	if err := i.DeleteAllRevoked(ctx, id, 7); err != nil {
+	if err := i.DeleteAllRevoked(ctx, id, 7, 0); err != nil {
 		t.Fatal(err)
 	}
-	if rev, _ := i.ListInvites(ctx, id, 7, true); len(rev) != 0 {
+	if rev, _ := i.ListInvites(ctx, id, 7, 0, true); len(rev) != 0 {
 		t.Fatalf("revoked after delete-all = %+v, want empty", rev)
 	}
 	// The active link survives.
-	if act, _ := i.ListInvites(ctx, id, 7, false); !hasToken(act, active.Token) {
+	if act, _ := i.ListInvites(ctx, id, 7, 0, false); !hasToken(act, active.Token) {
 		t.Fatalf("active link gone after delete-all = %+v", act)
 	}
 
 	// non-admin forbidden.
-	if err := i.DeleteAllRevoked(ctx, id, 8); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.DeleteAllRevoked(ctx, id, 8, 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-admin delete-all = %v, want ErrForbidden", err)
 	}
 }

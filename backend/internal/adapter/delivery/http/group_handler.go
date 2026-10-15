@@ -378,15 +378,35 @@ func (h *GroupHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// DeleteAllRevoked hard-deletes every revoked link of the chat
-// (DELETE /chats/{chatID}/revoked_invite_links; Telegram deleteRevokedExportedChatInvites).
+// adminIDParam — `?admin_id=` ручек ссылок-приглашений: чьи ссылки (0 — актора;
+// tweb без выбранного админа шлёт inputUserSelf). Неразобранное — 400.
+func adminIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	raw := r.URL.Query().Get("admin_id")
+	if raw == "" {
+		return 0, true
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid admin_id")
+		return 0, false
+	}
+	return id, true
+}
+
+// DeleteAllRevoked hard-deletes the actor's (или, для создателя, ?admin_id=) revoked
+// links of the chat (DELETE /chats/{chatID}/revoked_invite_links; Telegram
+// deleteRevokedExportedChatInvites).
 func (h *GroupHandler) DeleteAllRevoked(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
-	if err := h.uc.DeleteAllRevoked(r.Context(), chatID, user.ID); err != nil {
+	adminID, ok := adminIDParam(w, r)
+	if !ok {
+		return
+	}
+	if err := h.uc.DeleteAllRevoked(r.Context(), chatID, user.ID, adminID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -839,7 +859,11 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	revoked := r.URL.Query().Get("revoked") == "true"
-	links, err := h.uc.ListInvites(r.Context(), chatID, user.ID, revoked)
+	adminID, ok := adminIDParam(w, r)
+	if !ok {
+		return
+	}
+	links, err := h.uc.ListInvites(r.Context(), chatID, user.ID, adminID, revoked)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -860,6 +884,33 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	viewUsers(r, h.privacy, cards)
 	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links, cards))
+}
+
+// AdminsWithInvites — создатели ссылок чата со счётчиками
+// (GET /chats/{chatID}/admins_with_invites; Telegram messages.getAdminsWithInvites).
+// Только создатель чата.
+func (h *GroupHandler) AdminsWithInvites(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	counts, err := h.uc.AdminsWithInvites(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	ids := make([]int64, 0, len(counts))
+	for _, c := range counts {
+		ids = append(ids, c.AdminID)
+	}
+	cards, err := h.uc.UsersByIDs(r.Context(), user.ID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	viewUsers(r, h.privacy, cards)
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatAdminsWithInvites(counts, cards))
 }
 
 // EditInvite updates an invite link (PATCH /chats/{chatID}/invite_links/{token}).

@@ -13,13 +13,15 @@ import "time"
 // живут в `pFlags`, где «выключено» это ОТСУТСТВИЕ ключа.
 
 const (
-	ChatInviteExportedTag          = "chatInviteExported"
-	ChatInviteImporterTag          = "chatInviteImporter"
-	MessagesExportedChatInviteTag  = "messages.exportedChatInvite"
-	MessagesExportedInvitesTag     = "messages.exportedChatInvites"
-	MessagesChatInviteImportersTag = "messages.chatInviteImporters"
-	MissingInviteeTag              = "missingInvitee"
-	MessagesInvitedUsersTag        = "messages.invitedUsers"
+	ChatInviteExportedTag            = "chatInviteExported"
+	ChatInviteImporterTag            = "chatInviteImporter"
+	MessagesExportedChatInviteTag    = "messages.exportedChatInvite"
+	MessagesExportedInvitesTag       = "messages.exportedChatInvites"
+	MessagesChatInviteImportersTag   = "messages.chatInviteImporters"
+	ChatAdminWithInvitesTag          = "chatAdminWithInvites"
+	MessagesChatAdminsWithInvitesTag = "messages.chatAdminsWithInvites"
+	MissingInviteeTag                = "missingInvitee"
+	MessagesInvitedUsersTag          = "messages.invitedUsers"
 )
 
 // chatInviteExported#a22cbd96 flags:# revoked:flags.0?true permanent:flags.5?true
@@ -135,6 +137,42 @@ func NewMessagesExportedChatInvites(links []InviteLink, users []UserReal) Messag
 		Underscore: MessagesExportedInvitesTag,
 		Count:      len(invites),
 		Invites:    invites,
+		Users:      orEmpty(users),
+	}
+}
+
+// chatAdminWithInvites#f2ecef23 admin_id:long invites_count:int
+// revoked_invites_count:int = ChatAdminWithInvites;
+type ChatAdminWithInvites struct {
+	Underscore          string `json:"_"`
+	AdminID             int64  `json:"admin_id"`
+	InvitesCount        int    `json:"invites_count"`
+	RevokedInvitesCount int    `json:"revoked_invites_count"`
+}
+
+// messages.chatAdminsWithInvites#b69b72d7 admins:Vector<ChatAdminWithInvites>
+// users:Vector<User> = messages.ChatAdminsWithInvites;
+type MessagesChatAdminsWithInvites struct {
+	Underscore string                 `json:"_"`
+	Admins     []ChatAdminWithInvites `json:"admins"`
+	Users      []UserReal             `json:"users"`
+}
+
+// NewMessagesChatAdminsWithInvites — admins строится из счётчиков репозитория,
+// users — карточки этих админов.
+func NewMessagesChatAdminsWithInvites(counts []AdminInvites, users []UserReal) MessagesChatAdminsWithInvites {
+	admins := make([]ChatAdminWithInvites, 0, len(counts))
+	for _, c := range counts {
+		admins = append(admins, ChatAdminWithInvites{
+			Underscore:          ChatAdminWithInvitesTag,
+			AdminID:             c.AdminID,
+			InvitesCount:        c.Active,
+			RevokedInvitesCount: c.Revoked,
+		})
+	}
+	return MessagesChatAdminsWithInvites{
+		Underscore: MessagesChatAdminsWithInvitesTag,
+		Admins:     admins,
 		Users:      orEmpty(users),
 	}
 }
