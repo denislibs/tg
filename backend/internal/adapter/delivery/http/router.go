@@ -469,6 +469,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/sessions", sh.List)
 		pr.Delete("/sessions/others", sh.RevokeOthers)
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
+		pr.Post("/sessions/{deviceID}/settings", sh.Settings)
 		pr.Post("/auth/logout", sh.Logout)
 		pr.Post("/auth/accept_login_token", authH.AcceptLoginToken)
 		pr.Post("/auth/web_token", authH.NewWebAuthToken)

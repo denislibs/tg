@@ -169,6 +169,18 @@ Revoke a session (deletes the device, evicts its cache, **closes its live WS soc
 - 200: `{ "_": "boolTrue" }`
 - 404: `{ "_": "error", "code": 404, "text": "session not found" }`
 
+### POST /sessions/{deviceID}/settings  · auth
+`account.changeAuthorizationSettings`: «Да, это я» о неподтверждённом входе. Сессия
+с `pFlags.unconfirmed` (вход, не одобренный уже вошедшей сессией, при наличии
+других сессий; флаг гаснет сам через 7 суток) показывается остальным устройствам
+плашкой «новый вход». Прочие поля тела (`call_requests_disabled`,
+`encrypted_requests_disabled`) не читаются.
+- Request: `{ "confirmed": true }` (без `confirmed` или с `false` менять нечего — `boolTrue`)
+- 200: `{ "_": "boolTrue" }`; остальные устройства получают `updateNewAuthorization{hash}` без `pFlags`
+- 400: `current session is not confirmable by hash` (цель — текущая сессия или `0`)
+- 404: `session not found`
+- 406: `{ "_": "error", "code": 406, "text": "FRESH_CHANGE_AUTHORIZATION_FORBIDDEN" }` — текущая сессия моложе 24 часов
+
 ### POST /auth/logout  · auth
 Revoke the current session (same effect as revoking the caller's own device).
 - 200: `{ "_": "boolTrue" }`

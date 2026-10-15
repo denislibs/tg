@@ -216,6 +216,7 @@ type fakeDeviceRepo struct {
 	users  *fakeUserRepo
 	nextID int64
 	calls  int // SessionByTokenHash invocations
+	counts int // CountByUser invocations
 }
 
 func newFakeDeviceRepo(users *fakeUserRepo) *fakeDeviceRepo {
@@ -269,14 +270,39 @@ func (r *fakeDeviceRepo) ListByUser(_ context.Context, userID int64) ([]domain.D
 	return out, nil
 }
 
-func (r *fakeDeviceRepo) Delete(_ context.Context, userID, deviceID int64) (string, bool, error) {
+func (r *fakeDeviceRepo) Delete(_ context.Context, userID, deviceID int64) (domain.Device, bool, error) {
 	d, ok := r.byID[deviceID]
 	if !ok || d.UserID != userID {
-		return "", false, nil
+		return domain.Device{}, false, nil
 	}
 	delete(r.byID, deviceID)
 	delete(r.byHash, d.TokenHash)
-	return d.TokenHash, true, nil
+	return d, true, nil
+}
+
+func (r *fakeDeviceRepo) CountByUser(_ context.Context, userID int64) (int, error) {
+	r.counts++
+	n := 0
+	for _, d := range r.byID {
+		if d.UserID == userID {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (r *fakeDeviceRepo) Confirm(_ context.Context, userID, deviceID int64) (bool, error) {
+	d, ok := r.byID[deviceID]
+	if !ok || d.UserID != userID {
+		return false, domain.ErrNotFound
+	}
+	if !d.Unconfirmed {
+		return false, nil
+	}
+	d.Unconfirmed = false
+	r.byID[deviceID] = d
+	r.byHash[d.TokenHash] = d
+	return true, nil
 }
 
 func (r *fakeDeviceRepo) DeleteOthers(_ context.Context, userID, keepDeviceID int64) ([]domain.Device, error) {
@@ -376,8 +402,9 @@ type fakePasswordRepo struct {
 	hint   map[int64]string
 	email  map[int64]string
 	tokens map[string]struct {
-		userID  int64
-		expires time.Time
+		userID   int64
+		expires  time.Time
+		approved bool
 	}
 }
 
@@ -385,8 +412,9 @@ func newFakePasswordRepo() *fakePasswordRepo {
 	return &fakePasswordRepo{
 		hash: map[int64]*string{}, hint: map[int64]string{}, email: map[int64]string{},
 		tokens: map[string]struct {
-			userID  int64
-			expires time.Time
+			userID   int64
+			expires  time.Time
+			approved bool
 		}{},
 	}
 }
@@ -400,20 +428,26 @@ func (r *fakePasswordRepo) SetPassword(_ context.Context, userID int64, hash *st
 	return nil
 }
 
-func (r *fakePasswordRepo) SavePasswordToken(_ context.Context, tokenHash string, userID int64, expires time.Time) error {
+// SavePasswordToken повторяет ON CONFLICT боевого репо: у существующей записи
+// approved не перезаписывается (продление токена его не меняет).
+func (r *fakePasswordRepo) SavePasswordToken(_ context.Context, tokenHash string, userID int64, expires time.Time, approved bool) error {
+	if old, ok := r.tokens[tokenHash]; ok {
+		approved = old.approved
+	}
 	r.tokens[tokenHash] = struct {
-		userID  int64
-		expires time.Time
-	}{userID, expires}
+		userID   int64
+		expires  time.Time
+		approved bool
+	}{userID, expires, approved}
 	return nil
 }
 
-func (r *fakePasswordRepo) PasswordTokenUser(_ context.Context, tokenHash string) (int64, error) {
+func (r *fakePasswordRepo) PasswordTokenUser(_ context.Context, tokenHash string) (int64, bool, error) {
 	e, ok := r.tokens[tokenHash]
 	if !ok || time.Now().After(e.expires) {
-		return 0, domain.ErrNotFound
+		return 0, false, domain.ErrNotFound
 	}
-	return e.userID, nil
+	return e.userID, e.approved, nil
 }
 
 func (r *fakePasswordRepo) DeletePasswordToken(_ context.Context, tokenHash string) error {

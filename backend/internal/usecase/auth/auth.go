@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 )
 
 // ErrQRUnavailable is returned when QR login is requested but no QRStore is
@@ -37,6 +38,7 @@ type Interactor struct {
 	partners   PartnersFunc       // optional: user_update recipient set (shared-chat peers)
 	partnersIn PartnersAmongFunc  // optional: «кто из этих — партнёр» одним запросом (AnnounceUserTo)
 	updates    UpdateLog          // optional: per-user update log for user_update (dense pts)
+	emit       *ownsync.Emitter   // optional: строки «новый вход» (updateNewAuthorization) в журнал своих устройств
 	previews   AvatarPreviewer    // optional: stripped-превью аватарки при её установке
 	squarer    AvatarSquarer      // optional: квадрат неквадратной аватарки
 	media      MediaReader        // обязателен для фото профиля: проверка «файл свой»
@@ -210,6 +212,7 @@ func (i *Interactor) SetPublisher(p EventPublisher)              { i.pub = p }
 func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = f }
 func (i *Interactor) SetPartnersAmong(f PartnersAmongFunc)       { i.partnersIn = f }
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
+func (i *Interactor) SetEmitter(e *ownsync.Emitter)              { i.emit = e }
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
 func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s }
 func (i *Interactor) SetMediaReader(m MediaReader)               { i.media = m }
@@ -274,13 +277,13 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 	}
 	// Второй фактор: при включённом облачном пароле сессия не выдаётся — только
 	// короткий токен для шага «введите пароль».
-	if res, needed, err := i.startPasswordStep(ctx, user.ID); err != nil {
+	if res, needed, err := i.startPasswordStep(ctx, user.ID, false); err != nil {
 		return SignInResult{}, err
 	} else if needed {
 		_ = i.codes.DeleteCode(ctx, phone)
 		return res, nil
 	}
-	res, err := i.mintSession(ctx, user, deviceName, platform)
+	res, err := i.mintSession(ctx, user, deviceName, platform, false)
 	if err != nil {
 		return SignInResult{}, err
 	}
@@ -290,8 +293,11 @@ func (i *Interactor) SignIn(ctx context.Context, rawPhone, suppliedCode, deviceN
 
 // startPasswordStep выдаёт одноразовый password_token, если у пользователя
 // включён облачный пароль. needed=false — пароля нет, вход продолжается сессией.
-// Общий шаг для SignIn, SignImport и PasskeySignIn.
-func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignInResult, bool, error) {
+// Общий шаг для SignIn, SignImport, PasskeySignIn и QR. approved — вход одобрила
+// уже вошедшая сессия (QR, веб-токен): признак сохраняется в токене и доходит до
+// mintSession после ввода пароля (CheckPassword), иначе такой вход ложно спросил
+// бы «это вы?».
+func (i *Interactor) startPasswordStep(ctx context.Context, userID int64, approved bool) (SignInResult, bool, error) {
 	if i.pw == nil {
 		return SignInResult{}, false, nil
 	}
@@ -308,15 +314,22 @@ func (i *Interactor) startPasswordStep(ctx context.Context, userID int64) (SignI
 	if err != nil {
 		return SignInResult{}, false, err
 	}
-	if err := i.pw.SavePasswordToken(ctx, pwTokenHash, userID, time.Now().Add(passwordTokenTTL)); err != nil {
+	if err := i.pw.SavePasswordToken(ctx, pwTokenHash, userID, time.Now().Add(passwordTokenTTL), approved); err != nil {
 		return SignInResult{}, false, err
 	}
 	return SignInResult{PasswordNeeded: true, PasswordToken: pwToken, Hint: hint}, true, nil
 }
 
 // mintSession выдаёт новую сессию (строка devices + токен) и шлёт login-alert.
-// Общий хвост SignIn и CheckPassword.
-func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, deviceName, platform string) (SignInResult, error) {
+// Общий хвост всех путей входа.
+//
+// approved — вход одобрила уже вошедшая сессия (QR: AcceptLoginToken; веб-токен:
+// его выпускает живая сессия). Такой вход спрашивать «это вы?» бессмысленно.
+// Прочие пути (код, пароль, ключ доступа, восстановление, регистрация): если у
+// аккаунта уже есть сессии, новая строка несёт unconfirmed, и остальные
+// устройства получают updateNewAuthorization (tweb appAccountManager.ts:41-59,
+// 277-294); у первой сессии аккаунта спросить некого.
+func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, deviceName, platform string, approved bool) (SignInResult, error) {
 	token, hash, err := domain.GenerateToken()
 	if err != nil {
 		return SignInResult{}, err
@@ -347,9 +360,22 @@ func (i *Interactor) mintSession(ctx context.Context, user domain.UserRecord, de
 		IP:            ci.IP,
 		Location:      ci.Location,
 	}
+	if !approved {
+		// Считаем ДО Create, иначе сама новая строка попала бы в счёт. Сбой чтения
+		// — отказ входа, а не «сессий нет»: иначе сбой БД молча глушил бы
+		// уведомление о чужом входе.
+		n, err := i.devices.CountByUser(ctx, user.ID)
+		if err != nil {
+			return SignInResult{}, err
+		}
+		device.Unconfirmed = n > 0
+	}
 	created, err := i.devices.Create(ctx, device)
 	if err != nil {
 		return SignInResult{}, err
+	}
+	if created.Unconfirmed {
+		i.emitOwnSessions(ctx, user.ID, domain.NewUpdateNewAuthorization(created))
 	}
 	// Владелец вошёл — чужая попытка сброса аккаунта снимается. Общий хвост всех
 	// веток входа: отмену вешаем здесь, а не в каждой из них.
@@ -472,7 +498,7 @@ func (i *Interactor) exportFromRecord(ctx context.Context, keyHash string, rec d
 	case domain.QRConfirmed:
 		return ExportResult{Session: &SignInResult{Token: rec.SessionToken, User: rec.User}}, nil
 	case domain.QRPasswordNeeded:
-		res, needed, err := i.startPasswordStep(ctx, rec.UserID)
+		res, needed, err := i.startPasswordStep(ctx, rec.UserID, true)
 		if err != nil {
 			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{}, err
@@ -491,7 +517,7 @@ func (i *Interactor) exportFromRecord(ctx context.Context, keyHash string, rec d
 			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{}, err
 		}
-		res, err = i.mintSession(ctx, u, "QR login", rec.Platform)
+		res, err = i.mintSession(ctx, u, "QR login", rec.Platform, true)
 		if err != nil {
 			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{}, err
@@ -564,11 +590,11 @@ func (i *Interactor) AcceptLoginToken(ctx context.Context, token string, user do
 			Name: rec.Client.Browser, Platform: rec.Platform, SystemVersion: rec.Client.OS,
 			AppVersion: rec.Client.AppVersion, IP: rec.Client.IP, Location: place,
 			CreatedAt: now, LastActive: now,
-		}, false)
+		}, false, now)
 		out.PFlags["password_pending"] = true
 		return out, nil
 	}
-	res, err := i.mintSession(WithClientInfo(ctx, qrClientInfo(rec.Client)), user, "QR login", rec.Platform)
+	res, err := i.mintSession(WithClientInfo(ctx, qrClientInfo(rec.Client)), user, "QR login", rec.Platform, true)
 	if err != nil {
 		_ = i.qr.DeleteByKey(ctx, keyHash)
 		return domain.Authorization{}, err
@@ -582,7 +608,7 @@ func (i *Interactor) AcceptLoginToken(ctx context.Context, token string, user do
 		_ = i.qr.DeleteByKey(ctx, keyHash)
 		return domain.Authorization{}, err
 	}
-	return domain.NewAuthorization(res.Device, false), nil
+	return domain.NewAuthorization(res.Device, false, i.now()), nil
 }
 
 // hasPassword — включён ли у пользователя облачный пароль. Ошибка чтения —

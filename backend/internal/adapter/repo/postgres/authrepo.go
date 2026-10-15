@@ -379,12 +379,12 @@ func (r *AuthRepo) DeleteProfilePhoto(ctx context.Context, userID, mediaID int64
 func (r *AuthRepo) Create(ctx context.Context, in domain.Device) (domain.Device, error) {
 	var d domain.Device
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO devices (user_id, name, platform, system_version, app_version, token_hash, ip, location)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		 RETURNING id, user_id, name, platform, system_version, app_version, token_hash, created_at, last_active, ip, location`,
-		in.UserID, in.Name, in.Platform, in.SystemVersion, in.AppVersion, in.TokenHash, in.IP, in.Location).
+		`INSERT INTO devices (user_id, name, platform, system_version, app_version, token_hash, ip, location, unconfirmed)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		 RETURNING id, user_id, name, platform, system_version, app_version, token_hash, created_at, last_active, ip, location, unconfirmed`,
+		in.UserID, in.Name, in.Platform, in.SystemVersion, in.AppVersion, in.TokenHash, in.IP, in.Location, in.Unconfirmed).
 		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion, &d.TokenHash,
-			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location)
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location, &d.Unconfirmed)
 	return d, err
 }
 
@@ -428,7 +428,7 @@ func (r *AuthRepo) SessionByTokenHash(ctx context.Context, tokenHash, appVersion
 func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Device, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, user_id, name, platform, system_version, app_version,
-		        created_at, last_active, ip, location FROM devices
+		        created_at, last_active, ip, location, unconfirmed FROM devices
 		 WHERE user_id=$1 ORDER BY last_active DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -438,7 +438,7 @@ func (r *AuthRepo) ListByUser(ctx context.Context, userID int64) ([]domain.Devic
 	for rows.Next() {
 		var d domain.Device
 		if err := rows.Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion,
-			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location); err != nil {
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location, &d.Unconfirmed); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -451,10 +451,10 @@ func (r *AuthRepo) Get(ctx context.Context, userID, deviceID int64) (domain.Devi
 	var d domain.Device
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, user_id, name, platform, system_version, app_version,
-		        created_at, last_active, ip, location FROM devices
+		        created_at, last_active, ip, location, unconfirmed FROM devices
 		 WHERE id=$1 AND user_id=$2`, deviceID, userID).
 		Scan(&d.ID, &d.UserID, &d.Name, &d.Platform, &d.SystemVersion, &d.AppVersion,
-			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location)
+			&d.CreatedAt, &d.LastActive, &d.IP, &d.Location, &d.Unconfirmed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Device{}, domain.ErrNotFound
 	}
@@ -465,7 +465,7 @@ func (r *AuthRepo) Get(ctx context.Context, userID, deviceID int64) (domain.Devi
 // the removed rows so the caller can evict session caches and close sockets.
 func (r *AuthRepo) DeleteOthers(ctx context.Context, userID, keepDeviceID int64) ([]domain.Device, error) {
 	rows, err := r.pool.Query(ctx,
-		`DELETE FROM devices WHERE user_id=$1 AND id<>$2 RETURNING id, token_hash`,
+		`DELETE FROM devices WHERE user_id=$1 AND id<>$2 RETURNING id, token_hash, unconfirmed, created_at`,
 		userID, keepDeviceID)
 	if err != nil {
 		return nil, err
@@ -474,7 +474,7 @@ func (r *AuthRepo) DeleteOthers(ctx context.Context, userID, keepDeviceID int64)
 	var out []domain.Device
 	for rows.Next() {
 		var d domain.Device
-		if err := rows.Scan(&d.ID, &d.TokenHash); err != nil {
+		if err := rows.Scan(&d.ID, &d.TokenHash, &d.Unconfirmed, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -502,19 +502,49 @@ func (r *AuthRepo) DeleteAll(ctx context.Context, userID int64) ([]domain.Device
 	return out, rows.Err()
 }
 
-// Delete removes a user's device by id and returns its token hash (so the
-// caller can evict the cache). found is false if no such device exists.
-func (r *AuthRepo) Delete(ctx context.Context, userID, deviceID int64) (tokenHash string, found bool, err error) {
+// Delete removes a user's device by id and returns the removed row (token hash —
+// so the caller can evict the cache; unconfirmed/created_at — to take back the
+// "was it you?" prompt). found is false if no such device exists.
+func (r *AuthRepo) Delete(ctx context.Context, userID, deviceID int64) (d domain.Device, found bool, err error) {
 	err = r.pool.QueryRow(ctx,
-		`DELETE FROM devices WHERE id=$1 AND user_id=$2 RETURNING token_hash`,
-		deviceID, userID).Scan(&tokenHash)
+		`DELETE FROM devices WHERE id=$1 AND user_id=$2 RETURNING id, token_hash, unconfirmed, created_at`,
+		deviceID, userID).Scan(&d.ID, &d.TokenHash, &d.Unconfirmed, &d.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return domain.Device{}, false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return domain.Device{}, false, err
 	}
-	return tokenHash, true, nil
+	d.UserID = userID
+	return d, true, nil
+}
+
+// CountByUser — сколько сессий у пользователя (идёт по idx_devices_user).
+func (r *AuthRepo) CountByUser(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM devices WHERE user_id=$1`, userID).Scan(&n)
+	return n, err
+}
+
+// Confirm снимает unconfirmed одним запросом, различая «нет строки»
+// (domain.ErrNotFound) и «уже подтверждена» (changed=false). Условие
+// `AND devices.unconfirmed` в UPDATE нужно потому, что CTE d — снимок: два
+// параллельных подтверждения оба видели бы флаг поднятым.
+func (r *AuthRepo) Confirm(ctx context.Context, userID, deviceID int64) (changed bool, err error) {
+	var found bool
+	err = r.pool.QueryRow(ctx,
+		`WITH d AS (SELECT id, unconfirmed FROM devices WHERE id=$1 AND user_id=$2),
+		      u AS (UPDATE devices SET unconfirmed=false FROM d
+		            WHERE devices.id=d.id AND devices.unconfirmed RETURNING devices.id)
+		 SELECT EXISTS (SELECT 1 FROM d), EXISTS (SELECT 1 FROM u)`,
+		deviceID, userID).Scan(&found, &changed)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, domain.ErrNotFound
+	}
+	return changed, nil
 }
 
 // --- Облачный пароль (2FA): usecase/auth.PasswordRepo ---
@@ -541,24 +571,30 @@ func (r *AuthRepo) SetPassword(ctx context.Context, userID int64, hash *string, 
 }
 
 // SavePasswordToken сохраняет одноразовый токен шага пароля (вход с 2FA).
-func (r *AuthRepo) SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time) error {
+// approved — вход одобрила уже вошедшая сессия (QR, веб-токен): признак живёт в
+// токене и переживает шаг пароля. При продлении токена (ON CONFLICT) approved НЕ
+// перезаписывается: продлевает токен восстановление пароля, и менять признак
+// ему нечем.
+func (r *AuthRepo) SavePasswordToken(ctx context.Context, tokenHash string, userID int64, expires time.Time, approved bool) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO password_login_tokens (token_hash, user_id, expires_at) VALUES ($1,$2,$3)
+		`INSERT INTO password_login_tokens (token_hash, user_id, expires_at, approved) VALUES ($1,$2,$3,$4)
 		 ON CONFLICT (token_hash) DO UPDATE SET user_id=$2, expires_at=$3`,
-		tokenHash, userID, expires)
+		tokenHash, userID, expires, approved)
 	return err
 }
 
-// PasswordTokenUser возвращает владельца живого токена (истёкшие не считаются).
-func (r *AuthRepo) PasswordTokenUser(ctx context.Context, tokenHash string) (int64, error) {
+// PasswordTokenUser возвращает владельца живого токена и признак approved
+// (истёкшие не считаются).
+func (r *AuthRepo) PasswordTokenUser(ctx context.Context, tokenHash string) (int64, bool, error) {
 	var userID int64
+	var approved bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT user_id FROM password_login_tokens WHERE token_hash=$1 AND expires_at > now()`,
-		tokenHash).Scan(&userID)
+		`SELECT user_id, approved FROM password_login_tokens WHERE token_hash=$1 AND expires_at > now()`,
+		tokenHash).Scan(&userID, &approved)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, domain.ErrNotFound
+		return 0, false, domain.ErrNotFound
 	}
-	return userID, err
+	return userID, approved, err
 }
 
 // DeletePasswordToken сжигает токен после успешного входа.

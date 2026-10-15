@@ -17,10 +17,13 @@ func accountCases() []struct {
 		name  string
 		value any
 	}{
-		{"сессия устройства", NewAuthorization(currentDevice(), true)},
-		{"чужая сессия", NewAuthorization(otherDevice(), false)},
+		{"сессия устройства", NewAuthorization(currentDevice(), true, time.Unix(1787334148, 0))},
+		{"чужая сессия", NewAuthorization(otherDevice(), false, time.Unix(1787334148, 0))},
+		{"неподтверждённая сессия", NewAuthorization(Device{ID: 9, UserID: 1, Name: "Firefox", Platform: "web",
+			SystemVersion: "Linux", AppVersion: "0.1.0 (1)", CreatedAt: time.Unix(1787330000, 0),
+			LastActive: time.Unix(1787334148, 0), Unconfirmed: true}, false, time.Unix(1787334148, 0))},
 		{"список сессий", NewAccountAuthorizations([]Authorization{
-			NewAuthorization(currentDevice(), true)})},
+			NewAuthorization(currentDevice(), true, time.Unix(1787334148, 0))})},
 		{"строка книги", NewContact(9, false)},
 		{"адресная книга", NewContactsContacts(
 			[]Contact{NewContact(9, false)},
@@ -80,7 +83,7 @@ func otherDevice() Device {
 // потому клиент читает `auth.pFlags.current` без страховки. Пропуск ключа ронял
 // вкладку «Устройства» на TypeError у первой же чужой сессии.
 func TestAccount_CurrentSessionIsAFlag(t *testing.T) {
-	other, ok := roundTripJSON(t, NewAuthorization(otherDevice(), false)).(map[string]any)
+	other, ok := roundTripJSON(t, NewAuthorization(otherDevice(), false, time.Unix(1787334148, 0))).(map[string]any)
 	if !ok {
 		t.Fatal("сессия не разобралась в объект")
 	}
@@ -95,7 +98,7 @@ func TestAccount_CurrentSessionIsAFlag(t *testing.T) {
 		t.Error("булево поле current осталось рядом с конструктором")
 	}
 
-	cur, _ := roundTripJSON(t, NewAuthorization(currentDevice(), true)).(map[string]any)
+	cur, _ := roundTripJSON(t, NewAuthorization(currentDevice(), true, time.Unix(1787334148, 0))).(map[string]any)
 	if flags, _ := cur["pFlags"].(map[string]any); flags["current"] != true {
 		t.Errorf("текущая сессия без флага current: %v", cur["pFlags"])
 	}
@@ -108,10 +111,10 @@ func TestAccount_CurrentSessionIsAFlag(t *testing.T) {
 // (tweb activeSessions.tsx:132,157). Отдай мы туда настоящий id — пользователь
 // завершил бы собственную сессию.
 func TestAccount_CurrentSessionHashIsZero(t *testing.T) {
-	if cur := NewAuthorization(currentDevice(), true); cur.Hash != 0 {
+	if cur := NewAuthorization(currentDevice(), true, time.Unix(1787334148, 0)); cur.Hash != 0 {
 		t.Errorf("hash текущей сессии = %d; у текущей авторизации адреса нет", cur.Hash)
 	}
-	if other := NewAuthorization(otherDevice(), false); other.Hash != 8 {
+	if other := NewAuthorization(otherDevice(), false, time.Unix(1787334148, 0)); other.Hash != 8 {
 		t.Errorf("hash чужой сессии = %d; ожидался id устройства 8", other.Hash)
 	}
 }
@@ -121,7 +124,7 @@ func TestAccount_CurrentSessionHashIsZero(t *testing.T) {
 // system_version`, справа `max(date_active, date_created)`. Пустые они рисовали
 // пользователю строку без названия и 1970 год.
 func TestAccount_ClientIdentityIsProduced(t *testing.T) {
-	a := NewAuthorization(currentDevice(), true)
+	a := NewAuthorization(currentDevice(), true, time.Unix(1787334148, 0))
 	if a.AppName != AppName || a.AppName == "" {
 		t.Errorf("app_name = %q; имя клиенту даёт сервер", a.AppName)
 	}
