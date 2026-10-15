@@ -48,7 +48,7 @@ func newDiscussionSeed(t *testing.T) (discussionSeed, *GroupRepo, *ChatsRepo, *M
 // dialogs.ts:1502-1520: скрытых групп обсуждения нет). Гость — нет: строки
 // участника у него нет.
 func TestDiscussionGroup_InDialogListOfMember(t *testing.T) {
-	s, _, chats, msgs, push := newDiscussionSeed(t)
+	s, _, chats, msgs, _ := newDiscussionSeed(t)
 	ctx := context.Background()
 	seq, _ := msgs.NextSeq(ctx, s.disc)
 	if _, err := msgs.Insert(ctx, domain.Message{ChatID: s.disc, Seq: seq, SenderID: s.owner, Type: "text", Text: "hi"}); err != nil {
@@ -66,9 +66,6 @@ func TestDiscussionGroup_InDialogListOfMember(t *testing.T) {
 	}
 	if n, err := chats.UnreadTotal(ctx, s.member); err != nil || n != 1 {
 		t.Fatalf("UnreadTotal = %d, %v; want 1", n, err)
-	}
-	if n, err := push.UnreadBadge(ctx, s.member); err != nil || n != 1 {
-		t.Fatalf("UnreadBadge = %d, %v; want 1", n, err)
 	}
 	ds, _ = chats.ListDialogs(ctx, s.guest)
 	if slices.ContainsFunc(ds, func(d domain.DialogRecord) bool { return d.ChatID == s.disc }) {

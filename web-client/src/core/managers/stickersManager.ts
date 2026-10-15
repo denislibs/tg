@@ -15,6 +15,7 @@
 // видео-стикер, image/webp|png — статичный. URL клиент строит сам (core/mediaUrl).
 import type { RestClient } from '../net/restClient'
 import { saveDocument, type MyDocument } from '../media/messageMedia'
+import type { NewStickerSetEvt } from '../realtime/events'
 
 /**
  * Набор — конструктор `stickerSet` схемы.
@@ -101,8 +102,52 @@ function splitCovered(sets: StickerSetCovered[] | undefined): { sets: StickerSet
   return { sets: out, covers }
 }
 
-export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'post' | 'del'> }) {
-  return {
+export function newStickersManager({ rest, dispatch }: {
+  rest: Pick<RestClient, 'get' | 'post' | 'del'>
+  /** Объявить событие rootScope вкладкам (`stickers_installed` и т. п.). */
+  dispatch: (event: 'stickers_installed' | 'stickers_updated' | 'gifs_updated', payload: unknown) => void
+}) {
+  // Перечитывание списков по кадрам журнала: одно чтение в полёте на список, кадр
+  // во время чтения лишь помечает его устаревшим — после ответа читаем ещё раз и
+  // объявляем только последний результат. Серия кадров (догонка после разрыва,
+  // частая отправка стикеров) стоит одного-двух запросов.
+  // ОТСТУПЛЕНИЕ от tweb: при `overwrite` он шлёт запрос на каждый кадр и защищается
+  // от устаревшего ответа через `getNewPromise` (apiManagerMethods.ts:184-198,
+  // appStickersManager.ts:128-134, appGifsManager.ts:31-35); здесь запросы
+  // склеены ради трафика (ревью f6-stickers, п.1).
+  const flights = new Map<string, { dirty: boolean; promise: Promise<void> }>()
+  function refresh<T>(key: string, read: () => Promise<T>, publish: (v: T) => void): Promise<void> {
+    const cur = flights.get(key)
+    if (cur) { cur.dirty = true; return cur.promise }
+    const st = { dirty: false, promise: Promise.resolve() }
+    st.promise = (async () => {
+      try {
+        for (;;) {
+          st.dirty = false
+          let v: T
+          try { v = await read() } catch (e) {
+            if (st.dirty) continue // свежий кадр пришёл во время сбойного чтения
+            throw e
+          }
+          if (st.dirty) continue
+          publish(v)
+          return
+        }
+      } finally { flights.delete(key) }
+    })()
+    flights.set(key, st)
+    return st.promise
+  }
+
+  // Набор из кадра updateNewStickerSet — на короткое время отдаётся без запроса:
+  // слушатели `stickers_installed` во всех вкладках тут же просят этот же набор
+  // (tweb кладёт его в кэш: appStickersManager.ts:82). Кэш НЕ долгоживущий:
+  // срок установки зрителя меняется без кадра (снятие, В-5).
+  const FRESH_SET_TTL_MS = 10_000
+  const freshSets = new Map<string, { at: number; value: { set: StickerSet; stickers: Sticker[] } }>()
+  const freshKey = (input: InputStickerSetAddress) => ('shortName' in input ? `sn:${input.shortName}` : `id:${input.id}`)
+
+  const manager = {
     /** messages.allStickers — установленные наборы. */
     async mySets(): Promise<StickerSet[]> {
       const r = await rest.get<{ sets: StickerSet[] }>('/sticker-sets')
@@ -119,6 +164,8 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
      * `saveDocument`), как у оригинала, где такого метода не существует вовсе.
      */
     async getStickerSet(input: InputStickerSetAddress): Promise<{ set: StickerSet; stickers: Sticker[] }> {
+      const fresh = freshSets.get(freshKey(input))
+      if (fresh && Date.now() - fresh.at < FRESH_SET_TTL_MS) return fresh.value
       const path = 'shortName' in input
         ? `/sticker-sets/${encodeURIComponent(input.shortName)}`
         : `/sticker-sets/id/${input.id}`
@@ -139,8 +186,8 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ sets: StickerSetCovered[] }>('/sticker-sets/featured')
       return splitCovered(r.sets)
     },
-    async install(setId: number): Promise<void> { await rest.post(`/sticker-sets/${setId}/install`, {}) },
-    async uninstall(setId: number): Promise<void> { await rest.del(`/sticker-sets/${setId}/install`) },
+    async install(setId: number): Promise<void> { freshSets.clear(); await rest.post(`/sticker-sets/${setId}/install`, {}) },
+    async uninstall(setId: number): Promise<void> { freshSets.clear(); await rest.del(`/sticker-sets/${setId}/install`) },
     /** messages.recentStickers. Параллельный вектор `dates` (когда стикер был
      * использован) пока не потребителен: панель показывает недавние в порядке
      * ответа, и порядок этот тот же самый. */
@@ -185,6 +232,32 @@ export function newStickersManager({ rest }: { rest: Pick<RestClient, 'get' | 'p
       const r = await rest.get<{ gifs: RawTenorGif[]; next: string }>('/gifs/search', { q, pos })
       return { gifs: (r.gifs ?? []).map(mapTenorGif), next: r.next ?? '' }
     },
+
+    // ── Кадры своих устройств (журнал f6-stickers) ──
+    /** tweb `updateNewStickerSet` (appStickersManager.ts:80-84): набор из кадра
+     * кладётся в кэш на короткое время (см. `freshSets`), вкладкам объявляется
+     * `stickers_installed` с самим набором (`stickerset.set`). */
+    onNewStickerSet(update: NewStickerSetEvt): void {
+      const { set, documents } = update.stickerset
+      const value = { set, stickers: saveAll(documents) }
+      const at = Date.now()
+      for (const [k, v] of freshSets) if (at - v.at >= FRESH_SET_TTL_MS) freshSets.delete(k) // кэш не растёт
+      freshSets.set(`id:${set.id}`, { at, value })
+      freshSets.set(`sn:${set.short_name}`, { at, value })
+      dispatch('stickers_installed', set)
+    },
+    /** Смена сессии (выход/вход): кэш и полёты прошлого аккаунта не переживают её. */
+    reset(): void { freshSets.clear(); flights.clear() },
+    /** tweb `onStickersUpdated(type, true)` (:128-134): перечитать и объявить. */
+    onStickersUpdated(type: 'recent' | 'faved'): Promise<void> {
+      return refresh(type, () => (type === 'recent' ? manager.recent() : manager.faved()),
+        (stickers) => dispatch('stickers_updated', { type, stickers }))
+    },
+    /** tweb `onGifsUpdated` (appGifsManager.ts:26-29). */
+    onGifsUpdated(): Promise<void> {
+      return refresh('gifs', () => manager.savedGifs(), (gifs) => dispatch('gifs_updated', gifs))
+    },
   }
+  return manager
 }
 export type StickersManager = ReturnType<typeof newStickersManager>

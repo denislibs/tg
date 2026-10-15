@@ -6,6 +6,7 @@ import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
 import type { ChannelParticipantWire, ChatInviteExported } from '../managers/groupsManager'
+import type { StickerPack, StickerSet } from '../managers/stickersManager'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND difference
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -128,6 +129,14 @@ export const RT = {
   // оригинала перечитать их, если они в кэше (appReactionsManager.ts:121-132).
   // Кэша тегов у нас нет (UI тегов не портирован, Б-26), потребителей нет.
   savedReactionTags: 'rt:saved_reaction_tags',
+  // Стикеры и GIF своих устройств (f6-stickers). Вкладкам кадр уезжает не этим
+  // именем: владелец (`stickersManager`) объявляет события rootScope
+  // `stickers_installed`/`stickers_updated`/`gifs_updated` (tweb
+  // appStickersManager.ts:80-88, appGifsManager.ts:21-29), как `notify_settings`.
+  newStickerSet: 'rt:new_sticker_set',
+  recentStickers: 'rt:recent_stickers',
+  favedStickers: 'rt:faved_stickers',
+  savedGifs: 'rt:saved_gifs',
   paidMediaUnlock: 'rt:paid_media_unlock',
   groupCall: 'rt:group_call',
   livestream: 'rt:livestream',
@@ -733,6 +742,23 @@ export interface BoostUpdateEvt {
 }
 /** updateSavedReactionTags#39c67432 = Update; — параметров нет. */
 export interface SavedReactionTagsEvt { _: 'updateSavedReactionTags' }
+/** updateNewStickerSet#688a30aa stickerset:messages.StickerSet = Update; */
+export interface NewStickerSetEvt {
+  _: 'updateNewStickerSet'
+  stickerset: {
+    _: 'messages.stickerSet'
+    set: StickerSet
+    packs: StickerPack[]
+    keywords: unknown[]
+    documents: MyDocument[]
+  }
+}
+/** updateRecentStickers#9a422c20 = Update; — параметров нет, список перечитывается. */
+export interface RecentStickersEvt { _: 'updateRecentStickers' }
+/** updateFavedStickers#e511996d = Update; */
+export interface FavedStickersEvt { _: 'updateFavedStickers' }
+/** updateSavedGifs#9375341e = Update; */
+export interface SavedGifsEvt { _: 'updateSavedGifs' }
 /** Баланс звёзд — `updateStarsBalance{balance: StarsAmount}`. Число едет
  *  конструктором, потому что у оригинала звёзды ДРОБНЫЕ (nanos), и целое —
  *  частный случай, а не форма. */
@@ -830,6 +856,10 @@ export type Update =
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | SavedReactionTagsEvt
+  | NewStickerSetEvt
+  | RecentStickersEvt
+  | FavedStickersEvt
+  | SavedGifsEvt
   | BotCallbackAnswerEvt
   | StoryUpdateEvt
   | SentStoryReactionEvt

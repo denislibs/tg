@@ -1028,7 +1028,11 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
-func (c groupChats) ChatTitle(context.Context, int64) (string, error) { return "", nil }
+func (c groupChats) ChatTitle(_ context.Context, chatID int64) (string, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	return c.fg.cards[chatID].Title, nil
+}
 func (c groupChats) ChannelCursors(context.Context, int64, int) ([]domain.ChannelCursor, error) {
 	return nil, nil
 }

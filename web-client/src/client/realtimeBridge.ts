@@ -43,12 +43,16 @@ let started = false
 // `notify_settings` — глобальные настройки уведомлений по типу чатов: кадр
 // `updateNotifySettings{notifyUsers…}` (воркер: `workerCore.ts::dispatch`) и
 // местный апдейт своего PUT (`notifyManager.updateNotifySettings`).
+// `stickers_installed`/`stickers_updated`/`gifs_updated` — владелец стикеров
+// (`stickersManager`) по кадрам журнала `updateNewStickerSet`/`updateRecentStickers`/
+// `updateFavedStickers`/`updateSavedGifs` (tweb `appStickersManager.ts:80-88`,
+// `appGifsManager.ts:21-29`): набор из кадра / перечитанные списки.
 // `insufficent_stars_for_message`/`fulfill_repaid_message` — воркер, менеджер сообщений
 // (`messages/repayRequestHandler.ts`): отправка в платный чат отвергнута без согласия на
 // плату / запрос на повторную оплату закрыт (tweb `apiUpdatesManager`/`appMessagesManager`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'auto_delete_period_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'auto_delete_period_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
