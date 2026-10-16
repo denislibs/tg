@@ -458,6 +458,12 @@ function isRenderedSubtitleIntact(dom: DialogDom) {
     parts.every((part, idx) => part === childNodes[idx])
 }
 
+/** Узлы имён прежней отрисовки подзаголовка ушли из DOM — снять их с реестра. */
+function dropSubtitleTitles(dom: DialogDom) {
+  dom.lastMessageTitlesHelper?.destroy()
+  delete dom.lastMessageTitlesHelper
+}
+
 /** tweb `:232` */
 const BADGE_SIZE = 22
 
@@ -2423,6 +2429,7 @@ async function setLastMessage({
     span.append(i18n(secretStatus === 'requested' ? 'SecretChat.Invitation' : secretStatus === 'rejected' ? 'SecretChat.Rejected' : 'SecretChat.Awaiting'))
     dom.lastMessageSpan.replaceChildren(span)
     dom.lastTimeSpan.replaceChildren()
+    dropSubtitleTitles(dom)
     promise.resolve!()
     return
   }
@@ -2432,6 +2439,7 @@ async function setLastMessage({
     dom.lastMessageSpan.replaceChildren()
     dom.lastTimeSpan.replaceChildren()
     delete dom.listEl.dataset.mid
+    dropSubtitleTitles(dom)
 
     promise.resolve!()
     return
@@ -2496,7 +2504,10 @@ async function setLastMessage({
     const titlesHelper = dialogElement.middlewareHelper.get().create()
     let parts: HTMLElement[]
     try {
-      parts = await renderDialogSubtitleParts({
+      // tweb `dialogSubtitle.ts:184` (`await middleware(wrapResult)`): у нас
+      // `wrapMessageForReply` синхронный и внутренняя проверка срабатывает
+      // только при непустом `willPrepend` — прерванная отрисовка проверяется здесь
+      parts = await middleware(renderDialogSubtitleParts({
         peerId,
         isSaved,
         lastMessage,
@@ -2508,7 +2519,7 @@ async function setLastMessage({
         middleware,
         titleMiddleware: titlesHelper.get(),
         managers: dialogElement.managers,
-      })
+      }))
     } catch(err) {
       titlesHelper.destroy()
       throw err
