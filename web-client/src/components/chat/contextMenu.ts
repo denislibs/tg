@@ -1307,17 +1307,30 @@ export default class ChatContextMenu {
     return canEditMessage(message, kind, { myId: rootScope.myId, getPeer: cachedPeer })
   }
 
+  /** `message.pFlags.unread` исходящего (tweb :12320). Клиентского флага у
+   *  нашего сообщения нет (`core/models.ts::MessagePFlags`): его выводит лента
+   *  по горизонту исходящих окна и рисует классом `is-read` бабла (tweb
+   *  `setBubbleSendingStatus` :7405-7430 читает тот же `pFlags.unread`). Без
+   *  проверки пункт read-date открывался у непрочитанного и ходил за датой,
+   *  которой ещё нет (404 `read_date`, P0 2026-10-16). */
+  private isUnreadOut(): boolean {
+    const bubble = this.target && findUpClassName(this.target, 'bubble')
+    return !bubble?.classList.contains('is-read')
+  }
+
   /** Порт `appMessagesManager.canViewMessageReadParticipants` (:12314-12340) в
-   *  объёме имеющихся фактов: `pFlags.unread`, боты, монофорумы и
+   *  объёме имеющихся фактов: боты, монофорумы и
    *  `pm_read_date_expire_period`/`read_dates_private` у нас не живут; пороги
    *  `chat_read_mark_*` — константы (своего `appConfig` нет), те же, что держит
-   *  сервер (`usecase/chat/message_pin.go`). */
+   *  сервер (`usecase/chat/message_pin.go`). `pFlags.unread` (:12320) — см.
+   *  `isUnreadOut`. */
   private canViewMessageReadParticipants(): boolean {
     const message = this.message
     if(
       !message ||
       this.isOutgoing(message) ||
       !message.pFlags.out ||
+      this.isUnreadOut() ||
       message.peerId === rootScope.myId ||
       isBroadcastPeer(message.peerId)
     ) {
