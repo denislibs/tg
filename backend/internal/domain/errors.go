@@ -62,3 +62,11 @@ type ErrSlowmodeWait struct{ Seconds int }
 func (e ErrSlowmodeWait) Error() string { return fmt.Sprintf("SLOWMODE_WAIT_%d", e.Seconds) }
 
 func (e ErrSlowmodeWait) Is(target error) bool { return target == ErrSlowmode }
+
+// ErrPasswordFlood — растущее ожидание после неверных облачных паролей (Б-4,
+// М1-5): пара (пользователь, сессия) заперта, сверка не выполняется. Seconds —
+// целые секунды (≥ 1) до конца блокировки; на проводе 420 FLOOD_WAIT_<N> (tweb
+// apiManager ждёт N секунд и повторяет).
+type ErrPasswordFlood struct{ Seconds int }
+
+func (e ErrPasswordFlood) Error() string { return fmt.Sprintf("FLOOD_WAIT_%d", e.Seconds) }

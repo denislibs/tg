@@ -22,7 +22,7 @@ func TestCloudPasswordFlow(t *testing.T) {
 	userID := res.User.ID
 
 	// установить пароль
-	if err := i.SetPassword(ctx, userID, "", "s3cret", "подсказка", "denis@example.com"); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "", "s3cret", "подсказка", "denis@example.com"); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	st, err := i.PasswordState(ctx, userID)
@@ -31,7 +31,7 @@ func TestCloudPasswordFlow(t *testing.T) {
 	}
 
 	// смена без верного current — отказ
-	if err := i.SetPassword(ctx, userID, "wrong", "new", "", ""); !errors.Is(err, domain.ErrBadPassword) {
+	if err := i.SetPassword(ctx, userID, 1, "wrong", "new", "", ""); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("SetPassword wrong current = %v, want ErrBadPassword", err)
 	}
 
@@ -56,15 +56,15 @@ func TestCloudPasswordFlow(t *testing.T) {
 	}
 
 	// подсказка не может совпадать с паролем
-	if err := i.SetPassword(ctx, userID, "s3cret", "abc", "abc", ""); err == nil {
+	if err := i.SetPassword(ctx, userID, 1, "s3cret", "abc", "abc", ""); err == nil {
 		t.Fatal("hint == password must be rejected")
 	}
 
 	// снятие пароля
-	if err := i.RemovePassword(ctx, userID, "wrong"); !errors.Is(err, domain.ErrBadPassword) {
+	if err := i.RemovePassword(ctx, userID, 1, "wrong"); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("RemovePassword wrong = %v", err)
 	}
-	if err := i.RemovePassword(ctx, userID, "s3cret"); err != nil {
+	if err := i.RemovePassword(ctx, userID, 1, "s3cret"); err != nil {
 		t.Fatalf("RemovePassword: %v", err)
 	}
 	st, _ = i.PasswordState(ctx, userID)
@@ -81,7 +81,7 @@ func TestCloudPassword_AttemptCapBurnsToken(t *testing.T) {
 
 	res := registerUser(t, i, "+79990002233", "Пароль", "", "dev", "test")
 	userID := res.User.ID
-	if err := i.SetPassword(ctx, userID, "", "s3cret", "hint", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "", "s3cret", "hint", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	_ = codes.SaveCode(ctx, "+79990002233", "12345", time.Now().Add(time.Hour))
@@ -116,14 +116,14 @@ func TestCloudPassword_SpacesAreSignificant(t *testing.T) {
 
 	res := registerUser(t, i, "+79990003344", "Пароль", "", "dev", "test")
 	userID := res.User.ID
-	if err := i.SetPassword(ctx, userID, "", " abc ", "", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "", " abc ", "", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
-	if err := i.VerifyPassword(ctx, userID, " abc "); err != nil {
+	if err := i.VerifyPassword(ctx, userID, 1, " abc "); err != nil {
 		t.Fatalf("VerifyPassword(как задан) = %v, want nil", err)
 	}
 	// Обрезанный вариант — другой пароль.
-	if err := i.VerifyPassword(ctx, userID, "abc"); !errors.Is(err, domain.ErrBadPassword) {
+	if err := i.VerifyPassword(ctx, userID, 1, "abc"); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("VerifyPassword(обрезанный) = %v, want ErrBadPassword", err)
 	}
 
@@ -137,10 +137,10 @@ func TestCloudPassword_SpacesAreSignificant(t *testing.T) {
 	}
 
 	// Смена и снятие принимают текущий пароль как задан.
-	if err := i.SetPassword(ctx, userID, " abc ", "  x y  ", "", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, " abc ", "  x y  ", "", ""); err != nil {
 		t.Fatalf("SetPassword(смена) = %v", err)
 	}
-	if err := i.RemovePassword(ctx, userID, "  x y  "); err != nil {
+	if err := i.RemovePassword(ctx, userID, 1, "  x y  "); err != nil {
 		t.Fatalf("RemovePassword = %v", err)
 	}
 }
@@ -154,21 +154,21 @@ func TestCloudPassword_BlankRejected(t *testing.T) {
 	res := registerUser(t, i, "+79990004455", "Пароль", "", "dev", "test")
 	userID := res.User.ID
 	for _, p := range []string{"", "   ", "\t\n"} {
-		if err := i.SetPassword(ctx, userID, "", p, "", ""); err == nil {
+		if err := i.SetPassword(ctx, userID, 1, "", p, "", ""); err == nil {
 			t.Fatalf("SetPassword(%q) без 2FA должен отвергаться", p)
 		}
 	}
-	if err := i.SetPassword(ctx, userID, "", "s3cret", "", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "", "s3cret", "", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
-	if err := i.SetPassword(ctx, userID, "s3cret", "   ", "", ""); err == nil {
+	if err := i.SetPassword(ctx, userID, 1, "s3cret", "   ", "", ""); err == nil {
 		t.Fatal("пробельный новый пароль при включённой 2FA должен отвергаться")
 	}
 	// Пустой новый при включённой — обновление только подсказки, пароль прежний.
-	if err := i.SetPassword(ctx, userID, "s3cret", "", "новая", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "s3cret", "", "новая", ""); err != nil {
 		t.Fatalf("SetPassword(только hint) = %v", err)
 	}
-	if err := i.VerifyPassword(ctx, userID, "s3cret"); err != nil {
+	if err := i.VerifyPassword(ctx, userID, 1, "s3cret"); err != nil {
 		t.Fatalf("пароль изменился при смене только hint: %v", err)
 	}
 }
@@ -194,13 +194,13 @@ func TestCloudPassword_LegacyTrimmedHash(t *testing.T) {
 	}
 	seedLegacy()
 
-	if err := i.VerifyPassword(ctx, userID, " abc "); err != nil {
+	if err := i.VerifyPassword(ctx, userID, 1, " abc "); err != nil {
 		t.Fatalf("VerifyPassword(legacy « abc ») = %v, want nil", err)
 	}
-	if err := i.VerifyPassword(ctx, userID, "abc"); err != nil {
+	if err := i.VerifyPassword(ctx, userID, 1, "abc"); err != nil {
 		t.Fatalf("VerifyPassword(legacy «abc») = %v, want nil", err)
 	}
-	if err := i.VerifyPassword(ctx, userID, " abd "); !errors.Is(err, domain.ErrBadPassword) {
+	if err := i.VerifyPassword(ctx, userID, 1, " abd "); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("VerifyPassword(чужой) = %v, want ErrBadPassword", err)
 	}
 
@@ -213,11 +213,11 @@ func TestCloudPassword_LegacyTrimmedHash(t *testing.T) {
 		t.Fatalf("CheckPassword(legacy) = %v, want nil", err)
 	}
 
-	if err := i.SetPassword(ctx, userID, " abc ", "new", "", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, " abc ", "new", "", ""); err != nil {
 		t.Fatalf("SetPassword(current legacy) = %v", err)
 	}
 	seedLegacy()
-	if err := i.RemovePassword(ctx, userID, " abc "); err != nil {
+	if err := i.RemovePassword(ctx, userID, 1, " abc "); err != nil {
 		t.Fatalf("RemovePassword(legacy) = %v", err)
 	}
 }
