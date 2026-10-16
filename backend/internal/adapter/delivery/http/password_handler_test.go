@@ -156,8 +156,8 @@ func TestPasswordFlood_HTTPLockAfterFiveFailures(t *testing.T) {
 			t.Fatalf("неудача %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
-	if n := len(mr.Keys()); n != 2 { // pwfail и pwlock этой сессии
-		t.Fatalf("ключей стора после 5 неудач: %d %v", n, mr.Keys())
+	if n := countKeys(mr, fmt.Sprintf("pwfail:%d:1:", e.userID), fmt.Sprintf("pwlock:%d:1:", e.userID)); n != 2 {
+		t.Fatalf("ключей счётчика и блокировки сессии после 5 неудач: %d %v", n, mr.Keys())
 	}
 	// Ведро лимитера пополнено (10 минут по его часам) — отказ даёт только
 	// блокировка М1-5, её часы (Redis) не сдвигались.
@@ -178,11 +178,8 @@ func TestPasswordFlood_HTTPLockAfterFiveFailures(t *testing.T) {
 	if rec := e.verify(t, 1, "203.0.113.14", "s3cret"); rec.Code != http.StatusOK {
 		t.Fatalf("после блокировки: %d %s", rec.Code, rec.Body.String())
 	}
-	prefix := fmt.Sprintf("pwfail:%d:1:", e.userID)
-	for _, k := range mr.Keys() {
-		if strings.HasPrefix(k, prefix) {
-			t.Fatalf("верный пароль не удалил счётчик неудач: %s", k)
-		}
+	if countKeys(mr, fmt.Sprintf("pwfail:%d:1:", e.userID)) != 0 {
+		t.Fatalf("верный пароль не удалил счётчик неудач: %v", mr.Keys())
 	}
 }
 
@@ -222,5 +219,30 @@ func TestPasswordFlood_HTTPCheckPasswordPerUser(t *testing.T) {
 	mr.FastForward(61 * time.Second)
 	if rec := check(tok2, "s3cret", "198.51.100.21"); rec.Code != http.StatusOK {
 		t.Fatalf("вход после блокировки: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// countKeys — сколько ключей miniredis начинается с одного из префиксов.
+func countKeys(mr *miniredis.Miniredis, prefixes ...string) int {
+	n := 0
+	for _, k := range mr.Keys() {
+		for _, p := range prefixes {
+			if strings.HasPrefix(k, p) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// Без устройства в контексте ручки пароля отвечают 401 no session: иначе
+// счётчик сессии с deviceID 0 совпал бы с областью шага входа (М1-5).
+func TestPasswordHandler_NoDeviceUnauthorized(t *testing.T) {
+	e := newPwEnv(t, "+79990170023")
+	for name, fn := range map[string]http.HandlerFunc{"Verify": e.h.Verify, "Set": e.h.Set, "Remove": e.h.Remove} {
+		rec := e.call(t, fn, e.userID, 0, "203.0.113.30", map[string]string{"password": "s3cret", "current_password": "s3cret"})
+		if rec.Code != http.StatusUnauthorized || wireErrorOf(rec).Text != "no session" {
+			t.Fatalf("%s без устройства: %d %s", name, rec.Code, rec.Body.String())
+		}
 	}
 }

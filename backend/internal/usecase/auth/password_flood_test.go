@@ -17,7 +17,8 @@ func passwordLockFor(f int) time.Duration {
 	if f < PasswordFreeFails {
 		return 0
 	}
-	return min(PasswordLockBase<<min(f-PasswordFreeFails, 30), PasswordLockMax)
+	// 2^11 минут уже больше суток; больший сдвиг переполнил бы time.Duration.
+	return min(PasswordLockBase<<min(f-PasswordFreeFails, 11), PasswordLockMax)
 }
 
 type attemptKey struct {
@@ -148,7 +149,8 @@ func TestPasswordLockFor(t *testing.T) {
 		want time.Duration
 	}{
 		{0, 0}, {4, 0}, {5, time.Minute}, {6, 2 * time.Minute}, {7, 4 * time.Minute},
-		{15, 1024 * time.Minute}, {16, 24 * time.Hour}, {40, 24 * time.Hour}, {1 << 20, 24 * time.Hour},
+		{15, 1024 * time.Minute}, {16, 24 * time.Hour}, {33, 24 * time.Hour}, {34, 24 * time.Hour},
+		{40, 24 * time.Hour}, {1 << 20, 24 * time.Hour},
 	} {
 		if got := passwordLockFor(c.f); got != c.want {
 			t.Errorf("passwordLockFor(%d) = %v, want %v", c.f, got, c.want)

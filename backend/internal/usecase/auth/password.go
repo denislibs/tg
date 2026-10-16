@@ -102,7 +102,14 @@ func (i *Interactor) resetPasswordAttempts(ctx context.Context, userID, deviceID
 	if i.pwTries == nil {
 		return
 	}
-	if err := i.pwTries.Reset(ctx, userID, deviceID, passwordVersion(hash)); err != nil {
+	// Блокировка с 5-й попытки ставится до сверки: упавший сброс оставил бы
+	// запертым того, кто только что ввёл верный пароль, — один повтор.
+	ver := passwordVersion(hash)
+	err := i.pwTries.Reset(ctx, userID, deviceID, ver)
+	if err != nil {
+		err = i.pwTries.Reset(ctx, userID, deviceID, ver)
+	}
+	if err != nil {
 		i.logf("password attempts: reset user=%d device=%d: %v", userID, deviceID, err)
 	}
 }
