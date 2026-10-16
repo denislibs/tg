@@ -328,8 +328,10 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       const pc = await ensurePc(from)
       if (!pc) return
       if (pc.signalingState === 'have-local-offer') {
-        // встречный offer (оба включили камеру): вежлива сторона с большим id — откатывает свой и
-        // отвечает, потом повторяет offer; невежливая встречный игнорирует (tweb :1755-1760)
+        // встречный offer (оба включили камеру): вежливая сторона откатывает свой и отвечает
+        // (tweb :1755-1760, там вежлив !isOutgoing), потом повторяет свой offer. ОТСТУПЛЕНИЕ (ждёт
+        // согласования): вежливость — по большему id (у mesh нет звонящего); невежливая встречный
+        // игнорирует, а не ставит в очередь до своего answer, как tweb (:2295-2302).
         if (!polite(from)) return
         await op(pc, () => pc.setLocalDescription({ type: 'rollback' }))
         void sendOffer(from, false)
