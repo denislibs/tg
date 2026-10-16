@@ -788,25 +788,30 @@ func NewMessagesDialogsSlice(count int, dialogs []Dialog, messages []any, chats 
 // сообщение, а нового низа истории у него нет (tweb reloadConversation,
 // appMessagesManager.ts:6247-6366).
 //
-// `state` не производим (см. dialogOmittedWithoutSubject в сверке со схемой).
+// `state` — тот же `updates.state`, что отдаёт `updates.getState`: единственный
+// потребитель у оригинала — повтор reloadConversation при разошедшемся pts
+// (appMessagesManager.ts:6313-6319). Читается ДО строк диалогов: опоздавший
+// кадр даёт лишний повтор на клиенте, а не принятую за свежую старую строку.
 type MessagesPeerDialogs struct {
 	Underscore string   `json:"_"`
 	Dialogs    []Dialog `json:"dialogs"`
 	// Messages — то же временное место стыка, что у MessagesDialogs.
-	Messages []any      `json:"messages"`
-	Chats    []Chat     `json:"chats"`
-	Users    []UserReal `json:"users"`
+	Messages []any        `json:"messages"`
+	Chats    []Chat       `json:"chats"`
+	Users    []UserReal   `json:"users"`
+	State    UpdatesState `json:"state"`
 }
 
 // NewMessagesPeerDialogs — строки запрошенных диалогов; неизвестных среди них
 // просто нет, обязательные векторы едут [], а не null.
-func NewMessagesPeerDialogs(dialogs []Dialog, messages []any, chats []Chat, users []UserReal) MessagesPeerDialogs {
+func NewMessagesPeerDialogs(dialogs []Dialog, messages []any, chats []Chat, users []UserReal, state UpdatesState) MessagesPeerDialogs {
 	return MessagesPeerDialogs{
 		Underscore: MessagesPeerDialogsTag,
 		Dialogs:    orEmpty(dialogs),
 		Messages:   orEmpty(messages),
 		Chats:      orEmpty(chats),
 		Users:      orEmpty(users),
+		State:      state,
 	}
 }
 

@@ -31,6 +31,17 @@ interface MessagesInvitedUsers {
 }
 
 /**
+ * Ответ `POST /join/{hash}` — `messages.chatInviteJoinResultOk` (ответ
+ * `messages.importChatInvite`). Вариант `…WebView` (вход через бота-модератора)
+ * сервер не производит, ветка `processChatInviteJoinResult` оригинала для него
+ * не портирована.
+ */
+interface MessagesChatInviteJoinResultOk {
+  _: 'messages.chatInviteJoinResultOk'
+  updates: MessagesInvitedUsers['updates']
+}
+
+/**
  * Карточка чата — ПАРА конструкторов, как у профиля пользователя
  * (`authManager.PeerProfile` = `user` + `userFull`). Прежняя плоская `GroupCard`
  * из 18 полей исчезла вместе с витриной, которая её отдавала: после шага C
@@ -829,15 +840,16 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
     },
     /**
      * Порт `appChatInvitesManager.importChatInvite` (tweb 812502980
-     * `appChatInvitesManager.ts:92-104`): ответ — `Updates` с чатом ссылки в
-     * `chats[0]`, пиры пачки — в зеркало (`processUpdateMessage` оригинала),
-     * наружу — ключ чата. Заявка на вступление — отказ `INVITE_REQUEST_SENT`
+     * `appChatInvitesManager.ts:92-104`): ответ — `messages.chatInviteJoinResultOk`,
+     * обёртку снимает `processChatInviteJoinResult` (`appChatsManager.ts:664-679`);
+     * `Updates` с чатом ссылки в `chats[0]`, пиры пачки — в зеркало
+     * (`processUpdateMessage` оригинала), наружу — ключ чата. Заявка на вступление — отказ `INVITE_REQUEST_SENT`
      * (имя отказа доезжает до вызывающего, `HttpError.type`).
      */
     async importChatInvite(hash: string): Promise<PeerId> {
-      const r = await rest.post<MessagesInvitedUsers['updates']>(`/join/${hash}`, {})
-      peers.saveApiPeers(r)
-      return toPeerId(r.chats[0].id, true)
+      const { updates } = await rest.post<MessagesChatInviteJoinResultOk>(`/join/${hash}`, {})
+      peers.saveApiPeers(updates)
+      return toPeerId(updates.chats[0].id, true)
     },
   }
 }
