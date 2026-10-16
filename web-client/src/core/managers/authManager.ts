@@ -90,12 +90,13 @@ export type SignInOutcome =
 // ошибки (rpc/superMessagePort.ts) — поэтому `signIn` по-прежнему отказывает
 // исключением, и карточка читает его `type`. Имя — `HttpError.type` (у
 // оригинала `ApiError.type`); пустое имя (чужое тело: 502/504 от nginx) и
-// исключение не-HttpError (сеть, сбой сохранения сессии) — 'UNKNOWN', а само
-// исключение — в консоль воркера, чтобы стек не терялся.
+// исключение не-HttpError (сеть, сбой сохранения сессии) — 'UNKNOWN'. Оба
+// случая без имени пишутся в консоль воркера (со статусом / стеком): по
+// 'UNKNOWN' на карточке их не различить.
 export type ErrorResult = { error: string }
 const errorResult = (e: unknown): ErrorResult => {
-  if (e instanceof HttpError) return { error: e.type || 'UNKNOWN' }
-  console.error('auth: отказ без имени:', e)
+  if (e instanceof HttpError && e.type) return { error: e.type }
+  console.error('auth: отказ без имени:', e instanceof HttpError ? e.status : '', e)
   return { error: 'UNKNOWN' }
 }
 
@@ -247,9 +248,9 @@ export type LoginTokenResult =
   | { status: 'pending'; token: string /* hex */; expires: number /* unix-с */ }
   | { status: 'success'; user: PeerProfile }
   | { status: 'password'; passwordToken: string; hint: string }
-  // Отказы, которые цикл карточки переживает. Класс `HttpError` (и сетевой сбой
-  // против отказа API) через worker-RPC не различить, поэтому класс ошибки
-  // определяется здесь и уходит значением.
+  // Отказы, которые цикл карточки переживает. Классификацию (повтор, протух,
+  // проброс) решает менеджер в воркере по `instanceof HttpError` и статусу —
+  // одним местом, и уходит она значением.
   /** `AUTH_TOKEN_EXPIRED`: цикл идёт дальше (tweb SignQRCard.tsx:179-181). */
   | { status: 'expired' }
   /** Сбой сети / 5xx / 408: подождать шаг и повторить (у tweb это делает `invokeApi`). */

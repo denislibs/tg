@@ -30,6 +30,7 @@ import formatDuration from '@helpers/formatDuration'
 import { wrapFormattedDuration } from '@components/wrappers/wrapDuration'
 import classNames from '@helpers/string/classNames'
 import { confirmationPopup } from '../../popups/popupPeer'
+import { toastNew } from '@components/toast'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '@components/mediaHeader.solid'
 import { PreloaderCircular } from '../Preloader.solid'
@@ -110,20 +111,25 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
       sorry('Login.ResetAccountFail.TextWait', [wrapFormattedDuration(formatDuration(res.wait))])
       return
     }
-    sorry(
-      res.error === 'recovery_available'
-        ? 'Login.ResetPassword.HasEmail'
-        : res.error === 'password_token_expired'
-          ? 'Login.SessionExpired'
-          : 'Login.Error.Generic',
-    )
+    // Наши расширения (в TG их нет) — плашкой «Sorry».
+    if (res.error === 'recovery_available' || res.error === 'password_token_expired') {
+      sorry(res.error === 'recovery_available' ? 'Login.ResetPassword.HasEmail' : 'Login.SessionExpired')
+      return
+    }
+    // Прочее — тост, как tweb PasswordCard.tsx:105-108.
+    toastNew({ langPackKey: 'Error.AnError' })
   }
 
   const forgot = async () => {
     if (busy()) return
     setForgotError('')
     setBusy(true)
-    const res = await managers.auth.requestPasswordRecovery(token())
+    // Сетевой сбой менеджер отдаёт исключением; tweb снимает `resetLoading` в
+    // `.finally` (PasswordCard.tsx:115-117) и показывает тост (:114).
+    const res = await managers.auth.requestPasswordRecovery(token()).catch((err: unknown) => {
+      console.error('PasswordCard: requestPasswordRecovery error:', err)
+      return { error: 'failed' as const }
+    })
     setBusy(false)
 
     if ('emailPattern' in res) {
@@ -158,7 +164,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
       setForgotError('Login.SessionExpired')
       return
     }
-    setForgotError('Login.Error.Generic')
+    toastNew({ langPackKey: 'Error.AnError' }) // tweb PasswordCard.tsx:114
   }
 
   const submitPassword = async () => {
