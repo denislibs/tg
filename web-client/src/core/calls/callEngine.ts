@@ -41,11 +41,19 @@ const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // (callInstance.ts:676-688). Серверный TTL — сутки (ice_handler.go), кэш лишь склеивает
 // несколько pc одного входа в звонок.
 const ICE_CACHE_MS = 60_000
-// Запас до истечения кредов, после которого последний успешный конфиг уже не отдаём.
-const ICE_EXPIRY_MARGIN_MS = 60_000
+// Запас до истечения кредов, после которого последний успешный конфиг уже не отдаём: coturn
+// проверяет метку на каждом Refresh/CreatePermission, и звонок, начатый на почти истёкших кредах,
+// оборвался бы посреди разговора — лучше честно не начать relay-звонок.
+const ICE_EXPIRY_MARGIN_MS = 60 * 60_000
 let cachedIce: { servers: RTCIceServer[]; until: number; expires: number } | null = null
-export async function iceServers(): Promise<RTCIceServer[]> {
-  if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
+// Запрос в полёте: pc mesh создаются пачкой, и каждый не должен идти в /calls/ice отдельно.
+let iceInFlight: Promise<RTCIceServer[]> | null = null
+export function iceServers(): Promise<RTCIceServer[]> {
+  if (cachedIce && Date.now() < cachedIce.until) return Promise.resolve(cachedIce.servers)
+  iceInFlight ??= fetchIceServers().finally(() => { iceInFlight = null })
+  return iceInFlight
+}
+async function fetchIceServers(): Promise<RTCIceServer[]> {
   try {
     const cfg = await managers().calls.iceConfig()
     if (cfg.servers.length) {
@@ -54,8 +62,8 @@ export async function iceServers(): Promise<RTCIceServer[]> {
       return cfg.servers
     }
   } catch { /* сбой запроса: ниже — последний успешный конфиг, пока его креды живы */ }
-  // Сбой /calls/ice (420 лимитер, 5xx, обновление токена) не должен превращать relay-pc в pc без
-  // единого кандидата: креды ещё действуют — берём последний успешный конфиг, а не STUN-only.
+  // Сбой /calls/ice (5xx, сеть, обновление токена; 420 restClient пережидает сам) не должен
+  // превращать relay-pc в pc без единого кандидата: креды ещё действуют — последний успешный конфиг.
   if (cachedIce && Date.now() < cachedIce.expires - ICE_EXPIRY_MARGIN_MS) return cachedIce.servers
   return FALLBACK_ICE
 }

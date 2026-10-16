@@ -238,11 +238,33 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
     expect(A.engine.hasTurnServer(again)).toBe(true)
   })
 
-  it('сбой /calls/ice и креды истекли — STUN-only (relay-звонок честно не начнётся)', async () => {
+  it('сбой /calls/ice, кредам осталось меньше часа — STUN-only: звонок на них оборвался бы на первом Refresh', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
     net.iceFail = true
-    await vi.advanceTimersByTimeAsync(86_400_000 - 30_000) // до истечения осталось 30 с < запаса 60 с
+    await vi.advanceTimersByTimeAsync(86_400_000 - 30 * 60_000) // до истечения 30 мин < запаса 1 ч
     expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+  })
+
+  it('сбой /calls/ice, кредам осталось больше часа — ещё последний успешный конфиг', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(86_400_000 - 61 * 60_000)
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(true)
+  })
+
+  it('первый же запрос /calls/ice упал, конфига ещё не было — STUN-only', async () => {
+    const A = await net.side(1)
+    net.iceFail = true
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+    expect(net.iceFetches).toBe(1)
+  })
+
+  it('одновременные запросы конфига (несколько pc mesh) — один /calls/ice', async () => {
+    const A = await net.side(1)
+    const all = await Promise.all([A.engine.iceServers(), A.engine.iceServers(), A.engine.iceServers()])
+    expect(net.iceFetches).toBe(1)
+    expect(all.every((s) => A.engine.hasTurnServer(s))).toBe(true)
   })
 })
