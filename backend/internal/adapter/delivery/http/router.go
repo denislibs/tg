@@ -122,6 +122,11 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	r.Group(func(pr chi.Router) {
 		pr.Use(AuthMiddleware(authUC))
 
+		// Конфиг приложения: лимиты, которые применяет сервер, и флаги покупок.
+		helpH := NewHelpHandler(devPurchases)
+		pr.Get("/help/app_config", helpH.AppConfig) // help.getAppConfig
+		pr.Get("/help/config", helpH.Config)        // help.getConfig
+
 		ph := NewProfileHandler(authUC)
 		pr.Get("/me", ph.Me)
 		pr.Patch("/me", ph.Update)

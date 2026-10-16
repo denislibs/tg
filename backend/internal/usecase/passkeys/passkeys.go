@@ -23,15 +23,12 @@ type Interactor struct{ repo Repo }
 
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
 
-// maxPasskeys — лимит ключей на аккаунт (tweb passkeys_account_passkeys_max).
-const maxPasskeys = 10
-
 func (i *Interactor) Add(ctx context.Context, pk domain.Passkey) (domain.Passkey, error) {
 	existing, err := i.repo.List(ctx, pk.UserID)
 	if err != nil {
 		return domain.Passkey{}, err
 	}
-	if len(existing) >= maxPasskeys {
+	if len(existing) >= domain.MaxPasskeys {
 		return domain.Passkey{}, domain.ErrForbidden
 	}
 	return i.repo.Save(ctx, pk)

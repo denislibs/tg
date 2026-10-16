@@ -500,16 +500,21 @@ describe('ChatTopbar: кнопки звонка по правам (`verify*` `:3
     await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, false]))
   })
 
-  it('канал, подписчик: видеочат — «войти», эфир (`rtmp_stream`) — кнопки нет', async() => {
+  // ОТСТУПЛЕНИЕ ОТ TWEB (В-S3, решение 2026-10-15; снимется с SFU, В-М17): tweb показывает
+  // подписчику канала «войти» при идущем видеочате (`topbar.ts:387-392`), у нас видеочат
+  // канала открыт только админам — кнопки нет ни при звонке, ни при эфире.
+  it('канал, подписчик: кнопки видеочата нет (В-S3), при эфире — тоже', async() => {
     const topbar = await open(makeChat({ peerId: CHANNEL }))
     await Promise.resolve()
     expect(shown(topbar)).toEqual([false, false, false])
 
     setCall(CHANNEL, true)
-    await vi.waitFor(() => expect(shown(topbar)).toEqual([false, true, false]))
+    await Promise.resolve()
+    expect(shown(topbar)).toEqual([false, false, false])
 
     useLivestreamStore.setState({ activeByChat: { [CHANNEL]: true } })
-    await vi.waitFor(() => expect(shown(topbar)).toEqual([false, false, false]))
+    await Promise.resolve()
+    expect(shown(topbar)).toEqual([false, false, false])
   })
 
   it('тред комментариев: кнопок звонка нет', async() => {

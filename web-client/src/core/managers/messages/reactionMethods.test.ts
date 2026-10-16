@@ -33,7 +33,9 @@ const like: MessageReactions = {
   results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
 }
 
-function managerWith(peerId: PeerId, reactions?: MessageReactions, premium = false) {
+/** `limit` — то, что вернул бы конфиг приложения (`reactions_user_max_*`): 1 без подписки, 3 с подпиской;
+ *  `null` — конфига нет. */
+function managerWith(peerId: PeerId, reactions?: MessageReactions, limit: number | null = 1) {
   const wire = { ...makeRawMessage({ id: 2, peerId, fromId: 5, text: 'm2' }), ...(reactions ? { reactions } : {}) }
   // `calls` — что менеджер отправил НА ПРОВОД. Нужен отдельным ответом: правило
   // лимита обещает, что вытеснение стоит клиенту нисколько (весь набор держит
@@ -49,7 +51,7 @@ function managerWith(peerId: PeerId, reactions?: MessageReactions, premium = fal
   const mgr = newMessagesManager({
     rest,
     getMeId: () => ME,
-    getMePremium: () => premium,
+    getReactionsLimit: async () => limit ?? undefined,
     broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) },
   })
   return { mgr, ops, calls }
@@ -138,13 +140,35 @@ describe('messages.react — лимит своих реакций', () => {
   })
 
   it('с премиумом три уживаются, а четвёртая вытесняет самую старую', async () => {
-    const { mgr, ops } = managerWith(DM, undefined, true)
+    const { mgr, ops } = managerWith(DM, undefined, 3)
     await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
     for (const e of ['❤', '🔥', '🥰']) await mgr.react(DM, cid(2), e)
     expect(myEmoticons(declared(ops))).toEqual(['❤', '🔥', '🥰'])
 
     await mgr.react(DM, cid(2), '👏')
     expect(myEmoticons(declared(ops))).toEqual(['🔥', '🥰', '👏'])
+  })
+
+  // Число берётся из конфига приложения, а не из зашитой константы: лимит 2 (в
+  // зашитых 1/3 такого нет) пускает две реакции, третья вытесняет старейшую.
+  it('лимит приходит из конфига: при 2 две уживаются, третья вытесняет первую', async () => {
+    const { mgr, ops } = managerWith(DM, undefined, 2)
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    for (const e of ['❤', '🔥']) await mgr.react(DM, cid(2), e)
+    expect(myEmoticons(declared(ops))).toEqual(['❤', '🔥'])
+
+    await mgr.react(DM, cid(2), '🥰')
+    expect(myEmoticons(declared(ops))).toEqual(['🔥', '🥰'])
+  })
+
+  // Конфига нет (первый запуск без сети) — числа нет, локально никого не
+  // вытесняем: сервер вытеснит сам, кадр приведёт ряд к его составу.
+  it('конфига нет — локального вытеснения нет', async () => {
+    const { mgr, ops } = managerWith(DM, undefined, null)
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.react(DM, cid(2), '❤')
+    await mgr.react(DM, cid(2), '🔥')
+    expect(myEmoticons(declared(ops))).toEqual(['❤', '🔥'])
   })
 
   // Вытеснение стоит клиенту НИСКОЛЬКО запросов: снятие лишней реакции идёт

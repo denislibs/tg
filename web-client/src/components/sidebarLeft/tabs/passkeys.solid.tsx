@@ -22,9 +22,11 @@
  *     сервер не хранит AAGUID ключа и эмодзи не отдаёт — у каждой строки
  *     иконка `key_filled`. С ней не перенесено и правило `.container
  *     { --custom-emoji-size }` модуля стилей: читать его некому.
- *  2. (О-51) `appConfig.passkeys_account_passkeys_max` → константа
- *     `PASSKEYS_ACCOUNT_PASSKEYS_MAX`: `help.getAppConfig` у нас нет, лимит
- *     зашит на сервере (`backend/internal/usecase/passkeys/passkeys.go`, `maxPasskeys`).
+ *  2. `appConfig.passkeys_account_passkeys_max` (`useAppConfig()` оригинала,
+ *     :83, :116) — из `tab.managers.appConfig.getAppConfig()` (воркер, кэш на
+ *     сутки): Solid-стора конфига приложения у нас нет. Сервер отдаёт то же
+ *     число, которым отказывает (`backend/internal/domain/limits.go`,
+ *     `MaxPasskeys`). Конфиг ждёт `PromiseCollector`, чтобы кнопка не мигала.
  *  3. `appAccountManager.deletePasskey(id)` → `tab.managers.auth.passkeyDelete(id)`
  *     (`core/managers/authManager.ts`, REST); `createPasskey` берёт менеджеры
  *     аргументом (`components/popups/passkey.ts`, расхождение 1 там).
@@ -52,15 +54,13 @@ import { confirmationPopup } from '@components/popups/popupPeer'
 import { createPasskey } from '@components/popups/passkey'
 import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
+import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppPasskeysTab } from '@components/solidJsTabs/tabs'
 import { showPasskeyPopup } from '../settingsPopups'
 import styles from './passkeys.module.scss'
 
 type AppPasskeysTabClass = typeof AppPasskeysTab
-
-/** О-51 (расхождение 2): лимит сервера, `maxPasskeys` в `usecase/passkeys`. */
-const PASSKEYS_ACCOUNT_PASSKEYS_MAX = 10
 
 const PasskeyItem = (passkey: Passkey) => {
   const [tab] = useSuperTab<AppPasskeysTabClass>()
@@ -111,6 +111,11 @@ const PasskeyItem = (passkey: Passkey) => {
 
 const PasskeysTab = () => {
   const [tab] = useSuperTab<AppPasskeysTabClass>()
+  const promiseCollector = usePromiseCollector()
+  const [passkeysMax, setPasskeysMax] = createSignal<number>()
+  promiseCollector.collect(
+    tab.managers!.appConfig.getAppConfig().then((config) => setPasskeysMax(config.passkeys_account_passkeys_max)),
+  )
 
   const onCreation = (passkey: Passkey) => {
     tab.payload.setPasskeys((passkeys) => [passkey, ...passkeys])
@@ -138,7 +143,7 @@ const PasskeysTab = () => {
         <Show
           when={
             isWebAuthnSupported() &&
-            tab.payload.passkeys.length < PASSKEYS_ACCOUNT_PASSKEYS_MAX
+            tab.payload.passkeys.length < (passkeysMax() ?? 0)
           }
         >
           <Button

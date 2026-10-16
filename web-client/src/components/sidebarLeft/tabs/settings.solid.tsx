@@ -36,9 +36,12 @@
  *     2C-17…2C-20 (`sidebarLeft/settingsPopups.tsx`, ВРЕМЕННО у каждой).
  *  4. `getEditProfileInitArgs` (:106) — без `overwriteConnectedBot`:
  *     бизнес-бота нет (расхождение 6).
- *  5. `premiumBlocked` (:315-318) — ВСЕГДА ложь: источника
- *     `apiManagerProxy.isPremiumPurchaseBlocked()` у нас нет, секция видна
- *     всегда. Строки TON (`useStars(true)`, `hasTonTransactions`, :329-331,
+ *  5. `premiumBlocked` (:348-351) — `appConfig.premium_purchase_blocked` из
+ *     `managers.appConfig` (сервер отдаёт ключ по флагу DEV_PURCHASES,
+ *     `backend/internal/domain/mthelp.go`), без кэша `apiManagerProxy` — кэш
+ *     держит сам менеджер. ОТСТУПЛЕНИЕ: конфиг не приехал совсем (пустой объект
+ *     без `hash`, REST отказал — у tweb транспорт повторяет запрос) считается
+ *     «покупка закрыта»: в проде сервер ручки покупки не монтирует. Строки TON (`useStars(true)`, `hasTonTransactions`, :329-331,
  *     :430-437) нет: ни баланса TON, ни его транзакций у бэкенда нет.
  *  6. Бизнес-бота (`getConnectedBot`, `chat_automation_update`, :279-298,
  *     :340-348, :356-362) нет: у бэкенда нет подключённых ботов — счётчик
@@ -239,7 +242,13 @@ const Settings = () => {
     void subTab.open({ authorizations: authorizations! })
   }
 
-  // ── Premium section (tweb :314-331; расхождение 5).
+  // ── Premium section (tweb :314-331, :346-355; расхождение 5). Сигнал, чтобы
+  // `<Show>` пересчитался, когда конфиг приедет до `selectTab`: секция либо
+  // появляется вместе со вкладкой, либо не появляется вовсе.
+  const [premiumBlocked, setPremiumBlocked] = createSignal(false)
+  promiseCollector.collect(
+    managers.appConfig.getAppConfig().then((config) => setPremiumBlocked(config.premium_purchase_blocked ?? config.hash === undefined)),
+  )
   const stars = subscribeExternal(
     useAppStateStore.subscribe,
     () => useAppStateStore.getState().starsBalance ?? 0,
@@ -311,24 +320,26 @@ const Settings = () => {
           </Row>
         </div>
       </Section>
-      <Section>
-        <Row clickable={() => showPremiumPopup()}>
-          <Row.Icon icon="premium_badge" />
-          <Row.Title>{i18n('Premium.Boarding.Title')}</Row.Title>
-        </Row>
-        <Show when={!!stars()}>
-          <Row clickable={() => showStarsPopup()}>
-            <Row.Icon icon="star_circle_filled" />
-            <Row.Title titleRight={'' + stars()} titleRightSecondary>
-              {i18n('MenuTelegramStars')}
-            </Row.Title>
+      <Show when={!premiumBlocked()}>
+        <Section>
+          <Row clickable={() => showPremiumPopup()}>
+            <Row.Icon icon="premium_badge" />
+            <Row.Title>{i18n('Premium.Boarding.Title')}</Row.Title>
           </Row>
-        </Show>
-        <Row clickable={() => showSendGiftPicker()}>
-          <Row.Icon icon="gift_filled" />
-          <Row.Title>{i18n('Chat.Menu.SendGift')}</Row.Title>
-        </Row>
-      </Section>
+          <Show when={!!stars()}>
+            <Row clickable={() => showStarsPopup()}>
+              <Row.Icon icon="star_circle_filled" />
+              <Row.Title titleRight={'' + stars()} titleRightSecondary>
+                {i18n('MenuTelegramStars')}
+              </Row.Title>
+            </Row>
+          </Show>
+          <Row clickable={() => showSendGiftPicker()}>
+            <Row.Icon icon="gift_filled" />
+            <Row.Title>{i18n('Chat.Menu.SendGift')}</Row.Title>
+          </Row>
+        </Section>
+      </Show>
     </>
   )
 }

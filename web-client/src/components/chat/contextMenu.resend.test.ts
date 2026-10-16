@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatContextMenu, { type ContextMenuManagers } from './contextMenu'
 import type Chat from './chat'
-import { attachTestSelection, createTestChat } from './testChat'
+import { attachTestSelection, createTestChat, fakeMenuAppConfig } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -49,6 +49,7 @@ const managers = {
     confirmRepayRequest,
   },
   chats: { getReadDate: vi.fn().mockResolvedValue(null) },
+  appConfig: fakeMenuAppConfig(),
 } satisfies ContextMenuManagers
 
 const prepareStarsForPayment = vi.fn()

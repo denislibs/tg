@@ -304,14 +304,14 @@ func TestMessageViewers_AuthorOnlyWithinLimits(t *testing.T) {
 	}
 
 	s.mu.Lock()
-	s.messages[50][0].CreatedAt = time.Now().Add(-chatReadMarkExpirePeriod - time.Hour)
+	s.messages[50][0].CreatedAt = time.Now().Add(-domain.ChatReadMarkExpirePeriod - time.Hour)
 	s.mu.Unlock()
 	if _, err := in.MessageViewers(ctx, 50, m.ID, 1); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("за сроком: %v, want ErrForbidden", err)
 	}
 
 	members := []int64{1}
-	for u := int64(100); u < 100+chatReadMarkSizeThreshold; u++ {
+	for u := int64(100); u < 100+domain.ChatReadMarkSizeThreshold; u++ {
 		members = append(members, u)
 	}
 	s.seedChat(52, "group", members...)

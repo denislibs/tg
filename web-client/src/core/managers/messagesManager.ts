@@ -184,9 +184,8 @@ export interface MessagesDeps {
    * присоединились» против «X присоединился», `refineMessageAction`).
    * Разрешается лениво (воркер зовёт /me), поэтому геттер, а не значение. */
   getMeId?: () => number | null
-  /** Есть ли у текущего пользователя премиум (порт `rootScope.premium`) — от
-   *  него зависит лимит своих реакций на сообщении, см. `MessagesCtx`. */
-  getMePremium?: () => boolean
+  /** Лимит своих реакций на сообщении, см. `MessagesCtx`. */
+  getReactionsLimit?: () => Promise<number | undefined>
   /** Гейт «личность уже известна» (workerCore: гидрация `me` с диска / первый
    *  setMe). Сетевые пути, отдающие сообщения, ждут его ПЕРЕД маппингом:
    *  уточнение служебного действия сравнивает автора с `getMeId()`, а страница
@@ -207,6 +206,10 @@ export interface MessagesDeps {
    *  `canEditMessage` (`getFirstMessageToEdit`, правка по ↑). Опционален по той же
    *  причине, что и остальные инъекции. */
   getPeer?: (peerId: PeerId) => User | Chat | undefined
+  /** `config.edit_time_limit` (секунды) — срок правки в личке для `canEditMessage`
+   *  (tweb `canEditMessage`: `await getConfig()`). Опционален: нет — срок не
+   *  ограничивает (сервер откажет сам). */
+  getEditTimeLimit?: () => Promise<number | undefined>
   /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
    * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
    * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
@@ -255,7 +258,7 @@ export interface MessagesDeps {
   saveDiscussion?: (peerId: number, threadId: number, state: { maxId: number; readMaxId: number; readOutboxMaxId: number; unreadCount: number }) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, addChannelState, saveDiscussion }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsLimit, meReady, isBroadcastChat, getPeer, getEditTimeLimit, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, addChannelState, saveDiscussion }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -515,7 +518,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     if (err instanceof HttpError) broadcast?.(RT.messageSendError, { peerId, error: { type: err.type } })
   }
   const ctx = {
-    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf, repay, reportSendError,
+    rest, patchMsg, getMeId, getReactionsLimit, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf, repay, reportSendError,
     // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
     applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
   }
@@ -1119,6 +1122,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       }
 
       const myId = getMeId?.() ?? 0
+      const editTimeLimit = forReply ? undefined : await getEditTimeLimit?.()
       for (const mid of mids) {
         const message = readMsg(peerId, mid)
         if (!message) continue
@@ -1127,7 +1131,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
           (myId === peerId ? message.fromId === myId : !!message.pFlags.out)
 
         if (good) {
-          if (forReply || canEditMessage(message, 'text', { myId, getPeer: (id) => getPeer?.(id) })) {
+          if (forReply || canEditMessage(message, 'text', { myId, getPeer: (id) => getPeer?.(id), editTimeLimit })) {
             return getGroupsFirstMessage(message)
           }
         }

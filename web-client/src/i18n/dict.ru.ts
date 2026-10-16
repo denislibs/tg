@@ -834,6 +834,7 @@ const ru = {
   'VoiceChat.Status.You': 'Это вы',
   'VoiceChat.Status.Listening': 'слушает',
   'VoiceChat.Status.Muted': 'микрофон выключен',
+  'VoiceChat.Chat.Ended': 'Видеочат завершён.',
   'VoiceChat.Leave': 'Выйти',
   'Call.VideoToggle': 'видео',
   FromYou: 'Вы',

@@ -14,10 +14,6 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// maxMessageRunes caps message/caption text length (Telegram's message limit),
-// bounding storage, bandwidth, and client render cost.
-const maxMessageRunes = 4096
-
 // maxReplyQuoteRunes caps the length of a reply's quoted fragment (Telegram reply
 // quote), bounding storage/render cost independently of the full message limit.
 const maxReplyQuoteRunes = 1024
@@ -193,7 +189,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			in.Type = "service"
 		}
 	}
-	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
+	if utf8.RuneCountInString(in.Text) > domain.MaxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
 	in.Entities = domain.SanitizeEntities(in.Entities)

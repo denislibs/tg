@@ -12,7 +12,7 @@ import ChatContextMenu, {
 } from './contextMenu'
 import type { SelectionBubbles } from './selection'
 import type Chat from './chat'
-import { attachTestSelection, createTestChat } from './testChat'
+import { attachTestSelection, createTestChat, fakeMenuAppConfig } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -92,6 +92,7 @@ function makeManagers(): ContextMenuManagers {
       removeFactCheck: vi.fn().mockResolvedValue(undefined),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
+    appConfig: fakeMenuAppConfig(),
   }
 }
 

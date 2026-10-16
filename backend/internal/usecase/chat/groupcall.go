@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -13,6 +14,15 @@ import (
 
 // JoinGroupCall добавляет участника и оповещает членов чата.
 // Возвращает участников ДО входа (им новичок шлёт офферы).
+//
+// Видеочат с нуля начинает только создатель/админ (tweb: кнопка «начать» —
+// `hasRights(chat, 'manage_call')`, topbar.ts:350-361; без права и без идущего
+// звонка appImManager.joinGroupCall выходит, :2343-2358). Бита manage_call у нас
+// нет — право то же, что у эфира (создатель/админ). Звонок «идёт», если в нём
+// есть участники или активен эфир чата. Запрет — domain.ErrForbidden: отказ
+// сообщает входящему соединению СЛОЙ ТРАНСПОРТА (ws: group_call_update
+// {action: "rejected"}), потому что это ответ на кадр одного соединения, а не
+// событие пользователя — на других его устройствах открытый звонок не трогаем.
 func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([]int64, error) {
 	if i.groupCalls == nil {
 		return nil, domain.ErrNotFound
@@ -28,9 +38,12 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	first, err := i.groupCalls.Join(ctx, chatID, userID)
+	first, joined, err := i.admitToGroupCall(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
+	}
+	if !joined {
+		return nil, domain.ErrForbidden
 	}
 	i.publishGroupCallUpdate(ctx, chatID, userID, "joined")
 	if first {
@@ -45,6 +58,72 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 		}
 	}
 	return out, nil
+}
+
+// admitToGroupCall вносит пользователя в звонок по правилам Б-9. first —
+// переход 0→1, joined=false — вход запрещён. В группе сначала JoinIfActive
+// (проверка «звонок идёт» и вход — один скрипт Redis, иначе последний вышедший
+// оставил бы пустой звонок, а не-админ вошёл бы в него; проверка права в БД
+// только когда звонка нет). Звонка нет — открыть его может админ либо любой при
+// активном эфире.
+//
+// ОТСТУПЛЕНИЕ ОТ TWEB (В-S3, решение пользователя 2026-10-15): в вещательном
+// канале JoinIfActive пропускается — идущий видеочат открыт только
+// создателю/админам, подписчика пускает лишь активный эфир. tweb пускает
+// подписчика слушателем через SFU (components/chat/topbar.ts:387-392); SFU у нас
+// нет, и подписчик стал бы полноправным участником mesh (O(N²) потоков). Снимется
+// с В-М17.
+func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64) (first, joined bool, err error) {
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return false, false, err
+	}
+	if typ != domain.ChatTypeChannel {
+		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
+		if err != nil || joined {
+			return false, joined, err
+		}
+	}
+	allowed, err := i.isCallAdmin(ctx, chatID, userID)
+	if err != nil {
+		return false, false, err
+	}
+	if !allowed {
+		if allowed, err = i.livestreamActive(ctx, chatID); err != nil || !allowed {
+			return false, false, err
+		}
+	}
+	first, err = i.groupCalls.Join(ctx, chatID, userID)
+	return first, err == nil, err
+}
+
+// isCallAdmin — создатель/админ чата (как requireCallAdmin), но сбой хранилища
+// возвращается ошибкой, а не «не админ»: иначе таймаут БД выглядел бы как отказ
+// по праву, и создателю закрывало бы звонок.
+func (i *Interactor) isCallAdmin(ctx context.Context, chatID, userID int64) (bool, error) {
+	if i.groups == nil {
+		return false, nil
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin, nil
+}
+
+// livestreamActive — идёт ли эфир чата. Эфир не заводили — нет.
+func (i *Interactor) livestreamActive(ctx context.Context, chatID int64) (bool, error) {
+	if i.livestreams == nil {
+		return false, nil
+	}
+	ls, err := i.livestreams.Get(ctx, chatID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	return ls.Active, err
 }
 
 // LeaveGroupCall убирает участника и оповещает членов чата.

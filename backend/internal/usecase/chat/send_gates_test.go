@@ -515,10 +515,12 @@ func TestGroupCallSignal_OnlyBetweenParticipants(t *testing.T) {
 	in, s := newInteractor()
 	pub := &fakePublisher{}
 	in.SetPublisher(pub)
-	in.SetGroupCalls(newFakeCallStore(newFakeClock()))
+	calls := newFakeCallStore(newFakeClock())
+	in.SetGroupCalls(calls)
 	ctx := context.Background()
 	s.seedChat(600, domain.ChatTypeGroup, 1, 2, 3)
-	if _, err := in.JoinGroupCall(ctx, 600, 1); err != nil {
+	// Звонок начал пользователь 1 (право начинать — в groupcall_test.go).
+	if _, err := calls.Join(ctx, 600, 1); err != nil {
 		t.Fatal(err)
 	}
 	offer := func() map[string]any { return map[string]any{"sdp": map[string]any{"type": "offer"}} }

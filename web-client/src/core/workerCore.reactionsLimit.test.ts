@@ -1,8 +1,9 @@
 // Лимит своих реакций ЗАВИСИТ ОТ ПОДПИСКИ — и подписку воркер обязан взять из
-// живой личности, а не считать её отсутствующей.
+// живой личности, а не считать её отсутствующей. Число приезжает конфигом
+// приложения (`GET /help/app_config`, ключи `reactions_user_max_*`).
 //
-// Пин заведён по итогам ревью: подмена `getMePremium` в `workerCore.ts` на
-// «премиума нет всегда» не роняла ни одного теста. Единственный тест, который
+// Пин заведён по итогам ревью: подмена подписки в `appConfig.isPremium` (`workerCore.ts`)
+// на «премиума нет всегда» не роняла ни одного теста. Единственный тест, который
 // этот геттер трогал (`managers/messages/reactionMethods.test.ts`), подставляет
 // СВОЙ стаб и о проводке в `createWorkerCore` не знает ничего. В бою цена
 // мутации — премиум-аккаунт с клиентским лимитом 1 против серверных 3: две из
@@ -48,12 +49,29 @@ const historyPage = {
   count: 1,
 }
 
+let appConfigRequests = 0
+
 beforeEach(() => {
+  appConfigRequests = 0
   vi.stubGlobal('indexedDB', new IDBFactory())
   vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
     const u = String(url)
     if (u.includes(`/chats/${DM}/history`)) return new Response(JSON.stringify(historyPage), { status: 200 })
     if (u.includes('/reactions') && init?.method === 'POST') return new Response('{}', { status: 200 })
+    if (u.includes('/help/app_config')) {
+      appConfigRequests++
+      return new Response(JSON.stringify({
+        _: 'help.appConfig',
+        hash: 5,
+        config: {
+          _: 'jsonObject',
+          value: [
+            { _: 'jsonObjectValue', key: 'reactions_user_max_default', value: { _: 'jsonNumber', value: 1 } },
+            { _: 'jsonObjectValue', key: 'reactions_user_max_premium', value: { _: 'jsonNumber', value: 3 } },
+          ],
+        },
+      }), { status: 200 })
+    }
     throw new Error('unexpected fetch ' + u)
   }))
 })
@@ -81,6 +99,19 @@ async function clickThree(premium: boolean): Promise<string[]> {
 describe('createWorkerCore(): лимит своих реакций читает подписку из личности', () => {
   it('у премиума уживаются ТРИ свои реакции', async () => {
     expect(await clickThree(true)).toEqual(['❤', '🔥', '🥰'])
+    expect(appConfigRequests).toBe(1)
+  })
+
+  // Лимит четыре вытеснил бы первую: ключ `_premium` читается именно из конфига.
+  it('у премиума четвёртая вытесняет первую (лимит 3 — из конфига)', async () => {
+    await saveMe(profile(true))
+    const core = createWorkerCore()
+    core.start()
+    const ops: MessageOp[] = []
+    core.workerScope.scope.addEventListener(RT.messageOp, (p) => ops.push(...(p as { ops: MessageOp[] }).ops))
+    await core.registry.messages.getHistory({ peerId: DM })
+    for (const e of ['❤', '🔥', '🥰', '👏']) await core.registry.messages.react(DM, generateMessageId(2), e)
+    expect(myEmoticons(declared(ops))).toEqual(['🔥', '🥰', '👏'])
   })
 
   // Обратная сторона того же геттера: без подписки лимит базовый, и третий клик

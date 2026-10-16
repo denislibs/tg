@@ -153,6 +153,7 @@ beforeEach(() => {
     auth: { passwordState, passkeysList },
     drafts: { clearAll: clearAllDrafts },
     dialogs: { refresh: refreshDialogs },
+    appConfig: { getAppConfig: vi.fn(async() => ({ passkeys_account_passkeys_max: 10 })) },
   } as unknown as Managers
 
   columnEl = document.createElement('div')

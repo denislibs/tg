@@ -733,7 +733,7 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	if m.ChatID != in.ChatID || m.SenderID != in.UserID {
 		return nil, domain.ErrNotFound
 	}
-	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
+	if utf8.RuneCountInString(in.Text) > domain.MaxMessageRunes {
 		return nil, domain.ErrTooLong
 	}
 	entities := domain.SanitizeEntities(in.Entities)

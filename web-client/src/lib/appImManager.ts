@@ -841,7 +841,8 @@ export class AppImManager extends EventListenerBase<{
   //      признака в `userFull` нет — бэкенд гасит `phone_calls_available` и отвечает на
   //      звонок `call_decline reason=privacy` (бэклог Б-96).
   //  З3. `joinGroupCall` без `groupCallId`/`getGroupCallFull` (`VoiceChat.Chat.Ended`/
-  //      `StartNew`) и без `getChatFull().call`: полной карточки звонка нет, видеочат идёт,
+  //      `StartNew`; тост `Chat.Ended` показывает движок при отказе входа,
+  //      `groupCallEngine.handleJoinRejected`) и без `getChatFull().call`: полной карточки звонка нет, видеочат идёт,
   //      пока в нём кто-то есть (`groupCallStore.activeByChat`, кадр `group_call_update`), а
   //      заводит его тот же вход движка (`groupCallEngine.joinGroupCall`). Право
   //      `manage_call` — `hasRights(chat, 'just_admin')`: бита `manage_call` у нас нет

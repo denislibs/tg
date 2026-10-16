@@ -1972,6 +1972,7 @@ const lang = {
     one_value: '%d voice message',
     other_value: '%d voice messages',
   },
+  'VoiceChat.Chat.Ended': 'Video chat ended.',
   'VoiceChat.DiscussionGroup': 'discussion group',
   'VoiceChat.Leave': 'Leave',
   'VoiceChat.Status.Listening': 'listening',

@@ -41,9 +41,9 @@
  *     :812-816), стикеры и эмодзи группы (:818-847), автоперевод канала
  *     (:875-893), сообщество (:940-965); вместе с ними — `handleChannelsTooMuch`
  *     у тумблеров тем и истории (лимита каналов сервер не знает).
- *  6. Порог тем (`forum_upgrade_participants_min`, :203-207): `help.getAppConfig`
- *     у нас нет, а сервер включает темы в группе любого размера — условие
- *     числа участников опущено.
+ *  6. Порог тем (`forum_upgrade_participants_min`, :203-207): сервер включает
+ *     темы в группе любого размера и ключа в `help.getAppConfig` не отдаёт —
+ *     условие числа участников опущено.
  *  7. Менеджеры — наши ручки: `editPhoto` — `groups.setPhoto` по
  *     `media_id` (`AvatarEdit`, расхождение 3 его шапки); `toggleForum` —
  *     `groups.setForum`; `toggleSignatures` — `channels.setSignatures`;
