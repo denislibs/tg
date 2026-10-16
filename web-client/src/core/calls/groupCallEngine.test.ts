@@ -415,6 +415,19 @@ describe('groupCallEngine: кандидаты до готовности соед
     expect(FakePC.all[1].ice).toEqual([{ candidate: 'c1', sdpMid: '0' }]) // старого c9 нет
   })
 
+  it('кадры прошлого звонка в очереди за висящим ICE-конфигом не применяются после входа в тот же чат', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame(offer(2)) // встал в очередь за первым
+    await tick()
+    engine.leaveGroupCall()
+    store.useGroupCallStore.getState().setJoined(PEER) // activeByChat переживает reset: 2 «в звонке»
+    release()
+    await tick(); await tick(); await tick(); await tick()
+    expect(created).toHaveLength(0)
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.data.sdp?.type === 'answer')).toHaveLength(0)
+  })
+
   it('встречный offer, мы невежливая сторона (меньший id): свой offer держим, встречный игнорируем', async () => {
     existingParticipants = [2]
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
