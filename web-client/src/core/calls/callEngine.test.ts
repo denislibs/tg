@@ -214,15 +214,17 @@ describe('callEngine: p2p_allowed → iceTransportPolicy', () => {
   })
 })
 
-// Креды TURN проверяются coturn на каждом запросе: кэш короткий, чтобы relay-звонок не стартовал
-// с почти истёкшими кредами и не рвался посреди разговора (tweb выдаёт креды на каждый звонок).
-describe('callEngine: кэш ICE-конфига короткий', () => {
-  it('в пределах минуты — один запрос, после — новый', async () => {
+// К1: креды TURN живут час (ice_handler.go::iceCredentialTTL) и берутся на вход в звонок; кэш
+// отдаёт их, пока до истечения больше 10 минут, и при сбое /calls/ice — пока больше минуты.
+const MIN = 60_000
+describe('callEngine: ICE-конфиг и срок кредов', () => {
+  it('пока до истечения кредов больше 10 минут — один запрос, ближе — новый', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
+    await vi.advanceTimersByTimeAsync(49 * MIN)
     await A.engine.iceServers()
     expect(net.iceFetches).toBe(1)
-    await vi.advanceTimersByTimeAsync(61_000)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
     await A.engine.iceServers()
     expect(net.iceFetches).toBe(2)
   })
@@ -232,26 +234,100 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
     const first = await A.engine.iceServers()
     expect(A.engine.hasTurnServer(first)).toBe(true)
     net.iceFail = true
-    await vi.advanceTimersByTimeAsync(61_000)
+    await vi.advanceTimersByTimeAsync(51 * MIN)
     const again = await A.engine.iceServers()
     expect(net.iceFetches).toBe(2)
     expect(A.engine.hasTurnServer(again)).toBe(true)
   })
 
-  it('сбой /calls/ice, кредам осталось меньше часа — STUN-only: звонок на них оборвался бы на первом Refresh', async () => {
+  it('сбой /calls/ice, кредам осталось меньше минуты — STUN-only: Allocate нового pc на них не пройдёт', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
     net.iceFail = true
-    await vi.advanceTimersByTimeAsync(86_400_000 - 30 * 60_000) // до истечения 30 мин < запаса 1 ч
+    await vi.advanceTimersByTimeAsync(60 * MIN - 30_000)
     expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
   })
 
-  it('сбой /calls/ice, кредам осталось больше часа — ещё последний успешный конфиг', async () => {
+  it('сбой /calls/ice, кредам осталось больше минуты — ещё последний успешный конфиг', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
     net.iceFail = true
-    await vi.advanceTimersByTimeAsync(86_400_000 - 61 * 60_000)
+    await vi.advanceTimersByTimeAsync(58 * MIN)
     expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(true)
+  })
+
+  it('keepIceFresh: креды обновляются за 10 минут до истечения, после остановки — нет', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    const stop = A.engine.keepIceFresh(() => {})
+    await vi.advanceTimersByTimeAsync(49 * MIN)
+    expect(net.iceFetches).toBe(1)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(net.iceFetches).toBe(2)
+    await vi.advanceTimersByTimeAsync(50 * MIN) // следующий срок — от новых кредов
+    expect(net.iceFetches).toBe(3)
+    stop()
+    await vi.advanceTimersByTimeAsync(3 * 60 * MIN)
+    expect(net.iceFetches).toBe(3)
+  })
+
+  it('keepIceFresh: новые креды отдаются в apply один раз; STUN-only конфиг (сбой) не отдаётся', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    const apply = vi.fn()
+    const stop = A.engine.keepIceFresh(apply)
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(50 * MIN + 1_000) // сбой: FALLBACK без TURN
+    expect(apply).not.toHaveBeenCalled()
+    net.iceFail = false
+    const fresh: RTCIceServer[] = [{ urls: ['turn:turn.test:3478?transport=udp'], username: 'u2', credential: 'c2' }]
+    net.iceServers = fresh
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(apply).toHaveBeenCalledWith(fresh)
+    stop()
+  })
+
+  it('1:1: идущий pc получает свежие креды до истечения прежних', async () => {
+    const { A } = await connectPair(net)
+    const fresh: RTCIceServer[] = [{ urls: ['turn:turn.test:3478?transport=udp'], username: 'u2', credential: 'c2' }]
+    net.iceServers = fresh
+    await vi.advanceTimersByTimeAsync(51 * MIN)
+    expect(pcOf(A)!.getConfiguration().iceServers).toEqual(fresh)
+    expect(pcOf(A)!.getConfiguration().bundlePolicy).toBe('max-bundle') // остальная конфигурация цела
+  })
+
+  it('applyIceServers: отказ браузера пишется в журнал, закрытый pc молчит', async () => {
+    const A = await net.side(1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const pc = new FakePC({ bundlePolicy: 'max-bundle' }) as unknown as RTCPeerConnection
+      pc.setConfiguration = () => { throw new DOMException('x', 'InvalidModificationError') }
+      A.engine.applyIceServers(pc, [])
+      expect(warn).toHaveBeenCalledTimes(1)
+      ;(pc as unknown as { signalingState: string }).signalingState = 'closed'
+      A.engine.applyIceServers(pc, [])
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally { warn.mockRestore() }
+  })
+
+  it('keepIceFresh: сбой обновления — повтор через 30 с, а не сразу и не через час', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    const stop = A.engine.keepIceFresh(() => {})
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(50 * MIN + 1_000)
+    expect(net.iceFetches).toBe(2)
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(net.iceFetches).toBe(2)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(net.iceFetches).toBe(3)
+    net.iceFail = false
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(net.iceFetches).toBe(4)
+    await vi.advanceTimersByTimeAsync(40 * MIN)
+    expect(net.iceFetches).toBe(4)
+    stop()
   })
 
   it('первый же запрос /calls/ice упал, конфига ещё не было — STUN-only', async () => {
@@ -278,7 +354,7 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
   it('/calls/ice висит после кэша, креды живы: через 10 с — последний конфиг с TURN', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
-    await vi.advanceTimersByTimeAsync(61_000)
+    await vi.advanceTimersByTimeAsync(51 * MIN)
     net.iceHang = true
     const again = A.engine.iceServers()
     await vi.advanceTimersByTimeAsync(10_500)

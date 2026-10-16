@@ -64,6 +64,12 @@ export class FakePC {
     if (config.bundlePolicy === 'max-bundle' && ++FakePC.mainsCreated === FakePC.throwOnMain) throw new Error('pc ctor failed')
     FakePC.all.push(this)
   }
+  getConfiguration() { return this.config }
+  /** Строже браузера: certificates в setConfiguration не принимаются вовсе, движок их не передаёт. */
+  setConfiguration(config: RTCConfiguration) {
+    if (config.certificates) throw new DOMException('certificates must not be passed', 'InvalidModificationError')
+    this.config = { ...this.config, ...config }
+  }
   get cert() { return (this.config.certificates?.[0] as unknown as { tag: string } | undefined)?.tag ?? '' }
   private negotiate() { queueMicrotask(() => { if (!this.closed && this.signalingState === 'stable') this.onnegotiationneeded?.() }) }
   addTransceiver(kind: string) { this.transceivers.push({ receiver: { track: { kind } } }); this.negotiate() }
@@ -170,7 +176,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceHang) await new Promise(() => {}); if (net.iceFail) throw new Error('HTTP 502'); return { servers: net.iceServers, ttlSeconds: 86_400 } } },
+            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceHang) await new Promise(() => {}); if (net.iceFail) throw new Error('HTTP 502'); return { servers: net.iceServers, ttlSeconds: 3600 } } },
             peers: { getUsers: async () => [] },
           },
         }),

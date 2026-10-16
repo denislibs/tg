@@ -38,6 +38,9 @@ var (
 	// обрабатывает (appMessagesManager.ts:2226-2240).
 	ErrMessageNotModified = errors.New("message not modified")
 	ErrMessageEmpty       = errors.New("message empty")
+	// ErrGroupCallFull: в видеочате уже GroupCallMaxParticipants участников (mesh,
+	// К3). У tweb такого отказа нет — видеочат ходит через SFU без предела.
+	ErrGroupCallFull = errors.New("group call full")
 )
 
 // ErrAllowPaymentRequired: сообщение в платную группу отвергнуто, потому что

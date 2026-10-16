@@ -23,6 +23,9 @@ import (
 // сообщает входящему соединению СЛОЙ ТРАНСПОРТА (ws: group_call_update
 // {action: "rejected"}), потому что это ответ на кадр одного соединения, а не
 // событие пользователя — на других его устройствах открытый звонок не трогаем.
+//
+// В звонке уже domain.GroupCallMaxParticipants участников — domain.ErrGroupCallFull
+// (К3, предел mesh; у tweb видеочат через SFU предела не знает).
 func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([]int64, error) {
 	if i.groupCalls == nil {
 		return nil, domain.ErrNotFound
@@ -39,6 +42,9 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 		return nil, err
 	}
 	first, joined, err := i.admitToGroupCall(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrGroupCallFull) && i.dropOfflineParticipants(ctx, chatID, userID) {
+		first, joined, err = i.admitToGroupCall(ctx, chatID, userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +66,66 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 	return out, nil
 }
 
+// dropOfflineParticipants убирает из звонка тех, у кого нет соединения (presence): у участника
+// пульса нет, и процесс, упавший без уборки, оставляет «призраков» до TTL ключа (6 ч) — на
+// пределе mesh они закрыли бы вход. Зовётся только на отказе по пределу. except — входящий
+// (его повторный вход предел не считает). Сбой presence участника не убирает. true — убран
+// кто-то, вход стоит повторить.
+func (i *Interactor) dropOfflineParticipants(ctx context.Context, chatID, except int64) bool {
+	if i.presence == nil {
+		return false
+	}
+	ids, err := i.groupCalls.Participants(ctx, chatID)
+	if err != nil {
+		return false
+	}
+	dropped := false
+	for _, id := range ids {
+		if id == except {
+			continue
+		}
+		if online, err := i.presence.IsOnline(ctx, id); err == nil && !online {
+			if i.LeaveGroupCall(ctx, chatID, id) == nil {
+				dropped = true
+			}
+		}
+	}
+	return dropped
+}
+
+// JoinGroupCallAsViewer — зритель эфира (livestreamEngine.watchLivestream): регистрируется в
+// том же множестве, но без медиа и без pc, поэтому предел mesh его не считает и не
+// действует на него. Нужен активный эфир (domain.ErrForbidden иначе): зрителем не обойти
+// правило Б-9 о том, кто открывает звонок.
+func (i *Interactor) JoinGroupCallAsViewer(ctx context.Context, chatID, userID int64) error {
+	if i.groupCalls == nil {
+		return domain.ErrNotFound
+	}
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	live, err := i.livestreamActive(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if !live {
+		return domain.ErrForbidden
+	}
+	first, err := i.groupCalls.JoinViewer(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	i.publishGroupCallUpdate(ctx, chatID, userID, "joined")
+	if first {
+		i.announceCallChange(ctx, chatID)
+	}
+	return nil
+}
+
 // admitToGroupCall вносит пользователя в звонок по правилам Б-9. first —
 // переход 0→1, joined=false — вход запрещён. В группе сначала JoinIfActive
 // (проверка «звонок идёт» и вход — один скрипт Redis, иначе последний вышедший
@@ -79,7 +145,7 @@ func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64)
 		return false, false, err
 	}
 	if typ != domain.ChatTypeChannel {
-		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
+		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID, domain.GroupCallMaxParticipants)
 		if err != nil || joined {
 			return false, joined, err
 		}
@@ -93,7 +159,7 @@ func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64)
 			return false, false, err
 		}
 	}
-	first, err = i.groupCalls.Join(ctx, chatID, userID)
+	first, err = i.groupCalls.Join(ctx, chatID, userID, domain.GroupCallMaxParticipants)
 	return first, err == nil, err
 }
 
@@ -209,7 +275,13 @@ func (i *Interactor) publishGroupCallUpdate(ctx context.Context, chatID, userID 
 	if err != nil {
 		return
 	}
+	size, err := i.groupCalls.Size(ctx, chatID)
+	if err != nil {
+		return
+	}
+	// participants — участники mesh, без зрителей эфира (store.Participants); size — все в звонке,
+	// с ними: счётчик «смотрят» на экране эфира
 	i.publishPeerFrame(ctx, chatID, members, 0, "group_call_update", map[string]any{
-		"user_id": userID, "action": action, "participants": participants,
+		"user_id": userID, "action": action, "participants": participants, "size": size,
 	})
 }

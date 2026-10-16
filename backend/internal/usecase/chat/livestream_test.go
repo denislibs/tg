@@ -143,3 +143,26 @@ func TestRevokeStreamKey_ChangesKeyKeepsActive(t *testing.T) {
 		t.Fatal("revoke should not stop the stream")
 	}
 }
+
+// Счётчик «смотрят» (статус эфира и group_call_update.size) считает и зрителей: Participants — только mesh.
+func TestLivestream_ViewerCountIncludesViewers(t *testing.T) {
+	i, fg, _ := newLivestreamTestInteractor(t)
+	i.SetGroupCalls(newFakeCallStore(newFakeClock()))
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	for uid := int64(8); uid <= 10; uid++ {
+		_ = fg.AddMember(ctx, ch, uid, domain.RoleSubscriber, 0)
+	}
+	if _, err := i.StartLivestream(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(8); uid <= 10; uid++ {
+		if err := i.JoinGroupCallAsViewer(ctx, ch, uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err := i.LivestreamStatus(ctx, ch, 7)
+	if err != nil || st.Viewers != 3 {
+		t.Fatalf("статус эфира: Viewers=%d err=%v, want 3", st.Viewers, err)
+	}
+}

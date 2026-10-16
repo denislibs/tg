@@ -232,6 +232,7 @@ func NewAppConfig(devPurchases bool) JSONObject {
 	m["chat_read_mark_size_threshold"] = num(ChatReadMarkSizeThreshold)
 	m["chat_read_mark_expire_period"] = num(ChatReadMarkExpirePeriod.Seconds())
 	m["passkeys_account_passkeys_max"] = num(MaxPasskeys)
+	m["groupcall_video_participants_max"] = num(GroupCallMaxParticipants)
 	m["stories_stealth_past_period"] = num(StealthPastPeriod.Seconds())
 	m["stories_stealth_future_period"] = num(StealthFuturePeriod.Seconds())
 	m["stars_purchase_blocked"] = NewJSONBool(!devPurchases)

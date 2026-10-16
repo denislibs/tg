@@ -62,4 +62,24 @@ const (
 	// `appMessagesManager.ts:12334-12339`.
 	ChatReadMarkSizeThreshold = 100
 	ChatReadMarkExpirePeriod  = 7 * 24 * time.Hour
+
+	// GroupCallMaxParticipants — участников видеочата группы (mesh, К3);
+	// `groupcall_video_participants_max` (`appConfig.d.ts:9`). У Telegram это
+	// предел участников С ВИДЕО в звонке через SFU; у нас каждый участник mesh —
+	// отправитель видео каждому, поэтому предел на всех.
+	//
+	// Число — из квоты coturn (`coturn/turnserver.conf`): `user-quota=32`
+	// аллокации на пользователя, pc держит A = 2 TURN-URL (udp, tcp) × сетевые
+	// интерфейсы = 4 аллокации (замер на стенде, М3-2). Участник держит N−1 pc, а
+	// аллокации упавшей вкладки живут ещё 600 с (libwebrtc не шлёт LIFETIME), так
+	// что повторный вход после падения удваивает счёт: 2·(N−1)·A ≤ 32 → N ≤ 5.
+	// Сверх квоты coturn отвечает 486, и pc молча не соединяется (клиент пишет её в журнал,
+	// groupCallEngine.ts onicecandidateerror). Допущения расчёта: A ≤ 4 (одно устройство без
+	// второго сетевого интерфейса и VPN), одна вкладка участника, не больше одного падения
+	// вкладки за 600 с. Зрители эфира в счёт не идут (JoinViewer): у них нет pc.
+	//
+	// Ёмкость сервера: полный видеочат держит N·(N−1)·A = 80 аллокаций, при total-quota 190
+	// (coturn/turnserver.conf, docker-compose.yml) это два полных видеочата на сервер, третий
+	// получает 486. Больше — SFU (В-М17) или другой пул.
+	GroupCallMaxParticipants = 5
 )

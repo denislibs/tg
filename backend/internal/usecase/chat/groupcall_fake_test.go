@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // fakeClock — подменяемые часы: стор, ограничитель снимков и тикер читают одни
@@ -36,6 +38,8 @@ type fakeCallStore struct {
 	mu    sync.Mutex
 	clock *fakeClock
 	parts map[int64][]int64
+	// viewers — зрители эфира среди parts; предел Join их не считает.
+	viewers map[int64][]int64
 	// snapUntil — до какого момента занят ограничитель снимков чата.
 	snapUntil map[int64]time.Time
 	// dirty — чат → срок публикации либо конец аренды (одно поле, как у ZSET).
@@ -51,31 +55,59 @@ type fakeCallStore struct {
 
 func newFakeCallStore(clock *fakeClock) *fakeCallStore {
 	return &fakeCallStore{
-		clock: clock, parts: map[int64][]int64{},
+		clock: clock, parts: map[int64][]int64{}, viewers: map[int64][]int64{},
 		snapUntil: map[int64]time.Time{}, dirty: map[int64]time.Time{},
 	}
 }
 
-func (f *fakeCallStore) Join(_ context.Context, chatID, userID int64) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	first := len(f.parts[chatID]) == 0
+// full — предел mesh (зрители не в счёте): новичка и зрителя, ставшего участником, не пускаем.
+func (f *fakeCallStore) full(chatID, userID int64, limit int) bool {
+	mesh := len(f.parts[chatID]) - len(f.viewers[chatID])
+	isMesh := slices.Contains(f.parts[chatID], userID) && !slices.Contains(f.viewers[chatID], userID)
+	return mesh >= limit && !isMesh
+}
+
+func (f *fakeCallStore) add(chatID, userID int64) {
 	if !slices.Contains(f.parts[chatID], userID) {
 		f.parts[chatID] = append(f.parts[chatID], userID)
 	}
+	f.viewers[chatID] = slices.DeleteFunc(f.viewers[chatID], func(id int64) bool { return id == userID })
+}
+
+func (f *fakeCallStore) Join(_ context.Context, chatID, userID int64, limit int) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.full(chatID, userID, limit) {
+		return false, domain.ErrGroupCallFull
+	}
+	first := len(f.parts[chatID]) == 0
+	f.add(chatID, userID)
+	return first, nil
+}
+
+func (f *fakeCallStore) JoinViewer(_ context.Context, chatID, userID int64) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	first := len(f.parts[chatID]) == 0
+	if slices.Contains(f.parts[chatID], userID) && !slices.Contains(f.viewers[chatID], userID) {
+		return false, nil // участник mesh зрителем не становится
+	}
+	f.add(chatID, userID)
+	f.viewers[chatID] = append(f.viewers[chatID], userID)
 	return first, nil
 }
 
 // JoinIfActive — как Redis-стор: пустой звонок не создаётся.
-func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64) (bool, error) {
+func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64, limit int) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.parts[chatID]) == 0 {
 		return false, nil
 	}
-	if !slices.Contains(f.parts[chatID], userID) {
-		f.parts[chatID] = append(f.parts[chatID], userID)
+	if f.full(chatID, userID, limit) {
+		return false, domain.ErrGroupCallFull
 	}
+	f.add(chatID, userID)
 	return true, nil
 }
 
@@ -84,13 +116,20 @@ func (f *fakeCallStore) Leave(_ context.Context, chatID, userID int64) (bool, er
 	defer f.mu.Unlock()
 	had := len(f.parts[chatID]) > 0
 	f.parts[chatID] = slices.DeleteFunc(f.parts[chatID], func(id int64) bool { return id == userID })
+	f.viewers[chatID] = slices.DeleteFunc(f.viewers[chatID], func(id int64) bool { return id == userID })
 	return had && len(f.parts[chatID]) == 0, nil
 }
 
 func (f *fakeCallStore) Participants(_ context.Context, chatID int64) ([]int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.parts[chatID]), nil
+	return slices.DeleteFunc(slices.Clone(f.parts[chatID]), func(id int64) bool { return slices.Contains(f.viewers[chatID], id) }), nil
+}
+
+func (f *fakeCallStore) Size(_ context.Context, chatID int64) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.parts[chatID]), nil
 }
 
 func (f *fakeCallStore) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {

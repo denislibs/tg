@@ -38,21 +38,27 @@ const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 // ICE-конфиг с бэка (STUN + эфемерные TURN-креды). coturn проверяет метку кредов при первой
 // аутентификации аллокации (Allocate), дальше Refresh/CreatePermission идут на запомненном ключе
 // (userdb.c::get_user_key, ns_turn_server.c hmackey_set): идущий звонок истечение переживает,
-// ломается новая аллокация — новый pc mesh (поздний участник). У tweb креды выдаются на каждый
-// звонок (callInstance.ts:676-688); у нас серверный TTL — сутки (ice_handler.go), а кэш лишь
-// склеивает несколько pc одного входа в звонок.
-const ICE_CACHE_MS = 60_000
-// Запас до истечения кредов, после которого последний успешный конфиг уже не отдаём: на нём
-// звонок должен успеть собрать pc для участников, входящих позже, — час с запасом.
-const ICE_EXPIRY_MARGIN_MS = 60 * 60_000
+// ломается новая аллокация — новый pc (поздний участник mesh, смена сети, переподключение TURN).
+// Креды живут час (К1, ice_handler.go::iceCredentialTTL) и берутся на вход в звонок, как у tweb,
+// где они приходят с самим звонком (callInstance.ts:676-688); пока звонок идёт, keepIceFresh
+// обновляет их заранее и отдаёт идущим pc (applyIceServers).
+//
+// Конфиг отдаётся из кэша, пока до истечения кредов больше ICE_REFRESH_MARGIN_MS: этого хватает
+// pc, созданному на них, чтобы аутентифицировать Allocate (секунды) с большим запасом.
+const ICE_REFRESH_MARGIN_MS = 10 * 60_000
+// Сбой /calls/ice: последний успешный конфиг отдаётся, пока до истечения кредов больше минуты —
+// Allocate нового pc уходит сразу после его создания.
+const ICE_EXPIRY_MARGIN_MS = 60_000
+// Повтор планового обновления после сбоя /calls/ice.
+const ICE_RETRY_MS = 30_000
 // Сколько ждать /calls/ice: у fetch и канального RPC своего таймаута нет, а на висящий запрос
 // встают все вызовы вкладки (склейка ниже) — после таймаута тот же откат, что при сбое.
 const ICE_FETCH_TIMEOUT_MS = 10_000
-let cachedIce: { servers: RTCIceServer[]; until: number; expires: number } | null = null
+let cachedIce: { servers: RTCIceServer[]; expires: number } | null = null
 // Запрос в полёте: pc mesh создаются пачкой, и каждый не должен идти в /calls/ice отдельно.
 let iceInFlight: Promise<RTCIceServer[]> | null = null
 export function iceServers(): Promise<RTCIceServer[]> {
-  if (cachedIce && Date.now() < cachedIce.until) return Promise.resolve(cachedIce.servers)
+  if (cachedIce && Date.now() < cachedIce.expires - ICE_REFRESH_MARGIN_MS) return Promise.resolve(cachedIce.servers)
   iceInFlight ??= new Promise<RTCIceServer[]>((resolve) => {
     const timer = setTimeout(() => resolve(lastGoodIce()), ICE_FETCH_TIMEOUT_MS)
     void fetchIceServers().then((servers) => { clearTimeout(timer); resolve(servers) })
@@ -63,8 +69,7 @@ async function fetchIceServers(): Promise<RTCIceServer[]> {
   try {
     const cfg = await managers().calls.iceConfig()
     if (cfg.servers.length) {
-      const now = Date.now()
-      cachedIce = { servers: cfg.servers, until: now + ICE_CACHE_MS, expires: now + cfg.ttlSeconds * 1000 }
+      cachedIce = { servers: cfg.servers, expires: Date.now() + cfg.ttlSeconds * 1000 }
       return cfg.servers
     }
   } catch { /* сбой запроса: ниже — последний успешный конфиг, пока его креды живы */ }
@@ -76,6 +81,45 @@ function lastGoodIce(): RTCIceServer[] {
   if (cachedIce && Date.now() < cachedIce.expires - ICE_EXPIRY_MARGIN_MS) return cachedIce.servers
   return FALLBACK_ICE
 }
+/**
+ * Новые креды в живой pc. Креды проверяются при первой аутентификации аллокации, но pc
+ * заводит новые: смена сети (Wi-Fi → LTE), переподключение TURN, ICE restart. Без этого
+ * они пошли бы с кредами, выданными на вход в звонок, и после их истечения получили бы 401.
+ */
+export function applyIceServers(pc: RTCPeerConnection, servers: RTCIceServer[]) {
+  // Без certificates: по спецификации setConfiguration сверяет их с прежними, а менять нужно
+  // только iceServers (остальные поля в getConfiguration уже те, что заданы при создании).
+  const { certificates: _certificates, ...config } = pc.getConfiguration()
+  try {
+    pc.setConfiguration({ ...config, iceServers: servers })
+  } catch (e) {
+    if (pc.signalingState !== 'closed') console.warn('[call] failed to refresh TURN credentials on a live pc', e)
+  }
+}
+/**
+ * Плановое обновление кредов, пока идёт звонок (К1): за ICE_REFRESH_MARGIN_MS до истечения конфиг
+ * берётся заново, и pc участника, вошедшего позже, не ждёт /calls/ice и не упирается в истёкшую
+ * метку; apply получает новый конфиг, чтобы отдать его уже идущим pc (applyIceServers).
+ * Возвращает остановку.
+ */
+export function keepIceFresh(apply: (servers: RTCIceServer[]) => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let stopped = false
+  let applied = cachedIce?.servers
+  const plan = () => {
+    if (stopped) return
+    const due = cachedIce ? cachedIce.expires - ICE_REFRESH_MARGIN_MS - Date.now() : 0
+    timer = setTimeout(() => {
+      void iceServers().then((servers) => {
+        if (stopped) return
+        if (servers !== applied && hasTurnServer(servers)) { applied = servers; apply(servers) }
+        plan()
+      })
+    }, Math.max(due, ICE_RETRY_MS))
+  }
+  plan()
+  return () => { stopped = true; clearTimeout(timer) }
+}
 /** Есть ли среди серверов хоть один TURN (`turn:`/`turns:`) — без него `relay` не собрать кандидатов. */
 export function hasTurnServer(servers: RTCIceServer[]): boolean {
   return servers.some((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u) => /^turns?:/i.test(u)))
@@ -86,6 +130,8 @@ const store = () => useCallStore.getState()
 const managers = () => startClient().managers
 
 let pc: RTCPeerConnection | null = null
+// Плановое обновление кредов TURN, пока идёт звонок (К1).
+let stopIceRefresh: (() => void) | null = null
 let localStream: MediaStream | null = null
 let screenStream: MediaStream | null = null
 // единственный видео-sender: камера и шаринг экрана делят его через replaceTrack
@@ -229,6 +275,8 @@ function cleanupRtc() {
   screenStream?.getTracks().forEach((t) => t.stop())
   screenStream = null
   videoSender = null
+  stopIceRefresh?.()
+  stopIceRefresh = null
   if (pc) {
     pc.onicecandidate = null
     pc.ontrack = null
@@ -313,6 +361,8 @@ async function startRtc(withVideo: boolean, alive: () => boolean) {
     return
   }
   pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', iceTransportPolicy, certificates: [ident.cert] })
+  const main = pc
+  stopIceRefresh = keepIceFresh((fresh) => applyIceServers(main, fresh))
 
   pc.onicecandidate = (e) => {
     if (e.candidate) sendFrame('call_signal', { ice: e.candidate.toJSON() })

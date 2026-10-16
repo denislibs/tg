@@ -7,6 +7,8 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // GroupCallStore — участники активных групповых звонков: Redis-set
@@ -38,28 +40,59 @@ const groupCallTTL = 6 * time.Hour
 // ключ значило бы добавить конверсию там, где адреса нет вовсе.
 func groupCallKey(chatID int64) string { return fmt.Sprintf("groupcall:%d", chatID) }
 
+// Зрители эфира (watchLivestream) лежат в том же множестве groupcall:{chatID} — звонок
+// «идёт» и с ними, — и дополнительно в groupcall:viewers:{chatID}. Предел mesh их не
+// считает: зритель не держит pc, и шесть зрителей не должны закрыть эфир. Оба ключа
+// продлеваются каждым скриптом входа, иначе множество зрителей истекло бы раньше звонка и
+// зрители превратились бы в участников.
+//
 // groupCallJoin: атомарно добавить участника и продлить ключ; 1 — переход
-// «звонок был пуст → в нём появился участник».
+// «звонок был пуст → в нём появился участник», -2 — в звонке уже ARGV[3]
+// участников mesh (без зрителей), а этот не из них (ничего не записано). Проверка и
+// вход — один скрипт: два одновременных входа в звонок на пределе не проходят оба.
+// Зритель, ставший участником, начинает считаться.
 var groupCallJoin = goredis.NewScript(`
 local before = redis.call('SCARD', KEYS[1])
+local mesh = before - redis.call('SCARD', KEYS[2])
+if mesh >= tonumber(ARGV[3]) and (redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 0 or redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1) then return -2 end
 redis.call('SADD', KEYS[1], ARGV[1])
+redis.call('SREM', KEYS[2], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
+redis.call('EXPIRE', KEYS[2], ARGV[2])
 if before == 0 then return 1 end
 return 0`)
 
 // groupCallJoinIfActive: то же, но только в непустой звонок. -1 — звонка нет
-// (ничего не записано, ключ не создан), 0 — вошёл.
+// (ничего не записано, ключ не создан), -2 — звонок полон, 0 — вошёл.
 var groupCallJoinIfActive = goredis.NewScript(`
-if redis.call('SCARD', KEYS[1]) == 0 then return -1 end
+local n = redis.call('SCARD', KEYS[1])
+if n == 0 then return -1 end
+local mesh = n - redis.call('SCARD', KEYS[2])
+if mesh >= tonumber(ARGV[3]) and (redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 0 or redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1) then return -2 end
 redis.call('SADD', KEYS[1], ARGV[1])
+redis.call('SREM', KEYS[2], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
+redis.call('EXPIRE', KEYS[2], ARGV[2])
 return 0`)
 
-// groupCallLeave: атомарно убрать участника; 1 — переход «в звонке был кто-то →
-// не осталось никого».
+// groupCallJoinViewer: зритель эфира, без предела. Участник mesh не «понижается» до зрителя (вторая
+// вкладка, открывшая эфир): иначе он выпал бы из счёта предела. 1 — переход 0→1, как у groupCallJoin.
+var groupCallJoinViewer = goredis.NewScript(`
+local before = redis.call('SCARD', KEYS[1])
+if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 and redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 0 then return 0 end
+redis.call('SADD', KEYS[1], ARGV[1])
+redis.call('SADD', KEYS[2], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+redis.call('EXPIRE', KEYS[2], ARGV[2])
+if before == 0 then return 1 end
+return 0`)
+
+// groupCallLeave: атомарно убрать участника (и зрителя); 1 — переход «в звонке был
+// кто-то → не осталось никого».
 var groupCallLeave = goredis.NewScript(`
 local before = redis.call('SCARD', KEYS[1])
 redis.call('SREM', KEYS[1], ARGV[1])
+redis.call('SREM', KEYS[2], ARGV[1])
 local after = redis.call('SCARD', KEYS[1])
 if before > 0 and after == 0 then return 1 end
 return 0`)
@@ -98,38 +131,69 @@ return 1`)
 
 const groupCallDirtyKey = "groupcall:dirty"
 
+// groupCallViewersKey — зрители эфира звонка; подмножество groupCallKey.
+func groupCallViewersKey(chatID int64) string { return fmt.Sprintf("groupcall:viewers:%d", chatID) }
+
 func groupCallSnapKey(chatID int64) string { return fmt.Sprintf("groupcall:snap:%d", chatID) }
 
-// Join добавляет участника; first — звонок до этого был пуст.
-func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64) (bool, error) {
-	n, err := groupCallJoin.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
+// groupCallFull — ответ скриптов входа «звонок полон».
+const groupCallFull = -2
+
+// Join добавляет участника; first — звонок до этого был пуст. В звонке уже limit
+// других участников — domain.ErrGroupCallFull.
+func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
+	n, err := groupCallJoin.Run(ctx, s.client, []string{groupCallKey(chatID), groupCallViewersKey(chatID)}, userID, int(groupCallTTL.Seconds()), limit).Int()
+	if err == nil && n == groupCallFull {
+		return false, domain.ErrGroupCallFull
+	}
+	return n == 1, err
+}
+
+// JoinViewer добавляет зрителя эфира: предел участников mesh на него не действует и его
+// не расходует. first — звонок до этого был пуст.
+func (s *GroupCallStore) JoinViewer(ctx context.Context, chatID, userID int64) (bool, error) {
+	n, err := groupCallJoinViewer.Run(ctx, s.client, []string{groupCallKey(chatID), groupCallViewersKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
 	return n == 1, err
 }
 
 // JoinIfActive добавляет участника только в идущий звонок; joined=false — звонка нет.
-func (s *GroupCallStore) JoinIfActive(ctx context.Context, chatID, userID int64) (bool, error) {
-	n, err := groupCallJoinIfActive.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
+// Звонок полон — domain.ErrGroupCallFull.
+func (s *GroupCallStore) JoinIfActive(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
+	n, err := groupCallJoinIfActive.Run(ctx, s.client, []string{groupCallKey(chatID), groupCallViewersKey(chatID)}, userID, int(groupCallTTL.Seconds()), limit).Int()
+	if err == nil && n == groupCallFull {
+		return false, domain.ErrGroupCallFull
+	}
 	return n == 0, err
 }
 
 // Leave убирает участника; last — в звонке никого не осталось.
 func (s *GroupCallStore) Leave(ctx context.Context, chatID, userID int64) (bool, error) {
-	n, err := groupCallLeave.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID).Int()
+	n, err := groupCallLeave.Run(ctx, s.client, []string{groupCallKey(chatID), groupCallViewersKey(chatID)}, userID).Int()
 	return n == 1, err
 }
 
 func (s *GroupCallStore) Participants(ctx context.Context, chatID int64) ([]int64, error) {
-	vals, err := s.client.SMembers(ctx, groupCallKey(chatID)).Result()
+	vals, err := s.client.SDiff(ctx, groupCallKey(chatID), groupCallViewersKey(chatID)).Result()
 	if err != nil {
 		return nil, err
 	}
+	return parseIDs(vals), nil
+}
+
+// Size — все в звонке, зрители эфира тоже.
+func (s *GroupCallStore) Size(ctx context.Context, chatID int64) (int, error) {
+	n, err := s.client.SCard(ctx, groupCallKey(chatID)).Result()
+	return int(n), err
+}
+
+func parseIDs(vals []string) []int64 {
 	out := make([]int64, 0, len(vals))
 	for _, v := range vals {
 		if id, e := strconv.ParseInt(v, 10, 64); e == nil {
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // ActiveAmong — чаты среди chatIDs, где звонок идёт (ключ жив): один pipeline.

@@ -18,22 +18,29 @@ import (
 // украшение: coturn считает квоту аллокаций (`--user-quota`) по части после
 // двоеточия, и один аккаунт не может занять весь пул relay-портов.
 type ICEHandler struct {
-	limiter    *keyRateLimiter // выдача кредов по пользователю: креды живут сутки, брать их чаще нечем
+	limiter    *keyRateLimiter // выдача кредов по пользователю: клиент берёт их на вход в звонок и заранее обновляет
 	turnHost   string          // empty → STUN only: звонок 1:1 в одной сети пойдёт, а групповой и звонок с запретом P2P (relay-only) не начнутся
 	turnSecret string
 	ttl        time.Duration
 }
 
+// iceCredentialTTL — срок кредов TURN (К1): выдаются на вход в звонок и живут час, клиент
+// обновляет их заранее, пока звонок идёт (callEngine.ts::keepIceFresh). Отозвать выданные
+// креды нельзя (схема use-auth-secret без БД), поэтому срок и есть окно, в котором вышедший
+// из звонка или забаненный пользователь ещё может занимать relay. coturn проверяет метку при
+// аутентификации новой аллокации, идущая живёт на запомненном ключе: истечение кредов
+// идущий pc переживает, новый pc (поздний участник mesh, смена сети) берёт свежие — клиент
+// отдаёт их и идущим pc через setConfiguration. У tweb креды приходят
+// с самим звонком (phoneConnectionWebrtc, callInstance.ts:676-688) — тоже на вход в звонок.
+const iceCredentialTTL = time.Hour
+
 func NewICEHandler(turnHost, turnSecret string) *ICEHandler {
-	// ttl — сутки: relay-звонок и групповой mesh целиком зависят от кредов TURN. coturn проверяет
-	// метку при аутентификации новой аллокации (идущая живёт на запомненном ключе), и pc mesh для
-	// участника, вошедшего позже, не должен упираться в её границу.
-	return &ICEHandler{turnHost: turnHost, turnSecret: turnSecret, ttl: 24 * time.Hour, limiter: newKeyRateLimiter()}
+	return &ICEHandler{turnHost: turnHost, turnSecret: turnSecret, ttl: iceCredentialTTL, limiter: newKeyRateLimiter()}
 }
 
 // iceRate, iceBurst — выдача кредов одному пользователю: клиент склеивает одновременные запросы
-// и кэширует конфиг на минуту (callEngine.ts::iceServers), так что запрос — это вход в звонок или
-// новый pc после истечения кэша; 20 подряд и 1/с с большим запасом. Лимитер — в памяти процесса
+// и держит конфиг, пока до истечения кредов больше 10 минут (callEngine.ts::iceServers), так что
+// запрос — это вход в звонок или плановое обновление раз в ~50 минут; 20 подряд и 1/с с большим запасом. Лимитер — в памяти процесса
 // (при нескольких экземплярах предел умножается, общий стор — М-1). Полоса и пул relay держатся
 // не им, а квотами coturn (coturn/turnserver.conf); размер mesh ограничивает user-quota.
 const (

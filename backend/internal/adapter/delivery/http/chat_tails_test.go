@@ -73,7 +73,7 @@ func TestChatTails_ValuesTravelWithoutWrappers(t *testing.T) {
 		t.Fatalf("создание группы: %d %s", rec.Code, rec.Body.String())
 	}
 	groupPeer := createdPeerID(t, rec)
-	if _, err := testGroupCalls.Join(t.Context(), domain.PeerID(groupPeer).ToChatID(), idA); err != nil {
+	if _, err := testGroupCalls.Join(t.Context(), domain.PeerID(groupPeer).ToChatID(), idA, domain.GroupCallMaxParticipants); err != nil {
 		t.Fatalf("вход в звонок: %v", err)
 	}
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(groupPeer)+"/group_call", tokenA, nil)

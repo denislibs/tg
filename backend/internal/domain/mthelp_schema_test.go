@@ -98,6 +98,7 @@ func TestAppConfig_Values(t *testing.T) {
 		"chat_read_mark_size_threshold":     float64(ChatReadMarkSizeThreshold),
 		"chat_read_mark_expire_period":      float64(7 * 24 * 3600),
 		"passkeys_account_passkeys_max":     float64(MaxPasskeys),
+		"groupcall_video_participants_max":  float64(5),
 		"stories_stealth_past_period":       float64(300),
 		"stories_stealth_future_period":     float64(1500),
 		"stars_purchase_blocked":            true,

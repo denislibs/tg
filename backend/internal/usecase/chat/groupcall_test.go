@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -231,5 +232,133 @@ func TestJoinGroupCall_Channel_LivestreamActive_SubscriberJoins(t *testing.T) {
 	}
 	if _, err := i.JoinGroupCall(ctx, ch, 9); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("подписчик после конца эфира, зритель ещё внутри: %v, want ErrForbidden", err)
+	}
+}
+
+// К3: mesh держит не больше domain.GroupCallMaxParticipants участников — сверх
+// этого user-quota coturn кончается и pc части пар молча не соединяется. Новичок в
+// полный звонок не входит (ErrGroupCallFull, ws отвечает rejected без forbidden),
+// участник, уже стоящий в звонке, повторно входит (вторая вкладка, переподключение).
+func TestJoinGroupCall_FullCall_Rejected(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("вход в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if errors.Is(domain.ErrGroupCallFull, domain.ErrForbidden) {
+		t.Fatal("полный звонок не должен выглядеть отказом по праву («Видеочат завершён»)")
+	}
+	ids, _ := e.calls.Participants(ctx, e.chatID)
+	if len(ids) != domain.GroupCallMaxParticipants || slices.Contains(ids, callMember) {
+		t.Fatalf("участники = %v: новичок попал в полный звонок", ids)
+	}
+	if n := len(groupCallFramesFor(t, e.pub, callOwner)); n != 1 {
+		t.Fatalf("отказ разослан членам чата: %d кадров group_call_update у создателя, want 1 (его вход)", n)
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatalf("повторный вход участника полного звонка: %v", err)
+	}
+}
+
+// Зритель эфира (кадр group_call_join с viewer) не mesh: предел участников на него не
+// действует, в Participants (список для offer, реле сигналов, group_call_update) его нет.
+// Без активного эфира зрителем не стать, участник mesh зрителем не становится.
+func TestJoinGroupCallAsViewer(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.in.SetLivestreams(newFakeLivestreamRepo(), "rtmp://test/live")
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("зритель без эфира: %v, want ErrForbidden", err)
+	}
+	if _, err := e.in.StartLivestream(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid <= 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("участник в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callMember); err != nil {
+		t.Fatalf("зритель в звонок на пределе: %v", err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, 99); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("зритель не из чата: %v, want ErrNotFound", err)
+	}
+	ids, err := e.in.GroupCallParticipants(ctx, e.chatID, callOwner)
+	if err != nil || slices.Contains(ids, callMember) || len(ids) != domain.GroupCallMaxParticipants {
+		t.Fatalf("GET участников = %v (%v): зритель в списке для offer", ids, err)
+	}
+	// реле: ни от зрителя, ни к зрителю
+	if err := e.in.RelayGroupCallSignal(ctx, callMember, e.chatID, 9001, map[string]any{"candidate": 1}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("сигнал от зрителя: %v, want ErrForbidden", err)
+	}
+	if err := e.in.RelayGroupCallSignal(ctx, 9001, e.chatID, callMember, map[string]any{"candidate": 1}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("сигнал зрителю: %v, want ErrForbidden", err)
+	}
+	// участник mesh, открывший эфир второй вкладкой, зрителем не становится и из счёта не выпадает
+	if err := e.in.LeaveGroupCall(ctx, e.chatID, 9001); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := e.in.GroupCallParticipants(ctx, e.chatID, callOwner); !slices.Contains(ids, callOwner) {
+		t.Fatalf("участник mesh стал зрителем: %v", ids)
+	}
+}
+
+// Призраки (процесс упал, не убрав участников; множество живёт до TTL, пульса у участника
+// нет) не запирают звонок на пределе: на отказе по пределу уходят те, у кого нет соединения
+// (presence), и вход повторяется один раз. Живые участники остаются.
+func TestJoinGroupCall_FullCall_DropsOfflineGhosts(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	online := map[int64]bool{callOwner: true}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// без presence предела не обойти
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("без presence: %v, want ErrGroupCallFull", err)
+	}
+	e.in.SetPresence(fakePresence{online: online})
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatalf("вход при 4 призраках: %v", err)
+	}
+	ids, _ := e.calls.Participants(ctx, e.chatID)
+	if len(ids) != 2 || !slices.Contains(ids, callOwner) || !slices.Contains(ids, callMember) {
+		t.Fatalf("участники = %v, want [создатель, вошедший]: призраки не убраны или убран живой", ids)
+	}
+	// все пять живы — отказ остаётся отказом
+	if err := e.in.LeaveGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		online[uid] = true
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("все живы: %v, want ErrGroupCallFull", err)
 	}
 }
