@@ -407,20 +407,58 @@ describe('AuthManager', () => {
     err.mockRestore()
   })
 
-  // POST /auth/account/reset: 401/409 — дискриминированный результат, не throw
-  // (HttpError не переживает границу worker-RPC).
-  // Ф7-И1 (MC-08): ожидание сервера — 420 FLOOD_WAIT_N (tweb apiManager.ts:759-791).
-  // ≤ 60 с пережидает и повторяет restClient, до менеджера доходит только более
-  // длинное — как «слишком много попыток».
-  it('signUp: 420 FLOOD_WAIT_61 -> too_many_requests; 429 больше не разбирается', async () => {
-    const make = (err: unknown) => newAuthManager({
-      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+  // Ф7-И2 (Step 3а): имя отказа доезжает до карточки ПОЛЕМ результата —
+  // `{error: err.type}`; пустое имя (чужое тело: 502/504 nginx) и не-HttpError —
+  // 'UNKNOWN'. Одно правило у requestCode, signUp и passkeyLoginFinish.
+  describe('Ф7-И2: имя отказа в результате', () => {
+    const make = (post: () => Promise<unknown>) => newAuthManager({
+      rest: { post } as unknown as AuthDeps['rest'],
       store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
     })
-    await expect(make(new HttpError(420, 'FLOOD_WAIT_61', 'FLOOD_WAIT_61')).signUp('t', 'A', '', 'd', 'p'))
-      .resolves.toEqual({ error: 'too_many_requests' })
-    await expect(make(new HttpError(429, 'too many requests', '')).signUp('t', 'A', '', 'd', 'p'))
-      .resolves.toEqual({ error: 'failed' })
+    const reject = (e: unknown) => () => Promise.reject(e)
+    const named = (status: number, type: string) => reject(new HttpError(status, type, type))
+
+    it('requestCode: успех — {ok: true}; отказ — {error: имя}', async () => {
+      await expect(make(async () => ({ _: 'boolTrue' })).requestCode('+7999')).resolves.toEqual({ ok: true })
+      await expect(make(named(400, 'PHONE_NUMBER_INVALID')).requestCode('abc')).resolves.toEqual({ error: 'PHONE_NUMBER_INVALID' })
+      await expect(make(named(420, 'FLOOD_WAIT_61')).requestCode('+7')).resolves.toEqual({ error: 'FLOOD_WAIT_61' })
+      await expect(make(reject(new HttpError(502, 'HTTP 502'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
+      await expect(make(reject(new Error('offline'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
+    })
+
+    it('signUp: имя отказа как есть (tweb SignUpCard.tsx:121-127 — err.type в кнопку)', async () => {
+      for (const type of ['FIRSTNAME_INVALID', 'LASTNAME_INVALID', 'PHONE_NUMBER_OCCUPIED', 'signup_token_expired', 'FLOOD_WAIT_61']) {
+        await expect(make(named(type === 'signup_token_expired' ? 401 : 400, type)).signUp('t', 'A', '', 'd', 'p'))
+          .resolves.toEqual({ error: type })
+      }
+      await expect(make(reject(new HttpError(504, 'HTTP 504'))).signUp('t', 'A', '', 'd', 'p')).resolves.toEqual({ error: 'UNKNOWN' })
+      await expect(make(reject(new Error('offline'))).signUp('t', 'A', '', 'd', 'p')).resolves.toEqual({ error: 'UNKNOWN' })
+    })
+
+    it('passkeyLoginFinish: PASSKEY_CREDENTIAL_NOT_FOUND и прочее — {error}, сессия не сохраняется', async () => {
+      const { d, token } = deps()
+      const fail = (e: unknown) => newAuthManager({ ...d, rest: { post: () => Promise.reject(e) } } as unknown as AuthDeps)
+      await expect(fail(new HttpError(400, 'PASSKEY_CREDENTIAL_NOT_FOUND', 'PASSKEY_CREDENTIAL_NOT_FOUND')).passkeyLoginFinish('s1', {}, 'web', 'browser'))
+        .resolves.toEqual({ error: 'PASSKEY_CREDENTIAL_NOT_FOUND' })
+      await expect(fail(new HttpError(401, 'passkey login failed', 'passkey login failed')).passkeyLoginFinish('s1', {}, 'web', 'browser'))
+        .resolves.toEqual({ error: 'passkey login failed' })
+      await expect(fail(new Error('offline')).passkeyLoginFinish('s1', {}, 'web', 'browser'))
+        .resolves.toEqual({ error: 'UNKNOWN' })
+      expect(token()).toBeNull()
+    })
+
+    it('confirmPasswordRecovery: CODE_INVALID — invalid_code, прочее (EMAIL_HASH_EXPIRED) — failed', async () => {
+      await expect(make(named(400, 'CODE_INVALID')).confirmPasswordRecovery('t', '1', 'd', 'p')).resolves.toEqual({ error: 'invalid_code' })
+      await expect(make(named(400, 'EMAIL_HASH_EXPIRED')).confirmPasswordRecovery('t', '1', 'd', 'p')).resolves.toEqual({ error: 'failed' })
+      // Статус больше не различает отказы: прежний 401 без имени — тоже failed.
+      await expect(make(reject(new HttpError(401, 'HTTP 401'))).confirmPasswordRecovery('t', '1', 'd', 'p')).resolves.toEqual({ error: 'failed' })
+      await expect(make(reject(new HttpError(503, 'password recovery unavailable', 'password recovery unavailable'))).confirmPasswordRecovery('t', '1', 'd', 'p'))
+        .resolves.toEqual({ error: 'failed' })
+    })
+
+    it('requestPasswordRecovery: PASSWORD_RECOVERY_NA — password_recovery_na', async () => {
+      await expect(make(named(400, 'PASSWORD_RECOVERY_NA')).requestPasswordRecovery('t')).resolves.toEqual({ error: 'password_recovery_na' })
+    })
   })
 
   it('requestPasswordRecovery: FLOOD_WAIT_5 пережидает restClient — менеджер получает успех', async () => {
@@ -454,7 +492,7 @@ describe('AuthManager', () => {
         store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
       })
     const fail = (status: number, message: string) => () =>
-      Promise.reject(new HttpError(status, message))
+      Promise.reject(new HttpError(status, message, message))
 
     const calls: Array<[string, unknown]> = []
     const ok = make(async (path, body) => {
@@ -462,12 +500,18 @@ describe('AuthManager', () => {
       return { ok: true }
     })
     await expect(ok.resetAccount('PWTOK')).resolves.toEqual({ ok: true })
-    expect(calls).toEqual([['/auth/account/reset', { password_token: 'PWTOK' }]])
+    // `reason` — как tweb `deleteAccount('Forgot password')` (PasswordCard.tsx:89).
+    expect(calls).toEqual([['/auth/account/reset', { password_token: 'PWTOK', reason: 'Forgot password' }]])
 
     await expect(make(fail(401, 'password_token_expired')).resetAccount('x'))
       .resolves.toEqual({ error: 'password_token_expired' })
     await expect(make(fail(409, 'recovery_available')).resetAccount('x'))
       .resolves.toEqual({ error: 'recovery_available' })
+    // Ф7-И2: tweb PasswordCard.tsx:88-100 смотрит только type.
+    await expect(make(fail(400, '2FA_RECENT_CONFIRM')).resetAccount('x'))
+      .resolves.toEqual({ error: 'recent_confirm' })
+    await expect(make(fail(400, '2FA_CONFIRM_WAIT_3600')).resetAccount('x'))
+      .resolves.toEqual({ error: 'confirm_wait', wait: 3600 })
     await expect(make(fail(500, 'boom')).resetAccount('x'))
       .resolves.toEqual({ error: 'failed' })
   })

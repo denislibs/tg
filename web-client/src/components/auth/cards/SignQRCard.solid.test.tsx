@@ -338,6 +338,32 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
   })
 
+  // Ф7-И2 (правка 10): отказ finish приходит ПОЛЕМ результата `{error}` —
+  // тост по имени (tweb passkeyLoginButton.tsx:72-76), в мессенджер не пускаем,
+  // цикл QR не останавливается.
+  it('{error: PASSKEY_CREDENTIAL_NOT_FOUND}: тост NotFound, toIm не зван, цикл идёт', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const webauthn = await import('@core/webauthnBrowser')
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)
+    vi.mocked(webauthn.getPasskeyAssertion).mockResolvedValue({} as never)
+    const passkeyLoginBegin = vi.fn().mockResolvedValue({ session: 's', options: { _: 'dataJSON', data: '{"publicKey":{}}' } })
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ error: 'PASSKEY_CREDENTIAL_NOT_FOUND' })
+    const { exportLoginToken, toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const buttons = [...host!.querySelectorAll('button')]
+    buttons[buttons.length - 1].click()
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error.NotFound' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    const before = exportLoginToken.mock.calls.length
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(exportLoginToken.mock.calls.length).toBeGreaterThan(before)
+
+    consoleError.mockRestore()
+    vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(false)
+  })
+
   it('вход ключом доступа останавливает цикл (аналог user_auth у tweb)', async () => {
     const webauthn = await import('@core/webauthnBrowser')
     vi.mocked(webauthn.isWebAuthnSupported).mockReturnValue(true)

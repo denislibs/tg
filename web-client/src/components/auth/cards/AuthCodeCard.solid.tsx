@@ -109,15 +109,15 @@ export default function AuthCodeCard(props: { spec: Spec }): JSX.Element {
       }
       void toIm()
     } catch (err) {
-      // `PHONE_CODE_INVALID` — утверждение про ВВОД пользователя, а под ним
-      // может лежать что угодно (сеть, воркер, сломанный RPC). У tweb ветка
-      // `default:` такой подмены не делает: она печатает в тот же лейбл сам
-      // `err.type` (`AuthCodeCard.tsx:138-140`), различая коды по имени
-      // отказа. Наш `signIn` типизированного имени на этом пути не даёт
-      // (см. докблок), поэтому текст остаётся один — но след в консоли
-      // остаётся тоже, иначе чужая ошибка навсегда выдаётся за опечатку.
+      // Порт tweb AuthCodeCard.tsx:244-260: разбор по имени отказа — оно
+      // доезжает полем `type` ошибки worker-RPC (rpc/superMessagePort.ts,
+      // ветка `result`). PHONE_CODE_EMPTY и PHONE_CODE_INVALID — подпись
+      // «неверный код»; прочее — само имя (`markError(err.type)`), без имени
+      // (сломанный RPC) — 'UNKNOWN'. След в консоли — чтобы чужая ошибка не
+      // терялась за подписью.
       console.error('AuthCodeCard: signIn error:', err)
-      setError('PHONE_CODE_INVALID')
+      const type = (err as { type?: string } | undefined)?.type || 'UNKNOWN'
+      setError(type === 'PHONE_CODE_EMPTY' || type === 'PHONE_CODE_INVALID' ? 'PHONE_CODE_INVALID' : type as LangPackKey)
       setValue('')
       refocus = true
     } finally {

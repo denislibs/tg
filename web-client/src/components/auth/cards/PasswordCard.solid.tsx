@@ -25,7 +25,9 @@
 import { createSignal, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { IconTsx } from '@components/iconTsx.solid'
-import I18n, { i18n, type LangPackKey } from '@lib/langPack'
+import I18n, { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import formatDuration from '@helpers/formatDuration'
+import { wrapFormattedDuration } from '@components/wrappers/wrapDuration'
 import classNames from '@helpers/string/classNames'
 import { confirmationPopup } from '../../popups/popupPeer'
 import AuthCard from '../AuthCard.solid'
@@ -73,10 +75,11 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
 
   // Плашка отказа сервера — tweb «Sorry» (третья плашка сброса), звана и от
   // самого сброса, и от несостоявшегося.
-  const sorry = (message: LangPackKey) => {
+  const sorry = (message: LangPackKey, args?: FormatterArguments) => {
     void confirmationPopup({
       titleLangKey: 'Login.ResetAccountFail.Title',
       descriptionLangKey: message,
+      descriptionLangArgs: args,
       button: { langKey: 'OK' },
       // Плашка ОДНОКНОПОЧНАЯ: реджект здесь означает лишь «закрыли Esc/Back/
       // мимо», то есть тот же исход, что и «ОК». Гасить его правильно —
@@ -92,6 +95,15 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
     setBusy(false)
     if ('ok' in res) {
       navigate({ name: 'signIn' })
+      return
+    }
+    // tweb PasswordCard.tsx:88-100: отказы отложенного сброса по имени.
+    if (res.error === 'recent_confirm') {
+      sorry('Login.ResetAccountFail.TextCancelled')
+      return
+    }
+    if (res.error === 'confirm_wait') {
+      sorry('Login.ResetAccountFail.TextWait', [wrapFormattedDuration(formatDuration(res.wait))])
       return
     }
     sorry(

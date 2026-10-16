@@ -111,12 +111,15 @@ describe('EmailRecoverCard.solid: ввод кода с почты', () => {
     expect(input().value).toBe('')
   })
 
-  it('код/сессия восстановления истекли — отдельная строка ошибки', async () => {
-    const confirmPasswordRecovery = vi.fn().mockResolvedValue({ error: 'recovery_expired' })
-    const { typeCode } = mount(confirmPasswordRecovery)
+  // Ф7-И2: порт tweb EmailRecoverCard.tsx:45-51 — всё, кроме CODE_INVALID
+  // (в том числе протухший код, EMAIL_HASH_EXPIRED), — Error.AnError.
+  it('прочий отказ (код протух) — Error.AnError', async () => {
+    const confirmPasswordRecovery = vi.fn().mockResolvedValue({ error: 'failed' })
+    const { typeCode, input } = mount(confirmPasswordRecovery)
 
     typeCode('000000')
-    await vi.waitFor(() => expect(host!.textContent).toContain('Code expired'))
+    await vi.waitFor(() => expect(host!.textContent).toContain('An error occurred. Please try again later.'))
+    expect(input().value).toBe('')
   })
 })
 
@@ -162,7 +165,7 @@ describe('EmailRecoverCard.solid: Cancel — возврат на password С П�
 
 describe('EmailRecoverCard.solid: сетевой отказ на сабмите — не запертая карточка (ревью 5, находка 2)', () => {
   // confirmPasswordRecovery перебрасывает НЕ-HttpError наружу (обрыв сети,
-  // отказ worker-RPC) так же, как signImport/signUp — прежний код звал его
+  // отказ worker-RPC) так же, как signImport — прежний код звал его
   // БЕЗ try/catch при уже взведённом busy(true): отказ давал необработанное
   // отклонение, поле кода оставалось disabled навсегда, выхода из карточки
   // не было. Оригинал ловит (tweb SignUpCard.tsx:127-135 — тот же приём для
@@ -174,7 +177,7 @@ describe('EmailRecoverCard.solid: сетевой отказ на сабмите 
 
     typeCode('123456')
 
-    await vi.waitFor(() => expect(host!.textContent).toContain('Something went wrong'))
+    await vi.waitFor(() => expect(host!.textContent).toContain('An error occurred. Please try again later.'))
     expect(input().disabled).toBe(false)
   })
 })

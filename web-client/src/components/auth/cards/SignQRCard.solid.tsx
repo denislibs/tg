@@ -183,6 +183,13 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         return
       }
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      // Отказ сервера — строкой из результата (PASSKEY_CREDENTIAL_NOT_FOUND и
+      // прочие): тост, в мессенджер не пускаем, цикл QR продолжается.
+      if ('error' in res) {
+        reportPasskeyLoginError('SignQRCard', res.error)
+        setPasskeyBusy(false)
+        return
+      }
       if (!res.passwordNeeded && !res.user) throw new Error('unexpected passkey login outcome')
       stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
       // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).

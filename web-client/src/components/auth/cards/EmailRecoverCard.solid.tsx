@@ -49,7 +49,7 @@
 //
 // ── НАХОДКА 2 (ревью задачи 5): сетевой отказ на сабмите — не запертая карточка ──
 // `confirmPasswordRecovery` перебрасывает НЕ-`HttpError` наружу как есть
-// (тот же приём, что у `signImport`/`signUp` — см. докблоки соседних карточек
+// (тот же приём, что у `signImport` — см. докблок соседней карточки
 // этой же задачи). Прежняя редакция звала его БЕЗ try/catch при уже взведённом
 // `busy(true)`: сетевой отказ давал необработанное отклонение промиса, поле
 // кода оставалось `disabled` навсегда — выхода из карточки не было. Образец
@@ -111,18 +111,13 @@ export default function EmailRecoverCard(props: { spec: Spec }): JSX.Element {
         return
       }
       setCode('')
-      setError(
-        res.error === 'invalid_code'
-          ? 'PHONE_CODE_INVALID'
-          // Сервер не различает истёкший код и исчерпанные попытки — ни то ни
-          // другое уже не поправить вводом, обе ветки просят начать заново.
-          : res.error === 'recovery_expired'
-            ? 'Login.Code.Expired'
-            : 'Login.Error.Generic',
-      )
+      // Порт tweb EmailRecoverCard.tsx:45-51: CODE_INVALID — подпись
+      // `PHONE_CODE_INVALID`, всё прочее (протухший код EMAIL_HASH_EXPIRED,
+      // сбой) — `Error.AnError`.
+      setError(res.error === 'invalid_code' ? 'PHONE_CODE_INVALID' : 'Error.AnError')
     } catch {
       setCode('')
-      setError('Login.Error.Generic')
+      setError('Error.AnError')
     } finally {
       setBusy(false)
     }

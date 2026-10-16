@@ -175,6 +175,42 @@ describe('PasswordCard.solid: сброс аккаунта без привяза�
   })
 })
 
+// Ф7-И2: порт tweb PasswordCard.tsx:88-100 — отказ отложенного сброса по
+// имени: 2FA_RECENT_CONFIRM и 2FA_CONFIRM_WAIT_<N> — плашка «Sorry».
+describe('PasswordCard.solid: отказ сброса аккаунта (2FA_RECENT_CONFIRM / 2FA_CONFIRM_WAIT_N)', () => {
+  const resetFlow = async (result: unknown) => {
+    confirmationPopupMock.mockResolvedValue(undefined)
+    const resetAccount = vi.fn().mockResolvedValue(result)
+    const { navigate, forgotLink } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+      resetAccount,
+    })
+    forgotLink().click()
+    await vi.waitFor(() => expect(confirmationPopupMock).toHaveBeenCalledTimes(3))
+    expect(navigate).not.toHaveBeenCalled()
+    return confirmationPopupMock.mock.calls[2][0] as Record<string, unknown>
+  }
+
+  it('recent_confirm — Login.ResetAccountFail.TextCancelled', async () => {
+    expect(await resetFlow({ error: 'recent_confirm' })).toMatchObject({
+      titleLangKey: 'Login.ResetAccountFail.Title',
+      descriptionLangKey: 'Login.ResetAccountFail.TextCancelled',
+      button: { langKey: 'OK' },
+    })
+  })
+
+  it('confirm_wait — Login.ResetAccountFail.TextWait с остатком', async () => {
+    const opts = await resetFlow({ error: 'confirm_wait', wait: 3600 })
+    expect(opts).toMatchObject({
+      titleLangKey: 'Login.ResetAccountFail.Title',
+      descriptionLangKey: 'Login.ResetAccountFail.TextWait',
+      button: { langKey: 'OK' },
+    })
+    const args = opts.descriptionLangArgs as HTMLElement[]
+    expect(args[0].textContent).toBe('1 hour')
+  })
+})
+
 describe('PasswordCard.solid: шапка — разметка tweb HEAD 812502980 (О-29)', () => {
   it('заголовок — h1, подзаголовок без модульного .secondary (tweb PasswordCard.tsx:229-230)', () => {
     mount()

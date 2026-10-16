@@ -18,8 +18,13 @@
 //       div.input-field × 2
 //       button.btn-primary.btn-color-primary.rp
 //
-// Ошибку tweb не выносит отдельной строкой: текст уезжает в надпись кнопки
-// (`setSignUpKey(err.type)`) — здесь так же.
+// Ошибку tweb не выносит отдельной строкой: имя отказа уезжает в надпись
+// кнопки как есть (`setSignUpKey(err.type)`, SignUpCard.tsx:121-127) — здесь
+// так же, для ЛЮБОГО отказа (`FIRSTNAME_INVALID`, `LASTNAME_INVALID`,
+// `PHONE_NUMBER_OCCUPIED`, `signup_token_expired`, `FLOOD_WAIT_N`…): карточка
+// остаётся. Строк словаря под эти имена у tweb нет — кнопка показывает код.
+// Предпроверка до запроса — тоже 1:1 (SignUpCard.tsx:83-91): пустое имя и
+// сверх maxLength — только класс `error` на поле, без текста.
 //
 // ── Аватар: выбор ДО сабмита, заливка УЖЕ ПОД СЕССИЕЙ ────────────────────────
 // Ровно как в tweb, где `sendAvatar()` живёт в ветке `auth.authorization`:
@@ -73,13 +78,10 @@
 // на backlog выше.
 //
 // ── НАХОДКА 2 (ревью задачи 5): сетевой отказ на сабмите — не запертая кнопка ──
-// `signUp` перебрасывает НЕ-`HttpError` наружу как есть (тот же приём, что у
-// `signImport`/`confirmPasswordRecovery` — см. докблоки соседних карточек
-// этой же задачи). Прежняя редакция звала её БЕЗ try/catch при уже взведённом
-// `busy(true)`: сетевой отказ давал необработанное отклонение промиса, кнопка
-// оставалась `disabled` навсегда с надписью «Please wait…». Образец
-// правильной обработки — уже принятый в этом каталоге `PasswordCard.solid.
-// tsx::submitPassword` (задача 4).
+// Сеть `signUp` сам отдаёт результатом `{error: 'UNKNOWN'}`, но отказ самого
+// worker-RPC приходит исключением. Прежняя редакция звала её БЕЗ try/catch
+// при уже взведённом `busy(true)`: отказ давал необработанное отклонение
+// промиса, кнопка оставалась `disabled` навсегда с надписью «Please wait…».
 //
 // ── «Заодно» (ревью задачи 5) ────────────────────────────────────────────────
 // Автофокус имени заменён на `blurActiveElement()` — tweb `SignUpCard.tsx:151`
@@ -113,13 +115,17 @@ const FIRST_MAX = 70
 const LAST_MAX = 64
 
 export default function SignUpCard(props: { spec: Spec }): JSX.Element {
-  const { managers, navigate, toIm } = useAuthFlow()
+  const { managers, toIm } = useAuthFlow()
   const token = () => props.spec.payload.token
 
   const [first, setFirst] = createSignal('')
   const [last, setLast] = createSignal('')
   const [busy, setBusy] = createSignal(false)
+  // tweb `signUpKey`: имя отказа в кнопке держится до следующей отправки.
   const [errorKey, setErrorKey] = createSignal<LangPackKey | ''>('')
+  // tweb `nameInputField.input.classList.add('error')` на пустом имени
+  // (SignUpCard.tsx:87-90); снимается вводом (InputField `onInput`).
+  const [firstEmpty, setFirstEmpty] = createSignal(false)
 
   let canvasEl: HTMLCanvasElement | undefined
   let fileEl: HTMLInputElement | undefined
@@ -189,8 +195,8 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
 
   const submit = async () => {
     if (busy() || tooLong()) return
-    if (!first().trim()) {
-      setErrorKey('Login.Register.NameRequired')
+    if (!first().length) {
+      setFirstEmpty(true)
       return
     }
     setBusy(true)
@@ -202,22 +208,9 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
         void toIm()
         return
       }
-      // Токена больше нет — единственный путь дальше это заново подтвердить номер.
-      if (res.error === 'signup_token_expired' || res.error === 'phone_number_occupied') {
-        navigate({ name: 'signIn' })
-        return
-      }
-      setErrorKey(
-        res.error === 'first_name_required'
-          ? 'Login.Register.NameRequired'
-          : res.error === 'name_too_long'
-            ? 'Login.Register.NameTooLong'
-            : res.error === 'too_many_requests'
-              ? 'Login.Error.FloodWait'
-              : 'Login.Error.Generic',
-      )
+      setErrorKey(res.error as LangPackKey)
     } catch {
-      setErrorKey('Login.Error.Generic')
+      setErrorKey('UNKNOWN' as LangPackKey)
     } finally {
       setBusy(false)
     }
@@ -246,9 +239,10 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
       <InputField
         value={first()}
         maxLength={FIRST_MAX}
+        error={firstEmpty()}
         label={i18n('FirstName')}
         onInput={(v) => {
-          setErrorKey('')
+          setFirstEmpty(false)
           setFirst(v)
         }}
         onEnter={() => void submit()}
@@ -257,15 +251,12 @@ export default function SignUpCard(props: { spec: Spec }): JSX.Element {
         value={last()}
         maxLength={LAST_MAX}
         label={i18n('LastName')}
-        onInput={(v) => {
-          setErrorKey('')
-          setLast(v)
-        }}
+        onInput={setLast}
         onEnter={() => void submit()}
       />
       <Button
         class="btn-primary btn-color-primary"
-        disabled={busy() || tooLong()}
+        disabled={busy()}
         onClick={() => void submit()}
       >
         {nextLabel()}
