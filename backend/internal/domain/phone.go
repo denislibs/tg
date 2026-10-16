@@ -23,6 +23,13 @@ func NormalizePhone(phone string) string {
 	return b.String()
 }
 
+// PhoneDigits — только цифры номера (без «+» и разделителей). Пусто — номера
+// нет вовсе (Telegram PHONE_NUMBER_INVALID). Ключ лимитера по номеру строится
+// из него: «+7999…» и «7999…» — один номер.
+func PhoneDigits(phone string) string {
+	return strings.TrimPrefix(NormalizePhone(phone), "+")
+}
+
 // CodeMatches reports whether the supplied code equals the expected code.
 func CodeMatches(expected, supplied string) bool {
 	if expected == "" {

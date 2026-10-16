@@ -107,15 +107,16 @@ func TestProfileEndpoints_HTTP(t *testing.T) {
 		t.Fatalf("set username: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// A second user can't take the same username (case-insensitive) → 409.
+	// A second user can't take the same username (case-insensitive) → 400
+	// USERNAME_OCCUPIED (имя TG, tweb appBotsManager.ts:202).
 	token2, _ := signInToken(t, h, "+79990000002")
 	rec = reqJSONAuth(t, h, http.MethodGet, "/username/available?u=DENIS_M", nil, token2)
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"boolFalse"`)) {
 		t.Fatalf("expected taken, got %s", rec.Body.String())
 	}
 	rec = reqJSONAuth(t, h, http.MethodPut, "/me/username", map[string]string{"username": "DENIS_M"}, token2)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte(`"USERNAME_OCCUPIED"`)) {
+		t.Fatalf("expected 400 USERNAME_OCCUPIED, got %d %s", rec.Code, rec.Body.String())
 	}
 
 	// Аватарка едет ОДНИМ конструктором userProfilePhoto с готовым photo_id —

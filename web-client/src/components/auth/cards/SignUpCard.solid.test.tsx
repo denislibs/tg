@@ -99,12 +99,18 @@ describe('SignUpCard.solid: живой предпросмотр ФИО', () => {
 })
 
 describe('SignUpCard.solid: сабмит', () => {
-  it('пустое имя — ошибка в надпись кнопки, signUp НЕ зовётся', () => {
-    const { managers, submitBtn } = mount()
+  // Ф7-И2: порт tweb SignUpCard.tsx:83-91 — пустое имя красит поле классом
+  // `error`, текста нет; ввод его снимает.
+  it('пустое имя — поле в .error без текста, signUp НЕ зовётся; ввод снимает .error', () => {
+    const { managers, submitBtn, firstInput, setField } = mount()
     submitBtn().click()
 
-    expect(submitBtn().textContent).toContain('Please enter your name')
+    expect(firstInput().classList.contains('error')).toBe(true)
+    expect(submitBtn().textContent).toBe('Start Messaging')
     expect(managers.auth.signUp).not.toHaveBeenCalled()
+
+    setField(firstInput(), 'A')
+    expect(firstInput().classList.contains('error')).toBe(false)
   })
 
   it('успех БЕЗ аватара — signUp(token, first, last), upload НЕ зовётся, toIm()', async () => {
@@ -202,30 +208,32 @@ describe('SignUpCard.solid: сабмит', () => {
     errorSpy.mockRestore()
   })
 
-  it('signup_token_expired / phone_number_occupied — назад на signIn (токена больше нет)', async () => {
-    const signUp = vi.fn().mockResolvedValue({ error: 'signup_token_expired' })
-    const { navigate, firstInput, setField, submitBtn } = mount({ signUp })
-    setField(firstInput(), 'Ada')
-    submitBtn().click()
+  // Ф7-И2 (правка 3, В-М12): tweb SignUpCard.tsx:121-127 — ЛЮБОЙ отказ
+  // остаётся на карточке, имя отказа (err.type) — в надпись кнопки. Строк
+  // словаря под эти имена у tweb нет — кнопка показывает сам код.
+  it.each(['FIRSTNAME_INVALID', 'LASTNAME_INVALID', 'PHONE_NUMBER_OCCUPIED', 'signup_token_expired', 'FLOOD_WAIT_61'])(
+    'отказ %s — имя в кнопке, карточка остаётся', async (type) => {
+      const signUp = vi.fn().mockResolvedValue({ error: type })
+      const { navigate, toIm, firstInput, setField, submitBtn } = mount({ signUp })
+      setField(firstInput(), 'Ada')
+      submitBtn().click()
 
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ name: 'signIn' }))
-  })
+      await vi.waitFor(() => expect(submitBtn().textContent).toBe(type))
+      expect(navigate).not.toHaveBeenCalled()
+      expect(toIm).not.toHaveBeenCalled()
+      expect(submitBtn().disabled).toBe(false)
+    },
+  )
 
-  it('прочая ошибка сервера — текст в надпись кнопки, карточка остаётся', async () => {
-    const signUp = vi.fn().mockResolvedValue({ error: 'too_many_requests' })
-    const { navigate, firstInput, setField, submitBtn } = mount({ signUp })
-    setField(firstInput(), 'Ada')
-    submitBtn().click()
-
-    await vi.waitFor(() => expect(submitBtn().textContent).toContain('Too many attempts'))
-    expect(navigate).not.toHaveBeenCalled()
-  })
-
-  it('слишком длинное имя — кнопка задизейблена клиентски, signUp не зовётся', () => {
+  // tweb SignUpCard.tsx:83-85: поле сверх maxLength красится (InputField), а
+  // сабмит молча выходит; кнопка при этом не выключается (disabled — только
+  // на время запроса).
+  it('слишком длинное имя — поле в .error, signUp не зовётся', () => {
     const { managers, firstInput, setField, submitBtn } = mount()
     setField(firstInput(), 'A'.repeat(71))
 
-    expect(submitBtn().disabled).toBe(true)
+    expect(firstInput().classList.contains('error')).toBe(true)
+    expect(submitBtn().disabled).toBe(false)
     submitBtn().click()
     expect(managers.auth.signUp).not.toHaveBeenCalled()
   })
@@ -238,13 +246,13 @@ describe('SignUpCard.solid: сетевой отказ на сабмите — н
   // отклонение, кнопка оставалась disabled навсегда с «Please wait…».
   // Оригинал ловит (tweb SignUpCard.tsx:127-135); образец в этом каталоге —
   // PasswordCard.solid.tsx::submitPassword.
-  it('signUp() отклонился — busy снимается, ошибка в надписи кнопки, кнопка снова доступна', async () => {
+  it('signUp() отклонился — busy снимается, UNKNOWN в надписи кнопки, кнопка снова доступна', async () => {
     const signUp = vi.fn().mockRejectedValue(new Error('network down'))
     const { firstInput, setField, submitBtn } = mount({ signUp })
     setField(firstInput(), 'Ada')
     submitBtn().click()
 
-    await vi.waitFor(() => expect(submitBtn().textContent).toContain('Something went wrong'))
+    await vi.waitFor(() => expect(submitBtn().textContent).toBe('UNKNOWN'))
     expect(submitBtn().disabled).toBe(false)
   })
 })

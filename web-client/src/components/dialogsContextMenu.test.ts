@@ -260,7 +260,7 @@ describe('DialogsContextMenu: действия', () => {
 
   it('«Unpin» закреплённого — setPin(peerId, false); отказ лимита — тост', async() => {
     await seed([dialog(USER, { pFlags: { pinned: true } })])
-    vi.mocked(mounted!.hooks.managers.groups.setPin).mockRejectedValueOnce(Object.assign(new Error('pin limit reached'), { type: 'pin limit reached' }))
+    vi.mocked(mounted!.hooks.managers.groups.setPin).mockRejectedValueOnce(Object.assign(new Error('PINNED_DIALOGS_TOO_MUCH'), { type: 'PINNED_DIALOGS_TOO_MUCH' }))
 
     click((await open(USER))!, 'Unpin')
     await settle()
