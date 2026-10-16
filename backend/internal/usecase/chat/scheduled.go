@@ -610,6 +610,9 @@ func (i *Interactor) scheduledWire(ctx context.Context, viewerID int64, rows []d
 	if err := i.hydrateMedia(ctx, msgs); err != nil {
 		return nil, err
 	}
+	if err := i.hydrateScheduledPaidMedia(ctx, viewerID, rows, msgs); err != nil {
+		return nil, err
+	}
 	_ = i.hydratePolls(ctx, viewerID, msgs)
 	i.hydrateChecklists(ctx, msgs)
 	i.hydrateGiveaways(ctx, viewerID, msgs)
@@ -636,6 +639,49 @@ func (i *Interactor) scheduledWire(ctx context.Context, viewerID int64, rows []d
 		out = append(out, rows[k].ToWire(w))
 	}
 	return out, nil
+}
+
+// hydrateScheduledPaidMedia — отложенная пересылка платного медиа глазами
+// автора: предложение лежит в params.fwd (строки paid_media у отложенного нет),
+// правило то же, что у hydratePaidMedia и scheduledOfferLockedFor — продавец
+// предложения (автор исходника) не зритель и зритель его не купил, — тогда
+// медиа уходит заглушкой (messageExtendedMediaPreview). Исходник удалён —
+// продавца нет, заперто, как у опубликованной копии.
+func (i *Interactor) hydrateScheduledPaidMedia(ctx context.Context, viewerID int64, rows []domain.ScheduledMessage, msgs []domain.Message) error {
+	if i.paidMedia == nil {
+		return nil
+	}
+	var offerIDs []int64
+	for _, r := range rows {
+		if f := r.Params.Fwd; f != nil && f.OfferPrice > 0 {
+			offerIDs = append(offerIDs, f.OfferID)
+		}
+	}
+	if len(offerIDs) == 0 {
+		return nil
+	}
+	offers, err := i.paidMedia.Offers(ctx, offerIDs)
+	if err != nil {
+		return err
+	}
+	unlocked, err := i.paidMedia.UnlockedByIDs(ctx, viewerID, offerIDs)
+	if err != nil {
+		return err
+	}
+	for k, r := range rows {
+		f := r.Params.Fwd
+		if f == nil || f.OfferPrice <= 0 || msgs[k].MediaID == nil {
+			continue
+		}
+		price := f.OfferPrice
+		msgs[k].PaidMediaPrice = &price
+		seller := offers[f.OfferID].SellerID // предложения нет (исходник удалён) — 0
+		if seller != viewerID && !unlocked[f.OfferID] {
+			msgs[k].PaidMediaLocked = true
+			stripLockedMedia(&msgs[k])
+		}
+	}
+	return nil
 }
 
 // ListScheduled — лента отложенных автора в чате (messages.getScheduledHistory).

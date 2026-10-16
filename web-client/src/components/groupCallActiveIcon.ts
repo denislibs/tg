@@ -1,14 +1,10 @@
 // Порт tweb `src/components/groupCallActiveIcon.ts` (812502980) — иконка «в чате идёт
 // видеочат» в строке списка: три столбца на канвасе 20×20, высота каждого ходит
 // по easeInOutSine за секунду. Рисует `AutonomousDialogList.setCallStatus`.
-//
-// Расхождение с оригиналом: `customProperties.getProperty('primary-color')` — у нас
-// `getComputedStyle(<html>).getPropertyValue('--primary-color')` (так читает цвета и
-// `chatlist/dialogsPlaceholder.ts`; урезанный `customProperties` островка lottie
-// префикса `--` не добавляет).
 import { animate } from '@helpers/animation'
 import roundRect from '@helpers/canvas/roundRect'
 import mediaSizes from '@core/dom/mediaSizes'
+import customProperties from '@helpers/dom/customProperties'
 import { easeInOutSine } from '@shared/lib/easeInOutSine'
 
 const DPR = window.devicePixelRatio
@@ -22,8 +18,6 @@ const MIN_HEIGHT = 4
 const MAX_HEIGHT = 12
 const DURATION = 1000
 
-const primaryColor = () => getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim()
-
 export default function groupCallActiveIcon(isActive = false) {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = SIZE
@@ -33,9 +27,6 @@ export default function groupCallActiveIcon(isActive = false) {
   const START_X = (SIZE - TOTAL_WIDTH) / 2
 
   const startTime = Date.now()
-  // читается не на каждом кадре (getComputedStyle — пересчёт стилей), а при смене активности:
-  // у tweb значение кешировано (`customProperties`)
-  let activeColor = isActive ? primaryColor() : ''
   let wasMounted = false
   const renderFrame = () => {
     if(!canvas.isConnected) {
@@ -50,7 +41,7 @@ export default function groupCallActiveIcon(isActive = false) {
     const progress = easeInOutSine((time - startTime) % DURATION, 0, 1, DURATION)
 
     context.clearRect(0, 0, SIZE, SIZE)
-    context.fillStyle = isActive && !mediaSizes.isMobile ? activeColor : '#fff'
+    context.fillStyle = isActive && !mediaSizes.isMobile ? customProperties.getProperty('primary-color') : '#fff'
 
     for(let i = 0; i < LENGTH; ++i) {
       const x = START_X + (i * WIDTH) + (i * MARGIN)
@@ -80,7 +71,6 @@ export default function groupCallActiveIcon(isActive = false) {
     },
     setActive: (active: boolean) => {
       isActive = active
-      if(active) activeColor = primaryColor()
       renderFrame()
     },
   }

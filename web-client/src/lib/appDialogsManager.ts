@@ -418,6 +418,11 @@ export type DialogDom = {
    *  другие (группы поиска, выбор пиров), и совпавший ключ ещё не значит, что
    *  в DOM всё ещё он. */
   lastMessageRenderParts?: HTMLElement[],
+  /** Жизнь узлов имён подзаголовка (`PeerTitle` автора и служебной фразы) —
+   *  ОДНА отрисовка: следующая её гасит, иначе оторванные узлы копились бы в
+   *  реестре живых имён до смерти строки и перерисовывались на каждой операции
+   *  зеркала. У tweb реестр слабый (`peerTitle.ts:34-46`), у нас — нет. */
+  lastMessageTitlesHelper?: MiddlewareHelper,
   setLastMessagePromise?: CancellablePromise<void>,
   setUnreadMessagePromise?: CancellablePromise<void>,
 }
@@ -451,6 +456,12 @@ function isRenderedSubtitleIntact(dom: DialogDom) {
   return !!parts &&
     parts.length === childNodes.length &&
     parts.every((part, idx) => part === childNodes[idx])
+}
+
+/** Узлы имён прежней отрисовки подзаголовка ушли из DOM — снять их с реестра. */
+function dropSubtitleTitles(dom: DialogDom) {
+  dom.lastMessageTitlesHelper?.destroy()
+  delete dom.lastMessageTitlesHelper
 }
 
 /** tweb `:232` */
@@ -2418,6 +2429,7 @@ async function setLastMessage({
     span.append(i18n(secretStatus === 'requested' ? 'SecretChat.Invitation' : secretStatus === 'rejected' ? 'SecretChat.Rejected' : 'SecretChat.Awaiting'))
     dom.lastMessageSpan.replaceChildren(span)
     dom.lastTimeSpan.replaceChildren()
+    dropSubtitleTitles(dom)
     promise.resolve!()
     return
   }
@@ -2427,6 +2439,7 @@ async function setLastMessage({
     dom.lastMessageSpan.replaceChildren()
     dom.lastTimeSpan.replaceChildren()
     delete dom.listEl.dataset.mid
+    dropSubtitleTitles(dom)
 
     promise.resolve!()
     return
@@ -2488,21 +2501,33 @@ async function setLastMessage({
     }
 
     const withoutMediaType = !!mediaContainer && !!(lastMessage && getMessageText(lastMessage))
-    const parts = await renderDialogSubtitleParts({
-      peerId,
-      isSaved,
-      lastMessage,
-      draftMessage,
-      noForwardIcon,
-      mediaParts,
-      withoutMediaType,
-      highlightWord: highlightWord && lastMessage && getMessageText(lastMessage) ? highlightWord : undefined,
-      middleware,
-      titleMiddleware: dialogElement.middlewareHelper.get(),
-      managers: dialogElement.managers,
-    })
+    const titlesHelper = dialogElement.middlewareHelper.get().create()
+    let parts: HTMLElement[]
+    try {
+      // tweb `dialogSubtitle.ts:184` (`await middleware(wrapResult)`): у нас
+      // `wrapMessageForReply` синхронный и внутренняя проверка срабатывает
+      // только при непустом `willPrepend` — прерванная отрисовка проверяется здесь
+      parts = await middleware(renderDialogSubtitleParts({
+        peerId,
+        isSaved,
+        lastMessage,
+        draftMessage,
+        noForwardIcon,
+        mediaParts,
+        withoutMediaType,
+        highlightWord: highlightWord && lastMessage && getMessageText(lastMessage) ? highlightWord : undefined,
+        middleware,
+        titleMiddleware: titlesHelper.get(),
+        managers: dialogElement.managers,
+      }))
+    } catch(err) {
+      titlesHelper.destroy()
+      throw err
+    }
     dom.lastMessageSpan.classList.add('dialog-subtitle-parts')
     dom.lastMessageSpan.replaceChildren(...parts)
+    dom.lastMessageTitlesHelper?.destroy()
+    dom.lastMessageTitlesHelper = titlesHelper
     renderedParts = parts
   }
 

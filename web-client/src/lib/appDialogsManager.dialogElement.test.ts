@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { makeMessage } from '@core/messages/testMessage'
+import { makeMessage, makeServiceMessage } from '@core/messages/testMessage'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
 import appImManager from '@lib/appImManager'
 import { useChatsStore } from '@stores/chatsStore'
@@ -367,6 +367,59 @@ describe('setLastMessageN — превью найденного сообщени
       dialogElement: mine,
     })
     expect(mine.dom.lastMessageSpan.querySelector('.primary-text')?.textContent).toBe('You: ')
+  })
+
+  // Узлы имён подзаголовка живут ОДНУ отрисовку (`lastMessageTitlesHelper`):
+  // оторванный прежней перерисовкой узел из реестра живых имён снят и на
+  // операцию зеркала не перерисовывается (иначе реестр рос бы с каждым
+  // последним сообщением строки — контрольное ревью p0-fix-4, №3).
+  it('перерисовка подзаголовка снимает узлы имён прежней отрисовки', async () => {
+    const d = row(GROUP)
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 1, peerId: GROUP, fromId: ALICE, text: 'раз' }),
+      dialogElement: d,
+    })
+    const oldTitle = d.dom.lastMessageSpan.querySelector<HTMLElement>('.peer-title')!
+    expect(oldTitle.textContent).toBe('Алиса')
+
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 2, peerId: GROUP, fromId: ALICE, text: 'два' }),
+      dialogElement: d,
+    })
+    const newTitle = d.dom.lastMessageSpan.querySelector<HTMLElement>('.peer-title')!
+    expect(newTitle).not.toBe(oldTitle)
+
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алла', pFlags: {} }] }])
+    expect(newTitle.textContent).toBe('Алла')
+    expect(oldTitle.textContent).toBe('Алиса')
+  })
+
+  it('пустой подзаголовок после превью снимает узлы имён прежней отрисовки', async () => {
+    const d = row(GROUP)
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 1, peerId: GROUP, fromId: ALICE, text: 'раз' }),
+      dialogElement: d,
+    })
+    const oldTitle = d.dom.lastMessageSpan.querySelector<HTMLElement>('.peer-title')!
+    await setLastMessageN({ dialog: { peerId: GROUP }, dialogElement: d })
+    expect(d.dom.lastMessageSpan.childNodes).toHaveLength(0)
+
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алла', pFlags: {} }] }])
+    expect(oldTitle.textContent).toBe('Алиса')
+  })
+
+  // tweb `dialogSubtitle.ts:184` — прерванная отрисовка не пишет в строку: у
+  // служебного `willPrepend` пуст, и внутренней проверки middleware нет
+  it('прерванная отрисовка служебного не перезаписывает более позднюю', async () => {
+    const d = row(GROUP)
+    const service = makeServiceMessage({ id: 1, peerId: GROUP, fromId: ALICE, action: { _: 'messageActionChatEditTitle', title: 'Новое' } })
+    const first = setLastMessageN({ dialog: { peerId: GROUP }, lastMessage: service, dialogElement: d })
+    const second = setLastMessageN({ dialog: { peerId: GROUP }, dialogElement: d })
+    await Promise.all([first, second])
+    expect(d.dom.lastMessageSpan.childNodes).toHaveLength(0)
   })
 
   it('пересланное — иконка forward_filled первой частью (tweb `dialogSubtitle.ts:47-61`)', async () => {

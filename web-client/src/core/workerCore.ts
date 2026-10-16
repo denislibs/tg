@@ -475,9 +475,12 @@ export function createWorkerCore() {
     // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192),
     // выключенный форум — и окна тредов (appMessagesManager.ts:921-932).
     // `forumTopics`/`messages` объявлены ниже — стрелка дёргает их лениво.
+    // Вкладкам — то же событие (tweb рассылает его из `saveApiChat`): лента
+    // открытого чата переоткрывает его в раскладке форума или ленты.
     onChatToggleForum: (peerId, enabled) => {
       forumTopics.onChatToggleForum(peerId, enabled)
       if (!enabled) messages.flushThreadWindows(peerId)
+      broadcast('chat_toggle_forum', { chatId: toChatId(peerId), enabled })
     },
     // tweb `onContactUpdated` из `saveApiUser` (appUsersManager.ts:738-754): карточка
     // сменила `pFlags.contact` — книга двигает индекс и шлёт `contacts_update`.

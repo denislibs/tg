@@ -1298,10 +1298,6 @@ type PaidMediaRepo interface {
 	UnlockedByIDs(ctx context.Context, userID int64, offerIDs []int64) (map[int64]bool, error)
 	// Unlock записывает разблокировку (предложение, user); true — если запись новая.
 	Unlock(ctx context.Context, offerID, userID int64) (bool, error)
-	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов):
-	// есть платное сообщение с этим медиа, чей продавец не userID и чьё
-	// предложение userID не разблокировал.
-	LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error)
 }
 
 // PaidOffer — платное медиа сообщения: цена и ПРЕДЛОЖЕНИЕ, по которому оно

@@ -87,6 +87,10 @@ type store struct {
 	roles  map[int64]map[int64]string
 	// avatars — mediaID -> чьё это фото профиля (MediaAccessRepo.AvatarOwners).
 	avatars map[int64][]int64
+	// paidLocked — сообщение закрыто для зрителя платным баром (условие
+	// paidMediaLockedFor в MediaAccessRepo.CanAccess); ставит newFakePaidMedia.
+	// Зовётся БЕЗ s.mu: фейк платного медиа сам берёт его.
+	paidLocked func(userID, msgID int64) bool
 
 	// discussionChat — channelID -> текущая привязанная группа обсуждения
 	// (chats.discussion_chat_id в реальной БД); 0/отсутствие — не привязана.
@@ -2602,11 +2606,20 @@ func (r fakeMedia) CanAccess(_ context.Context, userID, mediaID int64) (bool, er
 		return true, nil
 	}
 	// member of a chat that references the media
+	var via []int64
 	for cid, msgs := range r.s.messages {
 		for _, m := range msgs {
 			if m.MediaID != nil && *m.MediaID == mediaID && r.s.members[cid][userID] != nil {
-				return true, nil
+				via = append(via, m.ID)
 			}
+		}
+	}
+	locked := r.s.paidLocked
+	r.s.mu.Unlock()
+	defer r.s.mu.Lock()
+	for _, id := range via {
+		if locked == nil || !locked(userID, id) {
+			return true, nil
 		}
 	}
 	return false, nil

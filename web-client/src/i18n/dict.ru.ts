@@ -871,6 +871,7 @@ const ru = {
   MembersLanguageChartTitle: 'Основной язык участников',
   MessagesChartTitle: 'Сообщения',
   ActionsChartTitle: 'Действия',
+  ActionYouCreateGroup: 'Вы создали группу',
   TopDaysOfWeekChartTitle: 'Активность по дням недели',
   ViewsAndSharesChartTitle: 'Просмотры и пересылки',
   EnabledNotifications: 'Включили уведомления',

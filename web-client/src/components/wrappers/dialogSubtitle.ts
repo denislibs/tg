@@ -121,6 +121,8 @@ export default async function renderDialogSubtitleParts(options: {
       withoutMediaType: options.withoutMediaType,
       highlightWord: options.highlightWord,
       plain: false,
+      titleMiddleware: options.titleMiddleware,
+      managers: options.managers,
     })
   } else {
     fragment = document.createDocumentFragment()

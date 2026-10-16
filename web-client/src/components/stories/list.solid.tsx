@@ -83,15 +83,15 @@ const calculateSegmentsDimensions = (s: number) => {
 /** tweb `createUnreadGradient`/`createCloseGradient` (`avatarNew.tsx:157-179`). */
 const createUnreadGradient = (context: CanvasRenderingContext2D, size: number, dpr: number) => {
   const gradient = context.createLinearGradient(size * 0.9156 * dpr, size * -0.05695821429 * dpr, size * 0.1342364286 * dpr, size * 1.02370714286 * dpr)
-  gradient.addColorStop(0, customProperties.getProperty('--avatar-color-story-unread-from'))
-  gradient.addColorStop(1, customProperties.getProperty('--avatar-color-story-unread-to'))
+  gradient.addColorStop(0, customProperties.getProperty('avatar-color-story-unread-from'))
+  gradient.addColorStop(1, customProperties.getProperty('avatar-color-story-unread-to'))
   return gradient
 }
 
 const createCloseGradient = (context: CanvasRenderingContext2D, size: number, dpr: number) => {
   const gradient = context.createLinearGradient(size * 0.5 * dpr, 0, size * 0.5 * dpr, size * 1 * dpr)
-  gradient.addColorStop(0, customProperties.getProperty('--avatar-color-story-close-from'))
-  gradient.addColorStop(1, customProperties.getProperty('--avatar-color-story-close-to'))
+  gradient.addColorStop(0, customProperties.getProperty('avatar-color-story-close-from'))
+  gradient.addColorStop(1, customProperties.getProperty('avatar-color-story-close-to'))
   return gradient
 }
 
@@ -109,7 +109,7 @@ function StoriesSegmentsCircle(props: { segments: Accessor<StoriesSegments | und
   const segmentToSection = (segment: StoriesSegments[0], unreadAsClose?: boolean): DashedCircleSection => {
     if(segment.type === 'read') {
       return {
-        color: customProperties.getProperty('--avatar-color-story-read'),
+        color: customProperties.getProperty('avatar-color-story-read'),
         length: segment.length,
         lineWidth: dimensions.strokeWidth / 2,
       }

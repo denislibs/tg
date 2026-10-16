@@ -156,7 +156,7 @@ import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
 import { collectLightboxItems, messageToViewerItem } from '@components/mediaViewer/collectLightboxItems'
 import { createMediaNeighboursLoader, type MediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
 import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
-import { cachedChat, cachedPeer } from '@core/peerCache'
+import { cachedChat, cachedPeer, isForumPeer } from '@core/peerCache'
 import { isInChat } from '@core/peers/predicates'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
@@ -6636,6 +6636,24 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if((canEmbedLinks && !this.chat.input.willSendWebPage) || (!canEmbedLinks && this.chat.input.willSendWebPage)) {
         this.chat.input.lastUrl = ''
         this.chat.input.onMessageInput()
+      }
+    })
+
+    // tweb :2438-2441 — в открытом чате включили или выключили «Темы»: чат
+    // открывается заново, и `setPeer` выбирает раскладку форума или ленты.
+    // Обнулённый пир — чтобы `isSamePeer` не отбросил повтор того же пира.
+    // Расхождение по ИСТОЧНИКУ: у tweb ветка живёт в обработчике `chat_update`,
+    // который `saveApiChat` шлёт на любую смену карточки из любого источника
+    // (appChatsManager.ts:288). Наш `RT.chatUpdate` — только живой кадр
+    // снимка, а карточка меняется и догонкой, и ответом `/card`; смену признака
+    // форума из всех источников объявляет `chat_toggle_forum` (тот же
+    // `saveApiChat`, :304-306) — его и слушаем.
+    this.listenerSetter.add(rootScope)('chat_toggle_forum', ({ chatId }) => {
+      const peerId = this.peerId
+      if(peerId !== toPeerId(chatId, true)) return
+      if(isForumPeer(peerId) !== this.chat.isForum && this.chat.type === ChatType.Chat) {
+        this.chat.peerId = NULL_PEER_ID
+        void this.chat.appImManager.setPeer({ peerId })
       }
     })
 

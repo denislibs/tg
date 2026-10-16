@@ -670,8 +670,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Login.Code.Expired` (EmailRecoverCard — Error.AnError, tweb :45-51). Пришли из
 // tweb langSign.ts:44-45, :54 — `Login.ResetAccountFail.TextCancelled`,
 // `Login.ResetAccountFail.TextWait`, `Login.Passkey.Error.NotFound`.
+// P0-фикс 4 (своё «создал группу»): у ru +1 ключ tweb lang.ts:1915 —
+// `ActionYouCreateGroup` (messageActionTextNewUnsafe.ts:344-353).
 const COMPOSITION = {
-  ru: { keys: 1833, plural: 67 },
+  ru: { keys: 1834, plural: 67 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -887,8 +889,9 @@ const COMPOSITION = {
 // (`PrivacyP2PHeader`, `PrivacySettingsController.P2p.Desc`).
 // М2-3 — у ru +1 ключ `VoiceChat.Chat.Ended` тоста отказа входа в видеочат (разбор — там же).
 // Ф7-И2 — у ru −4 ключа отказов входа и +3 из tweb langSign.ts (разбор — у `COMPOSITION`).
+// P0-фикс 4 — у ru +1 ключ `ActionYouCreateGroup` (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '431f90dc',
+  ru: 'e8cadbb0',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

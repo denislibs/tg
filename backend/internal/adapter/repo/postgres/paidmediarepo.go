@@ -94,21 +94,31 @@ func (r *PaidMediaRepo) Unlock(ctx context.Context, messageID, userID int64) (bo
 	return tag.RowsAffected() > 0, nil
 }
 
-// LockedMedia сообщает, закрыто ли медиа платным баром для пользователя: есть
-// платное сообщение, ссылающееся на это медиа, продавец которого (автор
-// предложения) не userID и чьё предложение userID ещё не разблокировал.
-// Используется для гейта скачивания байтов медиа.
-func (r *PaidMediaRepo) LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
-	var locked bool
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT EXISTS(
+// scheduledOfferLockedFor — отложенная пересылка alias платного медиа закрыта
+// для зрителя: правило paidMediaLockedFor, но предложение — в params.fwd
+// (domain.ScheduledFwd.OfferID/OfferPrice), строки paid_media у отложенного
+// нет. Исходник удалён — продавца нет, разблокировки ушли каскадом: заперто,
+// как и у опубликованной копии (source_message_id без FK, миграция 0140).
+func scheduledOfferLockedFor(alias, viewer string) string {
+	offer := `(` + alias + `.params->'fwd'->>'offer_id')::bigint`
+	return `(COALESCE((` + alias + `.params->'fwd'->>'offer_price')::bigint, 0) > 0
+			AND COALESCE((SELECT o.sender_id FROM messages o WHERE o.id = ` + offer + `), 0) <> ` + viewer + `
+			AND NOT EXISTS (
+				SELECT 1 FROM paid_media_unlocks u WHERE u.message_id = ` + offer + ` AND u.user_id = ` + viewer + `))`
+}
+
+// paidMediaLockedFor — сообщение alias закрыто для зрителя платным баром: оно
+// платное, продавец предложения (автор исходника; у копии — пересылки, зеркала —
+// предложение исходника) не зритель, и зритель предложение не разблокировал.
+// Замок закрывает файл ТОЛЬКО как вложение этого сообщения: тот же файл,
+// открытый зрителю другим путём (фото чата, история, бесплатное сообщение,
+// фото профиля), качается — гейт байтов в MediaAccessRepo.CanAccess.
+func paidMediaLockedFor(alias, viewer string) string {
+	return `EXISTS (
 			SELECT 1 FROM paid_media pm
-			JOIN messages m ON m.id = pm.message_id
 			LEFT JOIN messages o ON o.id = COALESCE(pm.source_message_id, pm.message_id)
-			WHERE m.media_id = $2 AND COALESCE(o.sender_id, 0) <> $1
+			WHERE pm.message_id = ` + alias + `.id AND COALESCE(o.sender_id, 0) <> ` + viewer + `
 			  AND NOT EXISTS (
 				SELECT 1 FROM paid_media_unlocks u
-				WHERE u.message_id = COALESCE(pm.source_message_id, pm.message_id) AND u.user_id = $1)
-		)`, userID, mediaID).Scan(&locked)
-	return locked, err
+				WHERE u.message_id = COALESCE(pm.source_message_id, pm.message_id) AND u.user_id = ` + viewer + `))`
 }

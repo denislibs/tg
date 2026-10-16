@@ -319,7 +319,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
   it('исходящее в личке: первым идёт пункт read-date с шиммером, он же спрашивает дату прочтения (:1506-1541)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
-    const { bubble, content } = makeBubble(1, { out: true })
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-read'] })
     container.append(bubble)
 
     const managers = makeManagers()
@@ -342,7 +342,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
   it('read-date недоступен — пункт и его разделитель убираются (:1532-1535)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
-    const { bubble, content } = makeBubble(1, { out: true })
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-read'] })
     container.append(bubble)
 
     const managers = makeManagers() // getReadDate → null
@@ -357,6 +357,27 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     expect(itemTexts()[0]).toBe('Reply')
   })
 
+  // tweb :12320 — `pFlags.unread` исходящего: пункта read-date нет, дата не
+  // спрашивается. У нас «непрочитано» — бабл без `is-read` (рисует лента по
+  // горизонту исходящих). Без проверки меню ходило за датой, которой ещё нет,
+  // и бэкенд отвечал 404 (P0 2026-10-16).
+  it('непрочитанное исходящее в личке: read-date не показывается и не спрашивается (:12320)', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-sent'] })
+    container.append(bubble)
+
+    const managers = makeManagers()
+    const menu = new ChatContextMenu(makeChat(), managers)
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    expect(managers.chats.getReadDate).not.toHaveBeenCalled()
+    expect(menuElement()!.querySelector('.btn-menu-item-loader')).toBeNull()
+    expect(itemTexts()[0]).toBe('Reply')
+  })
+
   // Порт :1526 — `formatFullSentTime(outboxReadDate.date, true, false)`. До
   // задачи #121 подпись строил `friendlyMsgTime`, у которого выбор языка —
   // тернарник `ru ? … : …`: немецкий, испанский, французский и украинский
@@ -364,7 +385,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
   // это ключ `Date.Today`, а не дата, и время отделено ключом-предлогом.
   it('read-date получен — подпись строит `formatFullSentTime` (:1526)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
-    const { bubble, content } = makeBubble(1, { out: true })
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-read'] })
     container.append(bubble)
 
     const readAt = new Date()
@@ -394,7 +415,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
   // `friendlyMsgTime` такую защиту имел (`friendlyTime.ts:6`), и порт её снял.
   it('битый read-date не роняет обработчик — пункт убирается, шиммера не остаётся', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
-    const { bubble, content } = makeBubble(1, { out: true })
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-read'] })
     container.append(bubble)
 
     const rejections: unknown[] = []
@@ -420,7 +441,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
   it('read-date скрыт приватностью — «Read show when» (:1537-1540)', async() => {
     putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
-    const { bubble, content } = makeBubble(1, { out: true })
+    const { bubble, content } = makeBubble(1, { out: true, classes: ['is-read'] })
     container.append(bubble)
 
     const managers = makeManagers()
@@ -607,7 +628,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
   }
 
   async function openInGroup(managers: ReturnType<typeof makeManagers>, popups = makePopups()) {
-    const { bubble, content } = makeBubble(1, { out: true, peerId: GROUP })
+    const { bubble, content } = makeBubble(1, { out: true, peerId: GROUP, classes: ['is-read'] })
     container.append(bubble)
     const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers)
     menu.attachTo(container)

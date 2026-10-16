@@ -3,9 +3,11 @@
 // Пин на СОСТАВ строки: превью это список частей, склеенных «, » (лейбл
 // вложения + текст), а не два независимых правила «есть подпись» / «нет
 // подписи». Плюс на те ветки, где лейбл ЗАМЕНЯЕТ текст (стикер, аудио).
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
-import { makeMessage } from '@core/messages/testMessage'
+import { makeMessage, makeServiceMessage } from '@core/messages/testMessage'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { getMiddleware } from '@helpers/middleware'
 import type { MyMessage } from '@core/models'
 import wrapMessageForReply from './messageForReply'
 
@@ -134,5 +136,39 @@ describe('wrapMessageForReply — богатая форма и highlightWord', (
 
   it('plain-форма подсветку не строит (у оригинала она живёт только в богатой ветке)', () => {
     expect(wrapMessageForReply({ message: msg({ text: 'привет, мир' }), highlightWord: 'мир' })).toBe('привет, мир')
+  })
+})
+
+// P0 2026-10-16 (Н2): превью служебного в строке чатлиста — фраза УЗЛАМИ (tweb
+// :356-366, `wrapMessageActionTextNew` без `plain` — имена узлами
+// `wrapPeerTitle`). Карточки автора в зеркале ещё нет — узел объявляет пробел и
+// перерисуется, когда она доедет; строка из зеркала навсегда осталась бы
+// «Удалённый аккаунт создал(а) группу» до следующей перерисовки строки.
+describe('wrapMessageForReply — служебное в богатой форме', () => {
+  it('имя автора — живой узел: пробел объявлен, карточка доехала — имя на месте', () => {
+    resetPeerMirror()
+    const fillMirror = vi.fn(async () => {})
+    const service = makeServiceMessage({ id: 1, peerId: -9, fromId: 42, action: { _: 'messageActionChatEditTitle', title: 'Новое' } })
+    const fragment = wrapMessageForReply({
+      message: service,
+      plain: false,
+      titleMiddleware: getMiddleware().get(),
+      managers: { peers: { fillMirror } },
+    })
+    const host = document.createElement('div')
+    host.append(fragment)
+    const title = host.querySelector<HTMLElement>('.peer-title')
+    expect(title).not.toBeNull()
+    expect(fillMirror).toHaveBeenCalledWith([42])
+
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: 42, first_name: 'Егор', pFlags: {} }] }])
+    expect(host.textContent).toBe('Егор изменил(а) название группы на «Новое»')
+  })
+
+  it('без менеджеров узла — прежняя строка в span', () => {
+    const service = makeServiceMessage({ id: 1, peerId: -9, fromId: 42, action: { _: 'messageActionChatEditTitle', title: 'Новое' } })
+    const host = document.createElement('div')
+    host.append(wrapMessageForReply({ message: service, plain: false }))
+    expect(host.querySelector('.peer-title')).toBeNull()
   })
 })

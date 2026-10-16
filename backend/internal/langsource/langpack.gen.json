@@ -85,6 +85,10 @@
           "value": "Speakers and Camera"
         },
         {
+          "key": "ActionYouCreateGroup",
+          "value": "You created the group"
+        },
+        {
           "key": "ActionsChartTitle",
           "value": "Actions"
         },
@@ -10502,6 +10506,10 @@
         {
           "key": "ActionsChartTitle",
           "value": "Действия"
+        },
+        {
+          "key": "ActionYouCreateGroup",
+          "value": "Вы создали группу"
         },
         {
           "key": "TopDaysOfWeekChartTitle",

@@ -59,7 +59,10 @@ let started = false
 // плашка «новый вход» (`components/sidebarLeft/newAuthorization.solid.tsx`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'auto_delete_period_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated', 'peer_unpinned_all', 'bot_commands', 'unconfirmed_authorizations_update']
+// `chat_toggle_forum` — владелец карточек (`peersManager.save` → `workerCore.ts::
+// onChatToggleForum`, tweb `appChatsManager.ts:304-306`): у чата сменился признак
+// форума — лента открытого чата переоткрывает его (`chat/bubbles.ts`).
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush', 'privacy_update', 'auto_delete_period_update', 'insufficent_stars_for_message', 'fulfill_repaid_message', 'peer_pinned_deleted', 'stickers_installed', 'stickers_updated', 'gifs_updated', 'peer_unpinned_all', 'bot_commands', 'unconfirmed_authorizations_update', 'chat_toggle_forum']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {
