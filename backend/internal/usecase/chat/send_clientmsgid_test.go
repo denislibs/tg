@@ -47,6 +47,10 @@ func TestInviteUsageLimit_OutOfRange(t *testing.T) {
 	in, _, _, id := gateGroup(t)
 	ctx := context.Background()
 	big := maxInviteUsageLimit + 1
+	neg := -3_000_000_000
+	if _, err := in.CreateInvite(ctx, id, 7, "", &neg, false, nil); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("CreateInvite(отрицательный): err = %v, want ErrInvalid", err)
+	}
 	if _, err := in.CreateInvite(ctx, id, 7, "", &big, false, nil); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("CreateInvite: err = %v, want ErrInvalid", err)
 	}

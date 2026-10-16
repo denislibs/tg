@@ -29,7 +29,7 @@ describe('PremiumManager.checkout', () => {
     const mgr = newPremiumManager({ rest: { post } as unknown as RestClient })
 
     const { user, subscription } = await mgr.checkout('1m', CARD)
-    expect(post).toHaveBeenCalledWith('/me/premium/checkout', { plan: '1m', card: CARD })
+    expect(post).toHaveBeenCalledWith('/me/premium/checkout', { plan: '1m', card: CARD }, { stopTime: -1 })
     expect(user.user.pFlags?.premium).toBe(true)
     expect(subscription.priceCents).toBe(499)
   })

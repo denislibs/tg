@@ -660,11 +660,11 @@ func (i *Interactor) KnownUsersByIDs(ctx context.Context, viewerID int64, ids []
 }
 
 // maxInviteUsageLimit — потолок usage_limit ссылки-приглашения (Telegram:
-// 1..99999); колонка INT, большее драйвер не кодирует (500 при каждом повторе).
+// 1..99999, ноль — без лимита); колонка INT, выход за неё драйвер не кодирует (500 при каждом повторе).
 const maxInviteUsageLimit = 99999
 
 func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
-	if usageLimit != nil && *usageLimit > maxInviteUsageLimit {
+	if usageLimit != nil && (*usageLimit < 0 || *usageLimit > maxInviteUsageLimit) {
 		return domain.InviteLink{}, domain.ErrInvalid
 	}
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
@@ -718,7 +718,7 @@ func (i *Interactor) ListInvites(ctx context.Context, chatID, actorID, adminID i
 // EditInvite updates an invite link's editable fields (Telegram
 // messages.editExportedChatInvite). Своя ссылка — по invite_users, чужая — создателю.
 func (i *Interactor) EditInvite(ctx context.Context, chatID, actorID int64, token string, edit domain.InviteEdit) (domain.InviteLink, error) {
-	if edit.UsageLimit != nil && *edit.UsageLimit > maxInviteUsageLimit {
+	if edit.UsageLimit != nil && (*edit.UsageLimit < 0 || *edit.UsageLimit > maxInviteUsageLimit) {
 		return domain.InviteLink{}, domain.ErrInvalid
 	}
 	if err := i.requireLinkOwner(ctx, chatID, actorID, token); err != nil {
