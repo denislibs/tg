@@ -94,6 +94,19 @@ func (r *PaidMediaRepo) Unlock(ctx context.Context, messageID, userID int64) (bo
 	return tag.RowsAffected() > 0, nil
 }
 
+// scheduledOfferLockedFor — отложенная пересылка alias платного медиа закрыта
+// для зрителя: правило paidMediaLockedFor, но предложение — в params.fwd
+// (domain.ScheduledFwd.OfferID/OfferPrice), строки paid_media у отложенного
+// нет. Исходник удалён — продавца нет, разблокировки ушли каскадом: заперто,
+// как и у опубликованной копии (source_message_id без FK, миграция 0140).
+func scheduledOfferLockedFor(alias, viewer string) string {
+	offer := `(` + alias + `.params->'fwd'->>'offer_id')::bigint`
+	return `(COALESCE((` + alias + `.params->'fwd'->>'offer_price')::bigint, 0) > 0
+			AND COALESCE((SELECT o.sender_id FROM messages o WHERE o.id = ` + offer + `), 0) <> ` + viewer + `
+			AND NOT EXISTS (
+				SELECT 1 FROM paid_media_unlocks u WHERE u.message_id = ` + offer + ` AND u.user_id = ` + viewer + `))`
+}
+
 // paidMediaLockedFor — сообщение alias закрыто для зрителя платным баром: оно
 // платное, продавец предложения (автор исходника; у копии — пересылки, зеркала —
 // предложение исходника) не зритель, и зритель предложение не разблокировал.
