@@ -273,3 +273,82 @@ func TestPaidMedia_LockDoesNotHideOtherPaths(t *testing.T) {
 		t.Fatal("получатель платного открыл файл через чужой бесплатный чат")
 	}
 }
+
+// getFile бота упирается в тот же замок, что скачивание: бот-участник чата без
+// покупки платное медиа не получает, после покупки — получает (побочный эффект
+// переноса замка в MediaAccessRepo.CanAccess, контрольное ревью p0-fix-4).
+func TestPaidMedia_BotFileInfoLockedUntilUnlock(t *testing.T) {
+	in, s, _, _ := newPaidInteractor()
+	msgID, mediaID := sendPaidPhoto(t, in, s, 20)
+	ctx := context.Background()
+	bot := domain.BotAccount{BotID: 2}
+	if _, err := in.BotFileInfo(ctx, bot, mediaID); err != domain.ErrForbidden {
+		t.Fatalf("бот-участник без покупки: err=%v, want ErrForbidden", err)
+	}
+	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := in.UnlockPaidMedia(ctx, msgID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.BotFileInfo(ctx, bot, mediaID); err != nil || got != mediaID {
+		t.Fatalf("после покупки: %d, %v", got, err)
+	}
+}
+
+// Лента отложенных и кадр updateNewScheduledMessage глазами автора отложенной
+// пересылки платного: не купил — заглушка (messageExtendedMediaPreview, без
+// media_id), купил — само медиа. Предложение — в params.fwd (контрольное
+// ревью p0-fix-4 №3, п. 3).
+func TestPaidMedia_ScheduledForwardWireLocked(t *testing.T) {
+	in, s, _, _ := newPaidInteractor()
+	fs := newFakeScheduled()
+	in.SetScheduled(fs)
+	msgID, _ := sendPaidPhoto(t, in, s, 20)
+	ctx := context.Background()
+	src, _ := in.msgs.GetByID(ctx, msgID)
+	if _, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src.ChatID, ToChatID: src.ChatID, MsgIDs: []int64{msgID}, SenderID: 2, ScheduleDate: future()}); err != nil {
+		t.Fatalf("отложенная пересылка: %v", err)
+	}
+	paidOf := func(m domain.MessageReal) (domain.MessageMediaPaidMedia, bool) {
+		switch pm := m.Media.(type) {
+		case *domain.MessageMediaPaidMedia:
+			return *pm, true
+		case domain.MessageMediaPaidMedia:
+			return pm, true
+		}
+		return domain.MessageMediaPaidMedia{}, false
+	}
+	isPreview := func(pm domain.MessageMediaPaidMedia) bool {
+		return len(pm.ExtendedMedia) == 1 && pm.ExtendedMedia[0].Tag() == domain.MessageExtendedMediaPreviewTag
+	}
+
+	list, err := in.ListScheduled(ctx, src.ChatID, 2)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("лента: %v %d", err, len(list))
+	}
+	pm, ok := paidOf(list[0])
+	if !ok || !isPreview(pm) || pm.StarsAmount != 20 {
+		t.Fatalf("лента отложенных открыла платное без покупки: %#v", list[0].Media)
+	}
+	rows := fs.sorted(func(domain.ScheduledMessage) bool { return true })
+	upd, err := in.ScheduledUpdates(ctx, src.ChatID, 2, []int64{rows[0].ID})
+	if err != nil || len(upd) != 1 {
+		t.Fatalf("кадр: %v %d", err, len(upd))
+	}
+	frame := upd[0].(domain.UpdateNewScheduledMessage).Message.(domain.MessageReal)
+	if pm, ok := paidOf(frame); !ok || !isPreview(pm) {
+		t.Fatalf("updateNewScheduledMessage открыл платное без покупки: %#v", frame.Media)
+	}
+
+	if _, err := in.TopUpStars(ctx, 2, 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := in.UnlockPaidMedia(ctx, msgID, 2); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = in.ListScheduled(ctx, src.ChatID, 2)
+	if pm, ok := paidOf(list[0]); !ok || isPreview(pm) {
+		t.Fatalf("купившему лента отдаёт заглушку: %#v", list[0].Media)
+	}
+}

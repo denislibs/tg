@@ -207,33 +207,39 @@ func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64
 	// Зеркалируем все элементы best-effort (ошибка на одном — не повод
 	// обрывать остальные, см. про гонку ниже).
 	var createErr error
-	// Зовём здесь БЕЗ окружающей транзакции (в отличие от PostToChannel/
-	// Send/ForwardMessages/publishApprovedPost) — каждый вызов
-	// mirrorChannelPost уже сам довозит зеркало до pts-лога/unread внутри
-	// СВОЕЙ отдельной транзакции (WithinTx внутри репозиториев по одному
-	// insert/update — автокоммит per-statement вне явной tx), так что
-	// публикация (кадры/кэш) идёт СРАЗУ по возврату, а не после какого-то
-	// внешнего коммита, которого тут нет.
+	// Каждое зеркало — в СВОЕЙ транзакции (как в Send/deliverForwardCopies):
+	// вставка с media_id и строка paid_media платного поста коммитятся вместе.
+	// Без транзакции между ними зеркало было бесплатным, а упавший SetPrice
+	// оставлял его бесплатным навсегда. Транзакция на ЭЛЕМЕНТ альбома, не на
+	// весь: проигрыш гонки на одном (uq_messages_discussion_mirror) не должен
+	// откатывать соседние. Публикация (кадры/кэш) — после коммита.
+	mirrorOne := func(m domain.Message) {
+		var md *mirrorDelivery
+		e := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+			var err error
+			md, err = i.mirrorChannelPost(ctx, m)
+			return err
+		})
+		if e != nil {
+			if createErr == nil {
+				createErr = e
+			}
+			return
+		}
+		if md != nil {
+			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
+		}
+	}
 	if post.GroupedID != nil {
 		album, e := i.msgs.AlbumMessages(ctx, channelID, *post.GroupedID)
 		if e != nil {
 			return 0, e
 		}
 		for _, m := range album {
-			md, e := i.mirrorChannelPost(ctx, m)
-			if e != nil && createErr == nil {
-				createErr = e
-			}
-			if md != nil {
-				i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
-			}
+			mirrorOne(m)
 		}
 	} else {
-		md, e := i.mirrorChannelPost(ctx, post)
-		createErr = e
-		if md != nil {
-			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
-		}
+		mirrorOne(post)
 	}
 	// Гонка: два параллельных первых обращения к одному немигрированному
 	// посту (или альбому) оба увидят, что зеркала нет, и оба попробуют его

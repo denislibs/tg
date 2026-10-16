@@ -96,6 +96,14 @@ func TestMirror_PaidMediaLocked(t *testing.T) {
 	if view[0].PaidMediaPrice == nil || !view[0].PaidMediaLocked || view[0].MediaID != nil {
 		t.Fatalf("зеркало платного поста открыто даром: price=%v locked=%v", view[0].PaidMediaPrice, view[0].PaidMediaLocked)
 	}
+	// 8 — участник группы обсуждения: зеркало ему ВИДНО, закрыто оно замком,
+	// а не тем, что фейк доступа не знает о членстве
+	s.mu.Lock()
+	if s.members[mirror.ChatID] == nil {
+		s.members[mirror.ChatID] = map[int64]*member{}
+	}
+	s.members[mirror.ChatID][8] = &member{}
+	s.mu.Unlock()
 	if ok, _ := in.CanAccessMedia(ctx, 8, 42); ok {
 		t.Fatal("байты зеркала открыты участнику группы")
 	}
@@ -350,4 +358,86 @@ func TestLiveLocation_CopyNotMovable(t *testing.T) {
 	if _, err := in.UpdateLiveLocation(ctx, chat, cp.ID, 2, 50, 50, nil, false); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("пересылающий двигает копию: %v, want ErrForbidden", err)
 	}
+}
+
+// txMarkKey — признак «внутри WithinTx» в контексте (markTx).
+type txMarkKey struct{}
+
+// markTx — как fakeTx, но помечает контекст транзакции: тест видит, какие
+// записи шли внутри неё.
+type markTx struct{}
+
+func (markTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(context.WithValue(ctx, txMarkKey{}, true))
+}
+
+// txPaidMedia — фейк платного медиа, запоминающий, в транзакции ли SetPrice.
+type txPaidMedia struct {
+	*fakePaidMedia
+	setPriceInTx []bool
+}
+
+func (p *txPaidMedia) SetPrice(ctx context.Context, messageID, price, sourceID int64) error {
+	p.setPriceInTx = append(p.setPriceInTx, ctx.Value(txMarkKey{}) != nil)
+	return p.fakePaidMedia.SetPrice(ctx, messageID, price, sourceID)
+}
+
+// Ленивое зеркало платного поста (пост опубликован ДО обсуждения, зеркало
+// заводит первый комментарий): строка paid_media зеркала пишется В ТОЙ ЖЕ
+// транзакции, что и вставка (иначе между ними зеркало бесплатное, а упавший
+// SetPrice оставлял его бесплатным навсегда), и участник группы без покупки
+// файл не качает (контрольное ревью p0-fix-4 №3, блокер 1).
+func TestLazyMirror_PaidPostLockedInSameTx(t *testing.T) {
+	s := newStore()
+	fg := newFakeGroupRepo()
+	in := New(markTx{}, groupMembershipChats{fg, s}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, newFakeChannelRepo(), newFakeSearchRepo(), nil)
+	in.SetChannelPublisher(&fakeChannelPublisher{})
+	pm := &txPaidMedia{fakePaidMedia: newFakePaidMedia(s)}
+	in.SetPaidMedia(pm)
+	fg.onCreate = func(id int64, typ string) {
+		s.mu.Lock()
+		s.chatType[id] = typ
+		s.chatSeq[id] = 0
+		s.mu.Unlock()
+	}
+	fg.onSetDiscussion = s.seedDiscussion
+	s.seedMedia(42, 7)
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	mid, price := int64(42), int64(10)
+	post, err := in.Send(ctx, SendInput{ChatID: ch, SenderID: 7, Type: "photo", MediaID: &mid, PaidMediaPrice: &price})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.EnableDiscussion(ctx, ch, 7); err != nil {
+		t.Fatal(err)
+	}
+	if root, _ := in.msgs.MirrorByPost(ctx, ch, post.ID); root != 0 {
+		t.Fatalf("предусловие: зеркала до первого комментария нет, а оно %d", root)
+	}
+	pm.setPriceInTx = nil
+	s.mu.Lock()
+	disc := s.discussionChat[ch]
+	if s.members[disc] == nil {
+		s.members[disc] = map[int64]*member{}
+	}
+	s.members[disc][8] = &member{}
+	s.mu.Unlock()
+
+	if _, err := in.PostComment(ctx, ch, post.ID, 8, "первый", "c1", 0); err != nil {
+		t.Fatalf("PostComment: %v", err)
+	}
+	id, _ := in.msgs.MirrorByPost(ctx, ch, post.ID)
+	if id == 0 {
+		t.Fatal("ленивое зеркало не заведено")
+	}
+	if len(pm.setPriceInTx) != 1 || !pm.setPriceInTx[0] {
+		t.Fatalf("цена зеркала записана вне транзакции вставки: %v", pm.setPriceInTx)
+	}
+	if ok, _ := in.CanAccessMedia(ctx, 8, 42); ok {
+		t.Fatal("участник группы обсуждения качает платное фото без покупки")
+	}
+	s.mu.Lock()
+	delete(s.members[disc], 8)
+	s.mu.Unlock()
 }
