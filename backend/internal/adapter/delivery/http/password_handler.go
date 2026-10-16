@@ -17,7 +17,8 @@ import (
 // Ручки, проверяющие пароль (Set/Verify/Remove), ограничены частотой ДО
 // сравнения — иначе с украденной сессией пароль подбирается со скоростью
 // сервера (Б-4). Лимитер в памяти процесса — допущение одного экземпляра,
-// как у AuthHandler; растущее ожидание и общий счётчик — М-1 (М1-5).
+// как у AuthHandler. Растущее ожидание после неверных паролей со счётчиком,
+// общим для экземпляров (Redis), — в usecase (М1-5); его отказ — тот же 420.
 type PasswordHandler struct {
 	uc      *usecaseauth.Interactor
 	limiter *keyRateLimiter
@@ -51,6 +52,17 @@ func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, use
 	return true
 }
 
+// writePasswordFlood — блокировка растущего ожидания (М1-5): 420
+// FLOOD_WAIT_<остаток>, как отказ лимитера. false — ошибка другая.
+func writePasswordFlood(w http.ResponseWriter, err error) bool {
+	var flood domain.ErrPasswordFlood
+	if !errors.As(err, &flood) {
+		return false
+	}
+	writeError(w, 420, flood.Error())
+	return true
+}
+
 // State — GET /me/password: {enabled, hint, email(маскированный)}.
 func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
@@ -80,6 +92,9 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.uc.SetPassword(r.Context(), user.ID, deviceID, b.CurrentPassword, b.NewPassword, b.Hint, b.Email)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
@@ -107,6 +122,9 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.uc.VerifyPassword(r.Context(), user.ID, deviceID, b.Password)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
@@ -133,6 +151,9 @@ func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.uc.RemovePassword(r.Context(), user.ID, deviceID, b.CurrentPassword)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
