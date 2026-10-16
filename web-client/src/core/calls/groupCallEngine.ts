@@ -19,6 +19,14 @@ const store = () => useGroupCallStore.getState()
 const managers = () => startClient().managers
 
 const pcs = new Map<number, RTCPeerConnection>()
+// Соединение, которое ещё ждёт ICE-конфиг: второй offer того же участника берёт его же, а не
+// создаёт второй pc с лишними TURN-аллокациями. Уход участника (closePeer) отменяет ожидание.
+const pendingPcs = new Map<number, { promise: Promise<RTCPeerConnection | null>; cancelled: boolean }>()
+// Кандидаты участника до готовности соединения (pc нет или remoteDescription ещё не встал):
+// пока сидящий берёт ICE-конфиг, кандидаты новичка уже идут. tweb callInstance.ts:2240-2255,
+// :2315-2352 — та же очередь до remoteDescription и тот же потолок (constants.ts:48).
+const pendingCandidates = new Map<number, RTCIceCandidateInit[]>()
+const MAX_PENDING_CANDIDATES = 256
 const remoteStreams = new Map<number, MediaStream>()
 let localStream: MediaStream | null = null
 
@@ -45,10 +53,10 @@ export interface GroupCallFrame {
 // отказ входа или выход, не кладёт соединение в уже убранный звонок.
 let callGen = 0
 
-async function newPc(userId: number): Promise<RTCPeerConnection | null> {
+async function newPc(userId: number, cancelled: () => boolean): Promise<RTCPeerConnection | null> {
   const gen = callGen
   const servers = await iceServers()
-  if (gen !== callGen) return null
+  if (gen !== callGen || cancelled()) return null
   // Только через TURN: у tweb групповой звонок ходит к SFU и IP участника видит один сервер, у нас
   // mesh, и прямые кандидаты раскрыли бы адрес каждому участнику (М3-2, Б-8).
   const pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', iceTransportPolicy: 'relay' })
@@ -71,6 +79,35 @@ async function newPc(userId: number): Promise<RTCPeerConnection | null> {
   return pc
 }
 
+/** Соединение с участником: готовое, ждущее ICE-конфиг или новое. */
+function ensurePc(userId: number): Promise<RTCPeerConnection | null> {
+  const ready = pcs.get(userId)
+  if (ready) return Promise.resolve(ready)
+  const pending = pendingPcs.get(userId)
+  if (pending) return pending.promise
+  const entry = { promise: null as unknown as Promise<RTCPeerConnection | null>, cancelled: false }
+  entry.promise = newPc(userId, () => entry.cancelled).finally(() => {
+    if (pendingPcs.get(userId) === entry) pendingPcs.delete(userId)
+  })
+  pendingPcs.set(userId, entry)
+  return entry.promise
+}
+
+function queueCandidate(userId: number, c: RTCIceCandidateInit) {
+  const queue = pendingCandidates.get(userId) ?? []
+  queue.push(c)
+  if (queue.length > MAX_PENDING_CANDIDATES) queue.splice(0, queue.length - MAX_PENDING_CANDIDATES)
+  pendingCandidates.set(userId, queue)
+}
+
+/** После применённого offer/answer — накопленные кандидаты участника в его соединение. */
+async function commitCandidates(userId: number, pc: RTCPeerConnection) {
+  const queue = pendingCandidates.get(userId)
+  if (!queue || pcs.get(userId) !== pc || !pc.remoteDescription) return
+  pendingCandidates.delete(userId)
+  await Promise.all(queue.map((c) => pc.addIceCandidate(c).catch(() => { /* поздний кандидат */ })))
+}
+
 function signal(toUserId: number, data: Record<string, unknown>) {
   const peerId = store().peerId
   if (peerId == null) return
@@ -81,8 +118,11 @@ function signal(toUserId: number, data: Record<string, unknown>) {
 }
 
 function closePeer(userId: number) {
+  const pending = pendingPcs.get(userId)
+  if (pending) { pending.cancelled = true; pendingPcs.delete(userId) }
   pcs.get(userId)?.close()
   pcs.delete(userId)
+  pendingCandidates.delete(userId)
   remoteStreams.delete(userId)
   store().removeParticipant(userId)
   store().bumpStreams()
@@ -121,11 +161,21 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   const meId = useChatsStore.getState().meId
   for (const userId of existing) {
     if (userId === meId) continue
-    const pc = await newPc(userId)
+    const pc = await ensurePc(userId)
     if (!pc) return // звонок убран (rejected / выход), пока шли офферы
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
-    if (gen !== callGen) return
+    try {
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+    } catch (e) {
+      // Соединение закрыли, пока готовили offer: участник ушёл (closePeer) или звонок убран.
+      if (gen !== callGen) return
+      if (pcs.get(userId) === pc) {
+        console.error('[group call] offer failed', userId, e)
+        closePeer(userId)
+      }
+      continue
+    }
+    if (gen !== callGen) return // звонок убран, а может, уже идёт другой: старый offer не слать
     signal(userId, { sdp: sdpJSON(pc.localDescription) })
   }
   broadcastMediaState()
@@ -135,6 +185,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
 function teardownCall() {
   callGen++
   for (const userId of [...pcs.keys()]) closePeer(userId)
+  pendingCandidates.clear()
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
   store().reset()
@@ -228,19 +279,23 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
     let pc = pcs.get(from)
     if (d.sdp) {
       if (d.sdp.type === 'offer') {
-        pc = pc ?? (await newPc(from)) ?? undefined
+        pc = (await ensurePc(from)) ?? undefined
         if (!pc) return
         await pc.setRemoteDescription(d.sdp)
+        await commitCandidates(from, pc)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         signal(from, { sdp: sdpJSON(pc.localDescription) })
         broadcastMediaState()
       } else if (pc) {
         await pc.setRemoteDescription(d.sdp)
+        await commitCandidates(from, pc)
       }
       return
     }
-    if (d.candidate && pc) {
+    if (d.candidate) {
+      // Соединения ещё нет (ждёт ICE-конфиг) или offer/answer ещё не применён — в очередь.
+      if (!pc || !pc.remoteDescription) { queueCandidate(from, d.candidate); return }
       try { await pc.addIceCandidate(d.candidate) } catch { /* поздний кандидат */ }
       return
     }

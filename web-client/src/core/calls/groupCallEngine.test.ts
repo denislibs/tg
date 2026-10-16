@@ -23,19 +23,44 @@ vi.mock('../../client/bootstrap', () => ({
 vi.mock('../../stores/chatsStore', () => ({ useChatsStore: { getState: () => ({ meId: 1 }) } }))
 
 const created: RTCConfiguration[] = []
+const invalidState = () => Object.assign(new Error('InvalidStateError'), { name: 'InvalidStateError' })
+// Как в браузере: операции закрытого pc отклоняются, кандидат до remoteDescription — тоже,
+// а remoteDescription встаёт не синхронно с вызовом.
 class FakePC {
+  static all: FakePC[] = []
+  /** Вмешаться в середину операции (выход участника, уборка звонка). */
+  static hooks: { createOffer?: (pc: FakePC) => void; setLocalDescription?: (pc: FakePC) => void } = {}
   onicecandidate: unknown = null
   ontrack: unknown = null
   onconnectionstatechange: unknown = null
-  constructor(config: RTCConfiguration = {}) { created.push(config) }
+  closed = false
+  remoteDescription: unknown = null
+  ice: unknown[] = []
+  constructor(config: RTCConfiguration = {}) { created.push(config); FakePC.all.push(this) }
   addTrack() {}
-  async setRemoteDescription() {}
-  async createAnswer() { return { type: 'answer', sdp: 'a' } }
-  async createOffer() { return { type: 'offer', sdp: 'o' } }
+  async setRemoteDescription(d: unknown) {
+    if (this.closed) throw invalidState()
+    await new Promise((r) => setTimeout(r, 0))
+    this.remoteDescription = d
+  }
+  async addIceCandidate(c: unknown) {
+    if (this.closed || !this.remoteDescription) throw invalidState()
+    this.ice.push(c)
+  }
+  async createAnswer() { if (this.closed) throw invalidState(); return { type: 'answer', sdp: 'a' } }
+  async createOffer() {
+    FakePC.hooks.createOffer?.(this)
+    if (this.closed) throw invalidState()
+    return { type: 'offer', sdp: 'o' }
+  }
   private local: { type: string; sdp: string } | null = null
-  async setLocalDescription(d?: { type: string; sdp: string }) { this.local = d ?? null }
+  async setLocalDescription(d?: { type: string; sdp: string }) {
+    if (this.closed) throw invalidState()
+    FakePC.hooks.setLocalDescription?.(this) // вызов уже принят: закрытие в середине его не отклоняет
+    this.local = d ?? null
+  }
   get localDescription() { return this.local }
-  close() {}
+  close() { this.closed = true }
 }
 
 type Engine = typeof import('./groupCallEngine')
@@ -48,6 +73,8 @@ const PEER = -100
 beforeEach(async () => {
   vi.resetModules()
   created.length = 0
+  FakePC.all = []
+  FakePC.hooks = {}
   iceServers = []
   sendCallFrame.mockReset()
   toastNew.mockReset()
@@ -240,5 +267,104 @@ describe('groupCallEngine: mesh только через TURN', () => {
 
     expect(getUserMedia).toHaveBeenCalledTimes(1)
     expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_join')).toHaveLength(1)
+  })
+})
+
+const candidate = (from: number, n: number) => ({
+  t: 'group_call_signal', d: { peer_id: PEER, from_user_id: from, candidate: { candidate: `c${n}`, sdpMid: '0' } },
+})
+const tick = () => new Promise((r) => setTimeout(r, 0))
+const gate = () => {
+  let release!: () => void
+  iceGate = new Promise<void>((r) => { release = r })
+  return () => release()
+}
+
+// tweb буферизует кандидаты до remoteDescription (callInstance.ts:2240-2255, :2315-2352,
+// P2P_MAX_PENDING_CANDIDATES constants.ts:48): кандидат, пришедший раньше pc или раньше
+// применённого offer/answer, не теряется.
+describe('groupCallEngine: кандидаты до готовности соединения', () => {
+  beforeEach(() => { iceServers = [TURN] })
+
+  it('кандидаты, пришедшие пока сидящий берёт ICE-конфиг, добавляются после offer', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame(candidate(2, 1))
+    engine.handleGroupCallFrame(candidate(2, 2))
+    await tick()
+    release()
+    await vi.waitFor(() => expect(FakePC.all[0]?.ice).toHaveLength(2))
+    expect(FakePC.all).toHaveLength(1)
+  })
+
+  it('кандидаты сразу за answer (remoteDescription ещё не встал) не теряются', async () => {
+    existingParticipants = [2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+    await engine.joinGroupCall(PEER)
+    engine.handleGroupCallFrame({ t: 'group_call_signal', d: { peer_id: PEER, from_user_id: 2, sdp: { type: 'answer' as const, sdp: 'a' } } })
+    engine.handleGroupCallFrame(candidate(2, 1))
+    await vi.waitFor(() => expect(FakePC.all[0].ice).toHaveLength(1))
+  })
+
+  it('второй offer того же участника, пока ждём /calls/ice, не создаёт второго соединения', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame(offer(2))
+    await tick()
+    release()
+    await tick(); await tick(); await tick()
+    expect(created).toHaveLength(1)
+  })
+
+  it('участник ушёл, пока его соединение ждало ICE-конфиг: соединения нет, ответа нет, буфер снят', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame(candidate(2, 1))
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 2, action: 'left' as const, participants: [1, 2] } })
+    release()
+    await tick(); await tick(); await tick()
+    expect(created).toHaveLength(0)
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_signal')).toHaveLength(0)
+    // новый offer того же участника после ухода — новое соединение без старых кандидатов
+    engine.handleGroupCallFrame(offer(2))
+    await vi.waitFor(() => expect(created).toHaveLength(1))
+    await tick(); await tick()
+    expect(FakePC.all[0].ice).toHaveLength(0)
+  })
+})
+
+describe('groupCallEngine: цикл офферов новичка и закрытое соединение', () => {
+  beforeEach(() => {
+    iceServers = [TURN]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+  })
+  const sdpTo = () => sendCallFrame.mock.calls.map(([f]) => f).filter((f) => f.type === 'group_call_signal' && f.data.sdp)
+
+  it('участник ушёл, пока ему готовили offer: вход не падает, offer уходит следующему', async () => {
+    existingParticipants = [2, 3]
+    FakePC.hooks.createOffer = (pc) => {
+      if (pc === FakePC.all[0]) engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 2, action: 'left' as const, participants: [1, 3] } })
+    }
+    await expect(engine.joinGroupCall(PEER)).resolves.toBeUndefined()
+    expect(sdpTo().map((f) => f.data.to_user_id)).toEqual([3])
+  })
+
+  it('выход из звонка, пока готовится offer: вход не падает, offer не уходит', async () => {
+    existingParticipants = [2]
+    FakePC.hooks.createOffer = () => engine.leaveGroupCall()
+    await expect(engine.joinGroupCall(PEER)).resolves.toBeUndefined()
+    expect(sdpTo()).toHaveLength(0)
+  })
+
+  it('выход и вход в другой звонок во время setLocalDescription: старый offer в новый звонок не уходит', async () => {
+    existingParticipants = [2]
+    FakePC.hooks.setLocalDescription = () => {
+      engine.leaveGroupCall()
+      store.useGroupCallStore.getState().setJoined(-200)
+    }
+    await engine.joinGroupCall(PEER)
+    expect(sdpTo()).toHaveLength(0)
   })
 })
