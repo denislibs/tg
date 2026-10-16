@@ -1242,6 +1242,8 @@ const ru = {
   PrivacyPhoneInfo3: 'Пользователи, которые сохранили Ваш номер в телефонную книгу, будут видеть его в Telegram, только если Вы добавили их в контакты.',
   'Privacy.BioCaption': 'Вы можете точно настроить, кто видит раздел «О себе» в Вашем профиле.',
   'PrivacySettingsController.PhoneCallDescription': 'Вы можете точно настроить, кто может Вам звонить.',
+  PrivacyP2PHeader: 'Peer-to-Peer',
+  'PrivacySettingsController.P2p.Desc': 'Если отключить peer-to-peer, все звонки будут проходить через серверы Telegram, чтобы не раскрывать Ваш IP-адрес, но качество звука и видео может немного снизиться.',
   'PrivacySettingsController.GroupDescription': 'Вы можете точно настроить, кто может приглашать Вас в группы и каналы.',
   'Privacy.MessagesCustomHelp': 'Вы можете точно настроить, кто может отправлять Вам сообщения.',
   'PrivacySettingsController.PeerInfo': 'Вы можете добавить пользователей или целые группы в список исключений из настроек выше.',
