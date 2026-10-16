@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -231,5 +232,38 @@ func TestJoinGroupCall_Channel_LivestreamActive_SubscriberJoins(t *testing.T) {
 	}
 	if _, err := i.JoinGroupCall(ctx, ch, 9); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("подписчик после конца эфира, зритель ещё внутри: %v, want ErrForbidden", err)
+	}
+}
+
+// К3: mesh держит не больше domain.GroupCallMaxParticipants участников — сверх
+// этого user-quota coturn кончается и pc части пар молча не соединяется. Новичок в
+// полный звонок не входит (ErrGroupCallFull, ws отвечает rejected без forbidden),
+// участник, уже стоящий в звонке, повторно входит (вторая вкладка, переподключение).
+func TestJoinGroupCall_FullCall_Rejected(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("вход в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if errors.Is(domain.ErrGroupCallFull, domain.ErrForbidden) {
+		t.Fatal("полный звонок не должен выглядеть отказом по праву («Видеочат завершён»)")
+	}
+	ids, _ := e.calls.Participants(ctx, e.chatID)
+	if len(ids) != domain.GroupCallMaxParticipants || slices.Contains(ids, callMember) {
+		t.Fatalf("участники = %v: новичок попал в полный звонок", ids)
+	}
+	if n := len(groupCallFramesFor(t, e.pub, callOwner)); n != 1 {
+		t.Fatalf("отказ разослан членам чата: %d кадров group_call_update у создателя, want 1 (его вход)", n)
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatalf("повторный вход участника полного звонка: %v", err)
 	}
 }

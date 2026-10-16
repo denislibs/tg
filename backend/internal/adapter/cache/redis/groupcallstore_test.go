@@ -2,12 +2,15 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 func newTestGroupCallStore(t *testing.T) (*GroupCallStore, *miniredis.Miniredis) {
@@ -26,17 +29,17 @@ func TestGroupCallStore_TransitionFlags(t *testing.T) {
 	s, mr := newTestGroupCallStore(t)
 	ctx := context.Background()
 
-	first, err := s.Join(ctx, 5, 1)
+	first, err := s.Join(ctx, 5, 1, 1000)
 	if err != nil || !first {
 		t.Fatalf("первый вход: first=%v err=%v", first, err)
 	}
 	if ttl := mr.TTL(groupCallKey(5)); ttl != groupCallTTL {
 		t.Fatalf("TTL звонка = %v, want %v", ttl, groupCallTTL)
 	}
-	if first, _ := s.Join(ctx, 5, 2); first {
+	if first, _ := s.Join(ctx, 5, 2, 1000); first {
 		t.Fatal("второй вход помечен переходом")
 	}
-	if first, _ := s.Join(ctx, 5, 2); first {
+	if first, _ := s.Join(ctx, 5, 2, 1000); first {
 		t.Fatal("повторный вход того же участника помечен переходом")
 	}
 	if last, _ := s.Leave(ctx, 5, 1); last {
@@ -68,7 +71,7 @@ func TestGroupCallStore_ConcurrentJoinFirstExactlyOnce(t *testing.T) {
 		wg.Add(1)
 		go func(uid int64) {
 			defer wg.Done()
-			if first, err := s.Join(ctx, 7, uid); err == nil && first {
+			if first, err := s.Join(ctx, 7, uid, 1000); err == nil && first {
 				mu.Lock()
 				firsts++
 				mu.Unlock()
@@ -102,8 +105,8 @@ func TestGroupCallStore_ConcurrentJoinFirstExactlyOnce(t *testing.T) {
 func TestGroupCallStore_ActiveAmongAndExpiry(t *testing.T) {
 	s, mr := newTestGroupCallStore(t)
 	ctx := context.Background()
-	_, _ = s.Join(ctx, 1, 10)
-	_, _ = s.Join(ctx, 3, 10)
+	_, _ = s.Join(ctx, 1, 10, 1000)
+	_, _ = s.Join(ctx, 3, 10, 1000)
 
 	got, err := s.ActiveAmong(ctx, []int64{1, 2, 3})
 	if err != nil {
@@ -225,7 +228,7 @@ func TestJoinIfActive_EmptySet_NoAdd(t *testing.T) {
 	s, mr := newTestGroupCallStore(t)
 	ctx := context.Background()
 
-	joined, err := s.JoinIfActive(ctx, 5, 1)
+	joined, err := s.JoinIfActive(ctx, 5, 1, 1000)
 	if err != nil || joined {
 		t.Fatalf("вход в пустой звонок: joined=%v err=%v, want false", joined, err)
 	}
@@ -241,12 +244,12 @@ func TestJoinIfActive_EmptySet_NoAdd(t *testing.T) {
 func TestJoinIfActive_ActiveSet_JoinsAndExtendsTTL(t *testing.T) {
 	s, mr := newTestGroupCallStore(t)
 	ctx := context.Background()
-	if first, _ := s.Join(ctx, 5, 1); !first {
+	if first, _ := s.Join(ctx, 5, 1, 1000); !first {
 		t.Fatal("первый вход не помечен переходом")
 	}
 	mr.FastForward(time.Hour)
 
-	joined, err := s.JoinIfActive(ctx, 5, 2)
+	joined, err := s.JoinIfActive(ctx, 5, 2, 1000)
 	if err != nil || !joined {
 		t.Fatalf("вход в идущий звонок: joined=%v err=%v", joined, err)
 	}
@@ -257,7 +260,7 @@ func TestJoinIfActive_ActiveSet_JoinsAndExtendsTTL(t *testing.T) {
 		t.Fatalf("участники = %v, want двое", ids)
 	}
 	// Повторный вход того же участника — не дубль.
-	if joined, _ := s.JoinIfActive(ctx, 5, 2); !joined {
+	if joined, _ := s.JoinIfActive(ctx, 5, 2, 1000); !joined {
 		t.Fatal("повторный вход отклонён")
 	}
 	if ids, _ := s.Participants(ctx, 5); len(ids) != 2 {
@@ -273,7 +276,7 @@ func TestJoinIfActive_RaceWithLastLeave(t *testing.T) {
 		s, _ := newTestGroupCallStore(t)
 		ctx := context.Background()
 		const owner = int64(1)
-		_, _ = s.Join(ctx, 9, owner)
+		_, _ = s.Join(ctx, 9, owner, 1000)
 
 		var wg sync.WaitGroup
 		results := make([]bool, 4)
@@ -289,7 +292,7 @@ func TestJoinIfActive_RaceWithLastLeave(t *testing.T) {
 			go func(k int) {
 				defer wg.Done()
 				<-start
-				results[k], _ = s.JoinIfActive(ctx, 9, int64(100+k))
+				results[k], _ = s.JoinIfActive(ctx, 9, int64(100+k), 1000)
 			}(k)
 		}
 		close(start)
@@ -318,5 +321,48 @@ func TestJoinIfActive_RaceWithLastLeave(t *testing.T) {
 				t.Fatalf("round %d: joined[%d]=%v, но в множестве %v", round, k, j, ids)
 			}
 		}
+	}
+}
+
+// К3: предел участников — в том же скрипте, что и вход: полный звонок не пускает
+// нового, пускает того, кто уже в нём, и одновременные входы не перебирают предел.
+func TestGroupCallStore_JoinLimit(t *testing.T) {
+	s, _ := newTestGroupCallStore(t)
+	ctx := context.Background()
+	for uid := int64(1); uid <= 3; uid++ {
+		if _, err := s.Join(ctx, 5, uid, 3); err != nil {
+			t.Fatalf("вход %d: %v", uid, err)
+		}
+	}
+	if _, err := s.Join(ctx, 5, 4, 3); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("Join в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if _, err := s.JoinIfActive(ctx, 5, 4, 3); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("JoinIfActive в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if _, err := s.Join(ctx, 5, 2, 3); err != nil {
+		t.Fatalf("повторный Join участника: %v", err)
+	}
+	if joined, err := s.JoinIfActive(ctx, 5, 2, 3); err != nil || !joined {
+		t.Fatalf("повторный JoinIfActive участника: joined=%v err=%v", joined, err)
+	}
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 3 {
+		t.Fatalf("участники = %v, want 3", ids)
+	}
+}
+
+func TestGroupCallStore_ConcurrentJoinRespectsLimit(t *testing.T) {
+	s, _ := newTestGroupCallStore(t)
+	ctx := context.Background()
+	_, _ = s.Join(ctx, 8, 1, 5)
+	var wg sync.WaitGroup
+	for k := int64(0); k < 40; k++ {
+		wg.Add(2)
+		go func(uid int64) { defer wg.Done(); _, _ = s.Join(ctx, 8, uid, 5) }(100 + k)
+		go func(uid int64) { defer wg.Done(); _, _ = s.JoinIfActive(ctx, 8, uid, 5) }(200 + k)
+	}
+	wg.Wait()
+	if ids, _ := s.Participants(ctx, 8); len(ids) != 5 {
+		t.Fatalf("участников после гонки входов = %d, want 5", len(ids))
 	}
 }

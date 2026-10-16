@@ -368,7 +368,7 @@ func TestCallFlags_DialogsPageBatchesTheLookup(t *testing.T) {
 	s.seedChat(102, domain.ChatTypeGroup, a, b)
 	// Звонок заводится прямо в сторе: тест про пакетный вопрос списка, а не про
 	// право начинать видеочат (в этой фикстуре репозитория групп нет).
-	if _, err := calls.Join(ctx, 101, b); err != nil {
+	if _, err := calls.Join(ctx, 101, b, domain.GroupCallMaxParticipants); err != nil {
 		t.Fatal(err)
 	}
 	calls.activeAmongCalls = 0
@@ -515,7 +515,7 @@ func TestCallSnapshot_PrivateChatDoesNotLoop(t *testing.T) {
 
 	// В личке видеочата нет (tweb: isUser → кнопки нет), а звонок в сторе от
 	// старых клиентов мог остаться: тест про снимок, а не про право входа.
-	if _, err := e.calls.Join(ctx, 700, callOwner); err != nil {
+	if _, err := e.calls.Join(ctx, 700, callOwner, domain.GroupCallMaxParticipants); err != nil {
 		t.Fatal(err)
 	}
 	e.in.announceCallChange(ctx, 700)
@@ -546,7 +546,7 @@ func TestCallSnapshot_ResnapFromFlushSurvivesFinish(t *testing.T) {
 	// пока тик собирает снимок, часы уходят за аренду, а звонок возобновляется
 	e.calls.afterActiveAmong = func() {
 		e.clock.advance(callSnapshotLease)
-		_, _ = e.calls.Join(ctx, e.chatID, callMember)
+		_, _ = e.calls.Join(ctx, e.chatID, callMember, domain.GroupCallMaxParticipants)
 	}
 	if _, err := e.in.FlushDirtyCallSnapshots(ctx); err != nil {
 		t.Fatal(err)

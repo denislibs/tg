@@ -52,9 +52,10 @@ func TestICEHandler_TurnCredentials(t *testing.T) {
 	if !found || uid != "7" || err != nil || time.Unix(exp, 0).Before(time.Now()) {
 		t.Fatalf("username %q is not <future expiry>:7", turn.Username)
 	}
-	// TTL — сутки: relay-звонок целиком зависит от кредов, coturn проверяет метку на каждом Refresh
-	if res.TTL != 86400 || time.Until(time.Unix(exp, 0)) < 86400*time.Second-5*time.Second {
-		t.Fatalf("ttl = %d, expiry in %v; want 24h", res.TTL, time.Until(time.Unix(exp, 0)))
+	// TTL — час (К1): креды выдаются на вход в звонок, отозвать их нельзя, срок и есть окно
+	// после выхода или бана; клиент обновляет их заранее
+	if left := time.Until(time.Unix(exp, 0)); res.TTL != 3600 || left > time.Hour || left < time.Hour-5*time.Second {
+		t.Fatalf("ttl = %d, expiry in %v; want 1h", res.TTL, left)
 	}
 	// credential = base64(HMAC-SHA1(secret, username)) — схема coturn use-auth-secret
 	mac := hmac.New(sha1.New, []byte("sec"))

@@ -520,7 +520,7 @@ func TestGroupCallSignal_OnlyBetweenParticipants(t *testing.T) {
 	ctx := context.Background()
 	s.seedChat(600, domain.ChatTypeGroup, 1, 2, 3)
 	// Звонок начал пользователь 1 (право начинать — в groupcall_test.go).
-	if _, err := calls.Join(ctx, 600, 1); err != nil {
+	if _, err := calls.Join(ctx, 600, 1, domain.GroupCallMaxParticipants); err != nil {
 		t.Fatal(err)
 	}
 	offer := func() map[string]any { return map[string]any{"sdp": map[string]any{"type": "offer"}} }

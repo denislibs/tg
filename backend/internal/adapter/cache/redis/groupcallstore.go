@@ -7,6 +7,8 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // GroupCallStore — участники активных групповых звонков: Redis-set
@@ -39,18 +41,23 @@ const groupCallTTL = 6 * time.Hour
 func groupCallKey(chatID int64) string { return fmt.Sprintf("groupcall:%d", chatID) }
 
 // groupCallJoin: атомарно добавить участника и продлить ключ; 1 — переход
-// «звонок был пуст → в нём появился участник».
+// «звонок был пуст → в нём появился участник», -2 — в звонке уже ARGV[3]
+// участников, а этот не из них (ничего не записано). Проверка и вход — один
+// скрипт: два одновременных входа в звонок на пределе не проходят оба.
 var groupCallJoin = goredis.NewScript(`
 local before = redis.call('SCARD', KEYS[1])
+if before >= tonumber(ARGV[3]) and redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 0 then return -2 end
 redis.call('SADD', KEYS[1], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 if before == 0 then return 1 end
 return 0`)
 
 // groupCallJoinIfActive: то же, но только в непустой звонок. -1 — звонка нет
-// (ничего не записано, ключ не создан), 0 — вошёл.
+// (ничего не записано, ключ не создан), -2 — звонок полон, 0 — вошёл.
 var groupCallJoinIfActive = goredis.NewScript(`
-if redis.call('SCARD', KEYS[1]) == 0 then return -1 end
+local n = redis.call('SCARD', KEYS[1])
+if n == 0 then return -1 end
+if n >= tonumber(ARGV[3]) and redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 0 then return -2 end
 redis.call('SADD', KEYS[1], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
 return 0`)
@@ -100,15 +107,26 @@ const groupCallDirtyKey = "groupcall:dirty"
 
 func groupCallSnapKey(chatID int64) string { return fmt.Sprintf("groupcall:snap:%d", chatID) }
 
-// Join добавляет участника; first — звонок до этого был пуст.
-func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64) (bool, error) {
-	n, err := groupCallJoin.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
+// groupCallFull — ответ скриптов входа «звонок полон».
+const groupCallFull = -2
+
+// Join добавляет участника; first — звонок до этого был пуст. В звонке уже limit
+// других участников — domain.ErrGroupCallFull.
+func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
+	n, err := groupCallJoin.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds()), limit).Int()
+	if err == nil && n == groupCallFull {
+		return false, domain.ErrGroupCallFull
+	}
 	return n == 1, err
 }
 
 // JoinIfActive добавляет участника только в идущий звонок; joined=false — звонка нет.
-func (s *GroupCallStore) JoinIfActive(ctx context.Context, chatID, userID int64) (bool, error) {
-	n, err := groupCallJoinIfActive.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
+// Звонок полон — domain.ErrGroupCallFull.
+func (s *GroupCallStore) JoinIfActive(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
+	n, err := groupCallJoinIfActive.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds()), limit).Int()
+	if err == nil && n == groupCallFull {
+		return false, domain.ErrGroupCallFull
+	}
 	return n == 0, err
 }
 

@@ -62,4 +62,17 @@ const (
 	// `appMessagesManager.ts:12334-12339`.
 	ChatReadMarkSizeThreshold = 100
 	ChatReadMarkExpirePeriod  = 7 * 24 * time.Hour
+
+	// GroupCallMaxParticipants — участников видеочата группы (mesh, К3);
+	// `groupcall_video_participants_max` (`appConfig.d.ts:9`). У Telegram это
+	// предел участников С ВИДЕО в звонке через SFU; у нас каждый участник mesh —
+	// отправитель видео каждому, поэтому предел на всех.
+	//
+	// Число — из квоты coturn (`coturn/turnserver.conf`): `user-quota=32`
+	// аллокации на пользователя, pc держит A = 2 TURN-URL (udp, tcp) × сетевые
+	// интерфейсы = 4 аллокации (замер на стенде, М3-2). Участник держит N−1 pc, а
+	// аллокации упавшей вкладки живут ещё 600 с (libwebrtc не шлёт LIFETIME), так
+	// что повторный вход после падения удваивает счёт: 2·(N−1)·A ≤ 32 → N ≤ 5.
+	// Сверх квоты coturn отвечает 486, и pc молча не соединяется.
+	GroupCallMaxParticipants = 5
 )

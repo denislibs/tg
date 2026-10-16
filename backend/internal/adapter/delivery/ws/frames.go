@@ -146,7 +146,8 @@ type peerData struct {
 // peer_id — тот, что прислал клиент (ключ глазами получателя). Списка участников
 // нет: отказ бывает и при сбое хранилища, когда звонок идёт — клиент activeByChat
 // не трогает. forbidden — отказ по праву/политике (ErrForbidden), иначе сбой
-// хранилища: клиент по-разному объясняет это пользователю.
+// хранилища или полный звонок (ErrGroupCallFull, К3): клиент по-разному
+// объясняет это пользователю.
 func groupCallRejectedFrame(peer domain.PeerID, userID int64, forbidden bool) []byte {
 	f, _ := json.Marshal(map[string]any{
 		"t": "group_call_update",

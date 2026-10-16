@@ -968,12 +968,15 @@ type SendInput struct {
 // публикации. Запись, которую арендатор не закрыл (упал), снова доступна по
 // истечении аренды.
 type GroupCallStore interface {
-	Join(ctx context.Context, chatID, userID int64) (first bool, err error)
+	// Join и JoinIfActive не пускают нового участника в звонок, где уже limit
+	// участников (domain.ErrGroupCallFull); проверка и вход атомарны. Повторный
+	// вход того, кто уже в звонке, проходит.
+	Join(ctx context.Context, chatID, userID int64, limit int) (first bool, err error)
 	// JoinIfActive добавляет участника, только если звонок уже идёт (в множестве
 	// кто-то есть): проверка и вход — один скрипт, так что «последний вышел» и
 	// «не-админ вошёл» не разминутся. joined=false — звонка нет, ничего не
 	// записано. Перехода 0→1 здесь не бывает: пустой звонок не открывается.
-	JoinIfActive(ctx context.Context, chatID, userID int64) (joined bool, err error)
+	JoinIfActive(ctx context.Context, chatID, userID int64, limit int) (joined bool, err error)
 	Leave(ctx context.Context, chatID, userID int64) (last bool, err error)
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
 	// ActiveAmong — подмножество chatIDs, где в звонке есть участники (одним

@@ -163,7 +163,7 @@ type memGroupCalls struct {
 	byID map[int64][]int64
 }
 
-func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) (bool, error) {
+func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64, _ int) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	first := len(m.byID[chatID]) == 0
@@ -176,14 +176,14 @@ func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64) (bool, err
 	return first, nil
 }
 
-func (m *memGroupCalls) JoinIfActive(ctx context.Context, chatID, userID int64) (bool, error) {
+func (m *memGroupCalls) JoinIfActive(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
 	m.mu.Lock()
 	active := len(m.byID[chatID]) > 0
 	m.mu.Unlock()
 	if !active {
 		return false, nil
 	}
-	_, err := m.Join(ctx, chatID, userID)
+	_, err := m.Join(ctx, chatID, userID, limit)
 	return true, err
 }
 

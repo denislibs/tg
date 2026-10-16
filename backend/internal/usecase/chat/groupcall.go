@@ -23,6 +23,9 @@ import (
 // сообщает входящему соединению СЛОЙ ТРАНСПОРТА (ws: group_call_update
 // {action: "rejected"}), потому что это ответ на кадр одного соединения, а не
 // событие пользователя — на других его устройствах открытый звонок не трогаем.
+//
+// В звонке уже domain.GroupCallMaxParticipants участников — domain.ErrGroupCallFull
+// (К3, предел mesh; у tweb видеочат через SFU предела не знает).
 func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([]int64, error) {
 	if i.groupCalls == nil {
 		return nil, domain.ErrNotFound
@@ -79,7 +82,7 @@ func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64)
 		return false, false, err
 	}
 	if typ != domain.ChatTypeChannel {
-		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID)
+		joined, err = i.groupCalls.JoinIfActive(ctx, chatID, userID, domain.GroupCallMaxParticipants)
 		if err != nil || joined {
 			return false, joined, err
 		}
@@ -93,7 +96,7 @@ func (i *Interactor) admitToGroupCall(ctx context.Context, chatID, userID int64)
 			return false, false, err
 		}
 	}
-	first, err = i.groupCalls.Join(ctx, chatID, userID)
+	first, err = i.groupCalls.Join(ctx, chatID, userID, domain.GroupCallMaxParticipants)
 	return first, err == nil, err
 }
 

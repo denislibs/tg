@@ -89,9 +89,12 @@ services:
       --realm=messenger
       --min-port=49160 --max-port=49359
       --total-quota=190
+      --bps-capacity=$${TURN_BPS_CAPACITY:-0}
       --allowed-peer-ip=$${TURN_RELAY_IP:-$$(hostname -i | cut -d" " -f1)}
     environment:
       TURN_RELAY_IP: "${TURN_RELAY_IP:-}"
+      # полоса сервера, байт/с (coturn/turnserver.conf, bps-capacity); в проде — ~80% канала
+      TURN_BPS_CAPACITY: "${TURN_BPS_CAPACITY:-0}"
     volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro"]
     ports:
       - "3478:3478/udp"

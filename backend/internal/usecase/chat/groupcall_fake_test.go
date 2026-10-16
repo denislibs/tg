@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/messenger-denis/backend/internal/domain"
 )
 
 // fakeClock — подменяемые часы: стор, ограничитель снимков и тикер читают одни
@@ -56,9 +58,12 @@ func newFakeCallStore(clock *fakeClock) *fakeCallStore {
 	}
 }
 
-func (f *fakeCallStore) Join(_ context.Context, chatID, userID int64) (bool, error) {
+func (f *fakeCallStore) Join(_ context.Context, chatID, userID int64, limit int) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if len(f.parts[chatID]) >= limit && !slices.Contains(f.parts[chatID], userID) {
+		return false, domain.ErrGroupCallFull
+	}
 	first := len(f.parts[chatID]) == 0
 	if !slices.Contains(f.parts[chatID], userID) {
 		f.parts[chatID] = append(f.parts[chatID], userID)
@@ -67,11 +72,14 @@ func (f *fakeCallStore) Join(_ context.Context, chatID, userID int64) (bool, err
 }
 
 // JoinIfActive — как Redis-стор: пустой звонок не создаётся.
-func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64) (bool, error) {
+func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64, limit int) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.parts[chatID]) == 0 {
 		return false, nil
+	}
+	if len(f.parts[chatID]) >= limit && !slices.Contains(f.parts[chatID], userID) {
+		return false, domain.ErrGroupCallFull
 	}
 	if !slices.Contains(f.parts[chatID], userID) {
 		f.parts[chatID] = append(f.parts[chatID], userID)
