@@ -148,6 +148,18 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(flush).toHaveBeenCalledWith(FORUM)
   })
 
+  // tweb `saveApiChat`: `mirrorChat` (appChatsManager.ts:198-199), затем
+  // `chat_toggle_forum` (:304-306). Вкладке событие уходит ПОСЛЕ операции
+  // зеркала — лента сверяет признак форума по зеркалу (bubbles.ts:2438-2441).
+  it('смена признака форума → вкладке `rt:peer_op`, затем `chat_toggle_forum`', async () => {
+    const { core, tab } = await boot()
+    const order: string[] = []
+    tab.on('rt:peer_op', () => order.push('peer_op'))
+    tab.on('chat_toggle_forum', (p) => order.push(`toggle:${JSON.stringify(p)}`))
+    core.registry.peers.saveApiPeers({ chats: [forumChat(false)] })
+    await vi.waitFor(() => expect(order).toEqual(['peer_op', 'toggle:{"chatId":50,"enabled":false}']))
+  })
+
   // `realtime.markRead` с `threadId` (лента темы) → `threadReads`: местное
   // прочтение сразу и `messages.readDiscussion` на сервер (tweb readHistory :9186-9210)
   it('прочтение в теме → `unread` с нулём + `forumUnread`, readDiscussion серверными номерами', async () => {

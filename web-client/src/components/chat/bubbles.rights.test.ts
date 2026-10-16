@@ -9,6 +9,7 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type ChatBubbles from './bubbles'
 import type { BubblesManagers } from './bubbles'
 import { createTestChat, mountTestBubbles } from './testChat'
+import { ChatType } from './chatType'
 
 const PEER = -140
 
@@ -22,6 +23,7 @@ let willSendWebPage: unknown = null
 let setPeer = vi.fn()
 let isForum = false
 let mountedChat: ReturnType<typeof createTestChat> | undefined
+let chatType: ChatType | undefined
 
 function mount() {
   const managers: BubblesManagers = {
@@ -44,6 +46,7 @@ function mount() {
     input: { finishPeerChange: finishInput, onMessageInput, willSendWebPage },
     appImManager: { setPeer },
     isForum,
+    type: chatType,
   })
   mountedChat = chat
   return bubbles = mountTestBubbles(chat, managers)
@@ -58,6 +61,7 @@ beforeEach(() => {
   canWrite = true
   setPeer = vi.fn()
   isForum = false
+  chatType = undefined
   finishInput = vi.fn<(options: { peerId: PeerId, middleware: () => boolean }) => Promise<() => void>>(async() => () => {})
 })
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
@@ -104,6 +108,9 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
   // tweb bubbles.ts:2438-2441 — «Темы» включили или выключили у открытого чата:
   // он открывается заново тем же пиром, и раскладка (форум/лента) выбирается
   // заново. До порта раскладка менялась только перезагрузкой (P0 2026-10-16).
+  // Повод — `chat_toggle_forum` (у tweb — `chat_update` из `saveApiChat`, см.
+  // расхождение у обработчика): смена признака из любого источника, не только
+  // живого кадра снимка.
   const channel = (forum: boolean) => applyPeerOps([{ op: 'upsert', peers: [
     { _: 'channel', id: -PEER, title: 'g', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, ...(forum ? { forum: true } : {}) } } as never,
   ] }])
@@ -112,7 +119,7 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     const feed = mount()
     feed.chatInner.classList.add('has-rights')
     channel(true)
-    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    rootScope.dispatchEventSingle('chat_toggle_forum', { chatId: -PEER, enabled: true })
     await settle()
     expect(setPeer).toHaveBeenCalledTimes(1)
     expect(setPeer).toHaveBeenCalledWith({ peerId: PEER })
@@ -124,7 +131,7 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     let feed = mount()
     feed.chatInner.classList.add('has-rights')
     channel(false)
-    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    rootScope.dispatchEventSingle('chat_toggle_forum', { chatId: -PEER, enabled: false })
     await settle()
     expect(setPeer).toHaveBeenCalledTimes(1)
     bubbles?.destroy()
@@ -133,7 +140,18 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     isForum = false
     feed = mount()
     feed.chatInner.classList.add('has-rights')
-    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    rootScope.dispatchEventSingle('chat_toggle_forum', { chatId: -PEER, enabled: false })
+    rootScope.dispatchEventSingle('chat_toggle_forum', { chatId: 999, enabled: true })
+    await settle()
+    expect(setPeer).not.toHaveBeenCalled()
+  })
+
+  // гвард `type === Chat` (tweb :2438): экран закрепов того же пира не переоткрывается
+  it('экран закрепов не переоткрывается сменой форума', async() => {
+    chatType = ChatType.Pinned
+    mount().chatInner.classList.add('has-rights')
+    channel(true)
+    rootScope.dispatchEventSingle('chat_toggle_forum', { chatId: -PEER, enabled: true })
     await settle()
     expect(setPeer).not.toHaveBeenCalled()
   })
