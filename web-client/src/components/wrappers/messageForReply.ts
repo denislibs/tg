@@ -38,6 +38,7 @@ import type { LangPackKey } from '@/lang'
 import { getMessageText, type DraftMessageReal, type MyMessage } from '@core/models'
 import { getDocumentFromMessage, type MessageMedia } from '@core/media/messageMedia'
 import { serviceMsgText } from '@core/serviceMsg'
+import { wrapMessageActionText, type ServiceActionOptions } from '@components/chat/serviceMessage'
 import type { MessageEntity } from '@layer'
 import { parseEntities, wrapRichText } from '@lib/richtext'
 import { sortEntities } from '@lib/richtext/entities'
@@ -66,6 +67,12 @@ export interface WrapMessageForReplyOptions {
   highlightWord?: string
   /** `false` — фрагмент с узлами (tweb `plain`); по умолчанию строка, см. шапку */
   plain?: boolean
+  /** Узлам имён служебной фразы (богатая форма): жизненный цикл подписки на
+   *  зеркало и объявление пробела. У оригинала их нет — `wrapPeerTitle` сам
+   *  достаёт пира; наш `PeerTitle` берёт их снаружи (как `dialogSubtitle`,
+   *  расхождение 4). Без них имена склеиваются строкой из зеркала. */
+  titleMiddleware?: ServiceActionOptions['middleware']
+  managers?: ServiceActionOptions['managers']
 }
 
 /**
@@ -89,6 +96,18 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
   // `wrapMessageActionTextNew` и кладёт его `addPart`, :356-366; у нас ту же
   // роль играет `serviceMsgText`).
   if (message._ === 'messageService') {
+    // Богатая форма — фраза узлами (tweb :356-366 → `wrapMessageActionTextNew`
+    // без `plain`: имена — узлы `wrapPeerTitle`). Узел имени сам объявляет
+    // пробел зеркала и перерисуется, когда карточка доедет; строка из зеркала
+    // осталась бы «Удалённый аккаунт» до следующей перерисовки строки.
+    if (!plain && options.titleMiddleware && options.managers) {
+      return fragmentOf([wrapMessageActionText({
+        message,
+        peerId: message.peerId,
+        middleware: options.titleMiddleware,
+        managers: options.managers,
+      })])
+    }
     const action = serviceMsgText(message)
     return plain ? action : fragmentOf([labelSpan(action)])
   }
