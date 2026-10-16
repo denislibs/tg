@@ -31,6 +31,11 @@ type PhoneCall struct {
 	CallerID int64
 	CalleeID int64
 	Video    bool
+	// P2PAllowed — разрешено ли звонку прямое соединение (ICE `all`): сервер
+	// считает его один раз на call_request по правилам phone_p2p обеих сторон
+	// и отдаёт обеим одно и то же (tweb callInstance.ts:690-694, флаг звонка
+	// `p2p_allowed`). false — только через TURN (`iceTransportPolicy: relay`).
+	P2PAllowed bool
 	// AcceptedAt — когда адресат ответил (кадр call_accept); нулевое значение —
 	// ответа не было.
 	AcceptedAt time.Time

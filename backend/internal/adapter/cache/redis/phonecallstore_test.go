@@ -102,3 +102,32 @@ func TestPhoneCallStore_FinishOnce(t *testing.T) {
 		t.Fatalf("звонок забрали %d раз, want 1", wins)
 	}
 }
+
+// P2PAllowed — признак звонка, посчитанный на call_request: переживает
+// Create/Get/Accept/Finish. Запись без поля (старый бэкенд) читается как false.
+func TestPhoneCallStore_P2PAllowed(t *testing.T) {
+	s, mr := newTestPhoneCallStore(t)
+	ctx := context.Background()
+	for _, allowed := range []bool{true, false} {
+		id := map[bool]string{true: "p-yes", false: "p-no"}[allowed]
+		if ok, err := s.Create(ctx, domain.PhoneCall{ID: id, CallerID: 1, CalleeID: 2, P2PAllowed: allowed}); err != nil || !ok {
+			t.Fatalf("Create: ok=%v err=%v", ok, err)
+		}
+		if got, err := s.Get(ctx, id); err != nil || got.P2PAllowed != allowed {
+			t.Fatalf("Get: %+v err=%v; want P2PAllowed=%v", got, err, allowed)
+		}
+		if _, err := s.Accept(ctx, id, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := s.Finish(ctx, id); err != nil || got.P2PAllowed != allowed {
+			t.Fatalf("Finish: %+v err=%v; want P2PAllowed=%v", got, err, allowed)
+		}
+	}
+
+	if err := mr.Set(phoneCallKey("legacy"), `{"caller_id":1,"callee_id":2,"video":false}`); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get(ctx, "legacy"); err != nil || got.P2PAllowed {
+		t.Fatalf("запись без поля: %+v err=%v; want P2PAllowed=false", got, err)
+	}
+}

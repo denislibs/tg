@@ -11,6 +11,7 @@ interface RawIce {
 
 export interface IceConfig {
   servers: RTCIceServer[]
+  /** Срок жизни кредов TURN с момента выдачи (секунды). */
   ttlSeconds: number
 }
 

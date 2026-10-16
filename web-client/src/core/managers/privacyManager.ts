@@ -14,6 +14,7 @@ export type PrivacyKey =
   | 'profile_photo'
   | 'about'
   | 'calls'
+  | 'phone_p2p'
   | 'forwards'
   | 'chat_invite'
   | 'messages'
@@ -66,7 +67,7 @@ export interface PrivacyRule {
 /** Порядок ключей раздела настроек (порядок секции Privacy в tweb). */
 export const PRIVACY_KEYS: PrivacyKey[] = [
   'phone_number', 'added_by_phone', 'last_seen', 'profile_photo',
-  'about', 'calls', 'forwards', 'chat_invite',
+  'about', 'calls', 'phone_p2p', 'forwards', 'chat_invite',
   'voice_messages', 'messages', 'birthday', 'read_time',
 ]
 
@@ -79,6 +80,7 @@ const KEY_TAGS: Record<PrivacyKey, string> = {
   about: 'privacyKeyAbout',
   birthday: 'privacyKeyBirthday',
   calls: 'privacyKeyPhoneCall',
+  phone_p2p: 'privacyKeyPhoneP2P',
   forwards: 'privacyKeyForwards',
   chat_invite: 'privacyKeyChatInvite',
   voice_messages: 'privacyKeyVoiceMessages',
