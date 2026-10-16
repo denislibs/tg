@@ -326,8 +326,9 @@ func TestSignIn_WrongCode_HTTP(t *testing.T) {
 	rec := postJSON(t, h, "/auth/sign_in", map[string]string{
 		"phone": "+79991112233", "code": "99999",
 	})
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+	// Ф7-И2: имя оригинала (tweb AuthCodeCard.tsx:253-255), 400.
+	if e := wireErrorOf(rec); rec.Code != http.StatusBadRequest || e.Text != "PHONE_CODE_INVALID" {
+		t.Fatalf("неверный код = %d %s; want 400 PHONE_CODE_INVALID", rec.Code, rec.Body.String())
 	}
 }
 
@@ -343,9 +344,9 @@ func TestSignUp_HTTP(t *testing.T) {
 		t.Fatalf("sign_in нового номера = %s", rec.Body.String())
 	}
 
-	// Пустое имя — 400.
+	// Пустое имя — 400 FIRSTNAME_INVALID (имя TG, В-М12).
 	rec = postJSON(t, h, "/auth/sign_up", map[string]string{"signup_token": step.SignUpToken, "first_name": " "})
-	if rec.Code != http.StatusBadRequest {
+	if rec.Code != http.StatusBadRequest || wireErrorOf(rec).Text != "FIRSTNAME_INVALID" {
 		t.Fatalf("пустое имя: %d %s", rec.Code, rec.Body.String())
 	}
 	// Чужой токен — 401.
@@ -422,11 +423,12 @@ func TestPasswordRecovery_HTTP(t *testing.T) {
 		t.Fatalf("420 тело = %s; want FLOOD_WAIT_N", rec.Body.String())
 	}
 
-	// Неверный код — 401.
+	// Неверный код — 400 CODE_INVALID (tweb EmailRecoverCard.tsx:47 сравнивает
+	// строго его, не PHONE_CODE_INVALID).
 	rec = postJSON(t, h, "/auth/password/recover/confirm", map[string]string{
 		"password_token": step.PasswordToken, "code": "00000",
 	})
-	if rec.Code != http.StatusUnauthorized {
+	if rec.Code != http.StatusBadRequest || wireErrorOf(rec).Text != "CODE_INVALID" {
 		t.Fatalf("неверный код: %d %s", rec.Code, rec.Body.String())
 	}
 	// Верный (dev) код — сессия, пароль снят. Код восстановления шестизначный
@@ -632,7 +634,7 @@ func TestAccountReset_HTTP(t *testing.T) {
 
 	pwToken := passwordStep(t, h, "+79990040010")
 	rec, wait := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") || waitSeconds(wait.Text) <= 0 {
+	if rec.Code != http.StatusBadRequest || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") || waitSeconds(wait.Text) <= 0 {
 		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
 	}
 	// Аккаунт цел, сессия жива: удаление только запланировано.
@@ -641,7 +643,7 @@ func TestAccountReset_HTTP(t *testing.T) {
 	}
 	// Повтор внутри окна — тот же ответ, окно не продлевается и не обнуляется.
 	rec, again := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || !strings.HasPrefix(again.Text, "2FA_CONFIRM_WAIT_") ||
+	if rec.Code != http.StatusBadRequest || !strings.HasPrefix(again.Text, "2FA_CONFIRM_WAIT_") ||
 		waitSeconds(again.Text) > waitSeconds(wait.Text) {
 		t.Fatalf("повтор внутри окна: %d %s (было %s)", rec.Code, rec.Body.String(), wait.Text)
 	}
@@ -682,12 +684,12 @@ func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
 	enableCloudPassword(t, h, token, "")
 
 	pwToken := passwordStep(t, h, "+79990040012")
-	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusBadRequest || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
 		t.Fatalf("планирование сброса: %d %s", rec.Code, rec.Body.String())
 	}
 	// Повторный вход по SMS-коду сессии не даёт — сброс в силе.
 	smsToken := passwordStep(t, h, "+79990040012")
-	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusConflict || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
+	if rec, wait := postReset(t, h, pwToken); rec.Code != http.StatusBadRequest || !strings.HasPrefix(wait.Text, "2FA_CONFIRM_WAIT_") {
 		t.Fatalf("после входа по SMS-коду: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -700,7 +702,7 @@ func TestAccountReset_CancelledByOwner_HTTP(t *testing.T) {
 	}
 
 	rec, e := postReset(t, h, pwToken)
-	if rec.Code != http.StatusConflict || e.Text != "2fa_recent_confirm" {
+	if rec.Code != http.StatusBadRequest || e.Text != "2FA_RECENT_CONFIRM" {
 		t.Fatalf("после входа владельца: %d %s", rec.Code, rec.Body.String())
 	}
 	// Аккаунт на месте: вход по номеру ведёт к тому же пользователю.

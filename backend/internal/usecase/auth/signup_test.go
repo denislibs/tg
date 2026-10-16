@@ -70,17 +70,21 @@ func TestSignUp_Rejections(t *testing.T) {
 	_ = i.RequestCode(ctx, "+79990010002")
 	step, _ := i.SignIn(ctx, "+79990010002", "12345", "web", "browser")
 
-	if _, err := i.SignUp(ctx, step.SignUpToken, "   ", "", "web", "browser"); !errors.Is(err, ErrNameRequired) {
-		t.Fatalf("пустое имя = %v, want ErrNameRequired", err)
+	// Имена отказов — как у TG (FIRSTNAME_INVALID / LASTNAME_INVALID, В-М12):
+	// пустое и длинное имя — одна ошибка, длинная фамилия — другая.
+	if _, err := i.SignUp(ctx, step.SignUpToken, "   ", "", "web", "browser"); !errors.Is(err, ErrFirstNameInvalid) {
+		t.Fatalf("пустое имя = %v, want ErrFirstNameInvalid", err)
 	}
-	if _, err := i.SignUp(ctx, step.SignUpToken, strings.Repeat("я", maxFirstNameLen+1), "", "web", "browser"); !errors.Is(err, domain.ErrTooLong) {
-		t.Fatalf("длинное имя = %v, want ErrTooLong", err)
+	if _, err := i.SignUp(ctx, step.SignUpToken, strings.Repeat("я", maxFirstNameLen+1), "", "web", "browser"); !errors.Is(err, ErrFirstNameInvalid) {
+		t.Fatalf("длинное имя = %v, want ErrFirstNameInvalid", err)
 	}
-	if _, err := i.SignUp(ctx, step.SignUpToken, "Денис", strings.Repeat("я", maxLastNameLen+1), "web", "browser"); !errors.Is(err, domain.ErrTooLong) {
-		t.Fatalf("длинная фамилия = %v, want ErrTooLong", err)
+	if _, err := i.SignUp(ctx, step.SignUpToken, "Денис", strings.Repeat("я", maxLastNameLen+1), "web", "browser"); !errors.Is(err, ErrLastNameInvalid) {
+		t.Fatalf("длинная фамилия = %v, want ErrLastNameInvalid", err)
 	}
-	// Отказы токен не сжигают — опечатка в имени не гонит на новый OTP.
-	if _, err := i.SignUp(ctx, step.SignUpToken, "Денис", "", "web", "browser"); err != nil {
+
+	// Отказы токен не сжигают — опечатка в имени не гонит на новый OTP. Граница
+	// включительно: ровно maxFirstNameLen/maxLastNameLen — можно.
+	if _, err := i.SignUp(ctx, step.SignUpToken, strings.Repeat("я", maxFirstNameLen), strings.Repeat("я", maxLastNameLen), "web", "browser"); err != nil {
 		t.Fatalf("SignUp после отказов: %v", err)
 	}
 }

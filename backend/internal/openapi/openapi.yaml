@@ -269,7 +269,7 @@ paths:
                   hint: { type: string }
                   signup_required: { type: boolean }
                   signup_token: { type: string }
-        "401": { description: invalid code, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: PHONE_CODE_INVALID / PHONE_CODE_EMPTY, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/sign_up:
     post:
@@ -299,9 +299,8 @@ paths:
                 properties:
                   token: { type: string }
                   user: { $ref: "#/components/schemas/User" }
-        "400": { description: first_name_required / name_too_long, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: FIRSTNAME_INVALID / LASTNAME_INVALID / PHONE_NUMBER_OCCUPIED, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401": { description: signup_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "409": { description: phone_number_occupied, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/check_password:
     post:
@@ -330,7 +329,8 @@ paths:
                 properties:
                   token: { type: string }
                   user: { $ref: "#/components/schemas/User" }
-        "401": { description: invalid password / password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: PASSWORD_HASH_INVALID, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { description: password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/password/recover:
     post:
@@ -355,7 +355,7 @@ paths:
                 properties:
                   email_pattern: { type: string, example: "de•••@gmail.com" }
         "401": { description: password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "404": { description: password_recovery_na (no recovery email), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: PASSWORD_RECOVERY_NA (no recovery email), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "420": { description: "FLOOD_WAIT_<N> — пауза повторной отправки кода (N секунд) или лимитер по IP", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/password/recover/confirm:
@@ -385,7 +385,7 @@ paths:
                 properties:
                   token: { type: string }
                   user: { $ref: "#/components/schemas/User" }
-        "401": { description: invalid code / recovery_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: CODE_INVALID / EMAIL_HASH_EXPIRED (code expired or attempts exhausted), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/sign_import:
     post:
@@ -825,7 +825,7 @@ paths:
               properties: { pinned: { type: boolean } }
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
-        "400": { description: pin limit reached, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: PINNED_DIALOGS_TOO_MUCH, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /chats/{chatID}/archive:
     post:

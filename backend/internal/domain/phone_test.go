@@ -23,3 +23,18 @@ func TestCodeMatches(t *testing.T) {
 		t.Error("expected mismatch to fail")
 	}
 }
+
+func TestPhoneDigits(t *testing.T) {
+	for in, want := range map[string]string{
+		"+7 (999) 000-00-00": "79990000000",
+		"79990000000":        "79990000000",
+		"+":                  "",
+		" + ":                "",
+		"abc":                "",
+		"":                   "",
+	} {
+		if got := PhoneDigits(in); got != want {
+			t.Errorf("PhoneDigits(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

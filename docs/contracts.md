@@ -66,7 +66,8 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 (`DEV_OTP_CODE`, default `12345`).
 - Request: `{ "phone": "+79990000000" }`
 - 200: `{ "_": "boolTrue" }`
-- 400: `{ "_": "error", "code": 400, "text": "phone is required" }`
+- 400: `{ "_": "error", "code": 400, "text": "PHONE_NUMBER_INVALID" }` — пустой номер
+  или номер без цифр; проверяется до лимитера, ключ лимитера по номеру — только цифры
 
 ### POST /auth/sign_in  · public
 Проверяет код и отвечает ИСХОДОМ шага — конструктором объединения
@@ -78,7 +79,7 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
   приносит первый же `GET /me`
 - 200 нужна регистрация: `{ "_": "auth.authorizationSignUpRequired", "signup_token": "<opaque>" }`
 - 200 включён облачный пароль: `{ "_": "auth.passwordNeeded", "password_token": "<opaque>", "hint": "…" }`
-- 401: `{ "_": "error", "code": 401, "text": "invalid code" }`
+- 400: `{ "_": "error", "code": 400, "text": "PHONE_CODE_INVALID" }`; пустой код — 400 `PHONE_CODE_EMPTY`
 
 `token` и `signup_token` — наши параметры, объявленные клиентскими у
 конструкторов схемы; `auth.passwordNeeded` — наш конструктор целиком (у
@@ -101,7 +102,8 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
   `sign_in`: при включённом облачном пароле `auth.passwordNeeded` (сессии нет,
   дальше `POST /auth/check_password`), иначе `auth.authorization`. Ключ доступа
   облачный пароль не отменяет (tweb `passkeyLoginButton.tsx:69-71`).
-- 400 `session expired`; 401 `passkey login failed`; 420 `FLOOD_WAIT_<N>`.
+- 400 `session expired`; 400 `PASSKEY_CREDENTIAL_NOT_FOUND` (ключа нет в базе);
+  401 `passkey login failed` (прочие отказы проверки); 420 `FLOOD_WAIT_<N>`.
 
 ### POST /auth/export_login_token  · public
 Экспорт кода QR-входа (`auth.exportLoginToken`). Устройство, ещё не вошедшее,
@@ -591,7 +593,7 @@ count.
 ### POST /chats/{chatID}/pin  · auth
 Pin/unpin the dialog at the top of the chat list (per-user). At most **5**
 pinned dialogs in the main list (archive not counted) — exceeding returns 400
-`pin limit reached`. Pinning order: newest pin first. Fans out `dialog_pin`
+`PINNED_DIALOGS_TOO_MUCH`. Pinning order: newest pin first. Fans out `dialog_pin`
 `{chat_id, pinned}` to the owner's devices over WS.
 - Request: `{ "pinned": true }`
 - 200: `{ "_": "boolTrue" }`

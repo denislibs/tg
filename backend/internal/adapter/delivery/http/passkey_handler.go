@@ -252,9 +252,13 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var matched domain.Passkey
+	// credErr — отказ поиска credential: библиотека заворачивает его в свою
+	// ошибку, поэтому «ключа нет в базе» запоминается здесь.
+	var credErr error
 	cred, err := h.wa.FinishDiscoverableLogin(func(rawID, userHandle []byte) (webauthn.User, error) {
 		pk, err := h.uc.ByCredID(r.Context(), base64.RawURLEncoding.EncodeToString(rawID))
 		if err != nil {
+			credErr = err
 			return nil, err
 		}
 		matched = pk
@@ -264,6 +268,11 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		return waUser{id: pk.UserID, name: pk.Name, credentials: []webauthn.Credential{c}}, nil
 	}, *session, r)
+	if errors.Is(credErr, domain.ErrNotFound) {
+		// tweb passkeyLoginButton.tsx:72-73 — тост Login.Passkey.Error.NotFound.
+		writeError(w, http.StatusBadRequest, "PASSKEY_CREDENTIAL_NOT_FOUND")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "passkey login failed")
 		return

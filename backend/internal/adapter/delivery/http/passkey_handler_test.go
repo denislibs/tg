@@ -1,11 +1,19 @@
 package http
 
 import (
+	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-webauthn/webauthn/webauthn"
+
+	"github.com/messenger-denis/backend/internal/domain"
+	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
 )
 
 // BeginLogin отвечает конструктором `auth.passkeyLoginOptions` (tweb
@@ -78,5 +86,77 @@ func TestPasskeyBeginLogin_RateLimitedByIP(t *testing.T) {
 	h.BeginLogin(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("другой IP = %d, ожидался 200", rec.Code)
+	}
+}
+
+// fakePasskeyRepo — хранилище ключей одного credential (или пустое).
+type fakePasskeyRepo struct{ byCred map[string]domain.Passkey }
+
+func (f fakePasskeyRepo) Save(_ context.Context, pk domain.Passkey) (domain.Passkey, error) {
+	return pk, nil
+}
+func (f fakePasskeyRepo) List(context.Context, int64) ([]domain.Passkey, error) { return nil, nil }
+func (f fakePasskeyRepo) Delete(context.Context, int64, int64) (bool, error)    { return false, nil }
+func (f fakePasskeyRepo) ByCredID(_ context.Context, credID string) (domain.Passkey, error) {
+	if pk, ok := f.byCred[credID]; ok {
+		return pk, nil
+	}
+	return domain.Passkey{}, domain.ErrNotFound
+}
+func (f fakePasskeyRepo) UpdateCredential(context.Context, int64, []byte) error { return nil }
+
+// finishWithAssertion — begin (настоящая церемония) + finish с синтаксически
+// верным assertion, у которого подпись не сходится: разбор проходит, колбэк
+// поиска credential зовётся, проверка подписи — нет.
+func finishWithAssertion(t *testing.T, h *PasskeyHandler, rawID []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	begin := httptest.NewRecorder()
+	h.BeginLogin(begin, httptest.NewRequest(http.MethodPost, "/auth/passkey/begin", nil))
+	var opts struct {
+		Session string `json:"session"`
+	}
+	if err := json.Unmarshal(begin.Body.Bytes(), &opts); err != nil || opts.Session == "" {
+		t.Fatalf("begin: %d %s", begin.Code, begin.Body)
+	}
+	b64 := base64.RawURLEncoding.EncodeToString
+	clientData, _ := json.Marshal(map[string]string{"type": "webauthn.get", "challenge": "bm90LXRoZS1jaGFsbGVuZ2U", "origin": "http://localhost"})
+	authData := make([]byte, 37)
+	authData[32] = 0x01 // UP
+	body, _ := json.Marshal(map[string]any{
+		"id": b64(rawID), "rawId": b64(rawID), "type": "public-key",
+		"response": map[string]string{
+			"clientDataJSON":    b64(clientData),
+			"authenticatorData": b64(authData),
+			"signature":         b64([]byte("not-a-signature")),
+			"userHandle":        b64([]byte("1")),
+		},
+	})
+	rec := httptest.NewRecorder()
+	h.FinishLogin(rec, httptest.NewRequest(http.MethodPost, "/auth/passkey/finish?session="+opts.Session, bytes.NewReader(body)))
+	return rec
+}
+
+// Ф7-И2 (правка 10): ключ, которого нет в базе, — 400 PASSKEY_CREDENTIAL_NOT_FOUND
+// (tweb passkeyLoginButton.tsx:72-73 — тост Login.Passkey.Error.NotFound);
+// знакомый ключ с неверной подписью — прежний 401 `passkey login failed`
+// (прочие отказы tweb показывают общим тостом, :74-76).
+func TestPasskeyFinishLogin_CredentialNotFound(t *testing.T) {
+	known := []byte("known-credential")
+	cred, _ := json.Marshal(webauthn.Credential{ID: known})
+	repo := fakePasskeyRepo{byCred: map[string]domain.Passkey{
+		base64.RawURLEncoding.EncodeToString(known): {ID: 7, UserID: 1, Credential: cred},
+	}}
+	h, err := NewPasskeyHandler("localhost", []string{"http://localhost"}, usecasepasskeys.New(repo), nil)
+	if err != nil {
+		t.Fatalf("NewPasskeyHandler: %v", err)
+	}
+
+	rec := finishWithAssertion(t, h, []byte("unknown-credential"))
+	if e := wireErrorOf(rec); rec.Code != http.StatusBadRequest || e.Text != "PASSKEY_CREDENTIAL_NOT_FOUND" {
+		t.Fatalf("незнакомый ключ = %d %s; want 400 PASSKEY_CREDENTIAL_NOT_FOUND", rec.Code, rec.Body)
+	}
+	rec = finishWithAssertion(t, h, known)
+	if e := wireErrorOf(rec); rec.Code != http.StatusUnauthorized || e.Text != "passkey login failed" {
+		t.Fatalf("знакомый ключ, неверная подпись = %d %s; want 401 passkey login failed", rec.Code, rec.Body)
 	}
 }

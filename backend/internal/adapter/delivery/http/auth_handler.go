@@ -120,20 +120,33 @@ type requestCodeBody struct {
 
 func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 	var body requestCodeBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Phone == "" {
-		writeError(w, http.StatusBadRequest, "phone is required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	// Троттлинг OTP-запроса: по IP (флуд) и по номеру (SMS-стоимость/спам жертве).
+	// Форма номера — ДО лимитера: мусор (пусто, нет цифр) сразу получает
+	// PHONE_NUMBER_INVALID (tweb SignInCard.tsx:136-141) и вёдер не тратит.
+	digits := domain.PhoneDigits(body.Phone)
+	if digits == "" {
+		writeError(w, http.StatusBadRequest, "PHONE_NUMBER_INVALID")
+		return
+	}
+	// Троттлинг OTP-запроса: по IP (флуд) и по номеру (SMS-стоимость/спам
+	// жертве). Ключ номера — только цифры: «+7999…» и «7999…» — одно ведро.
 	if ok, wait := h.limiter.allowWait("otp-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
-	if ok, wait := h.limiter.allowWait("otp-phone:"+body.Phone, 0.1, 3); !ok {
+	if ok, wait := h.limiter.allowWait("otp-phone:"+digits, 0.1, 3); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
-	if err := h.svc.RequestCode(r.Context(), body.Phone); err != nil {
+	err := h.svc.RequestCode(r.Context(), body.Phone)
+	if errors.Is(err, usecaseauth.ErrPhoneNumberInvalid) {
+		writeError(w, http.StatusBadRequest, "PHONE_NUMBER_INVALID")
+		return
+	}
+	if err != nil {
 		writeDomainError(w, err, "could not request code")
 		return
 	}
@@ -158,10 +171,18 @@ func (h *AuthHandler) SignIn(w http.ResponseWriter, r *http.Request) {
 		writeFloodWait(w, wait)
 		return
 	}
+	// Пустой код — отдельное имя отказа (tweb AuthCodeCard.tsx:253-255 ведёт его
+	// той же веткой, что PHONE_CODE_INVALID); usecase его не видит. Протухший
+	// код от неверного не отличить без phone_code_hash — PHONE_CODE_EXPIRED не
+	// производится.
+	if strings.TrimSpace(body.Code) == "" {
+		writeError(w, http.StatusBadRequest, "PHONE_CODE_EMPTY")
+		return
+	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
 	res, err := h.svc.SignIn(ctx, body.Phone, body.Code, body.Device, body.Platform)
 	if errors.Is(err, domain.ErrInvalidCode) {
-		writeError(w, http.StatusUnauthorized, "invalid code")
+		writeError(w, http.StatusBadRequest, "PHONE_CODE_INVALID")
 		return
 	}
 	if err != nil {
@@ -226,14 +247,15 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusUnauthorized, "signup_token_expired")
 		return
-	case errors.Is(err, usecaseauth.ErrNameRequired):
-		writeError(w, http.StatusBadRequest, "first_name_required")
+	// Имена TG (В-М12): tweb SignUpCard.tsx:121-127 пишет err.type в кнопку.
+	case errors.Is(err, usecaseauth.ErrFirstNameInvalid):
+		writeError(w, http.StatusBadRequest, "FIRSTNAME_INVALID")
 		return
-	case errors.Is(err, domain.ErrTooLong):
-		writeError(w, http.StatusBadRequest, "name_too_long")
+	case errors.Is(err, usecaseauth.ErrLastNameInvalid):
+		writeError(w, http.StatusBadRequest, "LASTNAME_INVALID")
 		return
 	case errors.Is(err, domain.ErrConflict):
-		writeError(w, http.StatusConflict, "phone_number_occupied")
+		writeError(w, http.StatusBadRequest, "PHONE_NUMBER_OCCUPIED")
 		return
 	case err != nil:
 		writeDomainError(w, err, "sign up failed")
@@ -244,6 +266,14 @@ func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 
 type passwordTokenBody struct {
 	PasswordToken string `json:"password_token"`
+}
+
+// resetAccountBody — тело сброса аккаунта. `reason` из TL
+// `account.deleteAccount{reason}` (tweb шлёт 'Forgot password',
+// PasswordCard.tsx:89): принимается, не хранится.
+type resetAccountBody struct {
+	PasswordToken string `json:"password_token"`
+	Reason        string `json:"reason"`
 }
 
 // RequestPasswordRecovery — «забыли пароль?»: отправляет код на привязанную
@@ -272,7 +302,8 @@ func (h *AuthHandler) RequestPasswordRecovery(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
 		return
 	case errors.Is(err, usecaseauth.ErrRecoveryUnavailable):
-		writeError(w, http.StatusNotFound, "password_recovery_na")
+		// Почты нет — tweb PasswordCard.tsx:69 предлагает сброс аккаунта.
+		writeError(w, http.StatusBadRequest, "PASSWORD_RECOVERY_NA")
 		return
 	case errors.Is(err, usecaseauth.ErrLoginStepsUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "password recovery unavailable")
@@ -309,11 +340,16 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
 	res, err := h.svc.ConfirmPasswordRecovery(ctx, body.PasswordToken, body.Code, body.Device, body.Platform)
 	switch {
+	// Кода нет: протух ЛИБО исчерпаны попытки (сервер не различает их
+	// намеренно) — EMAIL_HASH_EXPIRED, как tweb разбирает этот метод
+	// (emailConfirmation.tsx:66-82; экран входа EmailRecoverCard.tsx:45-51
+	// показывает Error.AnError). Неверный код — CODE_INVALID
+	// (EmailRecoverCard.tsx:47), не PHONE_CODE_INVALID.
 	case errors.Is(err, domain.ErrNotFound):
-		writeError(w, http.StatusUnauthorized, "recovery_expired")
+		writeError(w, http.StatusBadRequest, "EMAIL_HASH_EXPIRED")
 		return
 	case errors.Is(err, domain.ErrInvalidCode):
-		writeError(w, http.StatusUnauthorized, "invalid code")
+		writeError(w, http.StatusBadRequest, "CODE_INVALID")
 		return
 	case errors.Is(err, usecaseauth.ErrLoginStepsUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "password recovery unavailable")
@@ -330,11 +366,12 @@ func (h *AuthHandler) ConfirmPasswordRecovery(w http.ResponseWriter, r *http.Req
 // ручка: авторизует сам одноразовый password_token.
 //
 // Удаление отложенное, поэтому 200 отдаётся только на вызове, который его
-// исполнил. Первый вызов планирует и отвечает 409 2fa_confirm_wait с остатком
-// секунд, а если владелец успел войти — 409 2fa_recent_confirm (Telegram
-// 2FA_CONFIRM_WAIT_<N> / 2FA_RECENT_CONFIRM).
+// исполнил. Первый вызов планирует и отвечает 400 2FA_CONFIRM_WAIT_<N> с
+// остатком секунд, а если владелец успел войти — 400 2FA_RECENT_CONFIRM (tweb
+// PasswordCard.tsx:88-100 смотрит только type). Не 420: FLOOD_WAIT-подобный
+// статус включил бы автоповтор restClient.
 func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
-	var body passwordTokenBody
+	var body resetAccountBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
@@ -351,11 +388,10 @@ func (h *AuthHandler) ResetAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
 		return
 	case errors.Is(err, usecaseauth.ErrResetPending):
-		// Форма оригинала названа прямо в докблоке ручки: `2FA_CONFIRM_WAIT_<N>`.
-		writeError(w, http.StatusConflict, fmt.Sprintf("2FA_CONFIRM_WAIT_%d", retryAfter))
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("2FA_CONFIRM_WAIT_%d", retryAfter))
 		return
 	case errors.Is(err, usecaseauth.ErrResetRecentConfirm):
-		writeError(w, http.StatusConflict, "2fa_recent_confirm")
+		writeError(w, http.StatusBadRequest, "2FA_RECENT_CONFIRM")
 		return
 	case errors.Is(err, usecaseauth.ErrRecoveryAvailable):
 		writeError(w, http.StatusConflict, "recovery_available")
@@ -498,7 +534,7 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, domain.ErrBadPassword) {
-		writeError(w, http.StatusUnauthorized, "invalid password")
+		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
 	}
 	if err != nil {
