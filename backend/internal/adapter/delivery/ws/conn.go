@@ -561,6 +561,11 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		if _, err := c.svc.JoinGroupCall(ctx, chatID, c.userID); err == nil {
 			c.groupCallChat = chatID
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			// Клиент к этому моменту уже взял микрофон и открыл экран звонка: любой
+			// отказ (нет права, сбой хранилища) он должен узнать, иначе останется
+			// в звонке без серверного членства. Не член чата (ErrNotFound) — молчим.
+			c.reply(groupCallRejectedFrame(d.PeerID, c.userID, errors.Is(err, domain.ErrForbidden)))
 		}
 	case "group_call_leave":
 		var d peerData
