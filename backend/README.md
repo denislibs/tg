@@ -123,7 +123,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `POST /auth/check_password` | второй шаг при облачном пароле |
 | `POST /auth/password/recover` | код сброса пароля на привязанную почту |
 | `POST /auth/password/recover/confirm` | подтвердить код, снять пароль, выдать сессию |
-| `POST /auth/account/reset` | сброс аккаунта, когда почты для восстановления нет: первый вызов планирует удаление (`409 2fa_confirm_wait` + `retry_after`), вызов после истечения окна — исполняет (`200 {"ok":true}`); вход владельца отменяет (`409 2fa_recent_confirm`) |
+| `POST /auth/account/reset` | сброс аккаунта, когда почты для восстановления нет: тело `{password_token, reason?}`; первый вызов планирует удаление (`400 2FA_CONFIRM_WAIT_<N>`), вызов после истечения окна — исполняет (`200 boolTrue`); вход владельца отменяет (`400 2FA_RECENT_CONFIRM`) |
 | `POST /auth/sign_import` | обменять веб-токен (`#?tgWebAuthToken=`) на сессию |
 | `POST /auth/web_token/cancel` | сжечь веб-токен, который клиент не стал импортировать |
 | `POST /auth/export_login_token` | QR-логин: выпуск/опрос кода и выдача сессии по ключу входа (`X-Login-Key`) |

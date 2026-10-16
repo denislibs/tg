@@ -23,6 +23,8 @@ vi.mock('../../popups/popupPeer', () => ({
 }))
 import { confirmationPopup } from '../../popups/popupPeer'
 const confirmationPopupMock = confirmationPopup as unknown as ReturnType<typeof vi.fn>
+vi.mock('@components/toast', () => ({ toastNew: vi.fn() }))
+import { toastNew } from '@components/toast'
 
 let dispose: (() => void) | undefined
 let host: HTMLDivElement | undefined
@@ -172,6 +174,103 @@ describe('PasswordCard.solid: сброс аккаунта без привяза�
     await new Promise((r) => setTimeout(r, 0))
     expect(confirmationPopupMock).toHaveBeenCalledTimes(1)
     expect(resetAccount).not.toHaveBeenCalled()
+  })
+})
+
+// Ф7-И2: порт tweb PasswordCard.tsx:88-100 — отказ отложенного сброса по
+// имени: 2FA_RECENT_CONFIRM и 2FA_CONFIRM_WAIT_<N> — плашка «Sorry».
+describe('PasswordCard.solid: отказ сброса аккаунта (2FA_RECENT_CONFIRM / 2FA_CONFIRM_WAIT_N)', () => {
+  const resetFlow = async (result: unknown) => {
+    confirmationPopupMock.mockResolvedValue(undefined)
+    const resetAccount = vi.fn().mockResolvedValue(result)
+    const { navigate, forgotLink } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+      resetAccount,
+    })
+    forgotLink().click()
+    await vi.waitFor(() => expect(confirmationPopupMock).toHaveBeenCalledTimes(3))
+    expect(navigate).not.toHaveBeenCalled()
+    return confirmationPopupMock.mock.calls[2][0] as Record<string, unknown>
+  }
+
+  it('recent_confirm — Login.ResetAccountFail.TextCancelled', async () => {
+    expect(await resetFlow({ error: 'recent_confirm' })).toMatchObject({
+      titleLangKey: 'Login.ResetAccountFail.Title',
+      descriptionLangKey: 'Login.ResetAccountFail.TextCancelled',
+      button: { langKey: 'OK' },
+    })
+  })
+
+  // tweb PasswordCard.tsx:105-108: прочий отказ сброса (и сеть) — console.error
+  // и тост Error.AnError, а не плашка.
+  it('сетевой сбой сброса — тост Error.AnError, след в консоли, карточка не заперта', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(toastNew).mockClear()
+    try {
+      confirmationPopupMock.mockResolvedValue(undefined)
+      const { forgotLink, submitBtn } = mount({
+        requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+        resetAccount: vi.fn().mockRejectedValue(new Error('offline')),
+      })
+      forgotLink().click()
+      await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+      expect(confirmationPopupMock).toHaveBeenCalledTimes(2)
+      expect(consoleError).toHaveBeenCalledWith(expect.any(String), expect.any(Error))
+      await vi.waitFor(() => expect(submitBtn().disabled).toBe(false))
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  // tweb PasswordCard.tsx:114-117: сбой запроса восстановления — тост, флаг
+  // загрузки снимается в `.finally`.
+  it('сетевой сбой «Forgot Password?» — тост Error.AnError, карточка не заперта', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(toastNew).mockClear()
+    try {
+      const { forgotLink, submitBtn } = mount({
+        requestPasswordRecovery: vi.fn().mockRejectedValue(new Error('offline')),
+      })
+      forgotLink().click()
+      await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+      expect(consoleError).toHaveBeenCalledWith(expect.any(String), expect.any(Error))
+      await vi.waitFor(() => expect(submitBtn().disabled).toBe(false))
+      expect(submitBtn().textContent).toBe('Next')
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it.each([
+    ['recovery_available', 'Login.ResetPassword.HasEmail'],
+    ['password_token_expired', 'Login.SessionExpired'],
+  ])('%s — плашка «Sorry» (%s), тоста нет', async (error, key) => {
+    vi.mocked(toastNew).mockClear()
+    expect(await resetFlow({ error })).toMatchObject({ titleLangKey: 'Login.ResetAccountFail.Title', descriptionLangKey: key })
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
+  })
+
+  it('failed — тост Error.AnError, третьей плашки нет', async () => {
+    vi.mocked(toastNew).mockClear()
+    confirmationPopupMock.mockResolvedValue(undefined)
+    const { forgotLink } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+      resetAccount: vi.fn().mockResolvedValue({ error: 'failed' }),
+    })
+    forgotLink().click()
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+    expect(confirmationPopupMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('confirm_wait — Login.ResetAccountFail.TextWait с остатком', async () => {
+    const opts = await resetFlow({ error: 'confirm_wait', wait: 3600 })
+    expect(opts).toMatchObject({
+      titleLangKey: 'Login.ResetAccountFail.Title',
+      descriptionLangKey: 'Login.ResetAccountFail.TextWait',
+      button: { langKey: 'OK' },
+    })
+    const args = opts.descriptionLangArgs as HTMLElement[]
+    expect(args[0].textContent).toBe('1 hour')
   })
 })
 

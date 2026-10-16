@@ -96,7 +96,7 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, domain.ErrBadPassword) {
-		writeError(w, http.StatusForbidden, "invalid password")
+		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
 	}
 	if err != nil {
@@ -126,7 +126,7 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, domain.ErrBadPassword) {
-		writeError(w, http.StatusForbidden, "invalid password")
+		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
 	}
 	if err != nil {
@@ -155,7 +155,7 @@ func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, domain.ErrBadPassword) {
-		writeError(w, http.StatusForbidden, "invalid password")
+		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
 	}
 	if err != nil {

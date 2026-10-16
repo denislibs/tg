@@ -17,6 +17,11 @@ import (
 // configured (e.g. Redis is down).
 var ErrQRUnavailable = errors.New("qr login unavailable")
 
+// ErrPhoneNumberInvalid — в номере после нормализации не осталось ни одной
+// цифры (Telegram PHONE_NUMBER_INVALID, tweb SignInCard.tsx:136-141). Своего
+// порога длины нет: форму номера сверх «есть цифры» сервер не проверяет.
+var ErrPhoneNumberInvalid = errors.New("phone number invalid")
+
 const codeTTL = 5 * time.Minute
 
 type Interactor struct {
@@ -227,8 +232,8 @@ func (i *Interactor) SetAccountResetWindow(d time.Duration) { i.resetWait = d }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
-	if phone == "" {
-		return errors.New("empty phone")
+	if domain.PhoneDigits(phone) == "" {
+		return ErrPhoneNumberInvalid
 	}
 	if err := i.codes.SaveCode(ctx, phone, i.devCode, time.Now().Add(codeTTL)); err != nil {
 		return err

@@ -30,8 +30,9 @@ export interface ProfileDeps {
   getMe?: () => PeerProfile | null
 }
 
-// SetUsernameResult is a discriminated outcome so the 409/400 cases survive the
-// SharedWorker RPC boundary (where HttpError identity would be lost).
+// SetUsernameResult is a discriminated outcome for the USERNAME_OCCUPIED /
+// USERNAME_INVALID cases (the HttpError class itself does not cross the
+// SharedWorker RPC boundary; only its type/status fields do).
 export type SetUsernameResult =
   | { user: PeerProfile }
   | { taken: true }
@@ -89,8 +90,9 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
         onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
         return { user: mapped }
       } catch (e) {
-        if (e instanceof HttpError && e.status === 409) return { taken: true }
-        if (e instanceof HttpError && e.status === 400) return { invalid: true }
+        // Имена отказов TG (tweb appBotsManager.ts:202-203), оба — 400.
+        if (e instanceof HttpError && e.type === 'USERNAME_OCCUPIED') return { taken: true }
+        if (e instanceof HttpError && e.type === 'USERNAME_INVALID') return { invalid: true }
         throw e
       }
     },

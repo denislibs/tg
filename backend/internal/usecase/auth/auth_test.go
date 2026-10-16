@@ -656,6 +656,19 @@ func TestRequestAndSignIn(t *testing.T) {
 	}
 }
 
+// Ф7-И2 (PHONE_NUMBER_INVALID, tweb SignInCard.tsx:136-141): номер, в котором
+// после нормализации не осталось цифр, — сигнальная ошибка, а не безымянный
+// errors.New (раньше ручка отдавала на неё 500).
+func TestRequestCode_PhoneNumberInvalid(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	for _, phone := range []string{"", "abc", "+", " + ", "+-()"} {
+		if err := i.RequestCode(ctx, phone); !errors.Is(err, ErrPhoneNumberInvalid) {
+			t.Fatalf("RequestCode(%q) = %v, want ErrPhoneNumberInvalid", phone, err)
+		}
+	}
+}
+
 func TestWrongCode(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()

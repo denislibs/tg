@@ -162,12 +162,13 @@ func (h *ProfileHandler) SetUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := h.uc.SetUsername(r.Context(), u.ID, body.Username)
+	// Имена TG (tweb appBotsManager.ts:202-203, usernameInputField.ts:86-95).
 	if errors.Is(err, domain.ErrConflict) {
-		writeError(w, http.StatusConflict, "username_taken")
+		writeError(w, http.StatusBadRequest, "USERNAME_OCCUPIED")
 		return
 	}
 	if errors.Is(err, domain.ErrUsernameFormat) {
-		writeError(w, http.StatusBadRequest, "username_format")
+		writeError(w, http.StatusBadRequest, "USERNAME_INVALID")
 		return
 	}
 	if err != nil {

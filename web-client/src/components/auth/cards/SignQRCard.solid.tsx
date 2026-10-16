@@ -30,10 +30,10 @@
 //
 // ── Какие ошибки цикл переживает ────────────────────────────────────────────
 // `AUTH_TOKEN_EXPIRED` (:179-181) — `console.warn` и дальше без паузы.
-// Сбой сети/5xx/429/420 — у tweb такое переотправляет сам `invokeApi`, поэтому
-// в ветку `default:` они не попадают; у нас им соответствует `status: 'retry'`
-// (класс ошибки определяет `authManager`: `HttpError` не переживает границу
-// worker-RPC) — пауза шага и повтор.
+// Сбой сети/5xx — у tweb такое переотправляет сам `invokeApi`, поэтому в ветку
+// `default:` они не попадают; у нас сети, 5xx и 408 соответствует `status:
+// 'retry'` (классификацию решает `authManager` в воркере) — пауза шага и
+// повтор. `FLOOD_WAIT` дольше минуты — отказ, как tweb `apiManager.ts:788-790`.
 //
 // ── Отказ виден, а не проглочен ─────────────────────────────────────────────
 // Ветка `default:` разбора ошибки у tweb (:181-184) — `console.error` плюс
@@ -183,6 +183,13 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
         return
       }
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      // Отказ сервера — строкой из результата (PASSKEY_CREDENTIAL_NOT_FOUND и
+      // прочие): тост, в мессенджер не пускаем, цикл QR продолжается.
+      if ('error' in res) {
+        reportPasskeyLoginError('SignQRCard', res.error)
+        setPasskeyBusy(false)
+        return
+      }
       if (!res.passwordNeeded && !res.user) throw new Error('unexpected passkey login outcome')
       stopped = true // вход (или шаг пароля) состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
       // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).

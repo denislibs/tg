@@ -664,8 +664,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // и плюральный `InviteLinkCount` (`plural` 65 → 66).
 // М2-3 (Б-9, отказ входа в видеочат): у ru +1 ключ tweb lang.ts:4594 —
 // `VoiceChat.Chat.Ended` («Видеочат завершён.»), тост appImManager.ts:2372.
+// Ф7-И2 (коды ошибок входа): у ru −4 / +3 = 1833. Ушли `Login.Register.NameRequired`,
+// `Login.Register.NameTooLong`, `Login.Error.FloodWait` (SignUpCard теперь, как tweb
+// SignUpCard.tsx:83-91 и :121-127, красит поле и пишет имя отказа в кнопку) и
+// `Login.Code.Expired` (EmailRecoverCard — Error.AnError, tweb :45-51). Пришли из
+// tweb langSign.ts:44-45, :54 — `Login.ResetAccountFail.TextCancelled`,
+// `Login.ResetAccountFail.TextWait`, `Login.Passkey.Error.NotFound`.
 const COMPOSITION = {
-  ru: { keys: 1834, plural: 67 },
+  ru: { keys: 1833, plural: 67 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -880,8 +886,9 @@ const COMPOSITION = {
 // М3-2 — у ru +2 ключа tweb lang.ts:1594, :4456: секция «Peer-to-Peer» вкладки «Звонки»
 // (`PrivacyP2PHeader`, `PrivacySettingsController.P2p.Desc`).
 // М2-3 — у ru +1 ключ `VoiceChat.Chat.Ended` тоста отказа входа в видеочат (разбор — там же).
+// Ф7-И2 — у ru −4 ключа отказов входа и +3 из tweb langSign.ts (разбор — у `COMPOSITION`).
 const FINGERPRINT = {
-  ru: '9daff83c',
+  ru: '431f90dc',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

@@ -97,7 +97,7 @@ func TestPasswordLimiter_PerIPBucket(t *testing.T) {
 	// С одного IP шестой запрос — отказ, даже от другой сессии и другого
 	// пользователя: ведро IP общее.
 	for n := 1; n <= 5; n++ {
-		if rec := e.verify(t, int64(n), "198.51.100.7", "неверный"); rec.Code != http.StatusForbidden {
+		if rec := e.verify(t, int64(n), "198.51.100.7", "неверный"); rec.Code != http.StatusBadRequest {
 			t.Fatalf("попытка %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
@@ -152,7 +152,7 @@ func TestPasswordFlood_HTTPLockAfterFiveFailures(t *testing.T) {
 	e := newPwEnv(t, "+79990170021")
 	mr := withPasswordAttempts(t, e.h.uc)
 	for n := 1; n <= 5; n++ {
-		if rec := e.verify(t, 1, "203.0.113."+itoa(int64(n)), "неверный"); rec.Code != http.StatusForbidden {
+		if rec := e.verify(t, 1, "203.0.113."+itoa(int64(n)), "неверный"); rec.Code != http.StatusBadRequest {
 			t.Fatalf("неудача %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
@@ -206,7 +206,12 @@ func TestPasswordFlood_HTTPCheckPasswordPerUser(t *testing.T) {
 	tok := passwordStep(t, h, phone)
 	for n := 1; n <= 5; n++ {
 		rec := check(tok, "неверный", "198.51.100."+itoa(int64(n)))
-		if rec.Code != http.StatusUnauthorized {
+		// 1–4 — неверный пароль, 5-я сжигает токен (5 попыток на токен).
+		want := http.StatusBadRequest
+		if n == 5 {
+			want = http.StatusUnauthorized
+		}
+		if rec.Code != want {
 			t.Fatalf("неудача %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
