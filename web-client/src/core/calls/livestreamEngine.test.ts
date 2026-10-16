@@ -21,6 +21,11 @@ describe('livestreamEngine: конец эфира', () => {
     store = await import('../../stores/livestreamStore')
   })
 
+  it('зритель входит кадром с viewer: предел участников mesh на него не действует', () => {
+    engine.watchLivestream(PEER)
+    expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER, viewer: true } })
+  })
+
   it('зритель при stopped шлёт group_call_leave и снимает просмотр', () => {
     engine.watchLivestream(PEER)
     sendCallFrame.mockClear()

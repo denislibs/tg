@@ -13,7 +13,7 @@ import { useGroupCallStore } from '../../stores/groupCallStore'
 import { useLivestreamStore } from '../../stores/livestreamStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { startClient } from '../../client/bootstrap'
-import { hasTurnServer, iceServers, keepIceFresh } from './callEngine'
+import { applyIceServers, hasTurnServer, iceServers, keepIceFresh } from './callEngine'
 
 const sdpJSON = (d: RTCSessionDescription | null) => (d ? { type: d.type, sdp: d.sdp } : null)
 
@@ -42,7 +42,7 @@ class PcClosedError extends Error {}
 // возвращается с answer: answer к заменённому offer (renegotiation до ответа на первый)
 // не ложится на новый.
 interface Negotiation {
-  /** Счётчик наших offer этого pc. */
+  /** Счётчик наших offer этого pc; начинается со случайного (tweb :1356): вкладки одного пользователя получают один поток сигналов. */
   exchangeId: number
   /** Номер нашего offer, ждущего answer. */
   pendingLocal?: number
@@ -52,7 +52,7 @@ interface Negotiation {
 const negotiations = new WeakMap<RTCPeerConnection, Negotiation>()
 function negotiation(pc: RTCPeerConnection): Negotiation {
   let n = negotiations.get(pc)
-  if (!n) negotiations.set(pc, n = { exchangeId: 0 })
+  if (!n) negotiations.set(pc, n = { exchangeId: Math.floor(Math.random() * 0xFFFFFFFF) })
   return n
 }
 const remoteStreams = new Map<number, MediaStream>()
@@ -72,6 +72,8 @@ export interface GroupCallFrame {
     forbidden?: boolean
     action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
+    /** зрители эфира среди participants */
+    viewers?: number[]
     from_user_id?: number
     sdp?: RTCSessionDescriptionInit
     /** Номер обмена: у offer — счётчик отправителя, у answer — номер offer, на который он. */
@@ -107,6 +109,13 @@ async function newPc(userId: number, cancelled: () => boolean): Promise<RTCPeerC
   }
   pc.onicecandidate = (e) => {
     if (e.candidate) signal(userId, { candidate: e.candidate.toJSON() })
+  }
+  // 486 — coturn исчерпал квоту аллокаций пользователя (user-quota, domain.GroupCallMaxParticipants):
+  // допущение предела — не больше 4 аллокаций на pc, одно устройство, не больше одного падения вкладки
+  // за 10 минут. Иначе pc молча не соединится; пользователю причину не показать (её видит только
+  // журнал), но разбор по консоли возможен.
+  pc.onicecandidateerror = (e) => {
+    if ((e as RTCPeerConnectionIceErrorEvent).errorCode === 486) console.warn('[groupcall] TURN: квота аллокаций исчерпана (486), pc участника', userId, 'не соединится')
   }
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed') closePeer(userId)
@@ -199,7 +208,7 @@ async function acceptOffer(from: number, pc: RTCPeerConnection, sdp: RTCSessionD
   })
   signal(from, { sdp: sdpJSON(pc.localDescription), exchange_id: exchangeId })
   await commitCandidates(from, pc)
-  broadcastMediaState()
+  broadcastMediaState(from) // остальные своё состояние уже знают: O(N) кадров на вход, а не O(N²)
   // tweb :1836-1842, :1984-1991: ответившая сторона со своими дорожками шлёт свой offer. По JSEP —
   // если какому-то отправителю answer не дал m-строки (новичок вошёл без камеры, а у нас она есть)
   // или мы откатили свой offer: невежливая сторона применит его устаревшую копию из очереди, и
@@ -240,9 +249,10 @@ function closePeer(userId: number) {
   store().bumpStreams()
 }
 
-function broadcastMediaState() {
+/** Наше состояние микрофона/камеры — всем pc или (to) одному участнику. */
+function broadcastMediaState(to?: number) {
   const s = store()
-  for (const userId of pcs.keys()) {
+  for (const userId of to == null ? pcs.keys() : [to]) {
     signal(userId, { media_state: { muted: !s.micOn, video: s.camOn } })
   }
 }
@@ -255,7 +265,9 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   // микрофона. Решает сервер (rejected), здесь — по известному списку; нет конфига — решит он.
   // У tweb отказа «звонок полон» нет (видеочат через SFU): тост — общий, как у отказа сервера.
   const { groupcall_video_participants_max: max } = await managers().appConfig.getAppConfig()
-  const others = (store().activeByChat[peerId] ?? []).filter((id) => id !== useChatsStore.getState().meId)
+  const { activeByChat, viewersByChat } = store()
+  const viewers = viewersByChat[peerId] ?? []
+  const others = (activeByChat[peerId] ?? []).filter((id) => id !== useChatsStore.getState().meId && !viewers.includes(id))
   if (max != null && others.length >= max) {
     store().reset()
     toastNew({ langPackKey: 'Error.AnError' })
@@ -277,7 +289,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   const existing = await managers().messages.groupCallParticipants(peerId).catch(() => [] as number[])
   store().setJoined(peerId)
   store().setMedia(true, withVideo)
-  stopIceRefresh = keepIceFresh()
+  stopIceRefresh = keepIceFresh((fresh) => { for (const pc of pcs.values()) applyIceServers(pc, fresh) })
   void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
   // новичок предлагает соединение каждому сидящему — параллельно: медленный или закрытый посреди
   // операции pc одного участника не задерживает остальных
@@ -383,7 +395,7 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id, !!d.forbidden)
       return
     }
-    store().setActive(d.peer_id, d.participants ?? [])
+    store().setActive(d.peer_id, d.participants ?? [], d.viewers ?? [])
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }
@@ -417,7 +429,8 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       // answer не к последнему нашему offer (к заменённому, повтор, запоздал) — молча мимо:
       // tweb :1726 (answer — по exchangeId), :1763-1767 (answer не в have-local-offer)
       const n = negotiation(pc)
-      if (d.exchange_id == null || d.exchange_id !== n.pendingLocal || pc.signalingState !== 'have-local-offer') return
+      // Без номера — клиент до Г2 (вкладка без перезагрузки): применяем к ждущему offer, как раньше.
+      if ((d.exchange_id != null && d.exchange_id !== n.pendingLocal) || n.pendingLocal == null || pc.signalingState !== 'have-local-offer') return
       await op(pc, () => pc.setRemoteDescription(sdp))
       n.pendingLocal = undefined
       await commitCandidates(from, pc)

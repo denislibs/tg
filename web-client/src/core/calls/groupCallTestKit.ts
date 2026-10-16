@@ -55,7 +55,9 @@ export class FakePC {
   private remoteStream = { id: `rs${FakePC.all.length}` }
   private queue: Promise<unknown> = Promise.resolve()
 
-  constructor(config: RTCConfiguration = {}) { FakePC.configs.push(config); FakePC.all.push(this) }
+  constructor(public config: RTCConfiguration = {}) { FakePC.configs.push(config); FakePC.all.push(this) }
+  getConfiguration() { return this.config }
+  setConfiguration(config: RTCConfiguration) { this.config = config }
 
   private run<T>(body: () => T): Promise<T> {
     if (this.closed) return Promise.reject(invalidState('closed'))

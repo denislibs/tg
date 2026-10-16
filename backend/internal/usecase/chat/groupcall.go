@@ -42,6 +42,9 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 		return nil, err
 	}
 	first, joined, err := i.admitToGroupCall(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrGroupCallFull) && i.dropOfflineParticipants(ctx, chatID, userID) {
+		first, joined, err = i.admitToGroupCall(ctx, chatID, userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +64,33 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 		}
 	}
 	return out, nil
+}
+
+// dropOfflineParticipants убирает из звонка тех, у кого нет соединения (presence): у участника
+// пульса нет, и процесс, упавший без уборки, оставляет «призраков» до TTL ключа (6 ч) — на
+// пределе mesh они закрыли бы вход. Зовётся только на отказе по пределу. except — входящий
+// (его повторный вход предел не считает). Сбой presence участника не убирает. true — убран
+// кто-то, вход стоит повторить.
+func (i *Interactor) dropOfflineParticipants(ctx context.Context, chatID, except int64) bool {
+	if i.presence == nil {
+		return false
+	}
+	ids, err := i.groupCalls.Participants(ctx, chatID)
+	if err != nil {
+		return false
+	}
+	dropped := false
+	for _, id := range ids {
+		if id == except {
+			continue
+		}
+		if online, err := i.presence.IsOnline(ctx, id); err == nil && !online {
+			if i.LeaveGroupCall(ctx, chatID, id) == nil {
+				dropped = true
+			}
+		}
+	}
+	return dropped
 }
 
 // JoinGroupCallAsViewer — зритель эфира (livestreamEngine.watchLivestream): регистрируется в

@@ -23,11 +23,11 @@ export interface LivestreamFrame {
   }
 }
 
-/** Начать смотреть трансляцию: регистрируемся зрителем (без медиа). */
+/** Начать смотреть трансляцию: регистрируемся зрителем (без медиа; viewer — вне предела участников mesh). */
 export function watchLivestream(peerId: number) {
   if (store().watchingPeerId != null) return
   store().setWatching(peerId)
-  void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
+  void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId, viewer: true } })
 }
 
 /** Выйти из просмотра трансляции. */

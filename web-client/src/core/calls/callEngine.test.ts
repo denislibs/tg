@@ -259,7 +259,7 @@ describe('callEngine: ICE-конфиг и срок кредов', () => {
   it('keepIceFresh: креды обновляются за 10 минут до истечения, после остановки — нет', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
-    const stop = A.engine.keepIceFresh()
+    const stop = A.engine.keepIceFresh(() => {})
     await vi.advanceTimersByTimeAsync(49 * MIN)
     expect(net.iceFetches).toBe(1)
     await vi.advanceTimersByTimeAsync(2 * MIN)
@@ -271,10 +271,36 @@ describe('callEngine: ICE-конфиг и срок кредов', () => {
     expect(net.iceFetches).toBe(3)
   })
 
+  it('keepIceFresh: новые креды отдаются в apply один раз; STUN-only конфиг (сбой) не отдаётся', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    const apply = vi.fn()
+    const stop = A.engine.keepIceFresh(apply)
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(50 * MIN + 1_000) // сбой: FALLBACK без TURN
+    expect(apply).not.toHaveBeenCalled()
+    net.iceFail = false
+    const fresh: RTCIceServer[] = [{ urls: ['turn:turn.test:3478?transport=udp'], username: 'u2', credential: 'c2' }]
+    net.iceServers = fresh
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(apply).toHaveBeenCalledWith(fresh)
+    stop()
+  })
+
+  it('1:1: идущий pc получает свежие креды до истечения прежних', async () => {
+    const { A } = await connectPair(net)
+    const fresh: RTCIceServer[] = [{ urls: ['turn:turn.test:3478?transport=udp'], username: 'u2', credential: 'c2' }]
+    net.iceServers = fresh
+    await vi.advanceTimersByTimeAsync(51 * MIN)
+    expect(pcOf(A)!.getConfiguration().iceServers).toEqual(fresh)
+    expect(pcOf(A)!.getConfiguration().bundlePolicy).toBe('max-bundle') // остальная конфигурация цела
+  })
+
   it('keepIceFresh: сбой обновления — повтор через 30 с, а не сразу и не через час', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
-    const stop = A.engine.keepIceFresh()
+    const stop = A.engine.keepIceFresh(() => {})
     net.iceFail = true
     await vi.advanceTimersByTimeAsync(50 * MIN + 1_000)
     expect(net.iceFetches).toBe(2)

@@ -301,3 +301,45 @@ func TestJoinGroupCallAsViewer(t *testing.T) {
 		t.Fatalf("viewers в кадре = %v, want [%d]", last["viewers"], callMember)
 	}
 }
+
+// Призраки (процесс упал, не убрав участников; множество живёт до TTL, пульса у участника
+// нет) не запирают звонок на пределе: на отказе по пределу уходят те, у кого нет соединения
+// (presence), и вход повторяется один раз. Живые участники остаются.
+func TestJoinGroupCall_FullCall_DropsOfflineGhosts(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	online := map[int64]bool{callOwner: true}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// без presence предела не обойти
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("без presence: %v, want ErrGroupCallFull", err)
+	}
+	e.in.SetPresence(fakePresence{online: online})
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatalf("вход при 4 призраках: %v", err)
+	}
+	ids, _ := e.calls.Participants(ctx, e.chatID)
+	if len(ids) != 2 || !slices.Contains(ids, callOwner) || !slices.Contains(ids, callMember) {
+		t.Fatalf("участники = %v, want [создатель, вошедший]: призраки не убраны или убран живой", ids)
+	}
+	// все пять живы — отказ остаётся отказом
+	if err := e.in.LeaveGroupCall(ctx, e.chatID, callMember); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid < 9000+domain.GroupCallMaxParticipants; uid++ {
+		online[uid] = true
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("все живы: %v, want ErrGroupCallFull", err)
+	}
+}

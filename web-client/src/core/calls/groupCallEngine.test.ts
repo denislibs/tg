@@ -528,22 +528,41 @@ describe('groupCallEngine: номер обмена offer/answer (Г2)', () => {
   it('наш offer несёт номер обмена, answer с ним применяется', async () => {
     await engine.joinGroupCall(PEER)
     const o = sendCallFrame.mock.calls.map(([f]) => f).find((f) => f.data.sdp?.type === 'offer')
-    expect(o?.data.exchange_id).toBe(1)
+    expect(o?.data.exchange_id).toBeTypeOf('number')
     engine.handleGroupCallFrame(answerFrom(2))
     await vi.waitFor(() => expect(FakePC.all[0].signalingState).toBe('stable'))
   })
 
-  it('answer без номера или с чужим номером не применяется', async () => {
+  it('номер обмена начинается со случайного, как tweb :1356: answer другой вкладки с тем же «первым» номером не ложится', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    try {
+      await engine.joinGroupCall(PEER)
+    } finally { random.mockRestore() }
+    const o = sendCallFrame.mock.calls.map(([f]) => f).find((f) => f.data.sdp?.type === 'offer')
+    expect(o?.data.exchange_id).toBe(Math.floor(0.5 * 0xFFFFFFFF) + 1)
+    const a = answerFrom(2)
+    engine.handleGroupCallFrame({ ...a, d: { ...a.d, exchange_id: 1 } }) // чужая вкладка начала с 1
+    await tick(); await tick(); await tick(); await tick()
+    expect(FakePC.all[0].remoteAnswers).toHaveLength(0)
+  })
+
+  it('answer с чужим номером не применяется', async () => {
     await engine.joinGroupCall(PEER)
     const a = answerFrom(2)
-    engine.handleGroupCallFrame({ ...a, d: { ...a.d, exchange_id: undefined } })
-    engine.handleGroupCallFrame({ ...a, d: { ...a.d, exchange_id: 2 } })
+    engine.handleGroupCallFrame({ ...a, d: { ...a.d, exchange_id: (a.d.exchange_id ?? 0) + 1 } })
     engine.handleGroupCallFrame(candidate(2, 1))
     await tick(); await tick(); await tick(); await tick()
     expect(FakePC.all[0].remoteAnswers).toHaveLength(0)
     expect(FakePC.all[0].signalingState).toBe('have-local-offer')
     engine.handleGroupCallFrame(a)
     await vi.waitFor(() => expect(FakePC.all[0].ice).toHaveLength(1)) // буфер кандидатов дождался answer
+  })
+
+  it('answer без номера (клиент до Г2, вкладка без перезагрузки) применяется к ждущему offer', async () => {
+    await engine.joinGroupCall(PEER)
+    const a = answerFrom(2)
+    engine.handleGroupCallFrame({ ...a, d: { ...a.d, exchange_id: undefined } })
+    await vi.waitFor(() => expect(FakePC.all[0].signalingState).toBe('stable'))
   })
 })
 
@@ -628,6 +647,12 @@ describe('groupCallEngine: предел участников (К3)', () => {
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
   })
 
+  it('зрители эфира в предел не входят: 5 других, из них 3 зрителя — входим', async () => {
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 9, action: 'joined', participants: [2, 3, 4, 5, 6], viewers: [4, 5, 6] } })
+    await engine.joinGroupCall(PEER)
+    expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER } })
+  })
+
   it('4 других и мы сами в списке (повторный вход) — входим', async () => {
     store.useGroupCallStore.getState().setActive(PEER, [1, 2, 3, 4, 5])
     await engine.joinGroupCall(PEER)
@@ -639,6 +664,25 @@ describe('groupCallEngine: предел участников (К3)', () => {
     store.useGroupCallStore.getState().setActive(PEER, [2, 3, 4, 5, 6, 7])
     await engine.joinGroupCall(PEER)
     expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER } })
+  })
+})
+
+// К3: 486 от coturn (квота аллокаций) — не молчим: журнал называет причину, соединение не рвём.
+describe('groupCallEngine: отказ TURN по квоте (К3)', () => {
+  it('icecandidateerror 486 пишется в журнал с причиной', async () => {
+    iceServers = [TURN]
+    existingParticipants = [2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await engine.joinGroupCall(PEER)
+      const pc = FakePC.all[0] as unknown as { onicecandidateerror: (e: unknown) => void }
+      pc.onicecandidateerror({ errorCode: 401 })
+      expect(warn).not.toHaveBeenCalled()
+      pc.onicecandidateerror({ errorCode: 486 })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('486'), 2, expect.any(String))
+    } finally { warn.mockRestore() }
   })
 })
 
@@ -658,6 +702,27 @@ describe('groupCallEngine: плановое обновление кредов TU
       await vi.advanceTimersByTimeAsync(3 * 60 * 60_000)
       expect(iceFetches).toBe(2)
     } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('идущие pc получают свежие креды: новая аллокация pc (смена сети) не упрётся в истёкшие', async () => {
+    iceServers = [TURN]
+    existingParticipants = [2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const joining = engine.joinGroupCall(PEER) // FakePC ходит по таймерам: офферы ждут часов
+      await vi.advanceTimersByTimeAsync(1_000)
+      await joining
+      expect(FakePC.all).toHaveLength(1)
+      const fresh: RTCIceServer = { urls: ['turn:turn.test:3478?transport=udp'], username: 'u2', credential: 'c2' }
+      iceServers = [fresh]
+      await vi.advanceTimersByTimeAsync(51 * 60_000)
+      expect(FakePC.all[0].getConfiguration().iceServers).toEqual([fresh])
+    } finally {
+      engine.leaveGroupCall()
       vi.useRealTimers()
     }
   })

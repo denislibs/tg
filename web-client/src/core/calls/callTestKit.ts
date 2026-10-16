@@ -64,6 +64,8 @@ export class FakePC {
     if (config.bundlePolicy === 'max-bundle' && ++FakePC.mainsCreated === FakePC.throwOnMain) throw new Error('pc ctor failed')
     FakePC.all.push(this)
   }
+  getConfiguration() { return this.config }
+  setConfiguration(config: RTCConfiguration) { this.config = config }
   get cert() { return (this.config.certificates?.[0] as unknown as { tag: string } | undefined)?.tag ?? '' }
   private negotiate() { queueMicrotask(() => { if (!this.closed && this.signalingState === 'stable') this.onnegotiationneeded?.() }) }
   addTransceiver(kind: string) { this.transceivers.push({ receiver: { track: { kind } } }); this.negotiate() }
