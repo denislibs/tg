@@ -201,6 +201,10 @@ func newQRStore(client *redis.Client) usecaseauth.QRStore {
 	return cacheredis.NewQRStore(client)
 }
 
+func newPasswordAttemptStore(client *redis.Client) usecaseauth.PasswordAttemptStore {
+	return cacheredis.NewPasswordAttemptStore(client)
+}
+
 func newGroupCallStore(client *redis.Client) usecasechat.GroupCallStore {
 	return cacheredis.NewGroupCallStore(client)
 }

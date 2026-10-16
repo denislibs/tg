@@ -17,7 +17,8 @@ import (
 // Ручки, проверяющие пароль (Set/Verify/Remove), ограничены частотой ДО
 // сравнения — иначе с украденной сессией пароль подбирается со скоростью
 // сервера (Б-4). Лимитер в памяти процесса — допущение одного экземпляра,
-// как у AuthHandler; растущее ожидание и общий счётчик — М-1 (М1-5).
+// как у AuthHandler. Растущее ожидание после неверных паролей со счётчиком,
+// общим для экземпляров (Redis), — в usecase (М1-5); его отказ — тот же 420.
 type PasswordHandler struct {
 	uc      *usecaseauth.Interactor
 	limiter *keyRateLimiter
@@ -39,16 +40,26 @@ const (
 
 // allowCheck — пускает ли проверку пароля; при отказе уже написан 420
 // FLOOD_WAIT_<N> (tweb ждёт N секунд и повторяет, apiManager.ts:759-791).
-func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord) bool {
+func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord, deviceID int64) bool {
 	if ok, wait := h.limiter.allowWait("mepw-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return false
 	}
-	deviceID, _ := DeviceIDFromContext(r.Context())
 	if ok, wait := h.limiter.allowWait(fmt.Sprintf("mepw-user:%d:%d", user.ID, deviceID), pwUserRPS, pwUserBurst); !ok {
 		writeFloodWait(w, wait)
 		return false
 	}
+	return true
+}
+
+// writePasswordFlood — блокировка растущего ожидания (М1-5): 420
+// FLOOD_WAIT_<остаток>, как отказ лимитера. false — ошибка другая.
+func writePasswordFlood(w http.ResponseWriter, err error) bool {
+	var flood domain.ErrPasswordFlood
+	if !errors.As(err, &flood) {
+		return false
+	}
+	writeError(w, 420, flood.Error())
 	return true
 }
 
@@ -66,7 +77,8 @@ func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 // Set — POST /me/password {current_password?, new_password, hint, email}.
 func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -79,7 +91,10 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.SetPassword(r.Context(), user.ID, b.CurrentPassword, b.NewPassword, b.Hint, b.Email)
+	err := h.uc.SetPassword(r.Context(), user.ID, deviceID, b.CurrentPassword, b.NewPassword, b.Hint, b.Email)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
@@ -95,7 +110,8 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 // перед входом в настройки 2FA.
 func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -105,7 +121,10 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.VerifyPassword(r.Context(), user.ID, b.Password)
+	err := h.uc.VerifyPassword(r.Context(), user.ID, deviceID, b.Password)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return
@@ -120,7 +139,8 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 // Remove — DELETE /me/password {current_password}.
 func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -130,7 +150,10 @@ func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.RemovePassword(r.Context(), user.ID, b.CurrentPassword)
+	err := h.uc.RemovePassword(r.Context(), user.ID, deviceID, b.CurrentPassword)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusBadRequest, "PASSWORD_HASH_INVALID")
 		return

@@ -71,7 +71,7 @@ func TestSignImport_PasswordNeeded(t *testing.T) {
 	i, _, _, _ := newInteractor()
 
 	owner := registerUser(t, i, "+79990030003", "Импорт", "", "web", "browser")
-	if err := i.SetPassword(ctx, owner.User.ID, "", "s3cret", "hint", ""); err != nil {
+	if err := i.SetPassword(ctx, owner.User.ID, 1, "", "s3cret", "hint", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	token, _, err := i.NewWebAuthToken(ctx, owner.User.ID)
