@@ -160,6 +160,15 @@ describe('MessagesManager.forwardMessages', () => {
     expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null, schedule_date: 0, schedule_repeat_period: 0 })
   })
 
+  // Пересылка не идемпотентна (ключа random_id у ручки нет), а 500 возможен после
+  // коммита копий и списания звёзд: restClient не должен её повторять.
+  it('пересылка идёт со stopTime -1 (500 не повторяется)', async () => {
+    const post = vi.fn(async (..._a: unknown[]) => ({ messages: [], users: [], chats: [] }))
+    const mgr = newMessagesManager({ rest: { post } as unknown as RestClient })
+    await mgr.forwardMessages(1, 2, [cid(3)])
+    expect(post.mock.calls[0][2]).toEqual({ stopTime: -1 })
+  })
+
   // Ф7-И1: HTTP 420 SLOWMODE_WAIT_<N> у пересылки объявляется как отказ отправки
   // пира (tweb forwardMessages → onMessagesSendError → попап медленного режима) и
   // пробрасывается вызывающему; прочие отказы события не рождают.

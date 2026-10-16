@@ -500,7 +500,7 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
     // ключ пользователя (`access_hash` не копируем, tl-program.md).
     async createChat(title: string, userIds: number[]): Promise<{ chatId: number; missingInvitees: MissingInvitee[] }> {
       const r = await rest.post<MessagesInvitedUsers>('/groups', { title, member_ids: userIds },
-        // stopTime -1: создание не идемпотентно, а 500 возможен после коммита —
+        // ОТСТУПЛЕНИЕ от tweb (appChatsManager.ts:588 повторяет 500): stopTime -1: создание не идемпотентно, а 500 возможен после коммита —
         // повтор создал бы вторую группу.
         { stopTime: -1 })
       peers.saveApiPeers(r.updates)

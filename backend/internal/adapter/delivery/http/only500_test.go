@@ -61,11 +61,6 @@ var o5Benign = map[string]string{
 	`anon usecase/chat/scheduled.go "scheduled copy: nothing published"`: "инвариант: доставка одной копии возвращает одну копию",
 }
 
-// o5BenignAt — исключения на конкретную ручку (ключ — вхождение целиком).
-var o5BenignAt = map[string]string{
-	`LangPackHandler).Difference ← ext strconv.Atoi`: "неточность потока: Atoi разбирает from_version в самой ручке, и её отказ — 400 FROM_VERSION_INVALID до обращения к usecase",
-}
-
 // o5BenignAnon — безымянные ошибки, означающие порчу данных сервера (строка
 // langpack в БД без текста и форм): 500 здесь правомерен, это баг данных, а не
 // свойство запроса.
@@ -76,7 +71,11 @@ var o5BenignAnon = []string{
 
 // o5BenignExt — ошибки чужих пакетов по префиксу имени.
 var o5BenignExt = []struct{ prefix, why string }{
-	{"github.com/jackc/pgx/", "сбой БД (связь, таймаут); SQLSTATE 22/23 разбирает writeDomainError"},
+	// Не покрыто: ошибки КОДИРОВАНИЯ параметров на стороне драйвера (int больше
+	// колонки INT, не PgError) — их держат границы значений в usecase
+	// (maxGiveawayMonths, maxTopicIconColor, maxInviteUsageLimit); остальные
+	// int-поля запросов в «Не закрыто» PR.
+	{"github.com/jackc/pgx/", "сбой БД (связь, таймаут); SQLSTATE 22/23/54000 разбирает writeDomainError"},
 	{"adapter/repo/postgres.Querier.", "то же: обёртка pgx"},
 	{"adapter/repo/postgres.scanner.", "то же: обёртка pgx"},
 	{"github.com/redis/go-redis/", "сбой Redis"},
@@ -114,11 +113,7 @@ func TestOnly500_NoDeterministicSources(t *testing.T) {
 			if a.isHandled(k, handled) || o5IsBenign(k) {
 				continue
 			}
-			entry := fmt.Sprintf("%s ← %s", strings.TrimPrefix(strings.ReplaceAll(h.String(), o5Mod, ""), "(*adapter/delivery/http."), k)
-			if o5BenignAt[entry] != "" {
-				continue
-			}
-			bad = append(bad, entry)
+			bad = append(bad, fmt.Sprintf("%s ← %s", strings.TrimPrefix(strings.ReplaceAll(h.String(), o5Mod, ""), "(*adapter/delivery/http."), k))
 		}
 	}
 	sort.Strings(bad)
@@ -328,7 +323,12 @@ func (a *o5) val(v ssa.Value, vis map[ssa.Value]bool) o5set {
 			out.add(a.val(sv, vis))
 		}
 	case *ssa.Extract:
-		out.add(a.val(x.Tuple, vis))
+		// из кортежа (результат, error) — только элемент типа error: иначе
+		// аргумент `%d` в fmt.Errorf("%d: %w", n, ErrX) тянул бы за собой
+		// ошибки, из которых получен n (strconv.Atoi в ручке).
+		if types.Implements(x.Type(), a.errType.Underlying().(*types.Interface)) {
+			out.add(a.val(x.Tuple, vis))
+		}
 	case *ssa.Call:
 		out.add(a.callSet(x, x.Parent(), vis))
 	case *ssa.Phi:

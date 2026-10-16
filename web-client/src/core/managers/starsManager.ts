@@ -134,7 +134,7 @@ export function newStarsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post
     // `updateStarsBalance`, и второе значение того же факта в теле ответа
     // расходилось бы с ним. Ответ — созданное сообщение-пилюля.
     async send(toUserId: number, giftId: number, message: string, anonymous: boolean): Promise<void> {
-      // stopTime -1: у ручки нет ключа идемпотентности, а 500 возможен уже после
+      // ОТСТУПЛЕНИЕ от tweb (повторяет 500): stopTime -1: у ручки нет ключа идемпотентности, а 500 возможен уже после
       // списания звёзд (сборка ответа) — повтор списал бы второй раз.
       await rest.post('/gifts/send', { to_user_id: toUserId, gift_id: giftId, message, anonymous }, { stopTime: -1 })
     },
