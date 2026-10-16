@@ -369,6 +369,33 @@ describe('setLastMessageN — превью найденного сообщени
     expect(mine.dom.lastMessageSpan.querySelector('.primary-text')?.textContent).toBe('You: ')
   })
 
+  // Узлы имён подзаголовка живут ОДНУ отрисовку (`lastMessageTitlesHelper`):
+  // оторванный прежней перерисовкой узел из реестра живых имён снят и на
+  // операцию зеркала не перерисовывается (иначе реестр рос бы с каждым
+  // последним сообщением строки — контрольное ревью p0-fix-4, №3).
+  it('перерисовка подзаголовка снимает узлы имён прежней отрисовки', async () => {
+    const d = row(GROUP)
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 1, peerId: GROUP, fromId: ALICE, text: 'раз' }),
+      dialogElement: d,
+    })
+    const oldTitle = d.dom.lastMessageSpan.querySelector<HTMLElement>('.peer-title')!
+    expect(oldTitle.textContent).toBe('Алиса')
+
+    await setLastMessageN({
+      dialog: { peerId: GROUP },
+      lastMessage: makeMessage({ id: 2, peerId: GROUP, fromId: ALICE, text: 'два' }),
+      dialogElement: d,
+    })
+    const newTitle = d.dom.lastMessageSpan.querySelector<HTMLElement>('.peer-title')!
+    expect(newTitle).not.toBe(oldTitle)
+
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алла', pFlags: {} }] }])
+    expect(newTitle.textContent).toBe('Алла')
+    expect(oldTitle.textContent).toBe('Алиса')
+  })
+
   it('пересланное — иконка forward_filled первой частью (tweb `dialogSubtitle.ts:47-61`)', async () => {
     const d = row(ALICE)
     const message = { ...makeMessage({ id: 3, peerId: ALICE, fromId: ALICE, text: 'x' }), fwd_from: { _: 'messageFwdHeader' as const, date: 0 } }

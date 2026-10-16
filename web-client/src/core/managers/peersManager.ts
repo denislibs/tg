@@ -235,7 +235,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     if (persistChatCards.length) void persistChats(persistChatCards)
     // Книга двигается ПОСЛЕ объявления карточки зеркалу (tweb: `mirrorUser`, затем
     // `onContactUpdated`, :749-760): подписчик `contacts_update` читает свежую карточку.
-    // Так же и `chat_toggle_forum` (tweb `saveApiChat`: `mirrorChat` :198-199, затем
+    // Так же и `chat_toggle_forum` (tweb `saveApiChat`: `mirrorChat` :287, затем
     // событие :304-306): лента открытого чата сверяет признак форума по зеркалу.
     const afterPublish = () => {
       for (const [peerId, enabled] of toggledForum) onChatToggleForum?.(peerId, enabled)

@@ -117,6 +117,19 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     expect(received).toEqual([5])
   })
 
+  // tweb `chat_toggle_forum` (rootScope.ts:34) — шлёт владелец карточек воркера
+  // после операции зеркала, слушает лента открытого чата (переоткрытие форума).
+  it('chat_toggle_forum воркера доезжает до rootScope вкладки', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('chat_toggle_forum', (payload) => received.push(payload))
+
+    deliver({ kind: 'event', event: 'chat_toggle_forum', payload: { chatId: 50, enabled: true } })
+
+    expect(received).toEqual([{ chatId: 50, enabled: true }])
+  })
+
   // Событие чёрного списка (tweb rootScope.ts:53) — шлёт `privacyManager.toggleBlock`
   // воркера, слушают вкладка «Заблокированные» и хаб «Конфиденциальность».
   it('peer_block воркера доезжает до rootScope вкладки', async () => {

@@ -100,6 +100,8 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
     // без `plain`: имена — узлы `wrapPeerTitle`). Узел имени сам объявляет
     // пробел зеркала и перерисуется, когда карточка доедет; строка из зеркала
     // осталась бы «Удалённый аккаунт» до следующей перерисовки строки.
+    // `noLinks`/`noTextFormat` оригинала (:353-362) не передаются: ссылку на
+    // сообщение фраза даёт только с превью закрепа, а его сюда не передают.
     if (!plain && options.titleMiddleware && options.managers) {
       return fragmentOf([wrapMessageActionText({
         message,

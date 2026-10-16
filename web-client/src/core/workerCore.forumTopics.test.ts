@@ -148,7 +148,7 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(flush).toHaveBeenCalledWith(FORUM)
   })
 
-  // tweb `saveApiChat`: `mirrorChat` (appChatsManager.ts:198-199), затем
+  // tweb `saveApiChat`: `mirrorChat` (appChatsManager.ts:287), затем
   // `chat_toggle_forum` (:304-306). Вкладке событие уходит ПОСЛЕ операции
   // зеркала — лента сверяет признак форума по зеркалу (bubbles.ts:2438-2441).
   it('смена признака форума → вкладке `rt:peer_op`, затем `chat_toggle_forum`', async () => {

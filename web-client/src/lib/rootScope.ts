@@ -305,6 +305,11 @@ export type BroadcastEvents = {
   // колонку открыла/закрыла эта вкладка.
   'right_sidebar_toggle': [boolean]
 
+  // ── «Темы» включили/выключили (порт tweb rootScope.ts:34, отправитель —
+  // appChatsManager.ts:304-306). Рассылает воркер (`workerCore.ts::onChatToggleForum`)
+  // ПОСЛЕ объявления карточки зеркалу; `chatId` — сырой положительный id чата.
+  'chat_toggle_forum': [{ chatId: number; enabled: boolean }]
+
   // ── закрепы (порт tweb rootScope.ts:50-51). Местное (`dispatchEventSingle`):
   // `peer_pinned_messages` вкладка выводит из своего кадра `rt:pin_message`, сбросив
   // кэш закрепов главного потока (`core/pinnedMessages.ts::onPinnedMessagesUpdate`);
@@ -317,10 +322,6 @@ export type BroadcastEvents = {
   // сообщение(я). `mids` — клиентские номера всех удалённых, `pinned` — те из них, что
   // воркер знает закреплёнными. Шлётся на каждое удаление; подписчик
   // (`client/realtime/refetchSubscriber.ts`) решает по кэшу закрепов вкладки.
-  // ── «Темы» включили/выключили (порт tweb rootScope.ts:34, отправитель —
-  // appChatsManager.ts:304-306). Рассылает воркер (`workerCore.ts::onChatToggleForum`)
-  // ПОСЛЕ объявления карточки зеркалу; `chatId` — сырой положительный id чата.
-  'chat_toggle_forum': [{ chatId: number; enabled: boolean }]
   'peer_pinned_deleted': [{ peerId: PeerId; mids: number[]; pinned: number[] }]
   // «Открепить все» выполнено воркером (`chats.unpinAllMessages`): каждая вкладка сбрасывает
   // кэш закрепов пира и объявляет `peer_pinned_messages {unpinAll}` (`refetchSubscriber.ts`).

@@ -418,6 +418,11 @@ export type DialogDom = {
    *  другие (группы поиска, выбор пиров), и совпавший ключ ещё не значит, что
    *  в DOM всё ещё он. */
   lastMessageRenderParts?: HTMLElement[],
+  /** Жизнь узлов имён подзаголовка (`PeerTitle` автора и служебной фразы) —
+   *  ОДНА отрисовка: следующая её гасит, иначе оторванные узлы копились бы в
+   *  реестре живых имён до смерти строки и перерисовывались на каждой операции
+   *  зеркала. У tweb реестр слабый (`peerTitle.ts:34-46`), у нас — нет. */
+  lastMessageTitlesHelper?: MiddlewareHelper,
   setLastMessagePromise?: CancellablePromise<void>,
   setUnreadMessagePromise?: CancellablePromise<void>,
 }
@@ -2488,21 +2493,30 @@ async function setLastMessage({
     }
 
     const withoutMediaType = !!mediaContainer && !!(lastMessage && getMessageText(lastMessage))
-    const parts = await renderDialogSubtitleParts({
-      peerId,
-      isSaved,
-      lastMessage,
-      draftMessage,
-      noForwardIcon,
-      mediaParts,
-      withoutMediaType,
-      highlightWord: highlightWord && lastMessage && getMessageText(lastMessage) ? highlightWord : undefined,
-      middleware,
-      titleMiddleware: dialogElement.middlewareHelper.get(),
-      managers: dialogElement.managers,
-    })
+    const titlesHelper = dialogElement.middlewareHelper.get().create()
+    let parts: HTMLElement[]
+    try {
+      parts = await renderDialogSubtitleParts({
+        peerId,
+        isSaved,
+        lastMessage,
+        draftMessage,
+        noForwardIcon,
+        mediaParts,
+        withoutMediaType,
+        highlightWord: highlightWord && lastMessage && getMessageText(lastMessage) ? highlightWord : undefined,
+        middleware,
+        titleMiddleware: titlesHelper.get(),
+        managers: dialogElement.managers,
+      })
+    } catch(err) {
+      titlesHelper.destroy()
+      throw err
+    }
     dom.lastMessageSpan.classList.add('dialog-subtitle-parts')
     dom.lastMessageSpan.replaceChildren(...parts)
+    dom.lastMessageTitlesHelper?.destroy()
+    dom.lastMessageTitlesHelper = titlesHelper
     renderedParts = parts
   }
 
