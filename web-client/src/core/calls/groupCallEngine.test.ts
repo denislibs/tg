@@ -244,7 +244,8 @@ const candidate = (from: number, n: number) => ({
 const tick = () => new Promise((r) => setTimeout(r, 0))
 /** Answer участника на последний наш offer ему — с его номером обмена (exchange_id). */
 const answerFrom = (from: number) => {
-  const o = sendCallFrame.mock.calls.map(([f]) => f).filter((f) => f.data.to_user_id === from && f.data.sdp?.type === 'offer').at(-1)
+  const offers = sendCallFrame.mock.calls.map(([f]) => f).filter((f) => f.data.to_user_id === from && f.data.sdp?.type === 'offer')
+  const o = offers[offers.length - 1]
   return { t: 'group_call_signal', d: { peer_id: PEER, from_user_id: from, sdp: { type: 'answer' as const, sdp: o?.data.sdp.sdp }, exchange_id: o?.data.exchange_id } }
 }
 const gate = () => {

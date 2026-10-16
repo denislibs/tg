@@ -357,7 +357,7 @@ export async function toggleGroupCam() {
       try {
         if (!pc.getSenders().some((sd) => sd.track === track)) pc.addTrack(track, stream)
       } catch {
-        return // pc закрыт посреди обхода: остальным камеру всё равно доливаем
+        return Promise.resolve() // pc закрыт посреди обхода: остальным камеру всё равно доливаем
       }
       return sendOffer(userId, false)
     }))

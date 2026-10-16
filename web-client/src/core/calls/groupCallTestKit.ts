@@ -154,7 +154,7 @@ export class FakePC {
       } else {
         if (this.signalingState !== 'have-local-offer') throw invalidState('SRD(answer)')
         const offered = parseSdp(this.local?.sdp).map((l) => l.mid).join(',')
-        if (m.map((l) => l.mid).join(',') !== offered) throw invalidState(`answer m-lines [${m.map((l) => l.mid)}] ≠ offer [${offered}]`)
+        if (m.map((l) => l.mid).join(',') !== offered) throw invalidState(`answer m-lines [${m.map((l) => l.mid).join(',')}] ≠ offer [${offered}]`)
         this.offerAssigned = []
         this.signalingState = 'stable'
       }
