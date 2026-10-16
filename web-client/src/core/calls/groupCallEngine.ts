@@ -115,7 +115,7 @@ async function newPc(userId: number, cancelled: () => boolean): Promise<RTCPeerC
   // за 10 минут. Иначе pc молча не соединится; пользователю причину не показать (её видит только
   // журнал), но разбор по консоли возможен.
   pc.onicecandidateerror = (e) => {
-    if ((e as RTCPeerConnectionIceErrorEvent).errorCode === 486) console.warn('[groupcall] TURN: квота аллокаций исчерпана (486), pc участника', userId, 'не соединится')
+    if ((e as RTCPeerConnectionIceErrorEvent).errorCode === 486) console.warn('[groupcall] TURN allocation quota exhausted (486), pc to participant', userId, 'will not connect')
   }
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed') closePeer(userId)

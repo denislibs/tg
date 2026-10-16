@@ -93,7 +93,7 @@ export function applyIceServers(pc: RTCPeerConnection, servers: RTCIceServer[]) 
   try {
     pc.setConfiguration({ ...config, iceServers: servers })
   } catch (e) {
-    if (pc.signalingState !== 'closed') console.warn('[call] не удалось обновить креды TURN в идущем pc', e)
+    if (pc.signalingState !== 'closed') console.warn('[call] failed to refresh TURN credentials on a live pc', e)
   }
 }
 /**

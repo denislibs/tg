@@ -574,17 +574,17 @@ describe('groupCallEngine: звонок убран, пока открыт зап
     getTracks: () => tracks, getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
     getVideoTracks: () => tracks.filter((t) => t.kind === 'video'), addTrack: (t: T) => { tracks.push(t) },
   })
-  const t = (kind: string): T => { const x: T = { kind, enabled: true, stop: () => { x.stopped = true } }; return x }
+  const mkTrack = (kind: string): T => { const x: T = { kind, enabled: true, stop: () => { x.stopped = true } }; return x }
   let cam: T
   let releaseCam: (() => void) | undefined
 
   beforeEach(() => {
     iceServers = [TURN]
     existingParticipants = [2]
-    cam = t('video')
+    cam = mkTrack('video')
     releaseCam = undefined
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async (c: { audio?: boolean }) =>
-      c.audio ? mk([t('audio')]) : new Promise((r) => { releaseCam = () => r(mk([cam])) }) } })
+      c.audio ? mk([mkTrack('audio')]) : new Promise((r) => { releaseCam = () => r(mk([cam])) }) } })
     store.useGroupCallStore.getState().reset()
   })
 
