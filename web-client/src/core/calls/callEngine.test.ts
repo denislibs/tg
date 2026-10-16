@@ -140,3 +140,109 @@ describe('callEngine: кадры чужого звонка не действую
     await settle()
   })
 })
+
+// Б-8 (М3-2): политика ICE выбирается по p2p_allowed, которое ставит СЕРВЕР
+// (tweb callInstance.ts:690-694, :1283-1287): разрешено — 'all', иначе 'relay' (IP не
+// раскрывается собеседнику). Поле отсутствует или не boolean — закрываемся ('relay').
+describe('callEngine: p2p_allowed → iceTransportPolicy', () => {
+  const policies = () => FakePC.mains().map((p) => p.config.iceTransportPolicy)
+
+  it('p2p_allowed: true у обеих сторон — pc создан с политикой all', async () => {
+    net.p2pAllowed = true
+    await connectPair(net)
+    await until(() => FakePC.mains().length === 2, 'both pc')
+    expect(policies()).toEqual(['all', 'all'])
+  })
+
+  it('p2p_allowed: false (запрет любой из сторон) — relay у обеих, звонок не рвётся', async () => {
+    net.p2pAllowed = false
+    const { A, B } = await connectPair(net)
+    await until(() => FakePC.mains().length === 2, 'both pc')
+    expect(policies()).toEqual(['relay', 'relay'])
+    expect(A.call()!.endReason).toBeUndefined()
+    expect(B.call()!.endReason).toBeUndefined()
+  })
+
+  it('входящий call_request без поля p2p_allowed — relay', async () => {
+    net.p2pAllowed = undefined
+    await connectPair(net)
+    await until(() => FakePC.mains().length === 2, 'both pc')
+    expect(policies()).toEqual(['relay', 'relay'])
+  })
+
+  it('p2p_allowed не boolean (строка "true") — relay', async () => {
+    const B = await net.side(2)
+    B.engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false, dh_hash: 'h', p2p_allowed: 'true' } })
+    B.engine.accept()
+    await until(() => FakePC.mains().length === 1, 'pc')
+    expect(policies()).toEqual(['relay'])
+  })
+
+  it('звонящий: call_accept с p2p_allowed: false — relay, true — all (значение берётся из call_accept)', async () => {
+    for (const [allowed, want] of [[false, 'relay'], [true, 'all']] as const) {
+      FakePC.reset()
+      net = createNet()
+      net.p2pAllowed = allowed
+      const { A } = await connectPair(net)
+      await until(() => FakePC.mains().length === 2, 'both pc')
+      expect(A.call()!.p2pAllowed).toBe(allowed)
+      expect(policies()).toEqual([want, want])
+      A.engine.hangup()
+      vi.resetModules()
+    }
+  })
+
+  it('relay без TURN в iceServers: pc не создаётся, call_end disconnect, причина failed', async () => {
+    net.p2pAllowed = false
+    net.iceServers = [{ urls: ['stun:stun.test:3478'] }]
+    const A = await net.side(1)
+    const B = await net.side(2)
+    A.engine.startOutgoing(PEER, false)
+    await until(() => B.call()?.phase === 'incoming', 'incoming')
+    B.engine.accept()
+    await until(() => B.call()?.endReason === 'failed' && A.call()?.phase === 'ended', 'both ended')
+    expect(FakePC.mains()).toHaveLength(0) // молчаливого перехода на 'all' нет
+    expect(reasonsOf(B, 'call_end')).toEqual(['disconnect'])
+  })
+
+  it('p2p_allowed: true и нет TURN — звонок идёт (без TURN нужен лишь relay)', async () => {
+    net.p2pAllowed = true
+    net.iceServers = [{ urls: ['stun:stun.test:3478'] }]
+    await connectPair(net)
+    await until(() => FakePC.mains().length === 2, 'both pc')
+    expect(policies()).toEqual(['all', 'all'])
+  })
+})
+
+// Креды TURN проверяются coturn на каждом запросе: кэш короткий, чтобы relay-звонок не стартовал
+// с почти истёкшими кредами и не рвался посреди разговора (tweb выдаёт креды на каждый звонок).
+describe('callEngine: кэш ICE-конфига короткий', () => {
+  it('в пределах минуты — один запрос, после — новый', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    await A.engine.iceServers()
+    expect(net.iceFetches).toBe(1)
+    await vi.advanceTimersByTimeAsync(61_000)
+    await A.engine.iceServers()
+    expect(net.iceFetches).toBe(2)
+  })
+
+  it('сбой /calls/ice после кэша: пока креды живы — последний успешный конфиг (с TURN), не STUN-only', async () => {
+    const A = await net.side(1)
+    const first = await A.engine.iceServers()
+    expect(A.engine.hasTurnServer(first)).toBe(true)
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(61_000)
+    const again = await A.engine.iceServers()
+    expect(net.iceFetches).toBe(2)
+    expect(A.engine.hasTurnServer(again)).toBe(true)
+  })
+
+  it('сбой /calls/ice и креды истекли — STUN-only (relay-звонок честно не начнётся)', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(86_400_000 - 30_000) // до истечения осталось 30 с < запаса 60 с
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+  })
+})

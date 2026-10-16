@@ -9,7 +9,7 @@
 import { useGroupCallStore } from '../../stores/groupCallStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { startClient } from '../../client/bootstrap'
-import { iceServers } from './callEngine'
+import { hasTurnServer, iceServers } from './callEngine'
 
 const sdpJSON = (d: RTCSessionDescription | null) => (d ? { type: d.type, sdp: d.sdp } : null)
 
@@ -38,7 +38,9 @@ export interface GroupCallFrame {
 }
 
 async function newPc(userId: number): Promise<RTCPeerConnection> {
-  const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' })
+  // Только через TURN: у tweb групповой звонок ходит к SFU и IP участника видит один сервер, у нас
+  // mesh, и прямые кандидаты раскрыли бы адрес каждому участнику (М3-2, Б-8).
+  const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle', iceTransportPolicy: 'relay' })
   localStream?.getTracks().forEach((t) => pc.addTrack(t, localStream!))
   pc.ontrack = (e) => {
     const stream = e.streams[0]
@@ -84,8 +86,15 @@ function broadcastMediaState() {
 
 /** Войти в видеочат группы (создаёт его, если ещё не идёт). */
 export async function joinGroupCall(peerId: number, withVideo = false) {
-  if (store().peerId != null) return // уже в звонке
+  if (store().peerId != null || store().connecting) return // уже в звонке или входим
   store().setConnecting(true)
+  // relay без TURN не соберёт ни одного кандидата: входим только при его наличии, а не молча
+  // идём в обход на прямое соединение. До микрофона — окно разрешения зря не открываем.
+  if (!hasTurnServer(await iceServers())) {
+    console.error('[group call] no TURN server: relay-only mesh cannot connect')
+    store().reset()
+    return
+  }
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
   } catch {
