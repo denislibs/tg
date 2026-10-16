@@ -1481,7 +1481,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsL
           schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
           // tweb `allow_paid_stars: starsAmount * mids.length` (:5634) — за ВСЮ пачку
           allow_paid_stars: opts?.confirmedPaymentResult ? opts.confirmedPaymentResult.starsAmount * msgIds.length : undefined,
-        })
+          // ОТСТУПЛЕНИЕ от tweb (apiManager.ts:800-808 повторяет 500): у tweb каждое
+          // пересланное сообщение несёт random_id (appMessagesManager.ts:5647) и
+          // повтор дедуплицируется; у нашей ручки ключа нет, а 500 возможен после
+          // коммита копий и списания звёзд — повтор продублировал бы пересылку.
+        }, { stopTime: -1 })
       } catch (err) {
         // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
         // (tweb :5805 → `tryRegisterRequest` с повтором `forwardMessagesInner`):
@@ -2046,7 +2050,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsL
       const wire = sendingParamsToWire(params)
       const created = await rest.post<RawMyMessage>(`/chats/${peerId}/messages`, {
         type: 'geo', text: '', geo_lat: lat, geo_lng: lng,
-        geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: '',
+        geo_live_period: livePeriod, geo_heading: heading ?? null, client_msg_id: crypto.randomUUID(), // ключ идемпотентности: повтор 500 не создаст второе live-сообщение
         reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
         reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
         send_as_peer_id: wire.sendAsPeerId,

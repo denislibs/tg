@@ -17,6 +17,9 @@ import (
 
 const (
 	maxGiveawayWinners = 100
+	// maxGiveawayMonths — срок Premium приза; колонка INT, а значение за её
+	// пределом не кодируется драйвером (500, который при повторе повторится).
+	maxGiveawayMonths = 120
 	// giveawayMaxPeriod — appConfig giveaway_period_max = 604800 с (tweb
 	// popups/boostsViaGifts.tsx:173, дефолт 7 суток).
 	giveawayMaxPeriod = 7 * 24 * time.Hour
@@ -62,7 +65,7 @@ func (i *Interactor) CreateGiveaway(ctx context.Context, in CreateGiveawayInput)
 	}
 	switch in.PrizeKind {
 	case "premium":
-		if in.Months <= 0 {
+		if in.Months <= 0 || in.Months > maxGiveawayMonths {
 			return domain.Message{}, domain.ErrInvalid
 		}
 		if !i.premiumGiveaways {

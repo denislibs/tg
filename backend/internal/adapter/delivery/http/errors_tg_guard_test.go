@@ -24,9 +24,8 @@ import (
 // и статус-переменная (её значение охрана не видит).
 func TestNo500OutsideDomainError(t *testing.T) {
 	allowed := map[string]string{
-		"writeDomainError":   "сам разборщик",
-		"writeLangPackError": "свой закрытый перечень имён langpack.*",
-		"internalError":      "хелпер публичных страниц: сбой чтения, не отказ usecase",
+		"writeDomainError": "сам разборщик",
+		"internalError":    "хелпер публичных страниц: сбой чтения, не отказ usecase",
 	}
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)

@@ -124,10 +124,19 @@ func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (m
 	return out, nil
 }
 
+// maxClientMsgIDLen — потолок ключа идемпотентности отправки; настоящие ключи
+// клиента (числа и UUID) на порядок короче.
+const maxClientMsgIDLen = 128
+
 // Send inserts a message, appends a new_message update to every member (bumping
 // unread for non-senders), and — after commit — publishes a live new_message
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
 func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, error) {
+	// Ключ идемпотентности лежит под btree-индексом: строка длиннее ~2700 байт
+	// даёт SQLSTATE 54000 — отказ, который при повторе повторится.
+	if len(in.ClientMsgID) > maxClientMsgIDLen {
+		return domain.Message{}, domain.ErrInvalid
+	}
 	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
 	// leftCreator — вышедший создатель пишет в свой чат (tweb hasRights.ts:6-7).
 	// Гость обсуждения пишет только в тред, поэтому без треда вопрос задаём

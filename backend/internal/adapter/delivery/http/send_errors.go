@@ -20,9 +20,6 @@ func writeSendError(w http.ResponseWriter, err error, notFound string) {
 		writeError(w, http.StatusForbidden, notFound)
 	case errors.Is(err, domain.ErrTooLong):
 		writeError(w, http.StatusBadRequest, "message too long")
-	case errors.Is(err, domain.ErrScheduleTooMuch):
-		// Лимит очереди отложенных чата (Telegram SCHEDULE_TOO_MUCH).
-		writeError(w, http.StatusBadRequest, "SCHEDULE_TOO_MUCH")
 	default:
 		writeDomainError(w, err, "send failed")
 	}

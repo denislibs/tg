@@ -26,6 +26,23 @@ function errorOf(status: number, body: unknown): HttpError {
   return new HttpError(status, type || `HTTP ${status}`, type)
 }
 
+/**
+ * Подмножество `options` tweb `invokeApi`, которое влияет на повтор отказа.
+ * `rawError` — отказ сразу вызывающему, без повтора ни 420, ни 500 (tweb
+ * `!options.rawError`, apiManager.ts:759,:800);
+ * `stopTime` — момент (мс, `Date.now()`), после которого 500 не повторяется;
+ * `-1` у tweb значит «не повторять» (appInlineBotsManager.ts:47,:250).
+ */
+export interface RequestOptions {
+  rawError?: boolean
+  stopTime?: number
+}
+
+/** tweb `options.waitTime` — потолок паузы между повторами 500, секунды (apiManager.ts:808). */
+const SERVER_ERROR_MAX_WAIT = 60
+
+const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
 /** tweb `options.floodMaxTimeout ?? 60` — сколько секунд FLOOD_WAIT пережидается. */
 const FLOOD_MAX_TIMEOUT = 60
 
@@ -87,19 +104,19 @@ export class RestClient {
     return h
   }
 
-  async get<R>(path: string, query?: Record<string, string | number>): Promise<R> {
+  async get<R>(path: string, query?: Record<string, string | number>, opts?: RequestOptions): Promise<R> {
     const qs = query ? '?' + new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString() : ''
-    return this.request<R>('GET', path + qs)
+    return this.request<R>('GET', path + qs, undefined, undefined, opts)
   }
 
   /**
    * `opts.headers` — заголовки именно ЭТОГО запроса (ключ входа QR,
    * `X-Login-Key`). Такой запрос идёт `fetch`-ом мимо DNP-канала: заголовок
    * принадлежит устройству, которое ещё не вошло, а не сессии канала, и
-   * `rpc_req` его не несёт.
+   * `rpc_req` его не несёт. Остальные поля — `RequestOptions` (повтор 500).
    */
-  async post<R>(path: string, body: unknown, opts?: { headers?: Record<string, string> }): Promise<R> {
-    return this.request<R>('POST', path, body, opts?.headers)
+  async post<R>(path: string, body: unknown, opts?: RequestOptions & { headers?: Record<string, string> }): Promise<R> {
+    return this.request<R>('POST', path, body, opts?.headers, opts)
   }
 
   async put<R>(path: string, body: unknown): Promise<R> {
@@ -178,18 +195,31 @@ export class RestClient {
   }
 
   /**
-   * Порт tweb `apiManager.invokeApi` (:759-791): отказ 420 `FLOOD_WAIT_N`
-   * (кроме `SLOWMODE_WAIT`) — подождать N секунд и повторить, если ждать не
-   * дольше `FLOOD_MAX_TIMEOUT`; дольше — отказ вызывающему.
+   * Порт tweb `apiManager.invokeApi`: отказ 420 `FLOOD_WAIT_N` (кроме
+   * `SLOWMODE_WAIT`) — подождать N секунд и повторить, если ждать не дольше
+   * `FLOOD_MAX_TIMEOUT`; дольше — отказ вызывающему (:759-791). Отказ 500
+   * (без `rawError`) — повторить с паузой 1 с, затем ×1,5 до 60 с; при заданном
+   * `stopTime` и `Date.now() >= stopTime` — отказ (:800-808). Безопасно, пока
+   * сервер не отдаёт 500 на отказы, которые при повторе повторятся:
+   * `only500_test.go` держит перечень таких ручек пустым.
    */
-  private async request<R>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<R> {
+  private async request<R>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>, opts?: RequestOptions): Promise<R> {
+    let waitTime = 0
     for (;;) {
       try {
         return await this.requestOnce<R>(method, path, body, extraHeaders)
       } catch (e) {
         const wait = floodWaitSeconds(e)
-        if (wait === undefined || wait > FLOOD_MAX_TIMEOUT) throw e
-        await new Promise((r) => setTimeout(r, wait * 1000))
+        if (wait !== undefined && !opts?.rawError) {
+          if (wait > FLOOD_MAX_TIMEOUT) throw e
+          await pause(wait * 1000)
+        } else if (e instanceof HttpError && e.status === 500 && !opts?.rawError) {
+          if (opts?.stopTime && Date.now() >= opts.stopTime) throw e
+          waitTime = waitTime ? Math.min(SERVER_ERROR_MAX_WAIT, waitTime * 1.5) : 1
+          await pause(waitTime * 1000)
+        } else {
+          throw e
+        }
       }
     }
   }

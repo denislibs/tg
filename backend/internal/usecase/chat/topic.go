@@ -48,6 +48,9 @@ func (i *Interactor) SetForum(ctx context.Context, chatID, actorID int64, enable
 	return nil
 }
 
+// maxTopicIconColor — потолок цвета иконки темы (RGB, 24 бита).
+const maxTopicIconColor = 0xFFFFFF
+
 // CreateTopic создаёт тему: сервисное сообщение-корень + строка forum_topics.
 // Возвращает и саму служебку: ответ messages.createForumTopic — Updates с ней,
 // и номер темы клиент берёт из её id (tweb appMessagesManager.ts:10100-10101).
@@ -90,6 +93,12 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	}
 	if iconColor < 0 {
 		iconColor = 0
+	}
+	// Цвет — RGB (24 бита): значение за пределом колонки INT драйвер не кодирует
+	// (500, который при повторе повторится), и корень темы к тому времени уже
+	// закоммичен.
+	if iconColor > maxTopicIconColor {
+		return domain.ForumTopicRecord{}, domain.Message{}, domain.ErrInvalid
 	}
 	// Корень темы — messageActionTopicCreate. Прежде это было ЕДИНСТВЕННОЕ
 	// служебное сообщение, чей текст даже не JSON, а готовая русская фраза с

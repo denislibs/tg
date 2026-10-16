@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,8 +21,10 @@ const (
 )
 
 // ErrLoginStepsUnavailable — не подключено хранилище одноразовых токенов шагов
-// входа, поэтому регистрация/восстановление/веб-импорт невозможны.
-var ErrLoginStepsUnavailable = errors.New("login steps unavailable")
+// входа, поэтому регистрация/восстановление/веб-импорт невозможны. Оборачивает
+// domain.ErrUnavailable: ручка без своей ветки отвечает 503, а не 500, который
+// клиент повторял бы (tweb apiManager.ts:800-808).
+var ErrLoginStepsUnavailable = fmt.Errorf("login steps unavailable: %w", domain.ErrUnavailable)
 
 // ErrFirstNameInvalid — имя на шаге регистрации пустое или длиннее
 // maxFirstNameLen (Telegram FIRSTNAME_INVALID); ErrLastNameInvalid — фамилия

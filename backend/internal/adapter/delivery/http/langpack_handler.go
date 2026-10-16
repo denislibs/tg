@@ -178,6 +178,6 @@ func writeLangPackError(w http.ResponseWriter, err error) {
 	case errors.Is(err, usecaselangpack.ErrVersionInvalid):
 		writeError(w, http.StatusBadRequest, errFromVersionInvalid)
 	default:
-		writeError(w, http.StatusInternalServerError, errLangPackUnavailable)
+		writeDomainError(w, err, errLangPackUnavailable)
 	}
 }

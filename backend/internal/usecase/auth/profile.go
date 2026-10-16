@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -420,9 +421,10 @@ func (i *Interactor) avatarPreviewFor(ctx context.Context, mediaID int64) []byte
 	return p
 }
 
-// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
-// domain-ошибка, чтобы ручка ответила 500 и записала в лог, а не тихим 404.
-var errMediaReaderUnwired = errors.New("media reader не подключён")
+// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: ручка
+// отвечает 503 (domain.ErrUnavailable), а не тихим 404 и не 500 — 500 клиент
+// повторяет (tweb apiManager.ts:800-808), а проводка при повторе не появится.
+var errMediaReaderUnwired = fmt.Errorf("media reader не подключён: %w", domain.ErrUnavailable)
 
 // squareAvatar — id квадратного варианта аватарки (см. AvatarSquarer). Отказ
 // кропа не мешает поставить фото: ставится исходник (мягкая деградация, как

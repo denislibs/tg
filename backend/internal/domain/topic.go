@@ -21,7 +21,7 @@ type ForumTopicRecord struct {
 	// Number(), а не этим полем: у General корневого сообщения нет (0).
 	RootMsgSeq int64
 	Title      string
-	IconColor  int    // индекс цвета значка (палитра tweb)
+	IconColor  int    // RGB цвета значка (TOPIC_COLORS tweb)
 	IconEmoji  string // unicode-emoji иконки; если задан — показывается вместо цвета
 	Closed     bool
 	Hidden     bool

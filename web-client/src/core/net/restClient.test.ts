@@ -87,6 +87,119 @@ describe('RestClient', () => {
     }
   })
 
+  // tweb apiManager.ts:800-808: 500 без rawError — повтор с паузой 1 с, затем
+  // ×1,5 до потолка 60 с; при заданном stopTime и now >= stopTime — отказ.
+  describe('повтор 500', () => {
+    const fail500 = () => new Response(JSON.stringify({ _: 'error', code: 500, text: 'could not get dialogs' }), { status: 500 })
+    const ok = () => new Response(JSON.stringify({ ok: 1 }), { status: 200 })
+    const useFetch = (...answers: Array<() => Response>) => {
+      const fetchMock = vi.fn()
+      for (const a of answers) fetchMock.mockImplementationOnce(async () => a())
+      vi.stubGlobal('fetch', fetchMock)
+      return fetchMock
+    }
+    afterEach(() => { vi.useRealTimers() })
+
+    it('500, 500, 200: паузы 1 с и 1,5 с, результат 200', async () => {
+      vi.useFakeTimers()
+      const fetchMock = useFetch(fail500, fail500, ok)
+      const p = new RestClient('/api', () => null).get('/x')
+      await vi.advanceTimersByTimeAsync(999)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1499)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(p).resolves.toEqual({ ok: 1 })
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('пауза растёт ×1,5 и упирается в 60 с', async () => {
+      vi.useFakeTimers()
+      const fetchMock = useFetch(...Array.from({ length: 14 }, () => fail500), ok)
+      const delays: number[] = []
+      const realSetTimeout = globalThis.setTimeout
+      vi.stubGlobal('setTimeout', ((fn: () => void, ms?: number) => {
+        if (ms !== undefined && ms >= 1000) delays.push(ms)
+        return realSetTimeout(fn, ms)
+      }) as typeof setTimeout)
+      const p = new RestClient('/api', () => null).get('/x')
+      await vi.runAllTimersAsync()
+      await expect(p).resolves.toEqual({ ok: 1 })
+      expect(fetchMock).toHaveBeenCalledTimes(15)
+      const expected: number[] = []
+      for (let w = 0, i = 0; i < 14; i++) { w = w ? Math.min(60, w * 1.5) : 1; expected.push(w * 1000) }
+      expect(delays).toEqual(expected)
+      expect(delays[delays.length - 1]).toBe(60_000)
+    })
+
+    it('stopTime в прошлом (в том числе -1) — отказ без повтора', async () => {
+      for (const stopTime of [-1, Date.now() - 1]) {
+        const fetchMock = useFetch(fail500, ok)
+        const rest = new RestClient('/api', () => null)
+        await expect(rest.post('/x', {}, { stopTime })).rejects.toMatchObject({ status: 500 })
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      }
+    })
+
+    it('stopTime в будущем — повтор до наступления stopTime, затем отказ', async () => {
+      vi.useFakeTimers()
+      const fetchMock = useFetch(fail500, fail500, ok)
+      const rest = new RestClient('/api', () => null)
+      const settled = rest.get('/x', undefined, { stopTime: Date.now() + 1000 }).catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(999) // 1-й отказ до stopTime → пауза 1 с
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1) // 2-й запрос; его отказ уже на stopTime → без паузы
+      expect(await settled).toMatchObject({ status: 500 })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('rawError — отказ без повтора', async () => {
+      const fetchMock = useFetch(fail500, ok)
+      const rest = new RestClient('/api', () => null)
+      await expect(rest.post('/x', {}, { rawError: true })).rejects.toMatchObject({ status: 500 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('500 через готовый канал DNP повторяется так же', async () => {
+      vi.useFakeTimers()
+      const call = vi.fn()
+        .mockResolvedValueOnce({ status: 500, body: { _: 'error', code: 500, text: 'x' } })
+        .mockResolvedValueOnce({ status: 200, body: { ok: 1 } })
+      const rc = new RestClient('/api', () => 'tok', undefined, { isReady: () => true, call })
+      const p = rc.post('/x', {})
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(p).resolves.toEqual({ ok: 1 })
+      expect(call).toHaveBeenCalledTimes(2)
+    })
+
+    it('420 и 500 в одном запросе: FLOOD_WAIT пережидается, паузы 500 идут с 1 с', async () => {
+      vi.useFakeTimers()
+      const flood = () => new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_2' }), { status: 420 })
+      const fetchMock = useFetch(flood, fail500, ok)
+      const p = new RestClient('/api', () => null).get('/x')
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(p).resolves.toEqual({ ok: 1 })
+    })
+
+    it('rawError отключает и пережидание FLOOD_WAIT (tweb :759)', async () => {
+      const fetchMock = useFetch(() => new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_2' }), { status: 420 }), ok)
+      await expect(new RestClient('/api', () => null).post('/x', {}, { rawError: true })).rejects.toMatchObject({ status: 420 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('прочие отказы (400, 502) не повторяются', async () => {
+      for (const status of [400, 502]) {
+        const fetchMock = useFetch(() => new Response('{}', { status }), ok)
+        await expect(new RestClient('/api', () => null).get('/x')).rejects.toMatchObject({ status })
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      }
+    })
+  })
+
   // У чужого тела имени нашей ошибки нет — и подставлять туда «HTTP 502»
   // нельзя: вызывающий принял бы это за названную причину.
   it('у чужого тела отказа имени отказа не появляется', async () => {

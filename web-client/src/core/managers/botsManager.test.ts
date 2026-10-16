@@ -22,14 +22,14 @@ describe('BotsManager.callback', () => {
     // (usecase/chat/bot.go: switch data { case "alert": … }) уже после разбора.
     await newBotsManager({ rest }).callback(42, 7, 'YWxlcnQ=', 100)
 
-    expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, msg_id: 100, data: 'YWxlcnQ=' })
+    expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, msg_id: 100, data: 'YWxlcnQ=' }, { stopTime: -1 })
   })
 
   it('клиентский номер сообщения уходит серверным (getServerMessageId)', async () => {
     const { rest, post } = fakeRest()
     await newBotsManager({ rest }).callback(1, 2, 'Y2I=', generateMessageId(15))
 
-    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, msg_id: 15, data: 'Y2I=' })
+    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, msg_id: 15, data: 'Y2I=' }, { stopTime: -1 })
   })
 
   it('ключ тела — msg_id (getBotCallbackAnswer.msg_id), прежнего message_id нет', async () => {
@@ -39,5 +39,15 @@ describe('BotsManager.callback', () => {
     const body = post.mock.calls[0][1] as Record<string, unknown>
     expect(body.msg_id).toBe(9)
     expect(body).not.toHaveProperty('message_id')
+  })
+})
+
+// tweb appInlineBotsManager.ts:47: getInlineBotResults с stopTime -1 — 500 не повторяется.
+describe('BotsManager.inline', () => {
+  it('запрос выдачи идёт со stopTime -1', async () => {
+    const get = vi.fn().mockResolvedValue({ results: [], users: [] })
+    await newBotsManager({ rest: { get, post: vi.fn() } as never }).inline(5, 'q a')
+
+    expect(get).toHaveBeenCalledWith('/bots/5/inline?q=q%20a', undefined, { stopTime: -1 })
   })
 })

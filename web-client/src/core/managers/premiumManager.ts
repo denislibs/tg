@@ -47,7 +47,9 @@ export function newPremiumManager({ rest, onMeChanged }: PremiumDeps) {
       const res = await rest.post<{ user: RawPeerProfile; subscription: RawSubscription }>('/me/premium/checkout', {
         plan,
         card: { number: card.number, expiry: card.expiry, cvc: card.cvc },
-      })
+        // ОТСТУПЛЕНИЕ от tweb (повторяет 500): продление подписки коммитится до
+        // выдачи Premium, и повтор после сбоя между шагами продлил бы её ещё раз.
+      }, { stopTime: -1 })
       const user = mapPeerProfile(res.user)
       onMeChanged?.(user) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return { user, subscription: mapSubscription(res.subscription) }

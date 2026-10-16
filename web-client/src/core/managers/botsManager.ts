@@ -61,7 +61,8 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
       // Ответ — конструктор `messages.botCallbackAnswer`. «Показать плашкой»
       // это ФЛАГ: его ОТСУТСТВИЕ и есть «тостом».
       const r = await rest.post<{ _: 'messages.botCallbackAnswer'; pFlags?: { alert?: true }; message?: string }>(
-        `/bots/${botId}/callback`, { peer_id: peerId, msg_id: getServerMessageId(messageId), data })
+        `/bots/${botId}/callback`, { peer_id: peerId, msg_id: getServerMessageId(messageId), data },
+        { stopTime: -1 }) // tweb appInlineBotsManager.ts:250: 500 не повторяется
       return { text: r.message ?? '', alert: !!r.pFlags?.alert }
     },
     // Кнопка-меню mini-app бота (пусто — не задана).
@@ -71,7 +72,8 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
     },
     // Inline-режим: результаты + плейсхолдер поля ввода.
     async inline(botId: number, query: string): Promise<{ results: InlineResult[]; placeholder: string }> {
-      const r = await rest.get<MessagesBotResults>(`/bots/${botId}/inline?q=${encodeURIComponent(query)}`)
+      const r = await rest.get<MessagesBotResults>(`/bots/${botId}/inline?q=${encodeURIComponent(query)}`, undefined,
+        { stopTime: -1 }) // tweb appInlineBotsManager.ts:47: 500 не повторяется
       // Подсказка поля ввода — параметр САМОГО бота: карточка приехала
       // вектором `users` того же контейнера. Прежде она ехала вторым ключом
       // рядом с результатами, то есть жила в двух местах сразу.
