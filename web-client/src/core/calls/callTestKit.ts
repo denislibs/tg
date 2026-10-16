@@ -170,7 +170,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceHang) await new Promise(() => {}); if (net.iceFail) throw new Error('HTTP 502'); return { servers: net.iceServers, ttlSeconds: 86_400 } } },
+            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceHang) await new Promise(() => {}); if (net.iceFail) throw new Error('HTTP 502'); return { servers: net.iceServers, ttlSeconds: 3600 } } },
             peers: { getUsers: async () => [] },
           },
         }),
