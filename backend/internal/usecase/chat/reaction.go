@@ -550,20 +550,12 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 // Медиа стикеров читается всеми: наборы публичны, и стикер из неустановленного
 // набора должен отрисоваться у любого получателя.
 func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
+	// Платное медиа (неоплаченное, чужое) закрыто как вложение СВОЕГО сообщения —
+	// этот путь CanAccess отсекает сам; тот же файл, открытый другим путём (фото
+	// чата, история, бесплатное сообщение, фото профиля), качается.
 	ok, err := i.mediaAccess.CanAccess(ctx, userID, mediaID)
 	if err != nil {
 		return false, err
-	}
-	// Платное медиа: даже член чата не качает байты, пока не оплатил (автор —
-	// исключение, проверяется по sender_id внутри LockedMedia). Замок закрывает
-	// файл как ВЛОЖЕНИЕ сообщения, поэтому проверяется до фото профиля: тот же
-	// файл, стоящий аватаркой, открывает правило profile_photo, а не покупка.
-	if ok && i.paidMedia != nil {
-		locked, e := i.paidMedia.LockedMedia(ctx, userID, mediaID)
-		if e != nil {
-			return false, e
-		}
-		ok = !locked
 	}
 	if !ok {
 		if ok, err = i.canSeeProfilePhoto(ctx, userID, mediaID); err != nil {

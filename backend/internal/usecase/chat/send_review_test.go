@@ -17,7 +17,7 @@ import (
 // [S1] Пересылка платного медиа: копия продаётся тем же предложением —
 // пересылающий не видит её даром, выручку получает автор оригинала.
 func TestForward_PaidMediaSoldByOriginal(t *testing.T) {
-	in, s, fs, pm := newPaidInteractor()
+	in, s, fs, _ := newPaidInteractor()
 	ctx := context.Background()
 	msgID, mediaID := sendPaidPhoto(t, in, s, 20) // Алиса(1) → Боб(2), 20⭐
 	src, _ := in.msgs.GetByID(ctx, msgID)
@@ -30,7 +30,7 @@ func TestForward_PaidMediaSoldByOriginal(t *testing.T) {
 	if !out[0].PaidMediaLocked || out[0].MediaID != nil {
 		t.Fatalf("копия у пересылающего открыта: locked=%v media=%v", out[0].PaidMediaLocked, out[0].MediaID)
 	}
-	if locked, _ := pm.LockedMedia(ctx, 2, mediaID); !locked {
+	if ok, _ := in.CanAccessMedia(ctx, 2, mediaID); ok {
 		t.Fatal("байты медиа открыты пересылающему, который его не покупал")
 	}
 	cp, _ := in.msgs.GetByID(ctx, out[0].ID)
@@ -96,7 +96,7 @@ func TestMirror_PaidMediaLocked(t *testing.T) {
 	if view[0].PaidMediaPrice == nil || !view[0].PaidMediaLocked || view[0].MediaID != nil {
 		t.Fatalf("зеркало платного поста открыто даром: price=%v locked=%v", view[0].PaidMediaPrice, view[0].PaidMediaLocked)
 	}
-	if locked, _ := pm.LockedMedia(ctx, 8, 42); !locked {
+	if ok, _ := in.CanAccessMedia(ctx, 8, 42); ok {
 		t.Fatal("байты зеркала открыты участнику группы")
 	}
 }

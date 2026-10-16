@@ -100,6 +100,7 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   UNION ALL
 		   SELECT 1 FROM messages m
 		     WHERE m.media_id=$1 AND `+chatReadableBy("m.chat_id", "$2")+` AND `+messageVisibleTo("m", "$2")+`
+		       AND NOT `+paidMediaLockedFor("m", "$2")+`
 		   UNION ALL
 		   SELECT 1 FROM messages m
 		     WHERE m.web_page_media_id=$1 AND `+chatReadableBy("m.chat_id", "$2")+` AND `+messageVisibleTo("m", "$2")+`
