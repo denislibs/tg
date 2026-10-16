@@ -31,8 +31,10 @@ class FakePC {
   addTrack() {}
   async setRemoteDescription() {}
   async createAnswer() { return { type: 'answer', sdp: 'a' } }
-  async setLocalDescription() {}
-  get localDescription() { return { type: 'answer', sdp: 'a' } }
+  async createOffer() { return { type: 'offer', sdp: 'o' } }
+  private local: { type: string; sdp: string } | null = null
+  async setLocalDescription(d?: { type: string; sdp: string }) { this.local = d ?? null }
+  get localDescription() { return this.local }
   close() {}
 }
 
@@ -160,6 +162,22 @@ describe('groupCallEngine: звонок убран, пока соединени�
     expect(Object.keys(store.useGroupCallStore.getState().participants)).toHaveLength(0)
     expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_signal')).toHaveLength(0)
   })
+
+  it('отказ входа во время ожидания: соединение не создаётся, ответа на offer нет', async () => {
+    let release!: () => void
+    iceGate = new Promise<void>((r) => { release = r })
+
+    engine.handleGroupCallFrame(offer(2))
+    await new Promise((r) => setTimeout(r, 0))
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 1, action: 'rejected', forbidden: true } })
+    release()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(store.useGroupCallStore.getState().peerId).toBeNull()
+    expect(created).toHaveLength(0)
+    expect(Object.keys(store.useGroupCallStore.getState().participants)).toHaveLength(0)
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.type === 'group_call_signal')).toHaveLength(0)
+  })
 })
 
 // Б-8 (М3-2): у tweb групповой звонок ходит к SFU, IP участника видит только сервер. У нас mesh,
@@ -196,6 +214,20 @@ describe('groupCallEngine: mesh только через TURN', () => {
     await engine.joinGroupCall(PEER)
 
     expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER } })
+  })
+
+  it('новичок шлёт offer каждому сидящему, соединение через relay', async () => {
+    iceServers = [TURN]
+    existingParticipants = [1, 2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+
+    await engine.joinGroupCall(PEER)
+
+    expect(created).toHaveLength(1)
+    expect(created[0].iceTransportPolicy).toBe('relay')
+    const signals = sendCallFrame.mock.calls.map(([f]) => f).filter((f) => f.type === 'group_call_signal')
+    expect(signals.find((f) => f.data.sdp)?.data).toMatchObject({ peer_id: PEER, to_user_id: 2, sdp: { type: 'offer' } })
   })
 
   it('двойной вход (два клика) — один getUserMedia и один group_call_join', async () => {
