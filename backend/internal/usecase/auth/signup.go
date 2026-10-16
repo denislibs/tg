@@ -23,9 +23,14 @@ const (
 // входа, поэтому регистрация/восстановление/веб-импорт невозможны.
 var ErrLoginStepsUnavailable = errors.New("login steps unavailable")
 
-// ErrNameRequired — пустое имя на шаге регистрации (tweb не даёт отправить
-// форму с пустым FirstName).
-var ErrNameRequired = errors.New("first name required")
+// ErrFirstNameInvalid — имя на шаге регистрации пустое или длиннее
+// maxFirstNameLen (Telegram FIRSTNAME_INVALID); ErrLastNameInvalid — фамилия
+// длиннее maxLastNameLen (LASTNAME_INVALID). tweb SignUpCard.tsx:121-127 пишет
+// имя отказа в кнопку.
+var (
+	ErrFirstNameInvalid = errors.New("first name invalid")
+	ErrLastNameInvalid  = errors.New("last name invalid")
+)
 
 // startSignUp — хвост SignIn для незнакомого номера: код сгорает, наружу уходит
 // одноразовый токен шага регистрации (только его хеш лежит в хранилище).
@@ -57,11 +62,11 @@ func (i *Interactor) SignUp(ctx context.Context, rawToken, firstName, lastName, 
 	}
 	first := strings.TrimSpace(firstName)
 	last := strings.TrimSpace(lastName)
-	if first == "" {
-		return SignInResult{}, ErrNameRequired
+	if first == "" || utf8.RuneCountInString(first) > maxFirstNameLen {
+		return SignInResult{}, ErrFirstNameInvalid
 	}
-	if utf8.RuneCountInString(first) > maxFirstNameLen || utf8.RuneCountInString(last) > maxLastNameLen {
-		return SignInResult{}, domain.ErrTooLong
+	if utf8.RuneCountInString(last) > maxLastNameLen {
+		return SignInResult{}, ErrLastNameInvalid
 	}
 	tokenHash := domain.HashToken(rawToken)
 	phone, err := i.steps.SignUpTokenPhone(ctx, tokenHash)

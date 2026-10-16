@@ -44,6 +44,7 @@ func inviteCases() []struct {
 			u.Chats = []Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), time.Unix(1787334148, 0), ChannelFlags{Megagroup: true})}
 			return NewMessagesInvitedUsers(u, []int64{9})
 		}()},
+		{"вступление по ссылке", NewMessagesChatInviteJoinResultOk(NewUpdates(nil, nil, time.Unix(1787334148, 0)))},
 		{"ответ создания группы без пропущенных", NewMessagesInvitedUsers(NewUpdates(nil, nil, time.Unix(1, 0)), nil)},
 	}
 }

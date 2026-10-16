@@ -115,12 +115,21 @@ func TestChatUsernameAvailable_HTTP(t *testing.T) {
 	// Сохранение согласовано с проверкой: занятое чужим пространством имя не
 	// сохраняется ни пользователю, ни чату.
 	rec = authedReq(t, h, http.MethodPut, "/me/username", tokenB, map[string]string{"username": "second_group"})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("имя чата сохранилось пользователю: %d %s", rec.Code, rec.Body.String())
+	if got := wireErr(t, rec, http.StatusBadRequest); got != "USERNAME_OCCUPIED" {
+		t.Fatalf("имя чата пользователю: %q; want USERNAME_OCCUPIED", got)
 	}
 	rec = authedReq(t, h, http.MethodPut, "/chats/"+first+"/type", tokenA, map[string]any{"is_public": true, "username": "carol_user"})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("имя пользователя сохранилось чату: %d %s", rec.Code, rec.Body.String())
+	if got := wireErr(t, rec, http.StatusBadRequest); got != "USERNAME_OCCUPIED" {
+		t.Fatalf("имя пользователя чату: %q; want USERNAME_OCCUPIED", got)
+	}
+	// Негодная форма при сохранении — то же имя отказа, что у проверки.
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+first+"/type", tokenA, map[string]any{"is_public": true, "username": "ab"})
+	if got := wireErr(t, rec, http.StatusBadRequest); got != "USERNAME_INVALID" {
+		t.Fatalf("негодное имя чата: %q; want USERNAME_INVALID", got)
+	}
+	rec = authedReq(t, h, http.MethodPut, "/me/username", tokenB, map[string]string{"username": "ab"})
+	if got := wireErr(t, rec, http.StatusBadRequest); got != "USERNAME_INVALID" {
+		t.Fatalf("негодное имя пользователя: %q; want USERNAME_INVALID", got)
 	}
 }
 

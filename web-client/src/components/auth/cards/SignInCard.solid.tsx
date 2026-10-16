@@ -20,16 +20,8 @@
 // lottie нашему упрощённому SVG-логотипу не нужен.
 // Ветка `auth.sentCodeSuccess` (:127-135, «сервер сразу авторизовал по
 // отправке кода» — редкий MTProto-случай) — у REST `requestCode` не умеет
-// вернуть сессию, только `void`/ошибку; после успеха всегда идёт переход на
+// вернуть сессию, только `{ok}`/`{error}`; после успеха всегда идёт переход на
 // authCode, немедленного `toIm()` здесь быть не может.
-// Различение `PHONE_NUMBER_INVALID` и прочих ошибок (:144-155: у tweb первое
-// подменяет `telInputField.label`/красит поле и оставляет `Login.Next` на
-// кнопке, второе — печатает `err.type` в саму кнопку) — не портировано: наш
-// `requestCode` бросает `HttpError` без типизированного кода ошибки на этом
-// пути (бэкенд валидирует только «телефон пуст», `backend/internal/usecase/
-// auth/auth.go::RequestCode`, без отдельного «телефон некорректен»), различать
-// нечем — ЛЮБАЯ ошибка красит поле как неверный номер (`setPhoneError(true)`).
-//
 // ── Наши расширения (есть предмет, оригинал так не умеет) ───────────────────
 // Вход по ключу доступа (`passkeyLogin` ниже) — у tweb это ОТДЕЛЬНЫЙ
 // discoverable-flow (`PasskeyLoginButton`: пере-фетч опций на mount, кнопка
@@ -95,6 +87,9 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
   const [country, setCountry] = createSignal<Country | undefined>(DEFAULT_COUNTRY)
   const [phone, setPhone] = createSignal(DEFAULT_COUNTRY.code)
   const [phoneError, setPhoneError] = createSignal(false)
+  // tweb `nextContent` (SignInCard.tsx:48, :145): имя прочего отказа — в кнопку
+  // как есть, до следующей отправки.
+  const [nextError, setNextError] = createSignal('')
   const [busy, setBusy] = createSignal(false)
 
   // tweb `lastCountrySelected`: явно выбранная из списка страна не должна
@@ -163,26 +158,27 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
     }, 0)
   }
 
+  // Порт tweb SignInCard.tsx:120-146: `PHONE_NUMBER_INVALID` красит поле и
+  // меняет его подпись, кнопка остаётся `Login.Next`; прочий отказ — имя в
+  // кнопку и след в консоли. Имя доезжает полем результата `requestCode`
+  // (`{error}`), сеть и пустое имя — 'UNKNOWN'.
   const sendCode = async () => {
     if (!canSubmit()) return
     setPhoneError(false)
+    setNextError('')
     setBusy(true)
-    try {
-      await managers.auth.requestCode(fullPhone())
+    const res = await managers.auth.requestCode(fullPhone()).catch(() => ({ error: 'UNKNOWN' }))
+    setBusy(false)
+    if ('ok' in res) {
       navigate({ name: 'authCode', payload: { phone: phone() } })
-    } catch (err) {
-      // Красный `Login.PhoneLabelInvalid` — единственное, что мы можем сказать
-      // пользователю (различать нечем, см. докблок файла). Но это УТВЕРЖДЕНИЕ
-      // про его ввод, и если под ним на самом деле лежит обрыв сети или
-      // сломанный RPC — след в консоли обязан остаться: у tweb ветка
-      // `default:` пишет `console.error('auth.sendCode error:', err)` и
-      // печатает `err.type` прямо на кнопке (`SignInCard.tsx:151-153`), то
-      // есть оригинал чужую ошибку за ошибку ввода не выдаёт.
-      console.error('SignInCard: requestCode error:', err)
-      setPhoneError(true)
-    } finally {
-      setBusy(false)
+      return
     }
+    if (res.error === 'PHONE_NUMBER_INVALID') {
+      setPhoneError(true)
+      return
+    }
+    console.error('auth.sendCode error:', res.error)
+    setNextError(res.error)
   }
 
   const passkeyLogin = async () => {
@@ -192,6 +188,12 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
       const { session, options } = await managers.auth.passkeyLoginBegin()
       const assertion = await getPasskeyAssertion(JSON.parse(options.data))
       const res = await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      // Отказ сервера — строкой из результата (PASSKEY_CREDENTIAL_NOT_FOUND и
+      // прочие): тост, в мессенджер не пускаем.
+      if ('error' in res) {
+        reportPasskeyLoginError('SignInCard', res.error)
+        return
+      }
       // Облачный пароль — шаг пароля, а не вход (tweb `passkeyLoginButton.tsx:69-71`).
       if (res.passwordNeeded) {
         navigate({ name: 'password', payload: { token: res.passwordToken, hint: res.hint } })
@@ -258,7 +260,7 @@ export default function SignInCard(_props: { spec: Spec }): JSX.Element {
         {/* tweb SignInCard.onSubmit: на отправке содержимое кнопки целиком
             подменяется на PleaseWait + svg.preloader-circular. */}
         <Button class="btn-primary btn-color-primary" disabled={!canSubmit()} onClick={() => void sendCode()}>
-          {busy() ? i18n('PleaseWait') : i18n('Login.Next')}
+          {busy() ? i18n('PleaseWait') : nextError() || i18n('Login.Next')}
           {busy() && <PreloaderCircular />}
         </Button>
       </div>

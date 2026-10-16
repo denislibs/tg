@@ -21,14 +21,12 @@
  *     `auth.passwordNeeded` (общий шаг пароля, как у `sign_in` и `sign_import`):
  *     его разбирают сами карточки (переход на карточку пароля), сюда он не
  *     доходит;
- *   • `PASSKEY_CREDENTIAL_NOT_FOUND` — отличить НЕЧЕМ: бэкенд отвечает одним
- *     `401 «passkey login failed»` на любой отказ проверки
- *     (`backend/internal/adapter/delivery/http/passkey_handler.go:244-247`),
- *     отдельного имени отказа на проводе нет. Поэтому ключ
- *     `Login.Passkey.Error.NotFound` не заводится: пустой ключ в словаре хуже,
- *     чем его отсутствие.
- * Остаётся общая ветка — тост `Login.Passkey.Error` (текст 1:1 с tweb
- * `langSign.ts:36`) плюс след в консоли.
+ *   • `PASSKEY_CREDENTIAL_NOT_FOUND` — сервер отдаёт его, когда ключа нет в
+ *     базе (`passkey_handler.go::FinishLogin`); до карточки имя доезжает
+ *     СТРОКОЙ из результата `passkeyLoginFinish` (`{error}`), а не исключением;
+ *   • всё прочее — строка из результата либо исключение WebAuthn главного
+ *     потока (`catch` карточки) — общий тост `Login.Passkey.Error` плюс след в
+ *     консоли.
  *
  * ── Почему отмена диалога тоже показывается ────────────────────────────────
  * `navigator.credentials.get` бросает `NotAllowedError` И когда пользователь
@@ -42,5 +40,5 @@ import { toastNew } from '@components/toast'
 
 export function reportPasskeyLoginError(where: string, err: unknown): void {
   console.error(`${where}: passkey login error:`, err)
-  toastNew({ langPackKey: 'Login.Passkey.Error' })
+  toastNew({ langPackKey: err === 'PASSKEY_CREDENTIAL_NOT_FOUND' ? 'Login.Passkey.Error.NotFound' : 'Login.Passkey.Error' })
 }

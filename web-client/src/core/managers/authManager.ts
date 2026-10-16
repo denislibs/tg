@@ -84,11 +84,36 @@ export type SignInOutcome =
   | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined; signUpRequired?: undefined }
   | { signUpRequired: true; signUpToken: string; user?: undefined; passwordNeeded?: undefined }
 
-// Регистрация: сессия либо код ошибки сервера. Дискриминированный результат, а не
-// исключение, — HttpError не переживает границу worker-RPC (как SetUsernameResult).
-export type SignUpResult =
-  | { user: PeerProfile }
-  | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
+// Имя отказа для карточки — поле результата: так его разбирают requestCode,
+// signUp и вход по ключу доступа (план Ф-7, Task 10, Step 3а). Через worker-RPC
+// теряется класс `HttpError` (`instanceof`), а `type`/`status` доезжают полями
+// ошибки (rpc/superMessagePort.ts) — поэтому `signIn` по-прежнему отказывает
+// исключением, и карточка читает его `type`. Имя — `HttpError.type` (у
+// оригинала `ApiError.type`); пустое имя (чужое тело: 502/504 от nginx) и
+// исключение не-HttpError (сеть, сбой сохранения сессии) — 'UNKNOWN'. Оба
+// случая без имени пишутся в консоль воркера (со статусом / стеком): по
+// 'UNKNOWN' на карточке их не различить.
+export type ErrorResult = { error: string }
+const errorResult = (e: unknown): ErrorResult => {
+  if (e instanceof HttpError && e.type) return { error: e.type }
+  if (e instanceof HttpError) console.error('auth: отказ без имени, статус', e.status, e)
+  else console.error('auth: сбой без ответа сервера:', e)
+  return { error: 'UNKNOWN' }
+}
+
+// Запрос кода входа (tweb `auth.sendCode`, SignInCard.tsx:120-146).
+export type RequestCodeResult = { ok: true } | ErrorResult
+
+// Регистрация: сессия либо имя отказа (`FIRSTNAME_INVALID`, `LASTNAME_INVALID`,
+// `PHONE_NUMBER_OCCUPIED`, `signup_token_expired`, `FLOOD_WAIT_N` дольше минуты…):
+// tweb SignUpCard.tsx:121-127 пишет `err.type` в кнопку как есть.
+export type SignUpResult = { user: PeerProfile } | ErrorResult
+
+// Вход по ключу доступа: исход шага входа либо имя отказа
+// (`PASSKEY_CREDENTIAL_NOT_FOUND` и прочие, tweb passkeyLoginButton.tsx:68-76).
+export type PasskeyLoginResult =
+  | SignInOutcome
+  | (ErrorResult & { user?: undefined; passwordNeeded?: undefined; signUpRequired?: undefined })
 
 // «Забыли пароль»: маска привязанной почты (`auth.passwordRecovery`). Паузу
 // повторной отправки держит СЕРВЕР и выражает отказом 420 `FLOOD_WAIT_<N>`
@@ -96,13 +121,14 @@ export type SignUpResult =
 // (`apiManager.ts:759-791`), поэтому до менеджера пауза не доходит.
 export type RecoveryRequestResult =
   | { emailPattern: string }
-  | { error: 'password_token_expired' | 'password_recovery_na' | 'unavailable' | 'failed' }
+  | { error: 'password_token_expired' | 'password_recovery_na' | 'failed' }
 
-// Подтверждение кода с почты: сессия либо причина отказа. `recovery_expired` —
-// код протух ЛИБО исчерпаны 5 попыток (сервер не различает их намеренно).
+// Подтверждение кода с почты: сессия либо причина отказа. Различается только
+// неверный код (`CODE_INVALID`, tweb EmailRecoverCard.tsx:47-48), всё прочее —
+// в том числе протухший код (`EMAIL_HASH_EXPIRED`) — `failed`.
 export type RecoveryConfirmResult =
   | { user: PeerProfile }
-  | { error: 'invalid_code' | 'recovery_expired' | 'unavailable' | 'failed' }
+  | { error: 'invalid_code' | 'failed' }
 
 // Импорт сессии по одноразовому веб-токену (#?tgWebAuthToken=…).
 export type SignImportResult =
@@ -111,10 +137,13 @@ export type SignImportResult =
 
 // Сброс аккаунта с экрана входа (tweb `appAccountManager.deleteAccount('Forgot password')`
 // в ветке PASSWORD_RECOVERY_NA). `recovery_available` — почта всё-таки привязана,
-// сбрасывать нельзя: надо идти восстановлением.
+// сбрасывать нельзя: надо идти восстановлением. `recent_confirm` / `confirm_wait`
+// — отказы отложенного сброса `2FA_RECENT_CONFIRM` / `2FA_CONFIRM_WAIT_<N>`
+// (tweb PasswordCard.tsx:88-100), `wait` — секунды до сброса.
 export type AccountResetResult =
   | { ok: true }
-  | { error: 'password_token_expired' | 'recovery_available' | 'failed' }
+  | { error: 'password_token_expired' | 'recovery_available' | 'recent_confirm' | 'failed' }
+  | { error: 'confirm_wait'; wait: number }
 
 export interface PasswordState {
   enabled: boolean
@@ -220,8 +249,9 @@ export type LoginTokenResult =
   | { status: 'pending'; token: string /* hex */; expires: number /* unix-с */ }
   | { status: 'success'; user: PeerProfile }
   | { status: 'password'; passwordToken: string; hint: string }
-  // Отказы, которые цикл карточки переживает. `HttpError` не переживает границу
-  // worker-RPC, поэтому класс ошибки определяется здесь и уходит значением.
+  // Отказы, которые цикл карточки переживает. Классификацию (повтор, протух,
+  // проброс) решает менеджер в воркере по `instanceof HttpError` и статусу —
+  // одним местом, и уходит она значением.
   /** `AUTH_TOKEN_EXPIRED`: цикл идёт дальше (tweb SignQRCard.tsx:179-181). */
   | { status: 'expired' }
   /** Сбой сети / 5xx / 408: подождать шаг и повторить (у tweb это делает `invokeApi`). */
@@ -374,8 +404,13 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       }
     },
 
-    async requestCode(phone: string): Promise<void> {
-      await rest.post('/auth/request_code', { phone })
+    async requestCode(phone: string): Promise<RequestCodeResult> {
+      try {
+        await rest.post('/auth/request_code', { phone })
+        return { ok: true }
+      } catch (e) {
+        return errorResult(e)
+      }
     },
 
     // При включённом облачном пароле сервер вместо сессии выдаёт одноразовый
@@ -395,15 +430,9 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
           signup_token: signUpToken, first_name: firstName, last_name: lastName, device, platform,
         })) }
       } catch (e) {
-        if (!(e instanceof HttpError)) throw e
-        if (e.message === 'first_name_required') return { error: 'first_name_required' }
-        if (e.message === 'name_too_long') return { error: 'name_too_long' }
-        if (e.status === 401) return { error: 'signup_token_expired' }
-        if (e.status === 409) return { error: 'phone_number_occupied' }
-        // До сюда доходит только ожидание длиннее минуты: короче restClient пережидает
-        // сам (tweb apiManager.ts:787-791 — выше `floodMaxTimeout` отказ).
-        if (e.status === 420 || e.type.startsWith('FLOOD_WAIT_')) return { error: 'too_many_requests' }
-        return { error: 'failed' }
+        // FLOOD_WAIT_N сюда доходит только дольше минуты: короче restClient
+        // пережидает сам (tweb apiManager.ts:787-791).
+        return errorResult(e)
       }
     },
 
@@ -418,9 +447,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         return { emailPattern: res.email_pattern }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        if (e.status === 401) return { error: 'password_token_expired' }
-        if (e.status === 404) return { error: 'password_recovery_na' }
-        if (e.status === 503) return { error: 'unavailable' }
+        if (e.type === 'password_token_expired') return { error: 'password_token_expired' }
+        if (e.type === 'PASSWORD_RECOVERY_NA') return { error: 'password_recovery_na' }
         return { error: 'failed' }
       }
     },
@@ -430,12 +458,18 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     // Сессии тут нет — операцию авторизует тот же одноразовый password_token.
     async resetAccount(passwordToken: string): Promise<AccountResetResult> {
       try {
-        await rest.post('/auth/account/reset', { password_token: passwordToken })
+        // `reason` — TL `account.deleteAccount{reason}`, tweb шлёт 'Forgot password'
+        // (PasswordCard.tsx:89); сервер принимает и не хранит.
+        await rest.post('/auth/account/reset', { password_token: passwordToken, reason: 'Forgot password' })
         return { ok: true }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        if (e.status === 401) return { error: 'password_token_expired' }
-        if (e.status === 409) return { error: 'recovery_available' }
+        if (e.type === 'password_token_expired') return { error: 'password_token_expired' }
+        if (e.type === 'recovery_available') return { error: 'recovery_available' }
+        if (e.type === '2FA_RECENT_CONFIRM') return { error: 'recent_confirm' }
+        if (e.type.startsWith('2FA_CONFIRM_WAIT_')) return { error: 'confirm_wait', wait: +e.type.replace('2FA_CONFIRM_WAIT_', '') }
+        // tweb PasswordCard.tsx:107 — `console.error(err)` на прочем отказе.
+        console.error('auth: resetAccount отказ:', e.status, e.type, e)
         return { error: 'failed' }
       }
     },
@@ -448,9 +482,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         })) }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        if (e.message === 'recovery_expired') return { error: 'recovery_expired' }
-        if (e.status === 401) return { error: 'invalid_code' }
-        if (e.status === 503) return { error: 'unavailable' }
+        if (e.type === 'CODE_INVALID') return { error: 'invalid_code' }
         return { error: 'failed' }
       }
     },
@@ -526,12 +558,17 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       return rest.post('/auth/passkey/begin', {})
     },
     // Исход — тот же, что у остальных шагов входа: при облачном пароле
-    // `auth.passwordNeeded` (tweb `passkeyLoginButton.tsx:69-71`), иначе сессия.
-    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<SignInOutcome> {
-      return toOutcome(await rest.post<AuthAuthorizationWire>(
-        `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
-        assertion,
-      ))
+    // `auth.passwordNeeded` (tweb `passkeyLoginButton.tsx:69-71`), иначе сессия;
+    // отказ — `{error: имя}` (`PASSKEY_CREDENTIAL_NOT_FOUND`, :72-73).
+    async passkeyLoginFinish(session: string, assertion: unknown, device: string, platform: string): Promise<PasskeyLoginResult> {
+      try {
+        return await toOutcome(await rest.post<AuthAuthorizationWire>(
+          `/auth/passkey/finish?session=${encodeURIComponent(session)}&device=${encodeURIComponent(device)}&platform=${encodeURIComponent(platform)}`,
+          assertion,
+        ))
+      } catch (e) {
+        return errorResult(e)
+      }
     },
 
     /**

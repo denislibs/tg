@@ -3581,16 +3581,8 @@
           "value": "Log out"
         },
         {
-          "key": "Login.Code.Expired",
-          "value": "Code expired. Please request a new one."
-        },
-        {
           "key": "Login.Code.SentSms",
           "value": "We have sent you an SMS\nwith the code."
-        },
-        {
-          "key": "Login.Error.FloodWait",
-          "value": "Too many attempts. Please try again later."
         },
         {
           "key": "Login.Error.Generic",
@@ -3615,6 +3607,10 @@
         {
           "key": "Login.Passkey.Error",
           "value": "Something went wrong"
+        },
+        {
+          "key": "Login.Passkey.Error.NotFound",
+          "value": "Used passkey is not tied to any account"
         },
         {
           "key": "Login.Password.Subtitle",
@@ -3661,14 +3657,6 @@
           "value": "Last Name"
         },
         {
-          "key": "Login.Register.NameRequired",
-          "value": "Please enter your name"
-        },
-        {
-          "key": "Login.Register.NameTooLong",
-          "value": "Name is too long"
-        },
-        {
           "key": "Login.Register.Subtitle",
           "value": "Enter your name and add\na profile photo"
         },
@@ -3679,6 +3667,14 @@
         {
           "key": "Login.ResetAccount.Title",
           "value": "Warning"
+        },
+        {
+          "key": "Login.ResetAccountFail.TextCancelled",
+          "value": "Your recent attempts to reset this account have been cancelled by its active user. Please try again in 7 days."
+        },
+        {
+          "key": "Login.ResetAccountFail.TextWait",
+          "value": "Since this account is active and protected by a password, we will delete it in 1 week for security purposes.\n\nYou can cancel this process at any time.\n\nYou'll be able to reset your account in: %s."
         },
         {
           "key": "Login.ResetAccountFail.Title",
@@ -12219,6 +12215,10 @@
           "value": "Что-то пошло не так"
         },
         {
+          "key": "Login.Passkey.Error.NotFound",
+          "value": "Этот ключ доступа не привязан ни к одному аккаунту"
+        },
+        {
           "key": "Login.QR.Title",
           "value": "Вход по QR-коду"
         },
@@ -12291,18 +12291,6 @@
           "value": "Начать общение"
         },
         {
-          "key": "Login.Register.NameRequired",
-          "value": "Пожалуйста, введите имя"
-        },
-        {
-          "key": "Login.Register.NameTooLong",
-          "value": "Слишком длинное имя"
-        },
-        {
-          "key": "Login.Error.FloodWait",
-          "value": "Слишком много попыток. Попробуйте позже."
-        },
-        {
           "key": "Login.ForgotPassword",
           "value": "Забыли пароль?"
         },
@@ -12313,10 +12301,6 @@
         {
           "key": "Login.ResetPassword.Subtitle",
           "value": "Введите код, который мы только что отправили\nна вашу почту **%s**."
-        },
-        {
-          "key": "Login.Code.Expired",
-          "value": "Код истёк. Запросите новый."
         },
         {
           "key": "Login.SessionExpired",
@@ -12341,6 +12325,14 @@
         {
           "key": "Login.ResetAccountFail.Title",
           "value": "Извините"
+        },
+        {
+          "key": "Login.ResetAccountFail.TextCancelled",
+          "value": "Недавние попытки сбросить этот аккаунт были отменены его активным пользователем. Попробуйте снова через 7 дней."
+        },
+        {
+          "key": "Login.ResetAccountFail.TextWait",
+          "value": "Поскольку аккаунт активен и защищён паролем, в целях безопасности мы удалим его через неделю.\n\nВы можете отменить это в любой момент.\n\nСбросить аккаунт можно будет через: %s."
         },
         {
           "key": "Login.ResetPassword.HasEmail",

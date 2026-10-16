@@ -473,7 +473,8 @@ scheduled и т.д. — **TODO: см. popups.md**. Пункт меню Delete
 
 **У нас:** `dialogsManager.applyDeletedMessages` (воркер) по снимку
 `messagesManager.getHistoryFirstSlice`; перечитывание — `GET /peer_dialogs?peers=` →
-`messages.peerDialogs` (без `state`: pts этот владелец не видит, повтора при разошедшемся pts нет).
+`messages.peerDialogs{…, state}`; при `state.pts` ≠ курсору апдейтов воркера ответ перечитывается через
+500 мс (:6313–6319) — только при открытом WS и без догонки, не больше 5 повторов (отступления Ф7-Ж).
 
 ---
 

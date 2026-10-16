@@ -40,6 +40,10 @@ afterEach(() => {
   host = undefined
 })
 
+// Отказ, каким его отдаёт worker-RPC: `Error` с полем `type` (имя отказа,
+// rpc/superMessagePort.ts, ветка `result`).
+const rpcError = (type: string) => Object.assign(new Error(type), { type })
+
 function mount(signIn: ReturnType<typeof vi.fn>) {
   const navigate = vi.fn()
   const toIm = vi.fn().mockResolvedValue(undefined)
@@ -143,7 +147,7 @@ describe('AuthCodeCard.solid: исходы ввода кода', () => {
   })
 
   it('неверный код — ошибка показана, поле сброшено, ФОКУС ВОЗВРАЩЁН на поле', async () => {
-    const signIn = vi.fn().mockRejectedValue(new Error('PHONE_CODE_INVALID'))
+    const signIn = vi.fn().mockRejectedValue(rpcError('PHONE_CODE_INVALID'))
     const { typeCode, input } = mount(signIn)
     // Счётчик, а не `document.activeElement`: happy-dom не блюрит элемент при
     // простановке `disabled` (в реальном браузере — блюрит, поэтому у tweb
@@ -165,17 +169,40 @@ describe('AuthCodeCard.solid: исходы ввода кода', () => {
     focusSpy.mockRestore()
   })
 
-  it('«Invalid code» — утверждение про ввод, поэтому настоящая ошибка ОСТАЁТСЯ в консоли', async () => {
+  // Ф7-И2 (правка 9): tweb AuthCodeCard.tsx:253-255 ведёт PHONE_CODE_EMPTY той
+  // же веткой, что PHONE_CODE_INVALID.
+  it('PHONE_CODE_EMPTY — та же подпись «Invalid code»', async () => {
+    const signIn = vi.fn().mockRejectedValue(rpcError('PHONE_CODE_EMPTY'))
+    const { typeCode } = mount(signIn)
+
+    typeCode('00000')
+    await vi.waitFor(() => expect(host!.textContent).toContain('Invalid code'))
+  })
+
+  // Ветка `default:` tweb (AuthCodeCard.tsx:257-259, `markError(err.type)`) —
+  // имя отказа в подпись, а не подмена «неверным кодом».
+  it('прочий отказ — его имя в подписи, не «Invalid code»', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const signIn = vi.fn().mockRejectedValue(rpcError('FLOOD_WAIT_61'))
+    const { typeCode } = mount(signIn)
+
+    typeCode('00000')
+    await vi.waitFor(() => expect(host!.textContent).toContain('FLOOD_WAIT_61'))
+    expect(host!.textContent).not.toContain('Invalid code')
+    consoleError.mockRestore()
+  })
+
+  it('отказ без имени (сломанный RPC) — UNKNOWN в подписи и след в консоли', async () => {
     // Дыра, ради которой пин заведён: `catch {}` без параметра выдавал ЛЮБОЙ
     // отказ (сеть, воркер, сломанный `managers.auth`) за опечатку пользователя
-    // и не оставлял ни следа. У tweb ветка `default:` печатает сам `err.type`
-    // в тот же лейбл (`AuthCodeCard.tsx:138-140`) — подмены там нет.
+    // и не оставлял ни следа.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const signIn = vi.fn().mockRejectedValue(new TypeError('managers.auth.signIn is not a function'))
     const { typeCode } = mount(signIn)
 
     typeCode('00000')
-    await vi.waitFor(() => expect(host!.textContent).toContain('Invalid code'))
+    await vi.waitFor(() => expect(host!.textContent).toContain('UNKNOWN'))
+    expect(host!.textContent).not.toContain('Invalid code')
     expect(consoleError).toHaveBeenCalled()
 
     consoleError.mockRestore()
@@ -233,7 +260,7 @@ describe('AuthCodeCard.solid: проводка фокуса поля до обе
   // (управляет полем/дисаблом), `typedValue` не трогает.
   it('программный сброс значения (неверный код) НЕ доводит до playAnimation — движение только от настоящего ввода', async () => {
     const { trackingAnim } = prepareMonkeyMocks()
-    const signIn = vi.fn().mockRejectedValue(new Error('PHONE_CODE_INVALID'))
+    const signIn = vi.fn().mockRejectedValue(rpcError('PHONE_CODE_INVALID'))
     const { typeCode } = mount(signIn)
     await vi.waitFor(() => expect(loadAnimationAsAsset).toHaveBeenCalledTimes(2))
 

@@ -125,8 +125,10 @@ export interface Net {
   iceServers: RTCIceServer[]
   /** Сколько раз движки спросили /calls/ice. */
   iceFetches: number
-  /** /calls/ice отвечает ошибкой (420, 5xx). */
+  /** /calls/ice отвечает ошибкой (5xx, сеть; 420 пережидает сам restClient). */
   iceFail: boolean
+  /** /calls/ice не отвечает вовсе (полуоткрытое соединение после сна). */
+  iceHang: boolean
   /** Вернуть кадры, которые надо доставить в одном тике (пусто — кадр проглочен). */
   tamper?: (from: number, to: number, f: Frame) => Frame[]
   side(id: number): Promise<Side>
@@ -145,6 +147,7 @@ export function createNet(): Net {
     p2pAllowed: true,
     iceFetches: 0,
     iceFail: false,
+    iceHang: false,
     iceServers: [{ urls: ['stun:stun.test:3478'] }, { urls: ['turn:turn.test:3478?transport=udp'], username: 'u', credential: 'c' }],
     async side(id) {
       vi.resetModules()
@@ -167,7 +170,7 @@ export function createNet(): Net {
               },
             },
             messages: { sendText: (...a: unknown[]) => sendText(...a) },
-            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceFail) throw new Error('420 FLOOD_WAIT_1'); return { servers: net.iceServers, ttlSeconds: 86_400 } } },
+            calls: { iceConfig: async () => { net.iceFetches++; if (net.iceHang) await new Promise(() => {}); if (net.iceFail) throw new Error('HTTP 502'); return { servers: net.iceServers, ttlSeconds: 86_400 } } },
             peers: { getUsers: async () => [] },
           },
         }),

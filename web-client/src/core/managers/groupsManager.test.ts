@@ -324,10 +324,12 @@ describe('GroupsManager', () => {
     expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
   })
 
-  it('importChatInvite: POST /join/{hash}, чат из updates.chats[0] — в зеркало и наружу ключом', async () => {
-    // tweb `appChatInvitesManager.importChatInvite` (:92-104).
+  it('importChatInvite: POST /join/{hash}, чат из updates.chats[0] обёртки — в зеркало и наружу ключом', async () => {
+    // tweb `appChatInvitesManager.importChatInvite` (:92-104) + `processChatInviteJoinResult`
+    // (appChatsManager.ts:664-679): ответ — `messages.chatInviteJoinResultOk{updates}`.
     const chat = { _: 'channel', id: 77, title: 'G', pFlags: { megagroup: true } }
-    const { rest, posts } = fakeRest({ postReturn: { _: 'updates', updates: [], users: [], chats: [chat], date: 1, seq: 0 } })
+    const updates = { _: 'updates', updates: [], users: [], chats: [chat], date: 1, seq: 0 }
+    const { rest, posts } = fakeRest({ postReturn: { _: 'messages.chatInviteJoinResultOk', updates } })
     const peers = fakePeers()
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
     const peerId = await mgr.importChatInvite('tok123')
@@ -335,7 +337,7 @@ describe('GroupsManager', () => {
     expect(posts[0].path).toBe('/join/tok123')
     expect(posts[0].body).toEqual({})
     expect(peerId).toBe(-77)
-    expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(updates)
   })
 
   // MC-11: название и описание — разные методы, как в tweb (`appChatsManager.ts:922-950`);

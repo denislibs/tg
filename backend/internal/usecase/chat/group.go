@@ -764,7 +764,8 @@ func (i *Interactor) AdminsWithInvites(ctx context.Context, chatID, actorID int6
 // requested bool is true when a request was filed (approval needed) and false
 // when the user was added as a member. chatID — чат ссылки: по нему ручка
 // отдаёт его карточку (`messages.importChatInvite` оригинала возвращает
-// `Updates` с чатом в `chats[0]`, tweb `appChatInvitesManager.ts:92-104`).
+// `messages.chatInviteJoinResultOk{updates}` с чатом в `updates.chats[0]`, tweb
+// `appChatsManager.ts:664-679`, `appChatInvitesManager.ts:92-104`).
 //
 // Уже участник — не ошибка: у оригинала это `chatInviteAlready`, по которому
 // клиент просто открывает чат (tweb `internalLinkProcessor.ts:1129-1137`), —
