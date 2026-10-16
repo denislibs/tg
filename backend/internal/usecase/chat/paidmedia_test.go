@@ -240,3 +240,33 @@ func TestPaidMedia_AuthorAccessesWithoutCharge(t *testing.T) {
 		t.Fatal("author must always access own media")
 	}
 }
+
+// P0-фикс 4 (аватар Алисы 404): тот же файл — и платное фото в чате, и фото
+// профиля автора. Замок платного медиа закрывает байты ТОЛЬКО как вложение
+// сообщения; фото профиля, открытое правилом profile_photo, качается и без
+// покупки — иначе аватарка не грузится ни у кого, кроме автора.
+func TestPaidMedia_LockDoesNotHideProfilePhoto(t *testing.T) {
+	in, s, _, pm := newPaidInteractor()
+	_, mediaID := sendPaidPhoto(t, in, s, 20)
+	ctx := context.Background()
+	if locked, _ := pm.LockedMedia(ctx, 2, mediaID); !locked {
+		t.Fatal("предусловие: платное фото закрыто для получателя")
+	}
+	// без аватарки замок держит
+	if ok, _ := in.CanAccessMedia(ctx, 2, mediaID); ok {
+		t.Fatal("закрытое платное фото скачалось без покупки")
+	}
+
+	s.mu.Lock()
+	s.avatars = map[int64][]int64{mediaID: {1}}
+	s.mu.Unlock()
+	if ok, _ := in.CanAccessMedia(ctx, 2, mediaID); !ok {
+		t.Fatal("фото профиля автора закрыто замком платного медиа")
+	}
+
+	// правило profile_photo, скрывающее фото, замок не обходит
+	in.SetPrivacy(avatarPrivacy{deny: map[int64]bool{2: true}})
+	if ok, _ := in.CanAccessMedia(ctx, 2, mediaID); ok {
+		t.Fatal("скрытое правилом фото профиля скачалось")
+	}
+}
