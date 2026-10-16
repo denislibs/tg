@@ -139,6 +139,8 @@ func sendAsChatID(peer *domain.PeerID) *int64 {
 // вход/выход из группового звонка).
 type peerData struct {
 	PeerID domain.PeerID `json:"peer_id"`
+	// Viewer — group_call_join зрителя эфира (без медиа): предел участников mesh на него не действует.
+	Viewer bool `json:"viewer,omitempty"`
 }
 
 // groupCallRejectedFrame — ответ ОДНОМУ соединению на group_call_join, на который

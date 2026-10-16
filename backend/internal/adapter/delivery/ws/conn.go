@@ -563,7 +563,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if err != nil {
 			return
 		}
-		if _, err := c.svc.JoinGroupCall(ctx, chatID, c.userID); err == nil {
+		if d.Viewer {
+			err = c.svc.JoinGroupCallAsViewer(ctx, chatID, c.userID)
+		} else {
+			_, err = c.svc.JoinGroupCall(ctx, chatID, c.userID)
+		}
+		if err == nil {
 			c.groupCallChat = chatID
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			// Клиент к этому моменту уже взял микрофон и открыл экран звонка: любой

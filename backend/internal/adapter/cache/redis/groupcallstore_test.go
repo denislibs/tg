@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -364,5 +365,53 @@ func TestGroupCallStore_ConcurrentJoinRespectsLimit(t *testing.T) {
 	wg.Wait()
 	if ids, _ := s.Participants(ctx, 8); len(ids) != 5 {
 		t.Fatalf("участников после гонки входов = %d, want 5", len(ids))
+	}
+}
+
+// Зрители эфира лежат в том же множестве, но предел mesh их не считает: шестой зритель
+// входит, пять зрителей не отнимают у участников места.
+func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
+	s, mr := newTestGroupCallStore(t)
+	ctx := context.Background()
+	for uid := int64(100); uid < 110; uid++ {
+		if _, err := s.JoinViewer(ctx, 5, uid); err != nil {
+			t.Fatalf("зритель %d: %v", uid, err)
+		}
+	}
+	for uid := int64(1); uid <= 3; uid++ {
+		if _, err := s.Join(ctx, 5, uid, 3); err != nil {
+			t.Fatalf("участник %d при 10 зрителях: %v", uid, err)
+		}
+	}
+	if _, err := s.Join(ctx, 5, 4, 3); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("четвёртый участник: %v, want ErrGroupCallFull", err)
+	}
+	if _, err := s.JoinViewer(ctx, 5, 200); err != nil {
+		t.Fatalf("зритель в полный звонок: %v", err)
+	}
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 14 {
+		t.Fatalf("участники = %v, want 14 (3 + 11 зрителей)", ids)
+	}
+	if v, _ := s.Viewers(ctx, 5); len(v) != 11 {
+		t.Fatalf("зрители = %v, want 11", v)
+	}
+	// оба ключа живут вместе: вход участника продлевает и множество зрителей
+	mr.FastForward(groupCallTTL - time.Minute)
+	if _, err := s.Join(ctx, 5, 1, 3); err != nil {
+		t.Fatal(err)
+	}
+	mr.FastForward(2 * time.Minute)
+	if v, _ := s.Viewers(ctx, 5); len(v) != 11 {
+		t.Fatalf("зрители после продления = %v: множество зрителей истекло раньше звонка", v)
+	}
+	// зритель, ставший участником, начинает считаться
+	if _, err := s.Join(ctx, 5, 100, 3); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("зритель → участник в полном звонке: %v, want ErrGroupCallFull", err)
+	}
+	if last, _ := s.Leave(ctx, 5, 100); last {
+		t.Fatal("выход зрителя помечен переходом")
+	}
+	if v, _ := s.Viewers(ctx, 5); slices.Contains(v, 100) {
+		t.Fatal("выход не убрал зрителя из множества зрителей")
 	}
 }

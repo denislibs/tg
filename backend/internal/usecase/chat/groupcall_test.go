@@ -267,3 +267,37 @@ func TestJoinGroupCall_FullCall_Rejected(t *testing.T) {
 		t.Fatalf("повторный вход участника полного звонка: %v", err)
 	}
 }
+
+// Зритель эфира (кадр group_call_join с viewer) не mesh: предел участников на него не
+// действует, а в списке viewers кадра group_call_update он помечен — клиент не считает его
+// участником при проверке предела. Без активного эфира зрителем не стать.
+func TestJoinGroupCallAsViewer(t *testing.T) {
+	e := newCallEnv(t)
+	ctx := context.Background()
+	e.in.SetLivestreams(newFakeLivestreamRepo(), "rtmp://test/live")
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("зритель без эфира: %v, want ErrForbidden", err)
+	}
+	if _, err := e.in.StartLivestream(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	for uid := int64(9001); uid <= 9000+domain.GroupCallMaxParticipants; uid++ {
+		if _, err := e.calls.Join(ctx, e.chatID, uid, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callMember); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("участник в полный звонок: %v, want ErrGroupCallFull", err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callMember); err != nil {
+		t.Fatalf("зритель в звонок на пределе: %v", err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, 99); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("зритель не из чата: %v, want ErrNotFound", err)
+	}
+	frames := groupCallFramesFor(t, e.pub, callOwner)
+	last := frames[len(frames)-1]
+	if v, _ := last["viewers"].([]any); len(v) != 1 || v[0] != float64(callMember) {
+		t.Fatalf("viewers в кадре = %v, want [%d]", last["viewers"], callMember)
+	}
+}

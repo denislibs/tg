@@ -63,6 +63,39 @@ func (i *Interactor) JoinGroupCall(ctx context.Context, chatID, userID int64) ([
 	return out, nil
 }
 
+// JoinGroupCallAsViewer — зритель эфира (livestreamEngine.watchLivestream): регистрируется в
+// том же множестве, но без медиа и без pc, поэтому предел mesh его не считает и не
+// действует на него. Нужен активный эфир (domain.ErrForbidden иначе): зрителем не обойти
+// правило Б-9 о том, кто открывает звонок.
+func (i *Interactor) JoinGroupCallAsViewer(ctx context.Context, chatID, userID int64) error {
+	if i.groupCalls == nil {
+		return domain.ErrNotFound
+	}
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	live, err := i.livestreamActive(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if !live {
+		return domain.ErrForbidden
+	}
+	first, err := i.groupCalls.JoinViewer(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	i.publishGroupCallUpdate(ctx, chatID, userID, "joined")
+	if first {
+		i.announceCallChange(ctx, chatID)
+	}
+	return nil
+}
+
 // admitToGroupCall вносит пользователя в звонок по правилам Б-9. first —
 // переход 0→1, joined=false — вход запрещён. В группе сначала JoinIfActive
 // (проверка «звонок идёт» и вход — один скрипт Redis, иначе последний вышедший
@@ -208,11 +241,16 @@ func (i *Interactor) publishGroupCallUpdate(ctx context.Context, chatID, userID 
 	if err != nil {
 		return
 	}
+	viewers, err := i.groupCalls.Viewers(ctx, chatID)
+	if err != nil {
+		return
+	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return
 	}
+	// viewers — подмножество participants (зрители эфира): клиент не считает их участниками mesh
 	i.publishPeerFrame(ctx, chatID, members, 0, "group_call_update", map[string]any{
-		"user_id": userID, "action": action, "participants": participants,
+		"user_id": userID, "action": action, "participants": participants, "viewers": viewers,
 	})
 }
