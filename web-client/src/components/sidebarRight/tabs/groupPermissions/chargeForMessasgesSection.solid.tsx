@@ -12,7 +12,7 @@
  *     (:76-81: комиссия в % и примерная выручка в $) не выводится вместе с
  *     `useStarsCommissionAndWithdrawalPrice`: её аргументы — ключи
  *     `stars_paid_message_commission_permille`/`stars_usd_withdraw_rate_x1000`
- *     конфига приложения, а `help.getAppConfig` у нас нет. Бэкенд при этом
+ *     конфига приложения; сервер их в `help.getAppConfig` не отдаёт. Бэкенд при этом
  *     зачисляет создателю всю плату (`usecase/chat/stars.go::chargePaidMessage`),
  *     вывода звёзд в валюту нет вовсе.
  *  2. `SolidJSHotReloadGuardProvider` (:93-95) не портирован — обвязка их

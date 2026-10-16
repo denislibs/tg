@@ -12,12 +12,8 @@ import (
 	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 )
 
-// Лимиты хранения — как в tweb: RECENT_STICKERS_COUNT=20, избранные ~10,
-// сохранённые GIF обрезаются по давности (держим 200).
+// Лимиты хранения — в domain/limits.go (отдаются клиенту конфигом приложения).
 const (
-	recentLimit    = 20
-	favedLimit     = 10
-	savedGifsLimit = 200
 	emojiSearchLim = 16
 	setSearchLim   = 20
 	// featuredLim — потолок выдачи трендов, а не витрина «топ-N»: экран поиска
@@ -201,7 +197,7 @@ func (i *Interactor) covers(ctx context.Context, sets []domain.StickerSetRecord)
 
 // Recent — недавно использованные стикеры, новые первыми.
 func (i *Interactor) Recent(ctx context.Context, userID int64) ([]domain.RecentSticker, error) {
-	return i.repo.Recent(ctx, userID, recentLimit)
+	return i.repo.Recent(ctx, userID, domain.RecentStickersLimit)
 }
 
 // ClearRecent — очистить список недавних (tweb clearRecentStickers).
@@ -214,7 +210,7 @@ func (i *Interactor) ClearRecent(ctx context.Context, userID int64) error {
 }
 
 // Use отмечает использование стикера (upsert used_at) и держит список в
-// пределах recentLimit — как tweb RECENT_STICKERS_COUNT.
+// пределах domain.RecentStickersLimit — как tweb RECENT_STICKERS_COUNT.
 //
 // Адресует ФАЙЛ (document.id схемы), а не строку набора: у оригинала
 // messages.saveRecentSticker принимает InputDocument. Побочно это снимает
@@ -227,7 +223,7 @@ func (i *Interactor) Use(ctx context.Context, userID, mediaID int64) error {
 	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	changed, err := i.repo.TouchRecent(ctx, userID, mediaID, recentLimit)
+	changed, err := i.repo.TouchRecent(ctx, userID, mediaID, domain.RecentStickersLimit)
 	if err != nil {
 		return err
 	}
@@ -239,16 +235,16 @@ func (i *Interactor) Use(ctx context.Context, userID, mediaID int64) error {
 
 // Faved — избранные стикеры, новые первыми.
 func (i *Interactor) Faved(ctx context.Context, userID int64) ([]domain.Sticker, error) {
-	return i.repo.Faved(ctx, userID, favedLimit)
+	return i.repo.Faved(ctx, userID, domain.FavedStickersLimit)
 }
 
-// Fave добавляет стикер в избранное (лимит favedLimit — старые вытесняются).
+// Fave добавляет стикер в избранное (лимит domain.FavedStickersLimit — старые вытесняются).
 // Адресует ФАЙЛ — как messages.faveSticker(InputDocument) у оригинала.
 func (i *Interactor) Fave(ctx context.Context, userID, mediaID int64) error {
 	if _, err := i.repo.StickerByMediaID(ctx, mediaID); err != nil {
 		return err
 	}
-	if err := i.repo.Fave(ctx, userID, mediaID, favedLimit); err != nil {
+	if err := i.repo.Fave(ctx, userID, mediaID, domain.FavedStickersLimit); err != nil {
 		return err
 	}
 	i.signal(ctx, userID, "stickers_faved", domain.UpdateFavedStickersTag)
@@ -367,7 +363,7 @@ func (i *Interactor) SavedGifs(ctx context.Context, userID int64) ([]domain.Save
 // SaveGif — messages.saveGif: документ адресуется доступом (InputDocument с
 // access_hash, tweb appGifsManager.ts:109-120), поэтому сохраняется только то,
 // что пользователь видит (CanAccessMedia), и только гиф (documentAttributeAnimated).
-// Хранится не больше savedGifsLimit — старые по saved_at вытесняются.
+// Хранится не больше domain.SavedGifsLimit — старые по saved_at вытесняются.
 func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
 	if i.access == nil || i.media == nil {
 		return errMediaReaderUnwired
@@ -395,7 +391,7 @@ func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
 	if !ok {
 		return domain.ErrNotFound
 	}
-	if err := i.repo.SaveGif(ctx, userID, mediaID, savedGifsLimit); err != nil {
+	if err := i.repo.SaveGif(ctx, userID, mediaID, domain.SavedGifsLimit); err != nil {
 		return err
 	}
 	i.signal(ctx, userID, "saved_gifs", domain.UpdateSavedGifsTag)

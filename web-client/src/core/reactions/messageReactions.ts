@@ -101,28 +101,6 @@ export function myEmoticons(agg: MessageReactions | undefined): string[] {
 }
 
 /**
- * Сколько реакций ставит ОДИН пользователь на ОДНОМ сообщении.
- *
- * У оригинала это не константа: значение приходит конфигурацией приложения
- * (`help.getAppConfig`, ключи `reactions_user_max_default` /
- * `reactions_user_max_premium`) и читается через `getLimit('reactions')` —
- * tweb `src/lib/appManagers/apiManagerMethods.ts:369-395`, строка `:375`.
- * Понятия appConfig у нас нет вовсе (ни ручки на бэке, ни кэша на клиенте),
- * поэтому здесь зашиты дефолтные значения Telegram; когда appConfig появится,
- * лимит должен приехать из него, а не отсюда.
- *
- * Те же два числа держит СЕРВЕР (`backend/internal/usecase/chat/reaction.go`) —
- * он и есть источник истины: клиент лишь не обещает невозможного.
- */
-export const REACTIONS_USER_MAX_DEFAULT = 1
-export const REACTIONS_USER_MAX_PREMIUM = 3
-
-/** Лимит своих реакций по подписке (порт `getLimit('reactions', isPremium)`). */
-export function reactionsUserLimit(premium: boolean): number {
-  return premium ? REACTIONS_USER_MAX_PREMIUM : REACTIONS_USER_MAX_DEFAULT
-}
-
-/**
  * Мои реакции, которые ВЫТЕСНЯЕТ постановка `emoji`, — самые старые сверх
  * лимита, в порядке от старейшей.
  *

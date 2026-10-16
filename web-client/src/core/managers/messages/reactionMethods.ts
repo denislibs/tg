@@ -5,7 +5,7 @@
 // (patchMsg) и meId (для деривации `mine`) через ctx. Публичный API не меняется —
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
 import {
-  excessChosenReactions, mergeReactions, reactionDelta, reactionsUserLimit,
+  excessChosenReactions, mergeReactions, reactionDelta,
   sameReactions, setPaidReaction,
 } from '../../reactions/messageReactions'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
@@ -173,7 +173,7 @@ export function newPaidReactionRandomId(): string {
   return ((BigInt(Math.floor(Date.now() / 1000)) << 32n) | random32).toString()
 }
 
-export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf }: MessagesCtx) {
+export function newReactionMethods({ rest, patchMsg, getMeId, getReactionsLimit, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf }: MessagesCtx) {
   /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
    *  читается ИЗ SSOT после применения — операция несёт то же значение, что
    *  лежит у владельца, а не отдельно пересчитанное. */
@@ -413,10 +413,13 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
       // клиент обещал бы то, чего сервер не делает: чип тега исчез бы из ленты
       // до кадра и вернулся с ним.
       const isSavedTag = me != null && peerId === me
-      const evicted = me == null || isSavedTag ? [] : excessChosenReactions(
+      // Лимит — из конфига приложения, ждём его ПЕРЕД локальной правкой, как tweb
+      // (`await getLimit('reactions')`, appReactionsManager.ts:693-696).
+      const limit = me == null || isSavedTag ? undefined : await getReactionsLimit?.()
+      const evicted = limit === undefined ? [] : excessChosenReactions(
         readMsg(peerId, generateMessageId(serverId))?.reactions,
         emoji,
-        reactionsUserLimit(getMePremium?.() ?? false),
+        limit,
       )
       if (me != null) {
         applyLocalDeltas(peerId, serverId, me, [

@@ -258,7 +258,8 @@ const CLASS_NAME = 'chat-input'
 let botCommandsListId = 0
 const PEER_EXCEPTIONS = new Set<ChatType>([ChatType.Scheduled, ChatType.Stories, ChatType.Saved, ChatType.Welcome])
 
-/** tweb `config.message_length_max` — у нас константа бэкенда (`maxMessageRunes`). */
+/** tweb `config.message_length_max` — у нас константа бэкенда (`domain.MaxMessageRunes`); сервер отдаёт то же
+ *  число в `help.getConfig`, но ввод читает его синхронно на каждый ввод — на конфиг переедет отдельно. */
 const MESSAGE_LENGTH_MAX = 4096
 
 /** tweb `:2006-2015` — длина паузы между «печатает». */

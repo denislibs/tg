@@ -65,9 +65,9 @@ declare global {
   // `tl_utils.ts:646`: `fetchIntBytes(256, true)` возвращает `Uint8Array`.
   type int256 = Uint8Array;
   type MTLong = string;
-  // `MTAppConfig = AppConfig` из оригинала не переносим: подсистемы appConfig у
-  // нас пока нет, а на `layer.d.ts` это имя не влияет. Появится подсистема —
-  // вернём строку.
+  // `MTAppConfig = AppConfig` из оригинала не переносим: глобальный тип был бы
+  // каталогом ключей Telegram, а наш сервер отдаёт лишь применяемые им лимиты и
+  // флаги. Узкий `MTAppConfig` живёт у владельца — `core/managers/appConfigManager.ts`.
 
   // В оригинале `CancellablePromise` объявлен НЕ глобально — он импортируется в
   // `global.d.ts` и потому виден только внутри него, тогда как `layer.d.ts`

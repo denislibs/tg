@@ -9,29 +9,20 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// Сколько реакций ставит ОДИН пользователь на ОДНО сообщение. В оригинале это
-// не константа: значение приезжает конфигурацией приложения (help.getAppConfig,
-// ключи `reactions_user_max_default` / `reactions_user_max_premium` —
-// tweb src/lib/appManagers/apiManagerMethods.ts:369-395, строка :375), и клиент
-// читает её через `getLimit('reactions')`. Ручки appConfig у нас нет вовсе,
-// поэтому здесь зашиты дефолтные значения Telegram; когда ручка появится,
-// лимит должен приехать из неё, а не отсюда.
-//
-// Тот же лимит и с теми же числами держит фронт
-// (web-client/src/core/reactions/messageReactions.ts) — сервер здесь источник
-// истины, потому что прямой POST мимо клиента иначе обходит правило.
+// Сколько реакций ставит ОДИН пользователь на ОДНО сообщение:
+// domain.ReactionsUserMaxDefault / domain.ReactionsUserMaxPremium. В оригинале
+// это не константа, а ключи конфига приложения (`reactions_user_max_default` /
+// `reactions_user_max_premium`, tweb apiManagerMethods.ts:375, читаются через
+// `getLimit('reactions')`); сервер отдаёт их из тех же констант
+// (domain/mthelp.go::NewAppConfig), поэтому клиент берёт число из конфига,
+// а сервер остаётся источником истины: прямой POST мимо клиента иначе обходит
+// правило.
 //
 // ЭТИ ЖЕ ЧИСЛА ЛИТЕРАЛАМИ ЛЕЖАТ В МИГРАЦИИ
 // internal/store/postgres/migrations/0130_reactions_user_limit.sql (`CASE WHEN
 // u.is_premium THEN 3 ELSE 1 END`). Свести в одно место нельзя: миграция —
-// статический SQL, goose применяет её без участия кода. Когда лимит переедет в
-// конфигурацию (help.getAppConfig), константы отсюда исчезнут, а числа в 0130
-// останутся описанием уже применённой однажды чистки и меняться не должны; в
-// миграции стоит встречная пометка.
-const (
-	reactionsUserMaxDefault = 1
-	reactionsUserMaxPremium = 3
-)
+// статический SQL, goose применяет её без участия кода; она описывает уже
+// применённую однажды чистку и меняться не должна.
 
 // React adds or removes a user's reaction to a message in a chat, then appends a
 // reaction update to every member and publishes it live. The chatID must match
@@ -364,14 +355,14 @@ func (i *Interactor) evictExcessReactions(ctx context.Context, messageID, userID
 	others := slices.DeleteFunc(mine, func(e string) bool { return e == emoji })
 	// Премиум-репозиторий необязателен (SetPremiumRepo): без него у всех
 	// базовый лимит — это же значение у Telegram и стоит для не-подписчика.
-	limit := reactionsUserMaxDefault
+	limit := domain.ReactionsUserMaxDefault
 	if i.premium != nil {
 		prem, e := i.premium.IsPremium(ctx, userID)
 		if e != nil {
 			return e
 		}
 		if prem {
-			limit = reactionsUserMaxPremium
+			limit = domain.ReactionsUserMaxPremium
 		}
 	}
 	// После Add своих реакций станет len(others)+1, значит чужих места —

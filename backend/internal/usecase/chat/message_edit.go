@@ -11,10 +11,6 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// editTimeLimit — сколько своё сообщение правится в личке (Telegram appConfig
-// edit_time_limit, 48 часов). В группе и канале (peerChannel) срока нет.
-const editTimeLimit = 48 * time.Hour
-
 // EditMessage replaces the text of a message, stamps edited_at, and fans out an
 // "edit_message" update to every member (so all see the new text and the
 // "edited" marker). Who may edit is tweb canEditMessage (see canEditMessage).
@@ -39,7 +35,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if err := i.canEditMessage(ctx, cur, userID); err != nil {
 		return domain.Message{}, err
 	}
-	if utf8.RuneCountInString(text) > maxMessageRunes {
+	if utf8.RuneCountInString(text) > domain.MaxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
 	entities = domain.SanitizeEntities(entities)
@@ -267,7 +263,7 @@ func (i *Interactor) mirrorSync(ctx context.Context, post domain.Message, edited
 //   - «Избранное» — всегда;
 //   - канал — админ с edit_messages, автор не нужен;
 //   - группа — только своё и только при праве писать (send_plain ‖ send_media);
-//   - личка — только своё и не позже editTimeLimit.
+//   - личка — только своё и не позже domain.EditTimeLimit.
 func (i *Interactor) canEditMessage(ctx context.Context, m domain.Message, userID int64) error {
 	if !editableContent(m) {
 		return domain.ErrForbidden
@@ -296,7 +292,7 @@ func (i *Interactor) canEditMessage(ctx context.Context, m domain.Message, userI
 			return domain.ErrForbidden
 		}
 	default:
-		if time.Since(m.CreatedAt) > editTimeLimit {
+		if time.Since(m.CreatedAt) > domain.EditTimeLimit {
 			return domain.ErrForbidden
 		}
 	}

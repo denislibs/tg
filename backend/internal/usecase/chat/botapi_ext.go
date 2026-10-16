@@ -21,7 +21,7 @@ const maxBotMedia = 20 << 20 // 20 MiB на файл, загружаемый б�
 
 // BotEditMessageText меняет текст (и, если задано, клавиатуру) сообщения бота.
 func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccount, chatID, msgID int64, text string, entities domain.MessageEntities, markup domain.ReplyMarkup, setMarkup bool) (domain.Message, error) {
-	if utf8.RuneCountInString(text) > maxMessageRunes {
+	if utf8.RuneCountInString(text) > domain.MaxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
 	return i.botEditMessage(ctx, bot, chatID, msgID, &text, domain.SanitizeEntities(entities), markup, setMarkup)

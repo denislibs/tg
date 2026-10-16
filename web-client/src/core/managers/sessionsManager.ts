@@ -36,9 +36,9 @@ import type { AppState } from '../state/state'
  * Расхождения с оригиналом:
  *  1. Часы и таймер срока — `tsNow(true)` и глобальный `setTimeout` воркера (у tweb
  *     `ctx.setTimeout`, то же).
- *  2. Срок показа (`authorization_autoconfirm_period`) — константа 7 суток: appConfig у
- *     нас нет (`rootScope 'app_config'`, `:79-83` не портирован), сервер отдаёт тот же
- *     дефолт (бэклог №7 пачки М).
+ *  2. Срок показа (`authorization_autoconfirm_period`) — константа 7 суток: сервер ключ
+ *     `authorization_autoconfirm_period` в `help.getAppConfig` не отдаёт (`rootScope 'app_config'`,
+ *     `:79-83` не портирован), сервер применяет тот же дефолт (бэклог №7 пачки М).
  *  3. State читается лениво, при первом обращении, а не в `after()`: у tweb менеджеры
  *     создаются после готового State, у нас воркер собирается раньше `persistScope`
  *     (чтение State до смены скоупа отдало бы данные прошлого аккаунта).
