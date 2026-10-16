@@ -524,13 +524,16 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Анти-брутфорс облачного пароля по реальному IP (в дополнение к лимиту попыток
-	// на сам password_token в usecase).
+	// на сам password_token и растущему ожиданию на пользователя в usecase).
 	if ok, wait := h.limiter.allowWait("pw-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
 	res, err := h.svc.CheckPassword(ctx, body.PasswordToken, body.Password, body.Device, body.Platform)
+	if writePasswordFlood(w, err) {
+		return
+	}
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusUnauthorized, "password_token_expired")
 		return

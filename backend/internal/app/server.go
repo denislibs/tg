@@ -241,6 +241,7 @@ func registerServer(p serverParams) {
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		p.AuthUC.SetQRStore(redisQRStore(p.Redis))
+		p.AuthUC.SetPasswordAttempts(newPasswordAttemptStore(p.Redis.Client))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		realtimePublisher = publisher
 		pub = publisher
@@ -295,6 +296,8 @@ func registerServer(p serverParams) {
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr, p.Cfg.WebAuthnOrigins, p.Cfg.DNPServerPrivKey)
 		log.Printf("session cache + realtime + presence enabled (redis)")
+	} else {
+		log.Printf("cloud password: growing wait after wrong passwords disabled (needs redis), only the per-process limiter")
 	}
 
 	var pushHandler *httptransport.PushHandler
