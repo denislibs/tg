@@ -77,8 +77,8 @@ func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 // Set — POST /me/password {current_password?, new_password, hint, email}.
 func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	deviceID, _ := DeviceIDFromContext(r.Context())
-	if !h.allowCheck(w, r, user, deviceID) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -110,8 +110,8 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 // перед входом в настройки 2FA.
 func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	deviceID, _ := DeviceIDFromContext(r.Context())
-	if !h.allowCheck(w, r, user, deviceID) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -139,8 +139,8 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 // Remove — DELETE /me/password {current_password}.
 func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	deviceID, _ := DeviceIDFromContext(r.Context())
-	if !h.allowCheck(w, r, user, deviceID) {
+	deviceID, ok := currentDeviceID(w, r)
+	if !ok || !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {

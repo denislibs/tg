@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,6 +156,9 @@ func TestPasswordFlood_HTTPLockAfterFiveFailures(t *testing.T) {
 			t.Fatalf("неудача %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
+	if n := len(mr.Keys()); n != 2 { // pwfail и pwlock этой сессии
+		t.Fatalf("ключей стора после 5 неудач: %d %v", n, mr.Keys())
+	}
 	// Ведро лимитера пополнено (10 минут по его часам) — отказ даёт только
 	// блокировка М1-5, её часы (Redis) не сдвигались.
 	e.clock = e.clock.Add(10 * time.Minute)
@@ -174,8 +178,11 @@ func TestPasswordFlood_HTTPLockAfterFiveFailures(t *testing.T) {
 	if rec := e.verify(t, 1, "203.0.113.14", "s3cret"); rec.Code != http.StatusOK {
 		t.Fatalf("после блокировки: %d %s", rec.Code, rec.Body.String())
 	}
-	if mr.Exists(fmt.Sprintf("pwfail:%d:1", e.userID)) {
-		t.Fatal("верный пароль не удалил счётчик неудач")
+	prefix := fmt.Sprintf("pwfail:%d:1:", e.userID)
+	for _, k := range mr.Keys() {
+		if strings.HasPrefix(k, prefix) {
+			t.Fatalf("верный пароль не удалил счётчик неудач: %s", k)
+		}
 	}
 }
 

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"math"
 	"strings"
@@ -42,40 +44,51 @@ func checkPassword(hash, input string) bool {
 }
 
 // Растущее ожидание после неверных облачных паролей (Б-4, М1-5; параметры —
-// решение В-S2). Первые passwordFreeFails-1 неудач подряд — без блокировки
-// (остаётся лимитер ручки), с passwordFreeFails-й — блокировка
-// min(passwordLockBase × 2^(f−passwordFreeFails), passwordLockMax). Счётчик
-// живёт passwordLockMax от последней неудачи, верный пароль его обнуляет.
-// Формулу повторяет Lua-скрипт Redis-стора (adapter/cache/redis/pwattempts.go).
+// решение В-S2). Каждая сверка заранее засчитывается попыткой f (верный пароль
+// затем обнуляет счётчик). С PasswordFreeFails-й попытки подряд — блокировка
+// min(PasswordLockBase × 2^(f−PasswordFreeFails), PasswordLockMax). Счётчик
+// живёт PasswordFailWindow после последней попытки, а при блокировке — столько
+// же после её конца: иначе на потолке он истекал бы вместе с блокировкой и рост
+// начинался бы заново. Числа берёт и Lua-скрипт Redis-стора.
 const (
-	passwordFreeFails = 5
-	passwordLockBase  = time.Minute
-	passwordLockMax   = 24 * time.Hour
+	PasswordFreeFails  = 5
+	PasswordLockBase   = time.Minute
+	PasswordLockMax    = 24 * time.Hour
+	PasswordFailWindow = 24 * time.Hour
 )
 
-// loginAttemptScope — deviceID счётчика неудач шага входа check_password (сессии
-// ещё нет). Реальных сессий с id 0 нет, счётчики входа и сессий не пересекаются.
-const loginAttemptScope int64 = 0
+// Области счётчика шага входа check_password (сессии ещё нет; реальных сессий с
+// id ≤ 0 нет, со счётчиками сессий они не пересекаются):
+//   - loginAttemptScope — вход по SMS-коду или ключу доступа;
+//   - approvedLoginScope — вход, одобренный уже вошедшей сессией (QR,
+//     веб-токен). Отдельно, чтобы укравший сессию, выпуская себе такие токены,
+//     не запирал владельцу вход по SMS, а перехвативший SMS — вход по QR с
+//     устройства владельца.
+const (
+	loginAttemptScope  int64 = 0
+	approvedLoginScope int64 = -1
+)
 
-// passwordLockFor — блокировка после f-й неудачи подряд (0 — без блокировки).
-func passwordLockFor(f int) time.Duration {
-	if f < passwordFreeFails {
-		return 0
-	}
-	// 2^11 минут уже больше суток: больший показатель не нужен и не переполнит.
-	return min(passwordLockBase<<min(f-passwordFreeFails, 11), passwordLockMax)
+// passwordVersion — короткий отпечаток хеша пароля в ключе счётчика: смена,
+// снятие или восстановление пароля сами начинают счёт заново во всех областях
+// (старые ключи доживают свой срок), без перебора ключей.
+func passwordVersion(hash string) string {
+	sum := sha256.Sum256([]byte(hash))
+	return hex.EncodeToString(sum[:8])
 }
 
-// passwordFlood — заперта ли пара (пользователь, deviceID): ErrPasswordFlood с
-// остатком в целых секундах вверх (≥ 1). Без стора и при его сбое — nil:
-// сбой Redis не должен запирать пароль всем.
-func (i *Interactor) passwordFlood(ctx context.Context, userID, deviceID int64) error {
+// acquirePasswordAttempt пускает сверку пароля по паре (пользователь, deviceID):
+// в блокировке — ErrPasswordFlood с остатком в целых секундах вверх (≥ 1), иначе
+// попытка уже засчитана стором атомарно — параллельные запросы в окне сверки
+// (bcrypt) не проходят мимо счётчика. Без стора и при его сбое — nil: сбой Redis
+// не должен запирать пароль всем.
+func (i *Interactor) acquirePasswordAttempt(ctx context.Context, userID, deviceID int64, hash string) error {
 	if i.pwTries == nil {
 		return nil
 	}
-	left, err := i.pwTries.Locked(ctx, userID, deviceID)
+	left, err := i.pwTries.Acquire(ctx, userID, deviceID, passwordVersion(hash))
 	if err != nil {
-		i.logf("password attempts: locked user=%d device=%d: %v", userID, deviceID, err)
+		i.logf("password attempts: acquire user=%d device=%d: %v", userID, deviceID, err)
 		return nil
 	}
 	if left <= 0 {
@@ -84,35 +97,27 @@ func (i *Interactor) passwordFlood(ctx context.Context, userID, deviceID int64) 
 	return domain.ErrPasswordFlood{Seconds: max(1, int(math.Ceil(left.Seconds())))}
 }
 
-// passwordAttempt засчитывает исход сверки: неудача растит счётчик, успех его
-// обнуляет. Сбой стора — в лог, без роста.
-func (i *Interactor) passwordAttempt(ctx context.Context, userID, deviceID int64, ok bool) {
+// resetPasswordAttempts — верный пароль: счёт пары начинается заново.
+func (i *Interactor) resetPasswordAttempts(ctx context.Context, userID, deviceID int64, hash string) {
 	if i.pwTries == nil {
 		return
 	}
-	var err error
-	if ok {
-		err = i.pwTries.Reset(ctx, userID, deviceID)
-	} else {
-		_, err = i.pwTries.Fail(ctx, userID, deviceID)
-	}
-	if err != nil {
-		i.logf("password attempts: record user=%d device=%d ok=%v: %v", userID, deviceID, ok, err)
+	if err := i.pwTries.Reset(ctx, userID, deviceID, passwordVersion(hash)); err != nil {
+		i.logf("password attempts: reset user=%d device=%d: %v", userID, deviceID, err)
 	}
 }
 
 // checkCurrent сверяет текущий облачный пароль в сессии deviceID: в блокировке —
-// ErrPasswordFlood без сверки; неверный — неудача и ErrBadPassword; верный —
-// сброс счётчика.
+// ErrPasswordFlood без сверки; неверный — ErrBadPassword (попытка засчитана);
+// верный — сброс счётчика.
 func (i *Interactor) checkCurrent(ctx context.Context, userID, deviceID int64, hash, password string) error {
-	if err := i.passwordFlood(ctx, userID, deviceID); err != nil {
+	if err := i.acquirePasswordAttempt(ctx, userID, deviceID, hash); err != nil {
 		return err
 	}
-	ok := checkPassword(hash, password)
-	i.passwordAttempt(ctx, userID, deviceID, ok)
-	if !ok {
+	if !checkPassword(hash, password) {
 		return domain.ErrBadPassword
 	}
+	i.resetPasswordAttempts(ctx, userID, deviceID, hash)
 	return nil
 }
 
@@ -236,16 +241,19 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 		return SignInResult{}, err
 	}
 	// Потолок на пользователя (остаток М1-1): токен ограничивает 5 попыток, но
-	// новый токен давал новые; неудачи шага входа копятся по (пользователь, 0).
-	// В блокировке токен не сгорает и его счётчик не растёт.
-	if err := i.passwordFlood(ctx, userID, loginAttemptScope); err != nil {
-		return SignInResult{}, err
+	// новый токен давал новые; попытки шага входа копятся по пользователю — в
+	// области своего источника токена. В блокировке токен не тратит попыток
+	// (его срок — прежний, passwordTokenTTL).
+	scope := loginAttemptScope
+	if approved {
+		scope = approvedLoginScope
 	}
-	ok := hash != nil && checkPassword(*hash, password)
 	if hash != nil {
-		i.passwordAttempt(ctx, userID, loginAttemptScope, ok)
+		if err := i.acquirePasswordAttempt(ctx, userID, scope, *hash); err != nil {
+			return SignInResult{}, err
+		}
 	}
-	if !ok {
+	if hash == nil || !checkPassword(*hash, password) {
 		// Токен переживает опечатку (не гоняем OTP заново), НО не бесконечно:
 		// после maxPasswordAttempts неудач сжигаем его — иначе перебор облачного
 		// пароля в пределах TTL (в паре с rate-limit роута по реальному IP).
@@ -256,6 +264,7 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 		}
 		return SignInResult{}, domain.ErrBadPassword
 	}
+	i.resetPasswordAttempts(ctx, userID, scope, *hash)
 	user, err := i.users.GetByID(ctx, userID)
 	if err != nil {
 		return SignInResult{}, err

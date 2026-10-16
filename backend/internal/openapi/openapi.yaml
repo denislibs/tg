@@ -331,7 +331,7 @@ paths:
                   token: { type: string }
                   user: { $ref: "#/components/schemas/User" }
         "401": { description: invalid password / password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "420": { description: "FLOOD_WAIT_<N> — лимитер по IP или растущее ожидание после 5 неверных паролей пользователя подряд (min(60 с × 2^(f−5), 24 ч), счётчик в Redis); в ожидании пароль не сверяется, password_token не сгорает", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "420": { description: "FLOOD_WAIT_<N> — лимитер по IP или растущее ожидание: с 5-й попытки пароля пользователя подряд — min(60 с × 2^(f−5), 24 ч), счётчик в Redis отдельно для входа по коду/ключу и для входа, одобренного сессией (QR, веб-токен); в ожидании пароль не сверяется и попытки токена не тратятся, срок password_token прежний (10 мин)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/password/recover:
     post:

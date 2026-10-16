@@ -10,10 +10,11 @@ import (
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
 
-// PasswordAttemptStore — счётчик неверных облачных паролей и блокировка (Б-4,
+// PasswordAttemptStore — счётчик попыток облачного пароля и блокировка (Б-4,
 // М1-5) в Redis, общий для всех экземпляров сервера: счётчик под
-// "pwfail:{userID}:{deviceID}", блокировка под "pwlock:{userID}:{deviceID}".
-// Реализует порт PasswordAttemptStore usecase/auth.
+// "pwfail:{userID}:{deviceID}:{version}", блокировка под
+// "pwlock:{userID}:{deviceID}:{version}". Реализует порт PasswordAttemptStore
+// usecase/auth.
 type PasswordAttemptStore struct{ rdb *goredis.Client }
 
 var _ usecaseauth.PasswordAttemptStore = (*PasswordAttemptStore)(nil)
@@ -22,41 +23,43 @@ func NewPasswordAttemptStore(rdb *goredis.Client) *PasswordAttemptStore {
 	return &PasswordAttemptStore{rdb: rdb}
 }
 
-func pwPair(userID, deviceID int64) string {
-	return strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(deviceID, 10)
+func pwKeys(userID, deviceID int64, version string) []string {
+	pair := strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(deviceID, 10) + ":" + version
+	return []string{"pwfail:" + pair, "pwlock:" + pair}
 }
 
-func pwFailKey(userID, deviceID int64) string { return "pwfail:" + pwPair(userID, deviceID) }
-func pwLockKey(userID, deviceID int64) string { return "pwlock:" + pwPair(userID, deviceID) }
-
-// pwFailScript засчитывает неудачу одной атомарной командой: INCR счётчика,
-// срок — 24 ч от последней неудачи, при f ≥ 5 — блокировка
-// min(60 с × 2^(f−5), 24 ч) (формула usecase passwordLockFor, решение В-S2;
-// показатель ограничен 11 — 2^11 минут уже больше суток). KEYS: счётчик,
-// блокировка. Возвращает f.
-var pwFailScript = goredis.NewScript(`
+// pwAcquireScript — проверка и счёт одной атомарной командой: иначе запросы,
+// пришедшие за время сверки (bcrypt), видели бы пару свободной и сверялись
+// мимо счётчика. Блокировка есть — вернуть её остаток в мс, ничего не считая.
+// Нет — INCR счётчика; при f ≥ free — блокировка min(base × 2^(f−free), max)
+// (показатель ограничен 30: 2^30 × base заведомо больше потолка); срок счётчика —
+// window после последней попытки, а при блокировке — window после её конца.
+// Вернуть 0. KEYS: счётчик, блокировка. ARGV: free, base_ms, max_ms, window_ms.
+var pwAcquireScript = goredis.NewScript(`
+local left = redis.call('PTTL', KEYS[2])
+if left > 0 then return left end
+local free, base, cap, window = tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3]), tonumber(ARGV[4])
 local f = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], 86400)
-if f >= 5 then
-  local ms = 60000 * 2 ^ math.min(f - 5, 11)
-  if ms > 86400000 then ms = 86400000 end
-  redis.call('SET', KEYS[2], f, 'PX', math.floor(ms))
+local lock = 0
+if f >= free then
+  lock = base * 2 ^ math.min(f - free, 30)
+  if lock > cap then lock = cap end
+  lock = math.floor(lock)
+  redis.call('SET', KEYS[2], f, 'PX', lock)
 end
-return f`)
+redis.call('PEXPIRE', KEYS[1], lock + window)
+return 0`)
 
-func (s *PasswordAttemptStore) Locked(ctx context.Context, userID, deviceID int64) (time.Duration, error) {
-	left, err := s.rdb.PTTL(ctx, pwLockKey(userID, deviceID)).Result()
-	if err != nil {
-		return 0, err
-	}
-	// -2 — ключа нет, -1 — без срока (скрипт всегда ставит PX): свободно.
-	return max(left, 0), nil
+func (s *PasswordAttemptStore) Acquire(ctx context.Context, userID, deviceID int64, version string) (time.Duration, error) {
+	ms, err := pwAcquireScript.Run(ctx, s.rdb, pwKeys(userID, deviceID, version),
+		usecaseauth.PasswordFreeFails,
+		usecaseauth.PasswordLockBase.Milliseconds(),
+		usecaseauth.PasswordLockMax.Milliseconds(),
+		usecaseauth.PasswordFailWindow.Milliseconds(),
+	).Int64()
+	return time.Duration(ms) * time.Millisecond, err
 }
 
-func (s *PasswordAttemptStore) Fail(ctx context.Context, userID, deviceID int64) (int, error) {
-	return pwFailScript.Run(ctx, s.rdb, []string{pwFailKey(userID, deviceID), pwLockKey(userID, deviceID)}).Int()
-}
-
-func (s *PasswordAttemptStore) Reset(ctx context.Context, userID, deviceID int64) error {
-	return s.rdb.Del(ctx, pwFailKey(userID, deviceID), pwLockKey(userID, deviceID)).Err()
+func (s *PasswordAttemptStore) Reset(ctx context.Context, userID, deviceID int64, version string) error {
+	return s.rdb.Del(ctx, pwKeys(userID, deviceID, version)...).Err()
 }

@@ -3,59 +3,109 @@ package auth
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// fakeAttempts — стор неудач облачного пароля с ручными часами: блокировка
-// считается по passwordLockFor, как Lua-скрипт Redis-стора (совпадение формул
-// проверяет pwattempts_test.go).
+// passwordLockFor — блокировка после f-й попытки подряд (0 — без неё): формула
+// В-S2 из констант, по ней считает фейк-стор (Lua Redis-стора проверяет
+// pwattempts_test.go на тех же числах).
+func passwordLockFor(f int) time.Duration {
+	if f < PasswordFreeFails {
+		return 0
+	}
+	return min(PasswordLockBase<<min(f-PasswordFreeFails, 30), PasswordLockMax)
+}
+
+type attemptKey struct {
+	userID, deviceID int64
+	version          string
+}
+
+// fakeAttempts — стор попыток облачного пароля с ручными часами, повторяет
+// семантику Redis-стора: Acquire атомарно проверяет блокировку и засчитывает
+// попытку.
 type fakeAttempts struct {
-	now   func() time.Time
-	fails map[[2]int64]int
-	until map[[2]int64]time.Time
-	// failCalls — сколько раз засчитана неудача (сверка пароля была и не прошла).
-	failCalls int
-	resets    int
-	err       error // ошибка стора для всех методов
+	mu      sync.Mutex
+	now     func() time.Time
+	fails   map[attemptKey]int
+	expires map[attemptKey]time.Time
+	until   map[attemptKey]time.Time
+	// acquired — сколько попыток пропущено к сверке.
+	acquired int
+	resets   int
+	err      error // ошибка стора для всех методов
 }
 
 func newFakeAttempts(now func() time.Time) *fakeAttempts {
-	return &fakeAttempts{now: now, fails: map[[2]int64]int{}, until: map[[2]int64]time.Time{}}
+	return &fakeAttempts{now: now, fails: map[attemptKey]int{}, expires: map[attemptKey]time.Time{}, until: map[attemptKey]time.Time{}}
 }
 
-func (f *fakeAttempts) Locked(_ context.Context, userID, deviceID int64) (time.Duration, error) {
+func (f *fakeAttempts) Acquire(_ context.Context, userID, deviceID int64, version string) (time.Duration, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.err != nil {
 		return 0, f.err
 	}
-	left := f.until[[2]int64{userID, deviceID}].Sub(f.now())
-	return max(left, 0), nil
-}
-
-func (f *fakeAttempts) Fail(_ context.Context, userID, deviceID int64) (int, error) {
-	f.failCalls++
-	if f.err != nil {
-		return 0, f.err
+	k := attemptKey{userID, deviceID, version}
+	now := f.now()
+	if left := f.until[k].Sub(now); left > 0 {
+		return left, nil
 	}
-	k := [2]int64{userID, deviceID}
+	if !f.expires[k].After(now) {
+		f.fails[k] = 0
+	}
 	f.fails[k]++
-	if lock := passwordLockFor(f.fails[k]); lock > 0 {
-		f.until[k] = f.now().Add(lock)
+	lock := passwordLockFor(f.fails[k])
+	if lock > 0 {
+		f.until[k] = now.Add(lock)
 	}
-	return f.fails[k], nil
+	f.expires[k] = now.Add(lock + PasswordFailWindow)
+	f.acquired++
+	return 0, nil
 }
 
-func (f *fakeAttempts) Reset(_ context.Context, userID, deviceID int64) error {
+func (f *fakeAttempts) Reset(_ context.Context, userID, deviceID int64, version string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.resets++
 	if f.err != nil {
 		return f.err
 	}
-	k := [2]int64{userID, deviceID}
+	k := attemptKey{userID, deviceID, version}
 	delete(f.fails, k)
+	delete(f.expires, k)
 	delete(f.until, k)
 	return nil
+}
+
+// left — остаток блокировки пары (по любой версии пароля).
+func (f *fakeAttempts) left(userID, deviceID int64) time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out time.Duration
+	for k, t := range f.until {
+		if k.userID == userID && k.deviceID == deviceID {
+			out = max(out, t.Sub(f.now()))
+		}
+	}
+	return out
+}
+
+// count — счётчик попыток пары (по любой версии пароля).
+func (f *fakeAttempts) count(userID, deviceID int64) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for k, c := range f.fails {
+		if k.userID == userID && k.deviceID == deviceID {
+			n += c
+		}
+	}
+	return n
 }
 
 type floodFixture struct {
@@ -117,28 +167,28 @@ func TestPasswordFlood_VerifyGrowsAndResets(t *testing.T) {
 		if err := f.i.VerifyPassword(ctx, f.userID, 10, "nope"); !errors.Is(err, domain.ErrBadPassword) {
 			t.Fatalf("неудача %d = %v, want ErrBadPassword", n, err)
 		}
-		if left, _ := f.store.Locked(ctx, f.userID, 10); left != 0 {
+		if left := f.store.left(f.userID, 10); left != 0 {
 			t.Fatalf("после %d неудач блокировка %v, want 0", n, left)
 		}
 	}
 	if err := f.i.VerifyPassword(ctx, f.userID, 10, "nope"); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("5-я неудача = %v, want ErrBadPassword", err)
 	}
-	if left, _ := f.store.Locked(ctx, f.userID, 10); left != time.Minute {
+	if left := f.store.left(f.userID, 10); left != time.Minute {
 		t.Fatalf("после 5-й блокировка %v, want 60s", left)
 	}
 
 	// В блокировке — отказ до сверки: и верный пароль не проходит, и счётчик
 	// неудач не растёт.
-	calls := f.store.failCalls
+	calls := f.store.acquired
 	wantPasswordFlood(t, f.i.VerifyPassword(ctx, f.userID, 10, "nope"), 60, "в блокировке")
 	wantPasswordFlood(t, f.i.VerifyPassword(ctx, f.userID, 10, "s3cret"), 60, "верный в блокировке")
 	f.advance(500 * time.Millisecond)
 	wantPasswordFlood(t, f.i.VerifyPassword(ctx, f.userID, 10, "nope"), 60, "остаток вверх до целых секунд")
 	f.advance(59 * time.Second) // остаток 0,5 с — округляется до 1, не до 0
 	wantPasswordFlood(t, f.i.VerifyPassword(ctx, f.userID, 10, "nope"), 1, "последние полсекунды")
-	if f.store.failCalls != calls {
-		t.Fatalf("в блокировке засчитано неудач: %d", f.store.failCalls-calls)
+	if f.store.acquired != calls {
+		t.Fatalf("в блокировке пропущено к сверке: %d", f.store.acquired-calls)
 	}
 
 	f.advance(time.Second)
@@ -152,14 +202,14 @@ func TestPasswordFlood_VerifyGrowsAndResets(t *testing.T) {
 	if err := f.i.VerifyPassword(ctx, f.userID, 10, "s3cret"); err != nil {
 		t.Fatalf("верный после блокировки = %v", err)
 	}
-	if f.store.resets != resets+1 || f.store.fails[[2]int64{f.userID, 10}] != 0 {
+	if f.store.resets != resets+1 || f.store.count(f.userID, 10) != 0 {
 		t.Fatalf("верный пароль не обнулил счётчик: resets %d→%d, fails %v", resets, f.store.resets, f.store.fails)
 	}
 	// Счётчик с нуля: новая неудача снова без блокировки.
 	if err := f.i.VerifyPassword(ctx, f.userID, 10, "nope"); !errors.Is(err, domain.ErrBadPassword) {
 		t.Fatalf("неудача после сброса = %v", err)
 	}
-	if left, _ := f.store.Locked(ctx, f.userID, 10); left != 0 {
+	if left := f.store.left(f.userID, 10); left != 0 {
 		t.Fatalf("после сброса и одной неудачи блокировка %v", left)
 	}
 }
@@ -200,8 +250,8 @@ func TestPasswordFlood_SetWithoutPasswordSkipsStore(t *testing.T) {
 	if err := i.SetPassword(ctx, userID, 10, "", "s3cret", "", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
-	if store.failCalls != 0 || store.resets != 0 {
-		t.Fatalf("стор тронут при включении пароля: fail %d reset %d", store.failCalls, store.resets)
+	if store.acquired != 0 || store.resets != 0 {
+		t.Fatalf("стор тронут при включении пароля: acquire %d reset %d", store.acquired, store.resets)
 	}
 }
 
@@ -288,11 +338,11 @@ func TestPasswordFlood_CheckPasswordPerUser(t *testing.T) {
 	}
 	// Третий токен, верный пароль — пользователь заперт на шаге входа.
 	tok3 := f.signInToPasswordStep(t)
-	calls := f.store.failCalls
+	calls := f.store.acquired
 	_, err := f.i.CheckPassword(ctx, tok3, "s3cret", "dev", "test")
 	wantPasswordFlood(t, err, 60, "CheckPassword в блокировке")
-	if f.store.failCalls != calls {
-		t.Fatal("в блокировке засчитана неудача")
+	if f.store.acquired != calls {
+		t.Fatal("в блокировке попытка пропущена к сверке")
 	}
 	// Сессии пользователя шаг входа не запирает, и наоборот.
 	if err := f.i.VerifyPassword(ctx, f.userID, 10, "s3cret"); err != nil {
@@ -305,7 +355,7 @@ func TestPasswordFlood_CheckPasswordPerUser(t *testing.T) {
 	if err != nil || res.Token == "" {
 		t.Fatalf("вход после блокировки = %+v, %v", res, err)
 	}
-	if f.store.fails[[2]int64{f.userID, loginAttemptScope}] != 0 {
+	if f.store.count(f.userID, loginAttemptScope) != 0 {
 		t.Fatalf("верный пароль не обнулил счётчик входа: %v", f.store.fails)
 	}
 }
@@ -320,5 +370,72 @@ func TestPasswordFlood_SessionFailsDoNotLockLogin(t *testing.T) {
 	tok := f.signInToPasswordStep(t)
 	if res, err := f.i.CheckPassword(ctx, tok, "s3cret", "dev", "test"); err != nil || res.Token == "" {
 		t.Fatalf("вход заперт неудачами сессии: %+v, %v", res, err)
+	}
+}
+
+// Смена пароля начинает счёт заново во всех областях: накопленное против
+// старого пароля (в другой сессии и на шаге входа) на новый не переносится.
+func TestPasswordFlood_PasswordChangeStartsOver(t *testing.T) {
+	ctx := context.Background()
+	f := newFloodFixture(t, "+79990180009")
+	for n := 0; n < 5; n++ {
+		_ = f.i.VerifyPassword(ctx, f.userID, 10, "nope")
+	}
+	tok := f.signInToPasswordStep(t)
+	for n := 0; n < 4; n++ {
+		_, _ = f.i.CheckPassword(ctx, tok, "nope", "dev", "test")
+	}
+	wantPasswordFlood(t, f.i.VerifyPassword(ctx, f.userID, 10, "s3cret"), 60, "сессия 10 до смены")
+
+	if err := f.i.SetPassword(ctx, f.userID, 11, "s3cret", "n3w", "", ""); err != nil {
+		t.Fatalf("смена пароля из сессии 11: %v", err)
+	}
+	// Сессия 10 свободна, неудача против нового пароля — первая, без блокировки.
+	if err := f.i.VerifyPassword(ctx, f.userID, 10, "nope"); !errors.Is(err, domain.ErrBadPassword) {
+		t.Fatalf("сессия 10 после смены = %v", err)
+	}
+	if err := f.i.VerifyPassword(ctx, f.userID, 10, "n3w"); err != nil {
+		t.Fatalf("новый пароль в сессии 10 = %v", err)
+	}
+	// Шаг входа: четыре старые неудачи не в счёт — одна опечатка не запирает.
+	tok2 := f.signInToPasswordStep(t)
+	if _, err := f.i.CheckPassword(ctx, tok2, "nope", "dev", "test"); !errors.Is(err, domain.ErrBadPassword) {
+		t.Fatalf("опечатка после смены = %v", err)
+	}
+	if res, err := f.i.CheckPassword(ctx, tok2, "n3w", "dev", "test"); err != nil || res.Token == "" {
+		t.Fatalf("вход новым паролем = %+v, %v", res, err)
+	}
+}
+
+// Вход, одобренный сессией (веб-токен, QR), считается отдельно от входа по
+// SMS: укравший сессию, выпуская себе веб-токены, не запирает владельцу вход по
+// коду, и наоборот.
+func TestPasswordFlood_ApprovedLoginSeparateScope(t *testing.T) {
+	ctx := context.Background()
+	f := newFloodFixture(t, "+79990180010")
+	webStep := func() string {
+		t.Helper()
+		raw, _, err := f.i.NewWebAuthToken(ctx, f.userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := f.i.SignImport(ctx, raw, "desktop", "web")
+		if err != nil || !res.PasswordNeeded {
+			t.Fatalf("SignImport = %+v, %v", res, err)
+		}
+		return res.PasswordToken
+	}
+	tok := webStep()
+	for n := 0; n < 4; n++ {
+		_, _ = f.i.CheckPassword(ctx, tok, "nope", "desktop", "web")
+	}
+	tok = webStep()
+	_, _ = f.i.CheckPassword(ctx, tok, "nope", "desktop", "web")
+	_, err := f.i.CheckPassword(ctx, webStep(), "s3cret", "desktop", "web")
+	wantPasswordFlood(t, err, 60, "вход по веб-токену заперт")
+
+	// Вход по SMS-коду не заперт.
+	if res, err := f.i.CheckPassword(ctx, f.signInToPasswordStep(t), "s3cret", "dev", "test"); err != nil || res.Token == "" {
+		t.Fatalf("вход по коду заперт веб-токенами: %+v, %v", res, err)
 	}
 }

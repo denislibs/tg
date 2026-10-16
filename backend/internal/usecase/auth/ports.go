@@ -232,16 +232,17 @@ type QRStore interface {
 
 const QRLoginTTL = 60 * time.Second
 
-// PasswordAttemptStore — счётчик неверных облачных паролей и блокировка (Б-4,
+// PasswordAttemptStore — счётчик попыток облачного пароля и блокировка (Б-4,
 // М1-5), общий для всех экземпляров сервера (Redis). Ключ — пара (userID,
-// deviceID): сессия-устройство при проверке пароля в сессии, deviceID =
-// loginAttemptScope (0) — шаг входа check_password.
+// deviceID) и version (отпечаток хеша пароля, passwordVersion): deviceID —
+// сессия при проверке в сессии, loginAttemptScope/approvedLoginScope — шаг
+// входа check_password. Числа — PasswordFreeFails, PasswordLockBase,
+// PasswordLockMax, PasswordFailWindow.
 type PasswordAttemptStore interface {
-	// Locked — остаток блокировки (0 — свободно).
-	Locked(ctx context.Context, userID, deviceID int64) (time.Duration, error)
-	// Fail засчитывает неудачу атомарно: инкремент счётчика, его срок — 24 ч от
-	// последней неудачи, при f ≥ 5 — блокировка passwordLockFor(f). Возвращает f.
-	Fail(ctx context.Context, userID, deviceID int64) (int, error)
-	// Reset — верный пароль: удалить счётчик и блокировку.
-	Reset(ctx context.Context, userID, deviceID int64) error
+	// Acquire атомарно: пара заперта — остаток блокировки (> 0), попытка не
+	// засчитана; иначе засчитать попытку f (при f ≥ PasswordFreeFails — поставить
+	// блокировку) и вернуть 0 — сверку можно выполнять.
+	Acquire(ctx context.Context, userID, deviceID int64, version string) (time.Duration, error)
+	// Reset — верный пароль: удалить счётчик и блокировку пары.
+	Reset(ctx context.Context, userID, deviceID int64, version string) error
 }
