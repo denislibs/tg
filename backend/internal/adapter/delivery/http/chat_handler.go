@@ -371,7 +371,7 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 	// если параллельное чтение, начатое до коммита, положит старый снимок после сброса.
 	state, err := h.svc.UpdatesState(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		writeDomainError(w, err, "could not get dialogs")
 		return
 	}
 	res, err := h.svc.PeerDialogs(r.Context(), h.meID(r), peers)
