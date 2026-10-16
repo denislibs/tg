@@ -47,6 +47,14 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 if before == 0 then return 1 end
 return 0`)
 
+// groupCallJoinIfActive: то же, но только в непустой звонок. -1 — звонка нет
+// (ничего не записано, ключ не создан), 0 — вошёл.
+var groupCallJoinIfActive = goredis.NewScript(`
+if redis.call('SCARD', KEYS[1]) == 0 then return -1 end
+redis.call('SADD', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+return 0`)
+
 // groupCallLeave: атомарно убрать участника; 1 — переход «в звонке был кто-то →
 // не осталось никого».
 var groupCallLeave = goredis.NewScript(`
@@ -96,6 +104,12 @@ func groupCallSnapKey(chatID int64) string { return fmt.Sprintf("groupcall:snap:
 func (s *GroupCallStore) Join(ctx context.Context, chatID, userID int64) (bool, error) {
 	n, err := groupCallJoin.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
 	return n == 1, err
+}
+
+// JoinIfActive добавляет участника только в идущий звонок; joined=false — звонка нет.
+func (s *GroupCallStore) JoinIfActive(ctx context.Context, chatID, userID int64) (bool, error) {
+	n, err := groupCallJoinIfActive.Run(ctx, s.client, []string{groupCallKey(chatID)}, userID, int(groupCallTTL.Seconds())).Int()
+	return n == 0, err
 }
 
 // Leave убирает участника; last — в звонке никого не осталось.

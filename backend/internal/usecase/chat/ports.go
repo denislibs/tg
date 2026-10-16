@@ -969,6 +969,11 @@ type SendInput struct {
 // истечении аренды.
 type GroupCallStore interface {
 	Join(ctx context.Context, chatID, userID int64) (first bool, err error)
+	// JoinIfActive добавляет участника, только если звонок уже идёт (в множестве
+	// кто-то есть): проверка и вход — один скрипт, так что «последний вышел» и
+	// «не-админ вошёл» не разминутся. joined=false — звонка нет, ничего не
+	// записано. Перехода 0→1 здесь не бывает: пустой звонок не открывается.
+	JoinIfActive(ctx context.Context, chatID, userID int64) (joined bool, err error)
 	Leave(ctx context.Context, chatID, userID int64) (last bool, err error)
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
 	// ActiveAmong — подмножество chatIDs, где в звонке есть участники (одним

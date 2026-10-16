@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 72,
+      "version": 73,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -7456,6 +7456,10 @@
           }
         },
         {
+          "key": "VoiceChat.Chat.Ended",
+          "value": "Video chat ended."
+        },
+        {
           "key": "VoiceChat.DiscussionGroup",
           "value": "discussion group"
         },
@@ -7596,7 +7600,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 71,
+      "version": 72,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10373,6 +10377,10 @@
         {
           "key": "VoiceChat.Status.Muted",
           "value": "микрофон выключен"
+        },
+        {
+          "key": "VoiceChat.Chat.Ended",
+          "value": "Видеочат завершён."
         },
         {
           "key": "VoiceChat.Leave",
