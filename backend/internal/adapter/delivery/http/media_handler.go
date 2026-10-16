@@ -79,7 +79,7 @@ func (h *MediaHandler) CreateUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create upload")
+		writeDomainError(w, err, "could not create upload")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -98,7 +98,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// sequential media ids can't be enumerated.
 	allowed, err := h.access.CanAccessMedia(r.Context(), user.ID, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load media")
+		writeDomainError(w, err, "could not load media")
 		return
 	}
 	if !allowed {
@@ -111,7 +111,7 @@ func (h *MediaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load media")
+		writeDomainError(w, err, "could not load media")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -143,7 +143,7 @@ func (h *MediaHandler) PutContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "upload failed")
+		writeDomainError(w, err, "upload failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -180,7 +180,7 @@ func (h *MediaHandler) PutPart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "part upload failed")
+		writeDomainError(w, err, "part upload failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -204,7 +204,7 @@ func (h *MediaHandler) UploadParts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load parts")
+		writeDomainError(w, err, "could not load parts")
 		return
 	}
 	if received == nil {
@@ -254,7 +254,7 @@ func (h *MediaHandler) FinalizeUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "finalize failed")
+		writeDomainError(w, err, "finalize failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -287,7 +287,7 @@ func (h *MediaHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	}
 	allowed, err := h.access.CanAccessMedia(r.Context(), userID, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load media")
+		writeDomainError(w, err, "could not load media")
 		return
 	}
 	if !allowed {
@@ -309,7 +309,7 @@ func (h *MediaHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load media")
+		writeDomainError(w, err, "could not load media")
 		return
 	}
 	defer rc.Close()

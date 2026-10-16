@@ -22,7 +22,7 @@ func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "inline failed")
+		writeDomainError(w, err, "inline failed")
 		return
 	}
 	out := make([]domain.BotInlineResult, 0, len(results))
@@ -93,7 +93,7 @@ func (h *ChatHandler) BotCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "callback failed")
+		writeDomainError(w, err, "callback failed")
 		return
 	}
 	// «Показать плашкой» — ФЛАГ: прежде ехало булево поле `alert: false`, то
@@ -118,7 +118,7 @@ func (h *ChatHandler) BotStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "start failed")
+		writeDomainError(w, err, "start failed")
 		return
 	}
 	// Ответ — КОНСТРУКТОР ключа, как у создания приватного чата.
@@ -141,7 +141,7 @@ func (h *ChatHandler) BotWebAppData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.BotWebAppData(r.Context(), h.meID(r), botID, b.Data, b.ButtonText); err != nil {
-		writeError(w, http.StatusInternalServerError, "webapp_data failed")
+		writeDomainError(w, err, "webapp_data failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -159,7 +159,7 @@ func (h *ChatHandler) BotCloudGet(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&b)
 	vals, err := h.svc.BotCloudGet(r.Context(), botID, h.meID(r), b.Keys)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cloud get failed")
+		writeDomainError(w, err, "cloud get failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"values": vals})
@@ -184,7 +184,7 @@ func (h *ChatHandler) BotCloudSet(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid key/value or quota exceeded")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "cloud set failed")
+		writeDomainError(w, err, "cloud set failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -201,7 +201,7 @@ func (h *ChatHandler) BotCloudRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
 	if err := h.svc.BotCloudRemove(r.Context(), botID, h.meID(r), b.Keys); err != nil {
-		writeError(w, http.StatusInternalServerError, "cloud remove failed")
+		writeDomainError(w, err, "cloud remove failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -215,7 +215,7 @@ func (h *ChatHandler) BotCloudKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := h.svc.BotCloudKeys(r.Context(), botID, h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cloud keys failed")
+		writeDomainError(w, err, "cloud keys failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})

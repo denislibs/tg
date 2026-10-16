@@ -59,7 +59,7 @@ func resolveMsgSeq(w http.ResponseWriter, r *http.Request, res MessageResolver, 
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "message not found")
 	default:
-		writeError(w, http.StatusInternalServerError, "message lookup failed")
+		writeDomainError(w, err, "message lookup failed")
 	}
 	return 0, false
 }

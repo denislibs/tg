@@ -6,10 +6,12 @@
 // Без glare: НОВИЧОК шлёт офферы всем, кто уже в звонке (их список отдаёт
 // GET /chats/{id}/group_call перед join); сидящие просто ждут оффер.
 // Mute/камера — track.enabled + media_state внутри group_call_signal.
+import { toastNew } from '@components/toast'
 import { useGroupCallStore } from '../../stores/groupCallStore'
+import { useLivestreamStore } from '../../stores/livestreamStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { startClient } from '../../client/bootstrap'
-import { iceServers } from './callEngine'
+import { hasTurnServer, iceServers } from './callEngine'
 
 const sdpJSON = (d: RTCSessionDescription | null) => (d ? { type: d.type, sdp: d.sdp } : null)
 
@@ -28,7 +30,9 @@ export interface GroupCallFrame {
   d: {
     peer_id: number
     user_id?: number
-    action?: 'joined' | 'left'
+    /** action = rejected: отказ по праву/политике (иначе сбой хранилища) */
+    forbidden?: boolean
+    action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
     from_user_id?: number
     sdp?: RTCSessionDescriptionInit
@@ -37,8 +41,17 @@ export interface GroupCallFrame {
   }
 }
 
-async function newPc(userId: number): Promise<RTCPeerConnection> {
-  const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' })
+// Поколение звонка: teardownCall его сдвигает, и newPc, ждавший iceServers() через
+// отказ входа или выход, не кладёт соединение в уже убранный звонок.
+let callGen = 0
+
+async function newPc(userId: number): Promise<RTCPeerConnection | null> {
+  const gen = callGen
+  const servers = await iceServers()
+  if (gen !== callGen) return null
+  // Только через TURN: у tweb групповой звонок ходит к SFU и IP участника видит один сервер, у нас
+  // mesh, и прямые кандидаты раскрыли бы адрес каждому участнику (М3-2, Б-8).
+  const pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', iceTransportPolicy: 'relay' })
   localStream?.getTracks().forEach((t) => pc.addTrack(t, localStream!))
   pc.ontrack = (e) => {
     const stream = e.streams[0]
@@ -84,8 +97,15 @@ function broadcastMediaState() {
 
 /** Войти в видеочат группы (создаёт его, если ещё не идёт). */
 export async function joinGroupCall(peerId: number, withVideo = false) {
-  if (store().peerId != null) return // уже в звонке
+  if (store().peerId != null || store().connecting) return // уже в звонке или входим
   store().setConnecting(true)
+  // relay без TURN не соберёт ни одного кандидата: входим только при его наличии, а не молча
+  // идём в обход на прямое соединение. До микрофона — окно разрешения зря не открываем.
+  if (!hasTurnServer(await iceServers())) {
+    console.error('[group call] no TURN server: relay-only mesh cannot connect')
+    store().reset()
+    return
+  }
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: withVideo })
   } catch {
@@ -95,17 +115,29 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   const existing = await managers().messages.groupCallParticipants(peerId).catch(() => [] as number[])
   store().setJoined(peerId)
   store().setMedia(true, withVideo)
+  const gen = callGen
   void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
   // новичок предлагает соединение каждому сидящему
   const meId = useChatsStore.getState().meId
   for (const userId of existing) {
     if (userId === meId) continue
     const pc = await newPc(userId)
+    if (!pc) return // звонок убран (rejected / выход), пока шли офферы
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
+    if (gen !== callGen) return
     signal(userId, { sdp: sdpJSON(pc.localDescription) })
   }
   broadcastMediaState()
+}
+
+/** Локальная уборка звонка: соединения, микрофон/камера, стор. Кадров не шлёт. */
+function teardownCall() {
+  callGen++
+  for (const userId of [...pcs.keys()]) closePeer(userId)
+  localStream?.getTracks().forEach((t) => t.stop())
+  localStream = null
+  store().reset()
 }
 
 /** Выйти из видеочата. */
@@ -113,10 +145,23 @@ export function leaveGroupCall() {
   const peerId = store().peerId
   if (peerId == null) return
   void managers().realtime.sendCallFrame({ type: 'group_call_leave', data: { peer_id: peerId } })
-  for (const userId of [...pcs.keys()]) closePeer(userId)
-  localStream?.getTracks().forEach((t) => t.stop())
-  localStream = null
-  store().reset()
+  teardownCall()
+}
+
+/**
+ * Сервер не пустил в видеочат (рядовой участник при пустом звонке, Б-9): мы уже
+ * взяли микрофон и открыли экран звонка — откатываем локально, без
+ * group_call_leave (мы в звонок не входили).
+ */
+function handleJoinRejected(peerId: number, forbidden: boolean) {
+  const inCall = store().peerId === peerId
+  const live = useLivestreamStore.getState()
+  const watching = live.watchingPeerId === peerId
+  if (!inCall && !watching) return // отказ запоздал: мы уже вышли
+  if (inCall) teardownCall()
+  if (watching) live.setWatching(null)
+  // по праву — «Видеочат завершён» (tweb appImManager.ts:2369-2373, звонка нет и права нет)
+  toastNew({ langPackKey: forbidden ? 'VoiceChat.Chat.Ended' : 'Error.AnError' })
 }
 
 export function toggleGroupMic() {
@@ -159,6 +204,13 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   const { t, d } = evt
   if (t === 'group_call_update') {
     // список идущих звонков — для баннера Join у всех членов чата
+    if (d.action === 'rejected') {
+      // Отказ списка участников не несёт (причина могла быть и сбоем хранилища, а
+      // звонок — идти): activeByChat не трогаем. Кадр адресован только отказанному,
+      // user_id сверяем: чужой не трогает наш звонок.
+      if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id, !!d.forbidden)
+      return
+    }
     store().setActive(d.peer_id, d.participants ?? [])
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
@@ -176,7 +228,8 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
     let pc = pcs.get(from)
     if (d.sdp) {
       if (d.sdp.type === 'offer') {
-        pc = pc ?? (await newPc(from))
+        pc = pc ?? (await newPc(from)) ?? undefined
+        if (!pc) return
         await pc.setRemoteDescription(d.sdp)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)

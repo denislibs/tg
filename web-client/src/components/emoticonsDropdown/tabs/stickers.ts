@@ -11,8 +11,9 @@
 //     (`splitSearchQuery`: эмодзи в строке либо подбор по ключевым словам) → `stickers.searchByEmoji`
 //     по первым `SEARCH_EMOTICONS_LIMIT` эмодзи без повторов; локального индекса установленных
 //     наборов (`includeOurStickers`) нет — ручка ищет и по ним.
-//  4. Лимит «Избранных» (`apiManager.getLimit('favedStickers')`, `app_config`) — ручки лимитов нет,
-//     держит сервер; лимит «Недавних» — 20, как у оригинала.
+//  4. Лимит «Избранных» (`apiManager.getLimit('favedStickers')`, `app_config`) — сервер отдаёт
+//     `stickers_faved_limit_*` (`appConfig.getLimit('favedStickers')`), но вкладка его не читает:
+//     лишнее вытесняет сам сервер; лимит «Недавних» — 20, как у оригинала.
 //  5. События `stickers_top`/`stickers_order` и `choosing_sticker` (`setTyping`) — не объявляются у
 //     нас никем: порядок наборов не меняется на лету, «выбирает стикер» не отправляется (Б-133).
 //  6. Премиум-стикеры (`getStickerEffectThumb` при скрытом Premium) — их нет на бэкенде.

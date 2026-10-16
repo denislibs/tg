@@ -51,7 +51,7 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 		// «удалить чат» это deleteHistory (DELETE /chats/{peer}/history).
 		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	default:
-		writeError(w, http.StatusInternalServerError, "server error")
+		writeDomainError(w, err, "server error")
 	}
 }
 

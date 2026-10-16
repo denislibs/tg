@@ -12,7 +12,7 @@ import EventListenerBase from '@helpers/eventListenerBase'
 import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
-  TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
+  TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, MessageSendErrorEvt, CallFrameEvt,
   ChatRemovedEvt, ChannelEvt, ChannelTooLongEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
@@ -123,6 +123,7 @@ export type BroadcastEvents = {
   [RT.presence]: [PresenceEvt]
   [RT.ack]: [AckEvt]
   [RT.messageError]: [MessageErrorEvt]
+  [RT.messageSendError]: [MessageSendErrorEvt]
   [RT.call]: [CallFrameEvt]
   [RT.suggestedPost]: [SuggestedPostEvt]
   [RT.groupCall]: [GroupCallFrame]

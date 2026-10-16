@@ -17,8 +17,15 @@ func NewRouterRPC(router http.Handler) *RouterRPC { return &RouterRPC{router: ro
 // Dispatch строит синтетический http.Request с пред-инжектённым юзером канала и
 // прогоняет его через роутер, возвращая статус и тело ответа. AuthMiddleware
 // пропускает ре-аутентификацию (юзер уже в ctx); хендлеры читают UserFromContext.
-func (d *RouterRPC) Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, method, path string, body []byte) (int, []byte) {
+//
+// clientIP — IP сокета клиента (ws.Conn.clientIP): у синтетического запроса сокета
+// нет, и без X-Real-IP netx.ClientIP отдавал бы всем 192.0.2.1 (адрес httptest) —
+// пользователи канала делили бы ведра IP-лимитеров. Пустой — заголовок не ставится.
+func (d *RouterRPC) Dispatch(ctx context.Context, user domain.UserRecord, deviceID int64, clientIP, method, path string, body []byte) (int, []byte) {
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	if clientIP != "" {
+		req.Header.Set("X-Real-IP", clientIP)
+	}
 	req = req.WithContext(WithUser(ctx, user, deviceID))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

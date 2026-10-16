@@ -83,7 +83,7 @@ func (h *ProfileHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	fresh, err := h.uc.GetUser(r.Context(), u.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "load profile failed")
+		writeDomainError(w, err, "load profile failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(fresh))
@@ -111,7 +111,7 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	cur, err := h.uc.GetUser(r.Context(), u.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "load profile failed")
+		writeDomainError(w, err, "load profile failed")
 		return
 	}
 	in := usecaseauth.ProfileInput{
@@ -171,7 +171,7 @@ func (h *ProfileHandler) SetUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "set username failed")
+		writeDomainError(w, err, "set username failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(user))
@@ -196,7 +196,7 @@ func (h *ProfileHandler) CheckUsername(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "check failed")
+		writeDomainError(w, err, "check failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(available))
@@ -241,7 +241,7 @@ func (h *ProfileHandler) ActivatePremium(w http.ResponseWriter, r *http.Request)
 	}
 	user, err := h.uc.ActivatePremium(r.Context(), u.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "activate premium failed")
+		writeDomainError(w, err, "activate premium failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, userJSON(user))
@@ -285,7 +285,7 @@ func (h *ProfileHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "checkout failed")
+		writeDomainError(w, err, "checkout failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -308,7 +308,7 @@ func (h *ProfileHandler) PremiumSubscription(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "load subscription failed")
+		writeDomainError(w, err, "load subscription failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
@@ -328,7 +328,7 @@ func (h *ProfileHandler) CancelPremium(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cancel failed")
+		writeDomainError(w, err, "cancel failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"subscription": subscriptionJSON(sub)})
@@ -382,7 +382,7 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[profile] add photo user=%d media=%d: %v", u.ID, body.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "add photo failed")
+		writeDomainError(w, err, "add photo failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewPhotosPhoto(galleryPhoto(photo)))
@@ -405,7 +405,7 @@ func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 	photos, err := h.uc.ListProfilePhotos(r.Context(), viewer.ID, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list photos failed")
+		writeDomainError(w, err, "list photos failed")
 		return
 	}
 	out := make([]domain.Photo, 0, len(photos))
@@ -436,7 +436,7 @@ func (h *ProfileHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete photo failed")
+		writeDomainError(w, err, "delete photo failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

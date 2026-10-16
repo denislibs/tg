@@ -154,6 +154,22 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
   return chat as unknown as Chat
 }
 
+/** Конфиг приложения для меню — значения сервера (`backend/internal/domain/limits.go`):
+ *  срок правки 48 ч, «кто прочитал» — чаты до 100 участников и до недели. */
+export function fakeMenuAppConfig(overrides: {
+  edit_time_limit?: number,
+  chat_read_mark_size_threshold?: number,
+  chat_read_mark_expire_period?: number,
+} = {}): ContextMenuManagers['appConfig'] {
+  return {
+    getConfig: async() => ({ edit_time_limit: overrides.edit_time_limit ?? 172800 }),
+    getAppConfig: async() => ({
+      chat_read_mark_size_threshold: overrides.chat_read_mark_size_threshold ?? 100,
+      chat_read_mark_expire_period: overrides.chat_read_mark_expire_period ?? 7 * 86400,
+    }),
+  }
+}
+
 /** Поднять ленту на фейковом `Chat` в порядке `Chat.init` (tweb `chat.ts:616-643`). */
 export function mountTestBubbles(chat: Chat, managers: BubblesManagers, options: {
   menuManagers?: ContextMenuManagers,

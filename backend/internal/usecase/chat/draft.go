@@ -36,7 +36,7 @@ type DraftInput struct {
 // maxDraftWebPageURLRunes — предел ссылки media черновика. У tweb и TL своего
 // предела нет; ссылка превью берётся из текста черновика, поэтому её предел —
 // предел самого текста.
-const maxDraftWebPageURLRunes = maxMessageRunes
+const maxDraftWebPageURLRunes = domain.MaxMessageRunes
 
 // SaveDraft сохраняет (или снимает — при пустом тексте без ответа) черновик
 // треда. Тред выводится из reply_to так же, как его туда кладёт tweb
@@ -45,7 +45,7 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 	if i.drafts == nil {
 		return nil, domain.ErrNotFound
 	}
-	if utf8.RuneCountInString(in.Message) > maxMessageRunes {
+	if utf8.RuneCountInString(in.Message) > domain.MaxMessageRunes {
 		return nil, domain.ErrTooLong
 	}
 	root, top, replyToID, err := i.draftThread(ctx, userID, chatID, in.ReplyToMsgID, in.TopMsgID)

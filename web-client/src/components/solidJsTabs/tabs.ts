@@ -431,8 +431,9 @@ export const AppStickersAndEmojiTab =
 // Открывает строка `AccountSettings.PrivacyAndSecurity` корня настроек (tweb
 // `settings.tsx:254`, `makeSubTabConfig`). Форма eventable, как у оригинала.
 // Предзагрузки `getInitArgs` (tweb :651-655, :667 — `appConfig`, `globalPrivacy`,
-// `webAuthorizations`) нет: все три её предмета у нас отсутствуют (О-18 плана
-// 2D), поэтому и полезной нагрузки у вкладки нет.
+// `webAuthorizations`) нет: `globalPrivacy` и `webAuthorizations` у нас отсутствуют
+// (О-18 плана 2D), а `appConfig` вкладке не нужен (ключ `settings_display_passkeys`
+// сервер не отдаёт), поэтому и полезной нагрузки у вкладки нет.
 export const AppPrivacyAndSecurityTab =
   scaffoldSolidJSTabEventable({
     title: 'PrivacySettings',

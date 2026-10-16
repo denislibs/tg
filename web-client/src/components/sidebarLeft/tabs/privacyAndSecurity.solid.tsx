@@ -44,7 +44,7 @@
  *     `managers.drafts.clearAll`, после него — `managers.dialogs.refresh()`:
  *     черновик — поле диалога, а наш менеджер черновиков об очистке не объявляет.
  *  3. Видимость Passkeys: `appConfig.settings_display_passkeys` (:186) нет —
- *     `help.getAppConfig` у нас нет (как у О-51), считается истиной; среда
+ *     сервер ключа в `help.getAppConfig` не отдаёт, считается истиной; среда
  *     `IS_WEB_AUTHN_SUPPORTED` → `isWebAuthnSupported()` (шапка `passkeys.solid.tsx`).
  *  4. «Код-пароль»: `appStateManager.getState` + `settings_updated` (:353-364) →
  *     `useAppSettings().passcode.enabled` (мост над zustand, О-2): значение

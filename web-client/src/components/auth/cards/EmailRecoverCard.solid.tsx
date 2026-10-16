@@ -45,9 +45,7 @@
 // У tweb Cancel ничего не передаёт — карточка `password` там перечитывает
 // общий `authState`. У нас переход обязан довезти нагрузку САМ
 // (`authFlow.solid.tsx::CardPayloadMap.password`), поэтому Cancel собирает её
-// из СВОЕГО `props.spec.payload` (`token`/`hint`/`emailPattern`) — это и есть
-// закрытие долга задачи 4 (находка 1 ревью, разбор — докблок
-// `PasswordCard.solid.tsx`): маска возвращается пропом, не модульным Map.
+// из СВОЕГО `props.spec.payload` (`token`/`hint`), а не из модульного Map.
 //
 // ── НАХОДКА 2 (ревью задачи 5): сетевой отказ на сабмите — не запертая карточка ──
 // `confirmPasswordRecovery` перебрасывает НЕ-`HttpError` наружу как есть
@@ -131,7 +129,7 @@ export default function EmailRecoverCard(props: { spec: Spec }): JSX.Element {
   }
 
   const cancel = () => {
-    navigate({ name: 'password', payload: { token: token(), hint: hint(), emailPattern: emailPattern() } })
+    navigate({ name: 'password', payload: { token: token(), hint: hint() } })
   }
 
   return (

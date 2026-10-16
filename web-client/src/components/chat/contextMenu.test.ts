@@ -16,7 +16,7 @@ import ChatContextMenu, {
 import type { SelectionBubbles } from './selection'
 import { ChatType } from './chatType'
 import type Chat from './chat'
-import { attachTestSelection, createTestChat, type TestChatOptions } from './testChat'
+import { attachTestSelection, createTestChat, fakeMenuAppConfig, type TestChatOptions } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import rootScope from '@lib/rootScope'
@@ -59,7 +59,7 @@ function message(id: number, extra: Partial<MyMessage> = {}): MyMessage {
     peerId: PEER,
     fromId: PEER,
     peer_id: { _: 'peerUser', user_id: PEER },
-    // свежее: правка в личке ограничена сроком (EDIT_TIME_LIMIT, tweb edit_time_limit)
+    // свежее: правка в личке ограничена сроком (`config.edit_time_limit`, tweb)
     date: Math.floor(Date.now() / 1000) - 3600 + id,
     message: `text ${id}`,
     ...extra,
@@ -110,6 +110,7 @@ function makeManagers() {
       removeFactCheck: vi.fn().mockResolvedValue(undefined),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
+    appConfig: fakeMenuAppConfig(),
   } satisfies ContextMenuManagers
 }
 
@@ -282,6 +283,23 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     await flush()
 
     expect(itemTexts()).toEqual(['Copy', 'Pin', 'Forward', 'Select', 'Delete'])
+  })
+
+  // Срок правки в личке — `config.edit_time_limit` (tweb canEditMessage :8382-8386),
+  // а не зашитые 48 ч: сообщению час (`message()` — свежее на час), срок 10 минут.
+  it('«Изменить» исчезает, когда срок правки из конфига вышел', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { out: true } })])
+    const { bubble, content } = makeBubble(1, { out: true })
+    container.append(bubble)
+
+    const managers = { ...makeManagers(), appConfig: fakeMenuAppConfig({ edit_time_limit: 600 }) }
+    const menu = new ChatContextMenu(makeChat(), managers)
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    expect(itemTexts()).not.toContain('Edit')
   })
 
   it('«Изменить» появляется только у своего сообщения (verify canEditMessage, :1007-1014)', async() => {
@@ -690,6 +708,32 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     menu.attachTo(container)
     rightClick(content)
     await flush()
+    await flush()
+
+    expect(viewsItem()).toBeUndefined()
+    expect(managers.messages.viewers).not.toHaveBeenCalled()
+  })
+
+  // Пороги приходят из конфига приложения, а не зашитыми числами: при пороге 200 группа
+  // из 150 участников (сверх зашитых 100) получает пункт, при сроке сутки двухдневное
+  // сообщение (в пределах зашитой недели) пункта лишается.
+  it('порог размера чата — из конфига: 150 участников при пороге 200 — пункт есть', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 9, title: 'gr', pFlags: { megagroup: true }, photo: undefined, date: 0, participants_count: 150 } as never] }])
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true } })])
+
+    const managers = { ...makeManagers(), appConfig: fakeMenuAppConfig({ chat_read_mark_size_threshold: 200 }) }
+    await openInGroup(managers)
+    await flush()
+
+    expect(managers.messages.viewers).toHaveBeenCalledWith(GROUP, 1)
+  })
+
+  it('срок «кто прочитал» — из конфига: сутки, а сообщению двое — пункта нет', async() => {
+    upsertGroup()
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true }, date: Math.floor(Date.now() / 1000) - 2 * 86400 })])
+
+    const managers = { ...makeManagers(), appConfig: fakeMenuAppConfig({ chat_read_mark_expire_period: 86400 }) }
+    await openInGroup(managers)
     await flush()
 
     expect(viewsItem()).toBeUndefined()

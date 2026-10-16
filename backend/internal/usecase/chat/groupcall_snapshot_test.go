@@ -366,10 +366,11 @@ func TestCallFlags_DialogsPageBatchesTheLookup(t *testing.T) {
 	s.seedChat(100, domain.ChatTypeGroup, a, b)
 	s.seedChat(101, domain.ChatTypeGroup, a, b)
 	s.seedChat(102, domain.ChatTypeGroup, a, b)
-	if _, err := in.JoinGroupCall(ctx, 101, b); err != nil {
+	// Звонок заводится прямо в сторе: тест про пакетный вопрос списка, а не про
+	// право начинать видеочат (в этой фикстуре репозитория групп нет).
+	if _, err := calls.Join(ctx, 101, b); err != nil {
 		t.Fatal(err)
 	}
-	in.bg.Wait()
 	calls.activeAmongCalls = 0
 
 	page, err := in.DialogsPage(ctx, a, domain.DialogPage{Limit: 20})
@@ -512,9 +513,12 @@ func TestCallSnapshot_PrivateChatDoesNotLoop(t *testing.T) {
 	e.fg.mu.Unlock()
 	_ = e.fg.AddMember(ctx, 700, callOwner, domain.RoleMember, 0)
 
-	if _, err := e.in.JoinGroupCall(ctx, 700, callOwner); err != nil {
+	// В личке видеочата нет (tweb: isUser → кнопки нет), а звонок в сторе от
+	// старых клиентов мог остаться: тест про снимок, а не про право входа.
+	if _, err := e.calls.Join(ctx, 700, callOwner); err != nil {
 		t.Fatal(err)
 	}
+	e.in.announceCallChange(ctx, 700)
 	e.in.bg.Wait()
 	for range 3 {
 		e.clock.advance(6 * time.Second)

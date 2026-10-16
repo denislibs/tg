@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -28,8 +29,14 @@ func NewStatsHandler(uc *usecasestats.Interactor, peers statsResolver) *StatsHan
 	return &StatsHandler{uc: uc, peers: peers}
 }
 
+// writeChatAdminRequired — не админ запросил то, что видит только админ: имя TG
+// CHAT_ADMIN_REQUIRED (400), его tweb разбирает (bubbles.ts:6135).
+func writeChatAdminRequired(w http.ResponseWriter) {
+	writeError(w, http.StatusBadRequest, "CHAT_ADMIN_REQUIRED")
+}
+
 // ChannelStats — GET /channels/{chatID}/stats. Доступ только у создателя/админа
-// (иначе 403). Канал отвечает stats.broadcastStats (stats.getBroadcastStats),
+// (иначе 400 CHAT_ADMIN_REQUIRED). Канал отвечает stats.broadcastStats (stats.getBroadcastStats),
 // группа — stats.megagroupStats (stats.getMegagroupStats).
 func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
@@ -40,14 +47,11 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 	st, err := h.uc.ChannelStats(r.Context(), chatID, user.ID)
 	switch {
 	case err == nil:
-	case err == domain.ErrForbidden:
-		writeError(w, http.StatusForbidden, "forbidden")
-		return
-	case err == domain.ErrNotFound:
-		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrForbidden):
+		writeChatAdminRequired(w)
 		return
 	default:
-		writeError(w, http.StatusInternalServerError, "server error")
+		writeDomainError(w, err, "server error")
 		return
 	}
 
@@ -60,7 +64,7 @@ func (h *StatsHandler) ChannelStats(w http.ResponseWriter, r *http.Request) {
 
 // PostStats — GET /chats/{chatID}/messages/{msgID}/stats. Статистика одного
 // поста — stats.messageStats (stats.getMessageStats). Доступ только у
-// создателя/админа (иначе 403); нет поста — 404.
+// создателя/админа (иначе 400 CHAT_ADMIN_REQUIRED); нет поста — 404.
 func (h *StatsHandler) PostStats(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.peers)
@@ -74,14 +78,11 @@ func (h *StatsHandler) PostStats(w http.ResponseWriter, r *http.Request) {
 	st, err := h.uc.PostStats(r.Context(), chatID, msgID, user.ID)
 	switch {
 	case err == nil:
-	case err == domain.ErrForbidden:
-		writeError(w, http.StatusForbidden, "forbidden")
-		return
-	case err == domain.ErrNotFound:
-		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrForbidden):
+		writeChatAdminRequired(w)
 		return
 	default:
-		writeError(w, http.StatusInternalServerError, "server error")
+		writeDomainError(w, err, "server error")
 		return
 	}
 

@@ -52,7 +52,7 @@ func coveredSets(sets []domain.StickerSetRecord, covers map[int64][]domain.Stick
 func (h *StickersHandler) MySets(w http.ResponseWriter, r *http.Request) {
 	sets, err := h.svc.MySets(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load sets")
+		writeDomainError(w, err, "could not load sets")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesAllStickers(domain.StickerSetsWire(sets)))
@@ -67,7 +67,7 @@ func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load set")
+		writeDomainError(w, err, "could not load set")
 		return
 	}
 	writeJSON(w, http.StatusOK, usecasestickers.SetWire(set, sts))
@@ -96,7 +96,7 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load set")
+		writeDomainError(w, err, "could not load set")
 		return
 	}
 	writeJSON(w, http.StatusOK, set)
@@ -114,7 +114,7 @@ func (h *StickersHandler) Install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not install set")
+		writeDomainError(w, err, "could not install set")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -127,7 +127,7 @@ func (h *StickersHandler) Uninstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Uninstall(r.Context(), h.meID(r), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not uninstall set")
+		writeDomainError(w, err, "could not uninstall set")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -137,7 +137,7 @@ func (h *StickersHandler) Uninstall(w http.ResponseWriter, r *http.Request) {
 func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 	sets, covers, err := h.svc.SearchSets(r.Context(), h.meID(r), r.URL.Query().Get("q"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "search failed")
+		writeDomainError(w, err, "search failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesFoundStickerSets(coveredSets(sets, covers)))
@@ -151,7 +151,7 @@ func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
 	sets, covers, err := h.svc.Featured(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load featured")
+		writeDomainError(w, err, "could not load featured")
 		return
 	}
 	// `count` — сколько наборов в выдаче. Отдельного «всего в каталоге» у нас
@@ -180,7 +180,7 @@ func (h *StickersHandler) CreateSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not create set")
+		writeDomainError(w, err, "could not create set")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesStickerSet(
@@ -216,7 +216,7 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[stickers] add sticker user=%d set=%d media=%d: %v", h.meID(r), id, b.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "could not add sticker")
+		writeDomainError(w, err, "could not add sticker")
 		return
 	}
 	// Тем же конструктором, что и выборки набора: добавленный стикер клиент
@@ -230,7 +230,7 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 func (h *StickersHandler) Recent(w http.ResponseWriter, r *http.Request) {
 	sts, err := h.svc.Recent(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load recent")
+		writeDomainError(w, err, "could not load recent")
 		return
 	}
 	docs, dates := domain.RecentDocuments(sts)
@@ -240,7 +240,7 @@ func (h *StickersHandler) Recent(w http.ResponseWriter, r *http.Request) {
 // ClearRecent — DELETE /stickers/recent: очистить список недавних.
 func (h *StickersHandler) ClearRecent(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ClearRecent(r.Context(), h.meID(r)); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not clear recent")
+		writeDomainError(w, err, "could not clear recent")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -250,7 +250,7 @@ func (h *StickersHandler) ClearRecent(w http.ResponseWriter, r *http.Request) {
 func (h *StickersHandler) Faved(w http.ResponseWriter, r *http.Request) {
 	sts, err := h.svc.Faved(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load faved")
+		writeDomainError(w, err, "could not load faved")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesFavedStickers(
@@ -274,7 +274,7 @@ func (h *StickersHandler) Fave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not fave")
+		writeDomainError(w, err, "could not fave")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -287,7 +287,7 @@ func (h *StickersHandler) Unfave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Unfave(r.Context(), h.meID(r), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not unfave")
+		writeDomainError(w, err, "could not unfave")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -305,7 +305,7 @@ func (h *StickersHandler) Use(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not record use")
+		writeDomainError(w, err, "could not record use")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -319,7 +319,7 @@ func (h *StickersHandler) SearchByEmoji(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "search failed")
+		writeDomainError(w, err, "search failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesStickers(domain.StickerDocuments(sts)))
@@ -329,7 +329,7 @@ func (h *StickersHandler) SearchByEmoji(w http.ResponseWriter, r *http.Request) 
 func (h *StickersHandler) SavedGifs(w http.ResponseWriter, r *http.Request) {
 	gifs, err := h.svc.SavedGifs(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load gifs")
+		writeDomainError(w, err, "could not load gifs")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesSavedGifs(domain.GifDocuments(gifs)))
@@ -351,7 +351,7 @@ func (h *StickersHandler) SaveGif(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("[stickers] save gif user=%d media=%d: %v", h.meID(r), b.MediaID, err)
-		writeError(w, http.StatusInternalServerError, "could not save gif")
+		writeDomainError(w, err, "could not save gif")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -364,7 +364,7 @@ func (h *StickersHandler) DeleteGif(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.DeleteGif(r.Context(), h.meID(r), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete gif")
+		writeDomainError(w, err, "could not delete gif")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

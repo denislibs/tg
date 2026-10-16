@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { newAuthManager, type AuthDeps } from './authManager'
-import { HttpError } from '../net/restClient'
+import { HttpError, RestClient } from '../net/restClient'
 import { upsertAccount } from '../auth/accounts'
 
 beforeEach(() => { indexedDB = new IDBFactory() })
@@ -316,12 +316,12 @@ describe('AuthManager', () => {
   // Класс ошибки решает, умирает ли цикл карточки. У tweb сеть и разрыв
   // переотправляет сам invokeApi, а `AUTH_TOKEN_EXPIRED` цикл переживает
   // (SignQRCard.tsx:179-181); остальные отказы API останавливают его (:182-185).
-  it('exportLoginToken: сбой сети, 5xx, 429 и 420 -> retry, а не отказ', async () => {
+  it('exportLoginToken: сбой сети и 5xx -> retry, а не отказ', async () => {
     const make = (err: unknown) => newAuthManager({
       rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
       store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
     })
-    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(429, 'x')]) {
+    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(408, 'x')]) {
       await expect(make(err).exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'retry' })
     }
   })
@@ -409,6 +409,44 @@ describe('AuthManager', () => {
 
   // POST /auth/account/reset: 401/409 — дискриминированный результат, не throw
   // (HttpError не переживает границу worker-RPC).
+  // Ф7-И1 (MC-08): ожидание сервера — 420 FLOOD_WAIT_N (tweb apiManager.ts:759-791).
+  // ≤ 60 с пережидает и повторяет restClient, до менеджера доходит только более
+  // длинное — как «слишком много попыток».
+  it('signUp: 420 FLOOD_WAIT_61 -> too_many_requests; 429 больше не разбирается', async () => {
+    const make = (err: unknown) => newAuthManager({
+      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(make(new HttpError(420, 'FLOOD_WAIT_61', 'FLOOD_WAIT_61')).signUp('t', 'A', '', 'd', 'p'))
+      .resolves.toEqual({ error: 'too_many_requests' })
+    await expect(make(new HttpError(429, 'too many requests', '')).signUp('t', 'A', '', 'd', 'p'))
+      .resolves.toEqual({ error: 'failed' })
+  })
+
+  it('requestPasswordRecovery: FLOOD_WAIT_5 пережидает restClient — менеджер получает успех', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_5' }), { status: 420 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ _: 'auth.passwordRecovery', email_pattern: 'a***@b.com' }), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      const rest = new RestClient('/api', () => null)
+      const auth = newAuthManager({
+        rest,
+        store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+      } as unknown as AuthDeps)
+      const p = auth.requestPasswordRecovery('PWTOK')
+      await vi.advanceTimersByTimeAsync(4_900)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(200)
+      await expect(p).resolves.toEqual({ emailPattern: 'a***@b.com' })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('resetAccount маппит статусы сервера в результат', async () => {
     const make = (post: (path: string, body: unknown) => Promise<unknown>) =>
       newAuthManager({

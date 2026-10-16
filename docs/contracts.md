@@ -20,7 +20,7 @@ machine-readable source of truth is the OpenAPI spec:
   витрина метода, а ЗАМЕНА результата в транспорте (`rpc_error`, секция
   MTProto); у нас эту позицию занимает статус HTTP, а `code` дублирует его,
   потому что по проводу DNP строки статуса нет вовсе. Где ответ несёт ожидание,
-  остаток секунд едет ВНУТРИ текста (`RESEND_TOO_SOON_<N>`,
+  остаток секунд едет ВНУТРИ текста (`FLOOD_WAIT_<N>`,
   `2FA_CONFIRM_WAIT_<N>`) — форма оригинала (`FLOOD_WAIT_<N>`), потому что у
   конструктора параметров ровно два.
 - **«Получилось»** — конструктор `Bool` (`boolTrue`/`boolFalse`), а не ключ
@@ -101,7 +101,7 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
   `sign_in`: при включённом облачном пароле `auth.passwordNeeded` (сессии нет,
   дальше `POST /auth/check_password`), иначе `auth.authorization`. Ключ доступа
   облачный пароль не отменяет (tweb `passkeyLoginButton.tsx:69-71`).
-- 400 `session expired`; 401 `passkey login failed`; 429 `too many requests`.
+- 400 `session expired`; 401 `passkey login failed`; 420 `FLOOD_WAIT_<N>`.
 
 ### POST /auth/export_login_token  · public
 Экспорт кода QR-входа (`auth.exportLoginToken`). Устройство, ещё не вошедшее,

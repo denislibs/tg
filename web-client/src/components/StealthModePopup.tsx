@@ -1,16 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Popup from '../shared/ui/Popup/Popup'
 import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
-import { useT } from '../i18n'
+import { useT, useTArgs } from '../i18n'
 import { useManagers } from '../core/hooks/useManagers'
 import { useStealthState } from '../core/hooks/useStealthState'
 import rootScope from '@lib/rootScope'
 import { HttpError } from '../core/net/restClient'
-
-// tweb appConfig stories_stealth_past/future_period.
-const PAST_LABEL = '5 min'
-const FUTURE_LABEL = '25 min'
+import { wrapStoriesStealthModeDuration } from '@components/wrappers/wrapDuration'
 
 // Округлённый остаток кулдауна в минутах для строки «Available in %s».
 // Граница кулдауна — секунды эпохи (`storiesStealthMode`), те же единицы, что у
@@ -30,9 +27,21 @@ function cooldownLabel(until: number): string {
  */
 export default function StealthModePopup({ onClose }: { onClose: () => void }) {
   const t = useT()
+  const tArgs = useTArgs()
   const managers = useManagers()
   const { unavailable, cooldownUntil, setUnavailable } = useStealthState()
   const [busy, setBusy] = useState(false)
+  // Окна «прошлое»/«будущее» — секунды из конфига приложения
+  // (`stories_stealth_past_period`/`_future_period`, tweb `storiesStealthMode.tsx:58`, `:65`).
+  // Пока конфиг не приехал, строк нет: подписи без числа не бывает.
+  const [periods, setPeriods] = useState<{ past?: number, future?: number }>({})
+  useEffect(() => {
+    let alive = true
+    void managers.appConfig.getAppConfig().then((config) => {
+      if (alive) setPeriods({ past: config.stories_stealth_past_period, future: config.stories_stealth_future_period })
+    })
+    return () => { alive = false }
+  }, [managers])
 
   const onCooldown = cooldownUntil != null && cooldownUntil * 1000 > Date.now()
 
@@ -82,8 +91,10 @@ export default function StealthModePopup({ onClose }: { onClose: () => void }) {
           {t('Stories.StealthMode.Subtitle')}
         </Text>
       </div>
-      {row('backward_5', t('Stories.StealthMode.Row1.Title'), t('Stories.StealthMode.Row1.Subtitle').replace('%s', PAST_LABEL))}
-      {row('forward_25', t('Stories.StealthMode.Row2.Title'), t('Stories.StealthMode.Row2.Subtitle').replace('%s', FUTURE_LABEL))}
+      {periods.past !== undefined && row('backward_5', t('Stories.StealthMode.Row1.Title'),
+        tArgs('Stories.StealthMode.Row1.Subtitle', [wrapStoriesStealthModeDuration(periods.past).textContent ?? '']))}
+      {periods.future !== undefined && row('forward_25', t('Stories.StealthMode.Row2.Title'),
+        tArgs('Stories.StealthMode.Row2.Subtitle', [wrapStoriesStealthModeDuration(periods.future).textContent ?? '']))}
       <div style={{ padding: '8px 16px 16px' }}>
         <button
           onClick={activate}

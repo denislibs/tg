@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { MessageReactions } from '../models'
 import {
   excessChosenReactions, hasMyReaction, isChosen, mergeReactions, myEmoticons, myPaidStars,
-  reactionDelta, reactionsUserLimit, recentOf, sameReactions, setPaidReaction, totalReactions,
+  reactionDelta, recentOf, sameReactions, setPaidReaction, totalReactions,
 } from './messageReactions'
 
 const emoji = (emoticon: string) => ({ _: 'reactionEmoji' as const, emoticon })
@@ -237,15 +237,10 @@ describe('sameReactions', () => {
 })
 
 // Лимит «сколько реакций ставит ОДИН пользователь на одном сообщении» и
-// вытеснение старейшей — порт tweb appReactionsManager.ts:733-751 (лимит
-// приходит из конфигурации приложения, apiManagerMethods.ts:369-395; у нас
-// зашит константами, потому что appConfig не портирован).
+// вытеснение старейшей — порт tweb appReactionsManager.ts:733-751. Сам лимит
+// приходит из конфигурации приложения (`reactions_user_max_*`, appConfigManager),
+// здесь он аргумент.
 describe('лимит своих реакций', () => {
-  it('без премиума лимит 1, с премиумом 3', () => {
-    expect(reactionsUserLimit(false)).toBe(1)
-    expect(reactionsUserLimit(true)).toBe(3)
-  })
-
   it('без премиума новая реакция вытесняет единственную прежнюю', () => {
     const mine = agg({ results: [count('❤', 1, 0)] })
     expect(excessChosenReactions(mine, '🔥', 1)).toEqual(['❤'])

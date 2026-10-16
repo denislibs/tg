@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
@@ -101,9 +102,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_ = wsConn.Close()
 			return
 		}
-		conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc, h.file)
-		conn.SetUploadDispatcher(h.upload)
-		conn.run(r.Context())
+		h.dnpConn(r, wsConn, codec, user, deviceID).run(r.Context())
 		return
 	}
 	token := wsToken(r)
@@ -132,6 +131,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.attachWS(wsConn)
 	conn.serve(r.Context())
+}
+
+// dnpConn — соединение канала DNP после хендшейка. IP клиента запоминается
+// здесь, при апгрейде: RPC канала идёт синтетическими запросами без сокета, и
+// без него все пользователи канала делили бы один адрес (rpc.go::Dispatch).
+func (h *Handler) dnpConn(r *http.Request, wsConn *websocket.Conn, codec frameCodec, user domain.UserRecord, deviceID int64) *Conn {
+	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, codec, h.rpc, h.file)
+	conn.clientIP = netx.ClientIP(r)
+	conn.SetUploadDispatcher(h.upload)
+	return conn
 }
 
 // wireTLSubprotocol — подпротокол «говори со мной на TL».

@@ -265,8 +265,8 @@ useStateStore и т.д.) — внутренние Solid-компоненты/х�
 `components/privacySection.solid.tsx` и вкладки `sidebarLeft/tabs/privacy/*.solid.tsx` (объявления —
 блок в конце `solidJsTabs/tabs.ts`, все eventable, запись на `destroy`); открывают их строки хаба
 `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` (задача 23) слайдером своей вкладки. Исключения —
-`AppAddMembersTab` (`type: 'privacy'`, только пользователи — О-17). Нет вкладок Gifts/SavedMusic и секции
-P2P (О-16), премиум-замка голосовых (О-34), «публичного фото» (О-35); «Сообщения» — `PrivacySection` по
+`AppAddMembersTab` (`type: 'privacy'`, только пользователи — О-17). Нет вкладок Gifts/SavedMusic (О-16); секция
+P2P во вкладке «Звонки» есть (ключ `phone_p2p`, М3-2). Нет премиум-замка голосовых (О-34), «публичного фото» (О-35); «Сообщения» — `PrivacySection` по
 нашему правилу `messages` вместо `messages/*` (О-15, О-34); тумблер «Hide Read Time» «Был в сети»
 (`lastSeen.tsx:64-74`) пишет наше правило `read_time` копией `last_seen` вместо флага `hide_read_marks`
 (О-18, задача 23 — своей вкладки «Время прочтения» больше нет). React `settings/PrivacyRule.tsx` снесён; пины —

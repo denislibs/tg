@@ -1785,8 +1785,8 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if err := in.SetChatReactions(ctx, id, 7, "none", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := in.React(ctx, id, msg.ID, 8, "👍", true); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("react in none mode: err = %v; want ErrForbidden", err)
+	if err := in.React(ctx, id, msg.ID, 8, "👍", true); !errors.Is(err, domain.ErrBadReaction) {
+		t.Fatalf("react in none mode: err = %v; want ErrBadReaction (REACTION_INVALID)", err)
 	}
 	if err := in.SetChatReactions(ctx, id, 7, "some", []string{"❤"}); err != nil {
 		t.Fatal(err)

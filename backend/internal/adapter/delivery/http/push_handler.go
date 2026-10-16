@@ -54,7 +54,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if err := h.subs.Add(r.Context(), deviceID, domain.PushSubscription{
 		Endpoint: body.Endpoint, P256dh: body.P256dh, Auth: body.Auth,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not subscribe")
+		writeDomainError(w, err, "could not subscribe")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

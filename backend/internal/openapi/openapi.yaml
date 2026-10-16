@@ -354,18 +354,9 @@ paths:
                 type: object
                 properties:
                   email_pattern: { type: string, example: "de•••@gmail.com" }
-                  resend_after: { type: integer, example: 30 }
         "401": { description: password_token_expired, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { description: password_recovery_na (no recovery email), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "429":
-          description: resend_too_soon
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error: { type: string, example: resend_too_soon }
-                  retry_after: { type: integer, example: 17 }
+        "420": { description: "FLOOD_WAIT_<N> — пауза повторной отправки кода (N секунд) или лимитер по IP", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/password/recover/confirm:
     post:
@@ -444,7 +435,7 @@ paths:
       responses:
         "200": { description: boolTrue (also for an unknown or already burned token) }
         "400": { description: invalid body, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-        "429": { description: too many requests (bucket shared with /auth/sign_import), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "420": { description: "FLOOD_WAIT_<N> (bucket shared with /auth/sign_import)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "503": { description: web token login unavailable, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/web_token:

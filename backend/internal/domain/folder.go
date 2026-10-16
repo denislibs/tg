@@ -8,9 +8,6 @@ import (
 // MaxFolderNameLength — лимит имени папки (tweb MAX_FOLDER_NAME_LENGTH).
 const MaxFolderNameLength = 12
 
-// MaxFoldersPerUser — лимит числа папок (Telegram default limit).
-const MaxFoldersPerUser = 10
-
 // DialogFilter — пользовательская папка чатов: включённые типы чатов + точечные
 // include/exclude списки chat_id. Диалог попадает в папку по алгоритму
 // testDialogForFilter (клиент): exclude-список → нет; include-список → да;

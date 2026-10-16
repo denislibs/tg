@@ -280,7 +280,9 @@ func (i *Interactor) checkScheduledSlowmode(ctx context.Context, chatID, senderI
 			continue
 		}
 		if d := r.SendAt.Sub(sendAt); d < window && d > -window {
-			return domain.ErrSlowmode
+			// Ближайший допустимый срок — на window − |d| от нового (раньше или позже соседа):
+			// N это ориентир сдвига, а не ожидание.
+			return domain.ErrSlowmodeWait{Seconds: slowmodeLeft(window - max(d, -d))}
 		}
 	}
 	return nil
@@ -731,7 +733,7 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	if m.ChatID != in.ChatID || m.SenderID != in.UserID {
 		return nil, domain.ErrNotFound
 	}
-	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
+	if utf8.RuneCountInString(in.Text) > domain.MaxMessageRunes {
 		return nil, domain.ErrTooLong
 	}
 	entities := domain.SanitizeEntities(in.Entities)
