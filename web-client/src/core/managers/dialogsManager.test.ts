@@ -2001,3 +2001,145 @@ describe('dialogsManager.applyThreadRead', () => {
   })
 })
 
+// tweb `reloadConversation` (appMessagesManager.ts:6313-6319): ответ
+// `messages.getPeerDialogs` несёт `state`; если локальный `pts` не нулевой и
+// отличается от `state.pts`, ждём 500 мс и спрашиваем снова. У нас запрос идёт
+// по REST, а кадры — по WS, поэтому сверка только при открытом WS и без догонки
+// (отступление согласовано, Ф7-Ж): иначе курсор стоит, а серверный pts растёт,
+// и цикл не кончится.
+describe('dialogsManager.reloadConversation: сверка state.pts (Ф7-Ж)', () => {
+  const PEER = 5
+  const state = (pts: number) => ({ _: 'updates.state', pts, qts: 0, date: 1, seq: 0, unread_count: 0 })
+  const setup = async (over: { pts: () => number; live?: () => boolean; responses: number[] }) => {
+    const queue = [...over.responses]
+    const get = vi.fn(async (path: string) => {
+      if (path !== '/peer_dialogs') return container([])
+      const pts = queue.length > 1 ? queue.shift()! : queue[0]
+      return { _: 'messages.peerDialogs', dialogs: [rawDialog(PEER, pts)], messages: [], chats: [], users: [], state: state(pts) }
+    })
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(),
+      getUpdatesPts: over.pts,
+      isLiveSynced: over.live ?? (() => true),
+    })
+    await mgr.fillMirror()
+    get.mockClear()
+    return { mgr, get }
+  }
+  const row = (mgr: ReturnType<typeof newDialogsManager>) =>
+    mgr.getSnapshot().find((i) => i.dialog.peerId === PEER)?.dialog
+
+  it('state.pts отстаёт от курсора — через 500 мс повтор; совпал — применён', async () => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => 12, responses: [10, 12] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(row(mgr)).toBeUndefined() // pts 10 ≠ 12 — не применено
+
+      await vi.advanceTimersByTimeAsync(499)
+      expect(get).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(12))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('курсор ещё нулевой (догонка не шла) — применяется сразу (tweb `currentState.pts &&`)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => 0, responses: [10] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(10))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('WS закрыт или идёт догонка — один запрос, ответ применён сразу', async () => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => 12, live: () => false, responses: [10] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(10))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('связь пропала посреди повторов — следующая итерация перечитывает состояние и применяет ответ', async () => {
+    vi.useFakeTimers()
+    try {
+      let live = true
+      const { mgr, get } = await setup({ pts: () => 12, live: () => live, responses: [10, 10] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      live = false
+      await vi.advanceTimersByTimeAsync(500)
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(10))
+    } finally { vi.useRealTimers() }
+  })
+
+  it.each([
+    ['курсор клиента отстаёт: кадр потерян, разница не идёт', 12, 10],
+    ['курсор клиента впереди сервера (откат БД)', 10, 12],
+  ])('расхождение не лечится (%s) — потолок 5 повторов, затем ответ применяется', async (_name, cursor, server) => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => cursor, responses: [server] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(500 * 5)
+      expect(get).toHaveBeenCalledTimes(6)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(server))
+      // Очередь перечитываний не залипла: следующий вызов уходит новым запросом.
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(get).toHaveBeenCalledTimes(6)
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(7)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('isLiveSynced не передан — сверки нет, один запрос', async () => {
+    vi.useFakeTimers()
+    try {
+      const get = vi.fn(async (path: string) => path === '/peer_dialogs'
+        ? { _: 'messages.peerDialogs', dialogs: [rawDialog(PEER, 7)], messages: [], chats: [], users: [], state: state(7) }
+        : container([]))
+      const mgr = newDialogsManager({
+        rest: { get } as never, onDialogOps: () => {}, loadCache: async () => [],
+        loadState: async () => ({ pinnedOrders: {} }), peers: fakePeers(),
+        getUpdatesPts: () => 12,
+      })
+      await mgr.fillMirror()
+      get.mockClear()
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(row(mgr)?.top_message).toBe(generateMessageId(7))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('логаут посреди ожидания 500 мс — повтор не уходит, строка не применяется (sessionGen)', async () => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = await setup({ pts: () => 12, responses: [10, 12] })
+      mgr.reloadConversation(PEER)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(1)
+      mgr.resetForLogout()
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(mgr.getSnapshot()).toEqual([])
+    } finally { vi.useRealTimers() }
+  })
+})

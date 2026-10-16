@@ -41,12 +41,6 @@ var dialogOmittedWithoutSubject = map[string][]string{
 	// станет заглушкой-нулём в потоке (tl-program.md, «нет предмета перестаёт
 	// быть бесплатным»), а не полем модели.
 	"dialog": {"unread_poll_votes_count"},
-	// Курсор апдейтов клиент берёт из updates.getState/getDifference
-	// (usecase/chat/updates_diff.go). Единственный потребитель `state` у
-	// оригинала — повтор reloadConversation при разошедшемся pts
-	// (appMessagesManager.ts:6316-6321); владелец диалогов клиента pts не видит,
-	// сравнивать ему не с чем.
-	"messages.peerDialogs": {"state"},
 }
 
 // allDialogConstructors — по одному экземпляру КАЖДОГО объявленного
@@ -179,8 +173,8 @@ func allDialogConstructors() []any {
 		NewMessagesDialogsSlice(0, nil, nil, nil, nil),
 
 		// ── messages.PeerDialogs ─────────────────────────────────────────────
-		NewMessagesPeerDialogs(dialogs, messages, chats, users),
-		NewMessagesPeerDialogs(nil, nil, nil, nil),
+		NewMessagesPeerDialogs(dialogs, messages, chats, users, NewUpdatesState(12, 1_700_000_000, 3)),
+		NewMessagesPeerDialogs(nil, nil, nil, nil, NewUpdatesState(0, 1_700_000_000, 0)),
 	}
 }
 
