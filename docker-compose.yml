@@ -65,43 +65,33 @@ services:
   # сервер: mesh из N участников ≈ 4·N·(N−1) (N=5 → 80), relay-звонок 1:1 ≈ 8. 200 портов —
   # это mesh на 7 участников ИЛИ ≈25 relay-звонков 1:1; при нехватке coturn отвечает 508 и
   # звонок не соединяется. Дальше — расширять диапазон (лучше network_mode: host) или SFU (В-М17).
-  # Защита relay (владелец кредов — любой зарегистрированный пользователь): квота аллокаций на
-  # пользователя (имя кредов `<expiry>:<userID>`, ≈4 порта на pc × до 8 pc) и на сервер (меньше
-  # пула портов), без TCP-relay (RFC 6062) и без пиров во внутренних диапазонах — иначе TURN-клиент
-  # ходит в сеть compose (redis, postgres, minio). Кроме частных — CGNAT 100.64/10 (метаданные
-  # облака, напр. 100.100.100.200, оверлей-сети), IPv6 link-local, IPv4-mapped и NAT64: через
-  # IPv6-релей они ведут в те же IPv4-адреса. Собственный адрес coturn разрешён: relay↔relay идёт
-  # между аллокациями на нём. Entrypoint образа раскрывает $(…) в каждом аргументе.
-  # В проде порты внутренних сервисов не публиковать на внешний адрес хоста: публичный IP
-  # (он же адрес relay при --external-ip) запретить нельзя, и TURN-клиент дойдёт по нему до
-  # всего, что на хосте слушает 0.0.0.0.
+  # Защита relay (квоты, полоса, запреты пиров) — в coturn/turnserver.conf, общем для всех
+  # запусков. Здесь — то, что зависит от окружения:
+  # - total-quota меньше пула портов, иначе пул кончается раньше квоты (508 вместо 486);
+  # - allowed-peer-ip — собственный адрес relay: relay↔relay идёт между аллокациями на нём, а в
+  #   bridge-сети он частный и попал бы под denied-peer-ip. По умолчанию — адрес контейнера
+  #   (`hostname -i`, первый); TURN_RELAY_IP задаёт его явно (network_mode: host, где hostname -i
+  #   даёт 127.0.1.1 или несколько адресов). С --external-ip адрес relay публичный и не запрещён.
+  # Entrypoint образа пропускает каждый аргумент через eval: в TURN_SECRET — только [A-Za-z0-9].
+  # В проде порты внутренних сервисов не публиковать на внешний адрес хоста: публичный IP (он же
+  # адрес relay при --external-ip) запретить нельзя, и TURN-клиент дойдёт по нему до всего, что
+  # слушает UDP на 0.0.0.0 хоста.
   coturn:
     image: coturn/coturn:4.6-alpine
     restart: unless-stopped
     command: >
-      -n --log-file=stdout
+      -c /etc/coturn/turnserver.conf
+      --log-file=stdout
       --listening-port=3478
-      --fingerprint
       --use-auth-secret
       --static-auth-secret=${TURN_SECRET:-dev-turn-secret-change-me}
       --realm=messenger
       --min-port=49160 --max-port=49359
-      --no-cli
-      --user-quota=32 --total-quota=190
-      --no-tcp-relay --no-multicast-peers
-      --allowed-peer-ip=$$(hostname -i)
-      --denied-peer-ip=0.0.0.0-0.255.255.255
-      --denied-peer-ip=10.0.0.0-10.255.255.255
-      --denied-peer-ip=100.64.0.0-100.127.255.255
-      --denied-peer-ip=127.0.0.0-127.255.255.255
-      --denied-peer-ip=169.254.0.0-169.254.255.255
-      --denied-peer-ip=172.16.0.0-172.31.255.255
-      --denied-peer-ip=192.168.0.0-192.168.255.255
-      --denied-peer-ip=::1
-      --denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
-      --denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
-      --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-      --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      --total-quota=190
+      --allowed-peer-ip=$${TURN_RELAY_IP:-$$(hostname -i | cut -d" " -f1)}
+    environment:
+      TURN_RELAY_IP: "${TURN_RELAY_IP:-}"
+    volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro"]
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"
