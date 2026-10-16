@@ -97,7 +97,6 @@ func (f *fakeCallStore) JoinViewer(_ context.Context, chatID, userID int64) (boo
 	return first, nil
 }
 
-
 // JoinIfActive — как Redis-стор: пустой звонок не создаётся.
 func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64, limit int) (bool, error) {
 	f.mu.Lock()
