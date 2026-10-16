@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
-import { resetPeerMirror } from '@core/peerCache'
+import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type ChatBubbles from './bubbles'
 import type { BubblesManagers } from './bubbles'
 import { createTestChat, mountTestBubbles } from './testChat'
@@ -18,6 +18,9 @@ let finishInput: ReturnType<typeof vi.fn<(options: { peerId: PeerId, middleware:
 
 let onMessageInput = vi.fn()
 let willSendWebPage: unknown = null
+
+let setPeer = vi.fn()
+let isForum = false
 
 function mount() {
   const managers: BubblesManagers = {
@@ -38,6 +41,8 @@ function mount() {
     peerId: PEER,
     canSend: () => canWrite,
     input: { finishPeerChange: finishInput, onMessageInput, willSendWebPage },
+    appImManager: { setPeer },
+    isForum,
   })
   return bubbles = mountTestBubbles(chat, managers)
 }
@@ -49,6 +54,8 @@ beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
   canWrite = true
+  setPeer = vi.fn()
+  isForum = false
   finishInput = vi.fn<(options: { peerId: PeerId, middleware: () => boolean }) => Promise<() => void>>(async() => () => {})
 })
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
@@ -90,5 +97,42 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
     await settle()
     expect(onMessageInput).not.toHaveBeenCalled()
+  })
+
+  // tweb bubbles.ts:2438-2441 — «Темы» включили или выключили у открытого чата:
+  // он открывается заново тем же пиром, и раскладка (форум/лента) выбирается
+  // заново. До порта раскладка менялась только перезагрузкой (P0 2026-10-16).
+  const channel = (forum: boolean) => applyPeerOps([{ op: 'upsert', peers: [
+    { _: 'channel', id: -PEER, title: 'g', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, ...(forum ? { forum: true } : {}) } } as never,
+  ] }])
+
+  it('форум включили у открытого чата — чат открывается заново тем же пиром', async() => {
+    const feed = mount()
+    feed.chatInner.classList.add('has-rights')
+    channel(true)
+    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    await settle()
+    expect(setPeer).toHaveBeenCalledTimes(1)
+    expect(setPeer).toHaveBeenCalledWith({ peerId: PEER })
+    expect(feed.chat.peerId).toBe(0)
+  })
+
+  it('форум выключили — тоже заново; признак не сменился — без переоткрытия', async() => {
+    isForum = true
+    let feed = mount()
+    feed.chatInner.classList.add('has-rights')
+    channel(false)
+    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    await settle()
+    expect(setPeer).toHaveBeenCalledTimes(1)
+    bubbles?.destroy()
+
+    setPeer = vi.fn()
+    isForum = false
+    feed = mount()
+    feed.chatInner.classList.add('has-rights')
+    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    await settle()
+    expect(setPeer).not.toHaveBeenCalled()
   })
 })

@@ -50,6 +50,7 @@ export type TestChatInput = {
 
 export type TestAppImManager = {
   setInnerPeer(options: { peerId: PeerId, type?: ChatType, threadId?: number, lastMsgId?: number }): unknown
+  setPeer(options: { peerId: PeerId }): unknown
   callUser(userId: PeerId, type: 'voice' | 'video'): void
   getChatSavedPosition(chat: Chat): ChatSavedPosition | undefined
 }
@@ -104,6 +105,7 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
   }
   const appImManager: TestAppImManager = {
     setInnerPeer: noop,
+    setPeer: noop,
     callUser: noop,
     getChatSavedPosition: () => undefined,
     ...options.appImManager,
