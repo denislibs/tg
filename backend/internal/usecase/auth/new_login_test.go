@@ -102,7 +102,7 @@ func (f *loginFixture) signIn(t *testing.T) SignInResult {
 
 func (f *loginFixture) setPassword(t *testing.T) {
 	t.Helper()
-	if err := f.i.SetPassword(context.Background(), f.user.ID, "", "s3cret", "hint", "a@b.co"); err != nil {
+	if err := f.i.SetPassword(context.Background(), f.user.ID, 1, "", "s3cret", "hint", "a@b.co"); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 }

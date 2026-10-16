@@ -32,25 +32,26 @@ type Interactor struct {
 	steps      LoginStepRepo // одноразовые токены шагов входа (регистрация/восстановление/веб-токен)
 	devCode    string
 	logf       func(string, ...any)
-	cache      SessionCache       // optional
-	revoker    RevocationNotifier // optional
-	qr         QRStore            // optional
-	svc        ServiceNotifier    // optional
-	geo        GeoResolver        // optional
-	premium    PremiumRepo        // optional
-	mail       Mailer             // optional: доставка кода восстановления на почту
-	pub        EventPublisher     // optional: realtime user_update fan-out
-	partners   PartnersFunc       // optional: user_update recipient set (shared-chat peers)
-	partnersIn PartnersAmongFunc  // optional: «кто из этих — партнёр» одним запросом (AnnounceUserTo)
-	updates    UpdateLog          // optional: per-user update log for user_update (dense pts)
-	emit       *ownsync.Emitter   // optional: строки «новый вход» (updateNewAuthorization) в журнал своих устройств
-	previews   AvatarPreviewer    // optional: stripped-превью аватарки при её установке
-	squarer    AvatarSquarer      // optional: квадрат неквадратной аватарки
-	media      MediaReader        // обязателен для фото профиля: проверка «файл свой»
-	privacy    PrivacyChecker     // optional: видимость фото профиля в кадре user_update
-	contacts   ContactViewer      // optional: имя из книги получателя в кадре user_update
-	pwFails    *failCounter       // счётчик неудачных попыток пароля на password_token
-	recFails   *failCounter       // счётчик неудачных кодов восстановления на password_token
+	cache      SessionCache         // optional
+	revoker    RevocationNotifier   // optional
+	qr         QRStore              // optional
+	svc        ServiceNotifier      // optional
+	geo        GeoResolver          // optional
+	premium    PremiumRepo          // optional
+	mail       Mailer               // optional: доставка кода восстановления на почту
+	pub        EventPublisher       // optional: realtime user_update fan-out
+	partners   PartnersFunc         // optional: user_update recipient set (shared-chat peers)
+	partnersIn PartnersAmongFunc    // optional: «кто из этих — партнёр» одним запросом (AnnounceUserTo)
+	updates    UpdateLog            // optional: per-user update log for user_update (dense pts)
+	emit       *ownsync.Emitter     // optional: строки «новый вход» (updateNewAuthorization) в журнал своих устройств
+	previews   AvatarPreviewer      // optional: stripped-превью аватарки при её установке
+	squarer    AvatarSquarer        // optional: квадрат неквадратной аватарки
+	media      MediaReader          // обязателен для фото профиля: проверка «файл свой»
+	privacy    PrivacyChecker       // optional: видимость фото профиля в кадре user_update
+	contacts   ContactViewer        // optional: имя из книги получателя в кадре user_update
+	pwFails    *failCounter         // счётчик неудачных попыток пароля на password_token
+	pwTries    PasswordAttemptStore // optional: растущее ожидание после неверных паролей (М1-5)
+	recFails   *failCounter         // счётчик неудачных кодов восстановления на password_token
 	// authorLocks — замок на владельца карточки (по id): строки user_update
 	// одного пользователя пишутся последовательно, см. sendUserUpdate.
 	authorLocks keyedLock
@@ -223,6 +224,7 @@ func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s
 func (i *Interactor) SetMediaReader(m MediaReader)               { i.media = m }
 func (i *Interactor) SetPrivacy(p PrivacyChecker)                { i.privacy = p }
 func (i *Interactor) SetContactViewer(c ContactViewer)           { i.contacts = c }
+func (i *Interactor) SetPasswordAttempts(s PasswordAttemptStore) { i.pwTries = s }
 
 // SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
 // (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.
