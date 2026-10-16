@@ -58,8 +58,8 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   const [busy, setBusy] = createSignal(false)
   const [password, setPassword] = createSignal('')
   const [showPw, setShowPw] = createSignal(false)
-  // Отказ восстановления по почте — тоже в надпись кнопки, отдельной строки
-  // под него в tweb нет (`._forgotLink` несёт только саму ссылку).
+  // Наше расширение `password_token_expired` у «Forgot Password?» — в надпись
+  // кнопки (у tweb аналога нет); прочие отказы — тост, как tweb :114.
   const [forgotError, setForgotError] = createSignal<LangPackKey | ''>('')
 
   let passwordEl: HTMLInputElement | undefined
@@ -89,7 +89,7 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   }
 
   // Второе подтверждение принято — сбрасываем. Успех уводит на карточку
-  // номера, отказ показываем плашкой «Sorry».
+  // номера; 2FA_* и наши расширения — плашкой «Sorry», прочее — тостом.
   const resetAccount = async () => {
     setBusy(true)
     // Сетевой сбой менеджер отдаёт исключением — карточка не запирается.
@@ -124,8 +124,9 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
     if (busy()) return
     setForgotError('')
     setBusy(true)
-    // Сетевой сбой менеджер отдаёт исключением; tweb снимает `resetLoading` в
-    // `.finally` (PasswordCard.tsx:115-117) и показывает тост (:114).
+    // Сетевой сбой менеджер отдаёт исключением — ловим, чтобы `busy` снялся и
+    // карточка не заперлась; отказ — тостом (tweb :114). `busy` снимается по
+    // ответу, до плашек сброса (у tweb `resetLoading` — после всей цепочки).
     const res = await managers.auth.requestPasswordRecovery(token()).catch((err: unknown) => {
       console.error('PasswordCard: requestPasswordRecovery error:', err)
       return { error: 'failed' as const }

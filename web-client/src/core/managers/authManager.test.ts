@@ -422,8 +422,15 @@ describe('AuthManager', () => {
       await expect(make(async () => ({ _: 'boolTrue' })).requestCode('+7999')).resolves.toEqual({ ok: true })
       await expect(make(named(400, 'PHONE_NUMBER_INVALID')).requestCode('abc')).resolves.toEqual({ error: 'PHONE_NUMBER_INVALID' })
       await expect(make(named(420, 'FLOOD_WAIT_61')).requestCode('+7')).resolves.toEqual({ error: 'FLOOD_WAIT_61' })
-      await expect(make(reject(new HttpError(502, 'HTTP 502'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
-      await expect(make(reject(new Error('offline'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await expect(make(reject(new HttpError(502, 'HTTP 502'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
+        expect(consoleError).toHaveBeenLastCalledWith(expect.any(String), 502, expect.any(HttpError))
+        await expect(make(reject(new Error('offline'))).requestCode('+7')).resolves.toEqual({ error: 'UNKNOWN' })
+        expect(consoleError).toHaveBeenLastCalledWith(expect.any(String), expect.any(Error))
+      } finally {
+        consoleError.mockRestore()
+      }
     })
 
     it('signUp: имя отказа как есть (tweb SignUpCard.tsx:121-127 — err.type в кнопку)', async () => {

@@ -96,7 +96,8 @@ export type SignInOutcome =
 export type ErrorResult = { error: string }
 const errorResult = (e: unknown): ErrorResult => {
   if (e instanceof HttpError && e.type) return { error: e.type }
-  console.error('auth: отказ без имени:', e instanceof HttpError ? e.status : '', e)
+  if (e instanceof HttpError) console.error('auth: отказ без имени, статус', e.status, e)
+  else console.error('auth: сбой без ответа сервера:', e)
   return { error: 'UNKNOWN' }
 }
 
@@ -467,6 +468,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         if (e.type === 'recovery_available') return { error: 'recovery_available' }
         if (e.type === '2FA_RECENT_CONFIRM') return { error: 'recent_confirm' }
         if (e.type.startsWith('2FA_CONFIRM_WAIT_')) return { error: 'confirm_wait', wait: +e.type.replace('2FA_CONFIRM_WAIT_', '') }
+        // tweb PasswordCard.tsx:107 — `console.error(err)` на прочем отказе.
+        console.error('auth: resetAccount отказ:', e.status, e.type, e)
         return { error: 'failed' }
       }
     },

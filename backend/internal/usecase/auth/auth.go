@@ -230,7 +230,7 @@ func (i *Interactor) SetAccountResetWindow(d time.Duration) { i.resetWait = d }
 
 func (i *Interactor) RequestCode(ctx context.Context, rawPhone string) error {
 	phone := domain.NormalizePhone(rawPhone)
-	if domain.PhoneDigits(rawPhone) == "" {
+	if domain.PhoneDigits(phone) == "" {
 		return ErrPhoneNumberInvalid
 	}
 	if err := i.codes.SaveCode(ctx, phone, i.devCode, time.Now().Add(codeTTL)); err != nil {

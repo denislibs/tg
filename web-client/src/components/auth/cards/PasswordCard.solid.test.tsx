@@ -241,6 +241,27 @@ describe('PasswordCard.solid: отказ сброса аккаунта (2FA_RECE
     }
   })
 
+  it.each([
+    ['recovery_available', 'Login.ResetPassword.HasEmail'],
+    ['password_token_expired', 'Login.SessionExpired'],
+  ])('%s — плашка «Sorry» (%s), тоста нет', async (error, key) => {
+    vi.mocked(toastNew).mockClear()
+    expect(await resetFlow({ error })).toMatchObject({ titleLangKey: 'Login.ResetAccountFail.Title', descriptionLangKey: key })
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
+  })
+
+  it('failed — тост Error.AnError, третьей плашки нет', async () => {
+    vi.mocked(toastNew).mockClear()
+    confirmationPopupMock.mockResolvedValue(undefined)
+    const { forgotLink } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+      resetAccount: vi.fn().mockResolvedValue({ error: 'failed' }),
+    })
+    forgotLink().click()
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+    expect(confirmationPopupMock).toHaveBeenCalledTimes(2)
+  })
+
   it('confirm_wait — Login.ResetAccountFail.TextWait с остатком', async () => {
     const opts = await resetFlow({ error: 'confirm_wait', wait: 3600 })
     expect(opts).toMatchObject({
