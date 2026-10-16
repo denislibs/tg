@@ -22,14 +22,18 @@ const pcs = new Map<number, RTCPeerConnection>()
 // Соединение, которое ещё ждёт ICE-конфиг: второй offer того же участника берёт его же, а не
 // создаёт второй pc с лишними TURN-аллокациями. Уход участника (closePeer) отменяет ожидание.
 const pendingPcs = new Map<number, { promise: Promise<RTCPeerConnection | null>; cancelled: boolean }>()
-// Кадры сигнала одного участника — строго по очереди, как у tweb (callInstance.ts:904-941,
-// :1568-1571 — цепочка processSignalingMessage): кандидаты новичка, пришедшие, пока сидящий
-// берёт ICE-конфиг (/calls/ice), ждут за его offer, а не теряются без pc (tweb держит их в
-// очереди до remoteDescription — :2240-2255, :2315-2352); второй offer ждёт конца первого.
+// Кадры сигнала одного участника и наши offer ему — строго по очереди, как у tweb
+// (callInstance.ts:904-941, :1568-1571 — цепочка processSignalingMessage): кандидаты новичка,
+// пришедшие, пока сидящий берёт ICE-конфиг (/calls/ice), ждут за его offer, а не теряются без pc;
+// второй offer ждёт конца первого; renegotiation не встревает между offer и answer.
 const peerChains = new Map<number, Promise<void>>()
+// Кандидаты для pc без remoteDescription (answer ещё не применён или отклонён) — до него, как
+// tweb 'queue' (:2240-2255, :2315-2352) с тем же потолком (constants.ts:48).
+const pendingCandidates = new Map<number, RTCIceCandidateInit[]>()
+const MAX_PENDING_CANDIDATES = 256
 // Операция закрытого посреди неё pc по спецификации не завершается никогда (Chromium оставляет
 // промис висеть): каждую ждём вместе с «pc закрыт», который отклоняет closePeer.
-const closers = new WeakMap<RTCPeerConnection, { closed: Promise<never>; close: () => void }>()
+const closers = new WeakMap<RTCPeerConnection, { closed: Promise<never>; close: () => void; isClosed: boolean }>()
 class PcClosedError extends Error {}
 const remoteStreams = new Map<number, MediaStream>()
 let localStream: MediaStream | null = null
@@ -83,10 +87,11 @@ async function newPc(userId: number, cancelled: () => boolean): Promise<RTCPeerC
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'failed') closePeer(userId)
   }
-  let close!: () => void
-  const closed = new Promise<never>((_, reject) => { close = () => reject(new PcClosedError()) })
+  let reject!: (e: Error) => void
+  const closed = new Promise<never>((_, r) => { reject = r })
   closed.catch(() => { /* ждут его только вместе с операциями pc */ })
-  closers.set(pc, { closed, close })
+  const closer = { closed, isClosed: false, close: () => { closer.isClosed = true; reject(new PcClosedError()) } }
+  closers.set(pc, closer)
   pcs.set(userId, pc)
   store().upsertParticipant({ userId, muted: false, videoOn: false })
   return pc
@@ -109,17 +114,51 @@ function ensurePc(userId: number): Promise<RTCPeerConnection | null> {
 /** Операция pc, которая отклоняется, если pc закрыли (closePeer) до или во время неё. */
 function op<T>(pc: RTCPeerConnection, run: () => Promise<T>): Promise<T> {
   const c = closers.get(pc)
-  if (!c) return Promise.reject(new PcClosedError())
-  return Promise.race([run(), c.closed]) // уже закрытый: closed отклонён раньше, чем run()
+  if (!c || c.isClosed) return Promise.reject(new PcClosedError())
+  return Promise.race([c.closed, run()])
 }
 
-/** Кадр участника — в его очередь; ошибка закрытого pc ожидаема и не шумит. */
-function enqueue(userId: number, task: () => Promise<void>) {
-  const next = (peerChains.get(userId) ?? Promise.resolve()).then(task).catch((e: unknown) => {
-    if (!(e instanceof PcClosedError)) console.error('[group call] signal failed', userId, e)
-  })
+/** Задача участника — в его очередь; задача прошлого звонка не выполняется; ошибка закрытого pc
+ *  ожидаема и не шумит. Промис очереди не отклоняется. */
+function enqueue(userId: number, task: () => Promise<void>): Promise<void> {
+  const gen = callGen
+  const next = (peerChains.get(userId) ?? Promise.resolve())
+    .then(() => (gen === callGen ? task() : undefined))
+    .catch((e: unknown) => {
+      if (!(e instanceof PcClosedError)) console.error('[group call] signal failed', userId, e)
+    })
   peerChains.set(userId, next)
   void next.finally(() => { if (peerChains.get(userId) === next) peerChains.delete(userId) })
+  return next
+}
+
+/** Наш offer участнику (вход новичка, renegotiation) — в его очередь. */
+function sendOffer(userId: number, makePc: boolean): Promise<void> {
+  const gen = callGen
+  return enqueue(userId, async () => {
+    const pc = makePc ? await ensurePc(userId) : pcs.get(userId)
+    if (!pc) return // звонок убран, участник ушёл или нет TURN
+    try {
+      await op(pc, async () => { await pc.setLocalDescription(await pc.createOffer()) })
+    } catch (e) {
+      if (!(e instanceof PcClosedError) && gen === callGen && pcs.get(userId) === pc) closePeer(userId)
+      throw e
+    }
+    if (gen !== callGen) return // звонок убран, а может, уже идёт другой: старый offer не слать
+    signal(userId, { sdp: sdpJSON(pc.localDescription) })
+  })
+}
+
+async function addCandidate(pc: RTCPeerConnection, c: RTCIceCandidateInit) {
+  await op(pc, () => pc.addIceCandidate(c)).catch(() => { /* закрыт или кандидат прошлой ICE-сессии */ })
+}
+
+/** Кандидаты, ждавшие remoteDescription, — в pc после применённого offer/answer. */
+async function commitCandidates(userId: number, pc: RTCPeerConnection) {
+  const queue = pendingCandidates.get(userId)
+  if (!queue) return
+  pendingCandidates.delete(userId)
+  await Promise.all(queue.map((c) => addCandidate(pc, c)))
 }
 
 function signal(toUserId: number, data: Record<string, unknown>) {
@@ -137,6 +176,7 @@ function closePeer(userId: number) {
   const pc = pcs.get(userId)
   pcs.delete(userId)
   if (pc) { pc.close(); closers.get(pc)?.close() }
+  pendingCandidates.delete(userId)
   remoteStreams.delete(userId)
   store().removeParticipant(userId)
   store().bumpStreams()
@@ -169,28 +209,12 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   const existing = await managers().messages.groupCallParticipants(peerId).catch(() => [] as number[])
   store().setJoined(peerId)
   store().setMedia(true, withVideo)
-  const gen = callGen
   void managers().realtime.sendCallFrame({ type: 'group_call_join', data: { peer_id: peerId } })
   // новичок предлагает соединение каждому сидящему — параллельно: медленный или закрытый посреди
   // операции pc одного участника не задерживает остальных
   const meId = useChatsStore.getState().meId
-  await Promise.all(existing.filter((userId) => userId !== meId).map(async (userId) => {
-    const pc = await ensurePc(userId)
-    if (!pc) return // звонок убран, участник ушёл или нет TURN
-    try {
-      await op(pc, async () => { await pc.setLocalDescription(await pc.createOffer()) })
-    } catch (e) {
-      if (!(e instanceof PcClosedError) && gen === callGen && pcs.get(userId) === pc) {
-        console.error('[group call] offer failed', userId, e)
-        closePeer(userId)
-      }
-      return
-    }
-    if (gen !== callGen) return // звонок убран, а может, уже идёт другой: старый offer не слать
-    signal(userId, { sdp: sdpJSON(pc.localDescription) })
-  }))
-  if (gen !== callGen) return
-  broadcastMediaState()
+  await Promise.all(existing.filter((userId) => userId !== meId).map((userId) => sendOffer(userId, true)))
+  broadcastMediaState() // после уборки звонка pcs пуст — никому
 }
 
 /** Локальная уборка звонка: соединения, микрофон/камера, стор. Кадров не шлёт. */
@@ -200,6 +224,7 @@ function teardownCall() {
   for (const pending of pendingPcs.values()) pending.cancelled = true
   pendingPcs.clear()
   peerChains.clear()
+  pendingCandidates.clear()
   localStream?.getTracks().forEach((t) => t.stop())
   localStream = null
   store().reset()
@@ -246,13 +271,14 @@ export async function toggleGroupCam() {
       const cam = await navigator.mediaDevices.getUserMedia({ video: true })
       const track = cam.getVideoTracks()[0]
       localStream.addTrack(track)
-      for (const [userId, pc] of pcs) {
-        pc.addTrack(track, localStream)
-        // renegotiation: мы инициатор изменения
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        signal(userId, { sdp: sdpJSON(pc.localDescription) })
-      }
+      // renegotiation: мы инициатор изменения; каждому участнику — в его очередь
+      const stream = localStream
+      const gen = callGen
+      await Promise.all([...pcs].map(([userId, pc]) => {
+        if (!pc.getSenders().some((sd) => sd.track === track)) pc.addTrack(track, stream)
+        return sendOffer(userId, false)
+      }))
+      if (gen !== callGen) return
     } catch {
       return
     }
@@ -290,36 +316,56 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   // ему свой микрофон и камеру (newPc → addTrack). Сервер реле так же сверяет.
   const isPeer = () => pcs.has(from) || (store().activeByChat[d.peer_id] ?? []).includes(from)
   if (!isPeer()) return
-  if (d.media_state) {
-    store().upsertParticipant({ userId: from, muted: d.media_state.muted, videoOn: d.media_state.video })
-    return
-  }
-  const { sdp, candidate } = d
-  enqueue(from, async () => {
+  const { sdp, candidate, media_state: media } = d
+  void enqueue(from, async () => {
     // звонок убран или участник ушёл, пока кадр ждал очереди
     if (store().peerId !== d.peer_id || !isPeer()) return
+    if (media) {
+      store().upsertParticipant({ userId: from, muted: media.muted, videoOn: media.video })
+      return
+    }
     if (sdp?.type === 'offer') {
       const pc = await ensurePc(from)
       if (!pc) return
+      if (pc.signalingState === 'have-local-offer') {
+        // встречный offer (оба включили камеру): вежлива сторона с большим id — откатывает свой и
+        // отвечает, потом повторяет offer; невежливая встречный игнорирует (tweb :1755-1760)
+        if (!polite(from)) return
+        await op(pc, () => pc.setLocalDescription({ type: 'rollback' }))
+        void sendOffer(from, false)
+      }
       await op(pc, async () => {
         await pc.setRemoteDescription(sdp)
         await pc.setLocalDescription(await pc.createAnswer())
       })
       signal(from, { sdp: sdpJSON(pc.localDescription) })
+      await commitCandidates(from, pc)
       broadcastMediaState()
       return
     }
     const pc = pcs.get(from)
     if (!pc) return // соединения нет и не ждём (ушёл, failed): кадр не к чему применить
     if (sdp) {
+      // answer не к нашему offer (повтор, запоздал) — молча мимо, как tweb :1763-1767
+      if (pc.signalingState !== 'have-local-offer') return
       await op(pc, () => pc.setRemoteDescription(sdp))
+      await commitCandidates(from, pc)
       return
     }
     if (candidate) {
-      try { await op(pc, () => pc.addIceCandidate(candidate)) } catch (e) {
-        if (e instanceof PcClosedError) throw e
-        /* кандидат прошлой ICE-сессии */
+      if (!pc.remoteDescription) {
+        const queue = pendingCandidates.get(from) ?? []
+        queue.push(candidate)
+        if (queue.length > MAX_PENDING_CANDIDATES) queue.splice(0, queue.length - MAX_PENDING_CANDIDATES)
+        pendingCandidates.set(from, queue)
+        return
       }
+      await addCandidate(pc, candidate)
     }
   })
+}
+
+/** Вежливая сторона пары (при встречных offer уступает) — с большим id. */
+function polite(peerUserId: number): boolean {
+  return (useChatsStore.getState().meId ?? 0) > peerUserId
 }

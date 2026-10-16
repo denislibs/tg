@@ -70,9 +70,15 @@ class FakePC {
     return this.run(() => ({ type: 'offer', sdp: 'o' }))
   }
   private local: { type: string; sdp: string } | null = null
-  setLocalDescription(d?: { type: string; sdp: string }) {
+  getSenders() { return [] }
+  setLocalDescription(d?: { type: string; sdp?: string }) {
     FakePC.hooks.setLocalDescription?.(this)
-    return this.run(() => {
+    const p = this.run(() => {
+      if (d?.type === 'rollback') {
+        if (this.signalingState !== 'have-local-offer') throw invalidState()
+        this.signalingState = 'stable'
+        return
+      }
       if (d?.type === 'answer') {
         if (this.signalingState !== 'have-remote-offer') throw invalidState()
         this.signalingState = 'stable'
@@ -81,10 +87,12 @@ class FakePC {
         if (this.signalingState !== 'stable') throw invalidState()
         this.signalingState = 'have-local-offer'
       }
-      this.local = d ?? null
-      const after = FakePC.hooks.afterSetLocalDescription
-      if (after) queueMicrotask(() => after(this))
+      this.local = (d ?? null) as { type: string; sdp: string } | null
     })
+    // уже после завершения операции, но раньше, чем продолжение движка после await
+    const after = FakePC.hooks.afterSetLocalDescription
+    if (after) void p.then(() => {}).then(() => after(this))
+    return p
   }
   get localDescription() { return this.local }
   close() { this.closed = true; this.signalingState = 'closed' }
@@ -356,6 +364,79 @@ describe('groupCallEngine: кандидаты до готовности соед
     expect(sendCallFrame.mock.calls.filter(([f]) => f.data.sdp?.type === 'answer')).toHaveLength(2)
   })
 
+  it('offer и сразу уход участника (кадр ещё ждал очереди): соединения нет', async () => {
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 2, action: 'left' as const, participants: [1] } })
+    await tick(); await tick(); await tick()
+    expect(created).toHaveLength(0)
+  })
+
+  it('media_state за offer, пока pc ждёт ICE-конфиг, не затирается созданием pc', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    engine.handleGroupCallFrame({ t: 'group_call_signal', d: { peer_id: PEER, from_user_id: 2, media_state: { muted: true, video: true } } })
+    await tick()
+    release()
+    await vi.waitFor(() => expect(FakePC.all[0]?.answers).toBe(1))
+    await tick()
+    expect(store.useGroupCallStore.getState().participants[2]).toMatchObject({ muted: true, videoOn: true })
+  })
+
+  it('выход и повторный вход в тот же чат, пока старый /calls/ice в полёте: на новый offer отвечаем', async () => {
+    const release = gate()
+    engine.handleGroupCallFrame(offer(2))
+    await tick() // offer ждёт ICE-конфиг в ensurePc
+    engine.leaveGroupCall()
+    store.useGroupCallStore.getState().setJoined(PEER)
+    store.useGroupCallStore.getState().setActive(PEER, [1, 2])
+    engine.handleGroupCallFrame(offer(2))
+    await tick()
+    release()
+    await vi.waitFor(() => expect(sendCallFrame.mock.calls.filter(([f]) => f.data.sdp?.type === 'answer')).toHaveLength(1))
+    expect(created).toHaveLength(1)
+  })
+
+  it('кадр прошлого звонка, ждавший в очереди, не применяется к соединению нового', async () => {
+    existingParticipants = [2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+    await engine.joinGroupCall(PEER) // старый звонок: pc с участником 2 ждёт answer
+    const old = FakePC.all[0]
+    engine.handleGroupCallFrame({ t: 'group_call_signal', d: { peer_id: PEER, from_user_id: 2, sdp: { type: 'answer' as const, sdp: 'a' } } })
+    engine.handleGroupCallFrame(candidate(2, 9)) // встал в очередь за answer старого звонка
+    engine.leaveGroupCall()
+    await engine.joinGroupCall(PEER) // новый звонок в том же чате, новый pc с участником 2
+    await vi.waitFor(() => expect(FakePC.all).toHaveLength(2))
+    engine.handleGroupCallFrame({ t: 'group_call_signal', d: { peer_id: PEER, from_user_id: 2, sdp: { type: 'answer' as const, sdp: 'a' } } })
+    engine.handleGroupCallFrame(candidate(2, 1))
+    await vi.waitFor(() => expect(FakePC.all[1].ice).toHaveLength(1))
+    await tick(); await tick()
+    expect(old.ice).toHaveLength(0)
+    expect(FakePC.all[1].ice).toEqual([{ candidate: 'c1', sdpMid: '0' }]) // старого c9 нет
+  })
+
+  it('встречный offer, мы невежливая сторона (меньший id): свой offer держим, встречный игнорируем', async () => {
+    existingParticipants = [2]
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    store.useGroupCallStore.getState().reset()
+    await engine.joinGroupCall(PEER) // наш offer участнику 2 ждёт answer
+    engine.handleGroupCallFrame(offer(2))
+    await tick(); await tick(); await tick()
+    expect(FakePC.all[0].signalingState).toBe('have-local-offer')
+    expect(sendCallFrame.mock.calls.filter(([f]) => f.data.sdp?.type === 'answer')).toHaveLength(0)
+  })
+
+  it('встречный offer, мы вежливая сторона (больший id): откат своего, answer, затем свой offer заново', async () => {
+    existingParticipants = [0]
+    store.useGroupCallStore.getState().reset()
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
+    await engine.joinGroupCall(PEER)
+    store.useGroupCallStore.getState().setActive(PEER, [0, 1])
+    sendCallFrame.mockClear()
+    engine.handleGroupCallFrame(offer(0))
+    await vi.waitFor(() => expect(sendCallFrame.mock.calls.map(([f]) => f.data.sdp?.type).filter(Boolean)).toEqual(['answer', 'offer']))
+  })
+
   it('запоздалый answer (соединение уже stable) не роняет обработку: следующий кандидат применяется', async () => {
     existingParticipants = [2]
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) } })
@@ -368,7 +449,7 @@ describe('groupCallEngine: кандидаты до готовности соед
     engine.handleGroupCallFrame(answer)
     engine.handleGroupCallFrame(candidate(2, 1))
     await vi.waitFor(() => expect(FakePC.all[0].ice).toHaveLength(1))
-    expect(error.mock.calls.map((c) => String(c[0]))).toEqual(['[group call] signal failed'])
+    expect(error).not.toHaveBeenCalled() // tweb :1763-1767: answer не в том состоянии — молча мимо
     error.mockRestore()
   })
 
@@ -447,12 +528,32 @@ describe('groupCallEngine: цикл офферов новичка и закры�
   it('выход и вход в другой звонок во время setLocalDescription: старый offer в новый звонок не уходит', async () => {
     existingParticipants = [2]
     // setLocalDescription уже завершилась (pc не закрыт посреди неё), а продолжение цикла
-    // выполняется после выхода и входа в другой звонок
+    // выполняется после выхода и входа в другой звонок — держит только проверка поколения
     FakePC.hooks.afterSetLocalDescription = () => {
       engine.leaveGroupCall()
       store.useGroupCallStore.getState().setJoined(-200)
     }
     await engine.joinGroupCall(PEER)
     expect(sdpTo()).toHaveLength(0)
+  })
+})
+
+describe('groupCallEngine: включение камеры (renegotiation)', () => {
+  it('участник ушёл посреди offer с камерой: включение завершается, offer уходит другому', async () => {
+    iceServers = [TURN]
+    existingParticipants = [2, 3]
+    const tracks: { kind: string; enabled: boolean; stop: () => void }[] = []
+    const stream = { getTracks: () => tracks, getAudioTracks: () => [], getVideoTracks: () => tracks.filter((t) => t.kind === 'video'), addTrack: (t: never) => tracks.push(t) }
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async (c: { video?: boolean; audio?: boolean }) => c.audio ? stream : { getVideoTracks: () => [{ kind: 'video', enabled: true, stop: () => {} }] } } })
+    store.useGroupCallStore.getState().reset()
+    await engine.joinGroupCall(PEER)
+    for (const pc of FakePC.all) pc.signalingState = 'stable' // answer'ы получены
+    sendCallFrame.mockClear()
+    FakePC.hooks.createOffer = (pc) => {
+      if (pc === FakePC.all[0]) queueMicrotask(() => engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 2, action: 'left' as const, participants: [1, 3] } }))
+    }
+    await engine.toggleGroupCam()
+    expect(store.useGroupCallStore.getState().camOn).toBe(true)
+    expect(sendCallFrame.mock.calls.map(([f]) => f).filter((f) => f.data.sdp).map((f) => f.data.to_user_id)).toEqual([3])
   })
 })
