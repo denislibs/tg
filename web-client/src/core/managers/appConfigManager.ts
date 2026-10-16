@@ -61,6 +61,8 @@ export interface MTAppConfig {
   chat_read_mark_expire_period?: number
   /** `appConfig.d.ts:159`. */
   passkeys_account_passkeys_max?: number
+  /** `appConfig.d.ts:9`; у нас — предел участников видеочата mesh (`domain.GroupCallMaxParticipants`, К3). */
+  groupcall_video_participants_max?: number
   /** Секунды (`:93-94`). */
   stories_stealth_future_period?: number
   stories_stealth_past_period?: number
