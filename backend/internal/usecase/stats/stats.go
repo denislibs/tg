@@ -6,6 +6,7 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -38,8 +39,11 @@ func (i *Interactor) ChannelStats(ctx context.Context, chatID, userID int64) (do
 	}
 
 	role, _, err := i.repo.MemberRole(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.ChannelStats{}, domain.ErrForbidden // не участник — как не админ
+	}
 	if err != nil {
-		return domain.ChannelStats{}, domain.ErrForbidden
+		return domain.ChannelStats{}, err // сбой чтения не маскируем под отказ прав
 	}
 	if role != domain.RoleCreator && role != domain.RoleAdmin {
 		return domain.ChannelStats{}, domain.ErrForbidden
@@ -121,8 +125,11 @@ func (i *Interactor) PostStats(ctx context.Context, chatID, msgID, userID int64)
 	}
 
 	role, _, err := i.repo.MemberRole(ctx, chatID, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.PostStats{}, domain.ErrForbidden // не участник — как не админ
+	}
 	if err != nil {
-		return domain.PostStats{}, domain.ErrForbidden
+		return domain.PostStats{}, err // сбой чтения не маскируем под отказ прав
 	}
 	if role != domain.RoleCreator && role != domain.RoleAdmin {
 		return domain.PostStats{}, domain.ErrForbidden

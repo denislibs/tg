@@ -20,7 +20,7 @@ func (h *ChatHandler) StarsBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load balance")
+		writeDomainError(w, err, "could not load balance")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
@@ -45,7 +45,7 @@ func (h *ChatHandler) TopUpStars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "top-up failed")
+		writeDomainError(w, err, "top-up failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
@@ -62,7 +62,7 @@ func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load transactions")
+		writeDomainError(w, err, "could not load transactions")
 		return
 	}
 	// История едет ТЕМ ЖЕ конструктором, что и остаток: у оригинала это один
@@ -71,7 +71,7 @@ func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) 
 	// он всё равно нужен на том же экране.
 	bal, err := h.svc.StarsBalance(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load balance")
+		writeDomainError(w, err, "could not load balance")
 		return
 	}
 	out := make([]domain.StarsTransaction, 0, len(txs))
@@ -120,7 +120,7 @@ func (h *ChatHandler) UnlockPaidMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not unlock")
+		writeDomainError(w, err, "could not unlock")
 		return
 	}
 	// Ответ — само СООБЩЕНИЕ. Баланса рядом больше нет: его владелец —
@@ -142,7 +142,7 @@ func (h *ChatHandler) GiftCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load catalog")
+		writeDomainError(w, err, "could not load catalog")
 		return
 	}
 	out := make([]domain.MTStarGift, 0, len(gifts))
@@ -195,7 +195,7 @@ func (h *ChatHandler) ProfileGifts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load gifts")
+		writeDomainError(w, err, "could not load gifts")
 		return
 	}
 	// Витрина профиля отдаёт savedStarGift — тот же подарок, что приходит в
@@ -232,7 +232,7 @@ func (h *ChatHandler) ConvertGift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not convert")
+		writeDomainError(w, err, "could not convert")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewStarsStatus(bal))
@@ -261,7 +261,7 @@ func (h *ChatHandler) SetGiftHidden(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update gift")
+		writeDomainError(w, err, "could not update gift")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

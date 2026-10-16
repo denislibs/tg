@@ -16,7 +16,7 @@ import (
 func (h *ChatHandler) UpdatesState(w http.ResponseWriter, r *http.Request) {
 	st, err := h.svc.UpdatesState(r.Context(), h.meID(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get state failed")
+		writeDomainError(w, err, "get state failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -29,7 +29,7 @@ func (h *ChatHandler) UpdatesState(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) UpdatesDifference(w http.ResponseWriter, r *http.Request) {
 	d, err := h.svc.UpdatesDifference(r.Context(), h.meID(r), queryInt(r, "pts", 0), queryInt(r, "date", 0))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "get difference failed")
+		writeDomainError(w, err, "get difference failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
@@ -56,7 +56,7 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 	// apiManager.ts:759-791). Опрос открытой ленты (раз в 3 с) и догон по
 	// маркеру в лимит укладываются с запасом.
 	if !h.limiter.allow(fmt.Sprintf("chdiff:%d:%d", h.meID(r), chatID), channelDiffRPS, channelDiffBurst) {
-		writeError(w, statusFlood, fmt.Sprintf("FLOOD_WAIT_%d", channelDiffFloodWait))
+		writeFloodWait(w, channelDiffFloodWait)
 		return
 	}
 	d, err := h.svc.UpdatesChannelDifference(r.Context(), h.meID(r), chatID,
@@ -71,7 +71,7 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 	case errors.Is(err, domain.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid channel")
 	default:
-		writeError(w, http.StatusInternalServerError, "get channel difference failed")
+		writeDomainError(w, err, "get channel difference failed")
 	}
 }
 
@@ -81,6 +81,4 @@ const (
 	channelDiffRPS       = 1
 	channelDiffBurst     = 5
 	channelDiffFloodWait = 1
-	// statusFlood — код ошибки FLOOD_WAIT у оригинала (420).
-	statusFlood = 420
 )

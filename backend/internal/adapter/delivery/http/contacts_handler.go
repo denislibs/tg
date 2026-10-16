@@ -113,7 +113,7 @@ func (h *ContactsHandler) Add(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "user_not_found")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "add contact failed")
+		writeDomainError(w, err, "add contact failed")
 		return
 	}
 	writeJSON(w, http.StatusCreated, contactsContainer([]domain.ContactRecord{c}))
@@ -128,7 +128,7 @@ func (h *ContactsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	contacts, err := h.uc.List(r.Context(), u.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "list contacts failed")
+		writeDomainError(w, err, "list contacts failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, contactsContainer(contacts))
@@ -151,7 +151,7 @@ func (h *ContactsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "delete contact failed")
+		writeDomainError(w, err, "delete contact failed")
 		return
 	}
 	// contacts.deleteContacts → Updates: карточка удалённого уже глазами
@@ -190,7 +190,7 @@ func (h *ContactsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "contact not found")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "update note failed")
+		writeDomainError(w, err, "update note failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

@@ -16,30 +16,12 @@
 // agnostic vanilla DOM (`components/popups/popupPeer.ts`, ни строчки React/
 // Solid), поэтому используется отсюда напрямую, без порта.
 //
-// ── Наше расширение против tweb (есть предмет — REST-таксономия ошибок) ─────
-// `resend_too_soon` — сервер держит паузу повторной отправки кода
-// восстановления; своего таймера клиент не заводит (см. тип `ForgotOutcome` у
-// прежней React-версии). Маска почты едет НА ПЕРЕХОДАХ — `authFlow.solid.tsx`
-// `CardPayloadMap.password.emailPattern` / `CardPayloadMap.emailRecover.hint`
-// — а не в closure/модульном кэше карточки.
-//
-// РЕВЬЮ ЗАДАЧИ 4 (находка 1): прежняя редакция держала маску closure-
-// переменной компонента и была НЕДОСТИЖИМА — карточка размонтируется на
-// КАЖДЫЙ `navigate` (хост, `mode="outin"`), значит между «forgot» #1
-// (успех → emailRecover) и «forgot» #2 (после Cancel на emailRecover,
-// `resend_too_soon`) `PasswordCard` успевает размонтироваться и
-// перемонтироваться заново — переменная стартует пустой КАЖДЫЙ раз, условие
-// `resend_too_soon && lastEmailPattern` не выполнялось НИКОГДА. ПРАВКА
-// ЗАДАЧИ 4 заменила её МОДУЛЬНЫМ `Map` (`recoveryPatternByToken`, ключ —
-// `token`) — тот пережил бы перемонтирование, но ревью ЗАДАЧИ 5 признало и
-// этот слой неверным: кэш не чистится нигде и живёт до перезагрузки страницы
-// целиком, а не до конца попытки входа (в React-версии это состояние умирало
-// вместе с хостом). ШТАТНЫЙ путь — `CardPayloadMap`: `forgot()` кладёт маску в
-// переход на `emailRecover` (вместе с `hint`, которого там иначе бы не было —
-// см. докблок `authFlow.solid.tsx::CardPayloadMap.emailRecover`), а Cancel на
-// `emailRecover` везёт её ОБРАТНО сюда тем же способом. Модульного кэша
-// (и вообще какого-либо состояния, пережившего `dispose()` карточки) в этом
-// файле больше нет.
+// ── Пауза повторной отправки кода ───────────────────────────────────────────
+// Отдельной ветки у карточки нет: пауза восстановления приходит от сервера как
+// 420 `FLOOD_WAIT_N` (≤ 30 с), и `restClient` сам ждёт N секунд и повторяет —
+// порт tweb `apiManager.ts:759-791`. Менеджер получает уже успешный ответ.
+// Маска почты едет на переходе в `emailRecover` вместе с `hint` (Cancel
+// `emailRecover` возвращает `token`/`hint` — `authFlow.solid.tsx::CardPayloadMap`).
 import { createSignal, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { IconTsx } from '@components/iconTsx.solid'
@@ -61,9 +43,6 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   const { managers, navigate, toIm } = useAuthFlow()
   const token = () => props.spec.payload.token
   const hint = () => props.spec.payload.hint
-  // Маска, привезённая НАЗАД из emailRecover (Cancel) — см. докблок файла.
-  // Отсутствует при первом приходе с authCode.
-  const cachedPattern = () => props.spec.payload.emailPattern
 
   const [error, setError] = createSignal(false)
   // tweb PasswordCard.tsx:145-148 (пустая отправка): `passwordInput.classList.
@@ -133,14 +112,6 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
 
     if ('emailPattern' in res) {
       navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: res.emailPattern, hint: hint() } })
-      return
-    }
-    // Пауза повторной отправки — код из прошлой отправки ещё жив, маска у нас
-    // уже есть (пришла ПАЙЛОАДОМ при возврате Cancel'ом с emailRecover — см.
-    // докблок файла): возвращаем на ту же карточку, вводить его.
-    const pattern = cachedPattern()
-    if (res.error === 'resend_too_soon' && pattern) {
-      navigate({ name: 'emailRecover', payload: { token: token(), emailPattern: pattern, hint: hint() } })
       return
     }
     // Почты нет — вместо ошибки предлагаем сбросить аккаунт: две

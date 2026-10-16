@@ -353,7 +353,7 @@ func TestLeftCreator_RejectedSendDoesNotRejoin(t *testing.T) {
 	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8})
 	_ = in.RemoveMember(ctx, g, 7, 7)
 	before := len(s.messages[g])
-	long := make([]rune, maxMessageRunes+1)
+	long := make([]rune, domain.MaxMessageRunes+1)
 	for k := range long {
 		long[k] = 'я'
 	}

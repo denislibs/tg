@@ -14,6 +14,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 
+	"github.com/messenger-denis/backend/internal/adapter/delivery/netx"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
@@ -121,7 +122,7 @@ func (h *PasskeyHandler) BeginRegistration(w http.ResponseWriter, r *http.Reques
 		webauthn.WithExclusions(webauthn.Credentials(wu.credentials).CredentialDescriptors()),
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"session": h.putSession(session), "options": options})
@@ -147,7 +148,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 	}
 	raw, err := json.Marshal(cred)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	// Имя ключа — браузер/ОС создавшего устройства (tweb показывает модель).
@@ -170,7 +171,7 @@ func (h *PasskeyHandler) FinishRegistration(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, passkeyJSON(pk))
@@ -187,7 +188,7 @@ func (h *PasskeyHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	list, err := h.uc.List(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	out := make([]map[string]any, 0, len(list))
@@ -209,7 +210,7 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -219,18 +220,18 @@ func (h *PasskeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // `options.data` — строка JSON `{"publicKey":{…}}` (tweb passkeyLoginButton.tsx
 // :38-41), `session` — одноразовый ключ церемонии для finish.
 func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
-	if !h.limiter.allow("passkey-begin-ip:"+clientIP(r), 0.2, 10) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("passkey-begin-ip:"+netx.ClientIP(r), 0.2, 10); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	options, session, err := h.wa.BeginDiscoverableLogin()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	raw, err := json.Marshal(options)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "webauthn begin failed")
+		writeDomainError(w, err, "webauthn begin failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewAuthPasskeyLoginOptions(string(raw), h.putSession(session)))
@@ -241,8 +242,8 @@ func (h *PasskeyHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 // (`auth.Authorization`): при включённом облачном пароле — `auth.passwordNeeded`
 // (шаг пароля, сессии нет), иначе `auth.authorization`.
 func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
-	if !h.limiter.allow("passkey-finish-ip:"+clientIP(r), 0.2, 10) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("passkey-finish-ip:"+netx.ClientIP(r), 0.2, 10); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	session := h.takeSession(r.URL.Query().Get("session"))
@@ -267,8 +268,8 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "passkey login failed")
 		return
 	}
-	if !h.limiter.allow("passkey-user:"+strconv.FormatInt(matched.UserID, 10), 1.0/60, 3) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("passkey-user:"+strconv.FormatInt(matched.UserID, 10), 1.0/60, 3); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	// Обновить счётчик подписи + last_used_at (best-effort).
@@ -279,7 +280,7 @@ func (h *PasskeyHandler) FinishLogin(w http.ResponseWriter, r *http.Request) {
 	res, err := h.authUC.PasskeySignIn(ctx, matched.UserID,
 		r.URL.Query().Get("device"), r.URL.Query().Get("platform"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeSignInResult(w, res)

@@ -91,12 +91,12 @@ export type SignUpResult =
   | { error: 'first_name_required' | 'name_too_long' | 'signup_token_expired' | 'phone_number_occupied' | 'too_many_requests' | 'failed' }
 
 // «Забыли пароль»: маска привязанной почты (`auth.passwordRecovery`). Паузу
-// повторной отправки держит СЕРВЕР и выражает отказом `RESEND_TOO_SOON_<N>` —
-// клиент своего таймера не заводит, поэтому соседнего числа в ответе больше
-// нет: его не читал никто.
+// повторной отправки держит СЕРВЕР и выражает отказом 420 `FLOOD_WAIT_<N>`
+// (≤ 30 с): `restClient` сам ждёт N секунд и повторяет, как tweb
+// (`apiManager.ts:759-791`), поэтому до менеджера пауза не доходит.
 export type RecoveryRequestResult =
   | { emailPattern: string }
-  | { error: 'password_token_expired' | 'password_recovery_na' | 'resend_too_soon' | 'unavailable' | 'failed' }
+  | { error: 'password_token_expired' | 'password_recovery_na' | 'unavailable' | 'failed' }
 
 // Подтверждение кода с почты: сессия либо причина отказа. `recovery_expired` —
 // код протух ЛИБО исчерпаны 5 попыток (сервер не различает их намеренно).
@@ -224,7 +224,7 @@ export type LoginTokenResult =
   // worker-RPC, поэтому класс ошибки определяется здесь и уходит значением.
   /** `AUTH_TOKEN_EXPIRED`: цикл идёт дальше (tweb SignQRCard.tsx:179-181). */
   | { status: 'expired' }
-  /** Сбой сети / 5xx / 429 / 420: подождать шаг и повторить (у tweb это делает `invokeApi`). */
+  /** Сбой сети / 5xx / 408: подождать шаг и повторить (у tweb это делает `invokeApi`). */
   | { status: 'retry' }
 
 /**
@@ -400,7 +400,9 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         if (e.message === 'name_too_long') return { error: 'name_too_long' }
         if (e.status === 401) return { error: 'signup_token_expired' }
         if (e.status === 409) return { error: 'phone_number_occupied' }
-        if (e.status === 429) return { error: 'too_many_requests' }
+        // До сюда доходит только ожидание длиннее минуты: короче restClient пережидает
+        // сам (tweb apiManager.ts:787-791 — выше `floodMaxTimeout` отказ).
+        if (e.status === 420 || e.type.startsWith('FLOOD_WAIT_')) return { error: 'too_many_requests' }
         return { error: 'failed' }
       }
     },
@@ -416,10 +418,6 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         return { emailPattern: res.email_pattern }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        // Код отказа несёт остаток секунд в хвосте (`RESEND_TOO_SOON_<N>`) —
-        // форма оригинала, где ожидание едет внутри типа ошибки
-        // (`FLOOD_WAIT_<N>`, tweb `password.tsx:40` сравнивает префиксом).
-        if (e.message.startsWith('RESEND_TOO_SOON_') || e.status === 429) return { error: 'resend_too_soon' }
         if (e.status === 401) return { error: 'password_token_expired' }
         if (e.status === 404) return { error: 'password_recovery_na' }
         if (e.status === 503) return { error: 'unavailable' }
@@ -559,7 +557,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
           // Постоянный отказ (QR-хранилище не подключено) — не повод крутиться вечно.
           if (e.status === 503 && e.type === 'qr login unavailable') throw e
           // 420 здесь не повторяется: FLOOD_WAIT дольше минуты у tweb — отказ (apiManager.ts:788-790).
-          if (e.status >= 500 || e.status === 429 || e.status === 408) return { status: 'retry' }
+          if (e.status >= 500 || e.status === 408) return { status: 'retry' }
           throw e
         }
         console.warn('exportLoginToken: сбой сети, повтор', e)

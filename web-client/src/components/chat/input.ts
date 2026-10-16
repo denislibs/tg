@@ -147,6 +147,7 @@ import parseEntities from '@lib/richtext/parseEntities'
 import parseMarkdown from '@lib/richtext/parseMarkdown'
 import { MARKDOWN_ENTITIES, mergeEntities } from '@lib/richtext/entities'
 import forEachReverse from '@helpers/array/forEachReverse'
+import isSlowModeWaitError from '@helpers/isSlowModeWaitError'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
 import splitStringByLength from '@helpers/string/splitStringByLength'
 import sliceMessageEntities from '@helpers/sliceMessageEntities'
@@ -258,7 +259,8 @@ const CLASS_NAME = 'chat-input'
 let botCommandsListId = 0
 const PEER_EXCEPTIONS = new Set<ChatType>([ChatType.Scheduled, ChatType.Stories, ChatType.Saved, ChatType.Welcome])
 
-/** tweb `config.message_length_max` — у нас константа бэкенда (`maxMessageRunes`). */
+/** tweb `config.message_length_max` — у нас константа бэкенда (`domain.MaxMessageRunes`); сервер отдаёт то же
+ *  число в `help.getConfig`, но ввод читает его синхронно на каждый ввод — на конфиг переедет отдельно. */
 const MESSAGE_LENGTH_MAX = 4096
 
 /** tweb `:2006-2015` — длина паузы между «печатает». */
@@ -766,7 +768,7 @@ export default class ChatInput {
               clientMsgId: crypto.randomUUID(),
               ...sendingParams,
               confirmedPaymentResult: preparedPaymentResult,
-            }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+            }).catch((err) => { if(!isSlowModeWaitError(err)) toastNew({ langPackKey: 'Error.AnError' }) })
           },
         })
       },
@@ -2754,7 +2756,7 @@ export default class ChatInput {
         ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
         scheduleDate: sendingParams.scheduleDate, scheduleRepeatPeriod: sendingParams.scheduleRepeatPeriod,
         confirmedPaymentResult: sendingParams.confirmedPaymentResult,
-      }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+      }).catch((err) => { if(!isSlowModeWaitError(err)) toastNew({ langPackKey: 'Error.AnError' }) })
     }
 
     return { value, messageCount }

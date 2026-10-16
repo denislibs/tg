@@ -59,7 +59,7 @@ func (h *ChatHandler) boostErr(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "premium required or no free slots")
 	default:
-		writeError(w, http.StatusInternalServerError, "boost failed")
+		writeDomainError(w, err, "boost failed")
 	}
 	return true
 }
@@ -140,7 +140,7 @@ func (h *ChatHandler) giveawayErr(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
 	default:
-		writeError(w, http.StatusInternalServerError, "giveaway failed")
+		writeDomainError(w, err, "giveaway failed")
 	}
 	return true
 }

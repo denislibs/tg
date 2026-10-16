@@ -33,7 +33,7 @@ func (h *NotifyHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := h.uc.Get(r.Context(), user.ID, t)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, s)
@@ -56,7 +56,7 @@ func (h *NotifyHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.uc.Update(r.Context(), user.ID, t, in); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))

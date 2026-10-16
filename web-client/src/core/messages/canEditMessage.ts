@@ -5,8 +5,10 @@
 // (`messages.getFirstMessageToEdit`, воркер — карточки из кэша `peersManager`).
 // Источник карточек поэтому приходит параметром.
 //
-// Срок правки (`config.edit_time_limit`, :8382-8386) — константой `EDIT_TIME_LIMIT` (48 ч,
-// тем же значением сервер отказывает): своего `appConfig` у нас нет.
+// Срок правки (`config.edit_time_limit`, :8382-8386) — `context.editTimeLimit` (секунды):
+// звавший берёт его из `managers.appConfig.getConfig()` (сервер отдаёт то число, которым
+// отказывает — `domain.EditTimeLimit`). Не пришёл (конфига ещё нет) — срок не ограничивает,
+// как `date < now - undefined` у оригинала.
 // Не портированы (фактов нет): `via_bot_id`, `messageMediaToDo`, монофорумы и миграция
 // базовой группы. Право `send_plain` оригинала — `send_messages` (гранулярных запретов новых
 // слоёв в `ChatRights` нет, `core/peers/rights.ts`). `pFlags.is_outgoing` («ещё не
@@ -19,12 +21,11 @@ import { isAnyChat } from '@core/peers/peerId'
 import { isBroadcast } from '@core/peers/predicates'
 import { hasRights } from '@core/peers/rights'
 
-/** tweb `config.edit_time_limit` — 48 часов (сервер: `message_edit.go::editTimeLimit`) */
-export const EDIT_TIME_LIMIT = 172800
-
 export type CanEditMessageContext = {
   myId: PeerId,
   getPeer: (peerId: PeerId) => User | Chat | undefined,
+  /** tweb `config.edit_time_limit`, секунды. */
+  editTimeLimit?: number,
 }
 
 /** tweb `canMessageBeEdited` (:8312-8343) */
@@ -80,7 +81,8 @@ export default function canEditMessage(message: MyMessage | undefined, kind: 'te
   if(
     !canEditMessageInPeer || (
       !isAnyChat(peerId) &&
-      message.date < (Math.floor(Date.now() / 1000) - EDIT_TIME_LIMIT) &&
+      context.editTimeLimit !== undefined &&
+      message.date < (Math.floor(Date.now() / 1000) - context.editTimeLimit) &&
       (message as { media?: { _: string } }).media?._ !== 'messageMediaPoll'
     )
   ) {

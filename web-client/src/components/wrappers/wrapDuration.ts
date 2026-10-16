@@ -1,9 +1,9 @@
 // Порт tweb `src/components/wrappers/wrapDuration.ts:1-44` (812502980) — подпись
 // длительности формами числа langPack.
 //
-// Расхождение с оригиналом: `wrapStoriesStealthModeDuration` (`:55-57`) никто не
-// зовёт, он не портирован. `wrapSlowModeLeftDuration` (`:46-53`) — с потребителем:
-// таймер медленного режима `chat/utils.ts::slowModeTimer` (Б-37).
+// `wrapSlowModeLeftDuration` (`:46-53`) — с потребителем: таймер медленного
+// режима `chat/utils.ts::slowModeTimer` (Б-37). `wrapStoriesStealthModeDuration`
+// (`:55-57`) — окно режима «невидимка» (`components/StealthModePopup.tsx`).
 // Потребители — «Данные и память» (`storageQuota.tsx:145`), «Автоудаление»
 // (`autoDeleteMessages/options.ts`), бабл звонка (`wrappers/callBubble.ts`),
 // превью лога звонка строкой (`core/serviceMsg.ts`, plain-ветка — порт
@@ -58,6 +58,11 @@ export function wrapLeftDuration(timeLeft: number) {
     formatted.splice(1, Infinity)
     return wrapFormattedDuration(formatted)
   }
+}
+
+/** tweb :55-57 — окно режима «невидимка» (секунды из `stories_stealth_*_period`): один старший разряд. */
+export function wrapStoriesStealthModeDuration(duration: number) {
+  return wrapFormattedDuration(formatDuration(duration, 1))
 }
 
 /** tweb :46-53 — остаток медленного режима: секунды — словами, дольше — `ч:мм:сс`. */

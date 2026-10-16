@@ -33,7 +33,7 @@ func (h *ChannelHandler) mapErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrTooLong):
 		writeError(w, http.StatusBadRequest, "too long")
 	default:
-		writeError(w, http.StatusInternalServerError, "server error")
+		writeDomainError(w, err, "server error")
 	}
 }
 

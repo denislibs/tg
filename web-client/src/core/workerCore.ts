@@ -47,6 +47,7 @@ import { newPersistManager } from './managers/persistManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
 import { newSessionsManager } from './managers/sessionsManager'
 import { newLangPackManager } from './managers/langPackManager'
+import { newAppConfigManager } from './managers/appConfigManager'
 import { newCallsManager } from './managers/callsManager'
 import { newLivestreamManager } from './managers/livestreamManager'
 import { getDoc } from './media/messageMedia'
@@ -185,7 +186,7 @@ export function createWorkerCore() {
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); sessions.reset(); broadcast(RT.loggedIn, e); refreshAuthorizations() },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); stickers.reset(); cursor.reset(); channelFunnel.resetForLogout(); sessions.reset(); broadcast(RT.loggedIn, e); refreshAuthorizations(); void appConfig.getAppConfig(); void appConfig.getConfig() },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -244,16 +245,25 @@ export function createWorkerCore() {
   // tweb-модели: менеджер применяет к SSOT и бродкастит эхо всем вкладкам). Нужен
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
+  // Конфиг приложения (`help.getAppConfig`/`getConfig`): лимиты и флаги сервера.
+  // Подписка — геттер: `me` разрешается лениво и меняется покупкой премиума
+  // (premiumManager → setMe); от неё зависит ключ `_default`/`_premium` в `getLimit`.
+  const appConfig = newAppConfigManager({
+    rest,
+    kv: { get: idbGet, set: idbSet },
+    isPremium: () => !!me?.user.pFlags?.premium,
+  })
   const messages = newMessagesManager({
     // Состояние треда комментариев — владельцу прочтения тредов (объявлен ниже, стрелка ленивая).
     saveDiscussion: (peerId, threadId, state) => threadReads.saveDiscussion(peerId, threadId, state),
     rest,
     decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
     getMeId: () => me?.user.id ?? null,
-    // Порт `rootScope.premium` (tweb apiManagerMethods.ts:393): от подписки
-    // зависит лимит своих реакций на сообщении. Геттер, а не значение, — `me`
-    // разрешается лениво и меняется покупкой премиума (premiumManager → setMe).
-    getMePremium: () => !!me?.user.pFlags?.premium,
+    // Лимит своих реакций на сообщении — ключ `reactions_user_max_*` конфига
+    // приложения (tweb appReactionsManager.ts:694 `getLimit('reactions')`).
+    getReactionsLimit: () => appConfig.getLimit('reactions'),
+    // Срок правки в личке — `config.edit_time_limit` (tweb canEditMessage :8382-8386).
+    getEditTimeLimit: async () => (await appConfig.getConfig()).edit_time_limit,
     // tweb appMessagesManager.ts:13503-13505: история канала
     // (`messages.channelMessages`) заводит состояние канала его pts. Стрелка
     // ленивая: воронка каналов объявлена ниже.
@@ -1304,7 +1314,7 @@ export function createWorkerCore() {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
     folders, groups, channels, peers, dialogs, forumTopics, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
-    stickers, reactions, iv, webPages, secret, persist, langPack, docs,
+    stickers, reactions, iv, webPages, secret, persist, langPack, appConfig, docs,
   }
 
   function bind(ep: Endpoint) {
@@ -1404,7 +1414,13 @@ export function createWorkerCore() {
     // `GET /sessions` упадёт, список останется до ближайшей успешной сверки.
     void tokens.ready().then(() => auth.me()).then(async (u) => {
       if (u && !me) setMe(u)
-      if (u) { await meReady; refreshAuthorizations() }
+      if (u) {
+        // Прогрев конфига приложения (tweb appMessagesManager.ts:757 зовёт его на старте):
+        // первое меню и первая реакция не ждут сети. Не падает — менеджер глотает отказы.
+        void appConfig.getAppConfig()
+        void appConfig.getConfig()
+        await meReady; refreshAuthorizations()
+      }
     }).catch(() => {})
     void cursor.ready().then(() => { cursorReady = true })
     const g = self as unknown as {

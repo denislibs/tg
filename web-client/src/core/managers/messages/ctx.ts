@@ -19,13 +19,12 @@ export interface MessagesCtx {
   patchMsg: PatchMsg
   /** id текущего пользователя (для деривации `mine`) — лениво, геттер. */
   getMeId?: () => number | null
-  /** Есть ли у текущего пользователя премиум — от него зависит лимит «сколько
-   *  реакций ставит один пользователь» (порт `rootScope.premium`, который tweb
-   *  подставляет в `getLimit('reactions')`, apiManagerMethods.ts:393). Геттер и
-   *  опционален по той же причине, что `getMeId`: личность разрешается лениво, а
-   *  юнит-тесты кэш-методов собирают под-модули одним `rest` — без него лимит
-   *  базовый. */
-  getMePremium?: () => boolean
+  /** Лимит «сколько реакций ставит один пользователь на сообщении» — ключ
+   *  `reactions_user_max_default`/`_premium` конфига приложения, ветка по подписке
+   *  внутри (порт `getLimit('reactions')`, tweb appReactionsManager.ts:694).
+   *  Опционален: юнит-тесты кэш-методов собирают под-модули одним `rest`. Не
+   *  вернул число (конфига нет) — локального вытеснения нет, сервер вытеснит сам. */
+  getReactionsLimit?: () => Promise<number | undefined>
   /** Ключи ВСЕХ окон чата, где сообщение сейчас видно (см. messagesManager.opWindowsFor) —
    * нужно под-модулям, которые сами порождают операции patch/remove (Stage 1B.3, Task 4). */
   opWindowsFor: (peerId: number, msgId: number) => string[]
@@ -78,4 +77,7 @@ export interface MessagesCtx {
    *  `ALLOW_PAYMENT_REQUIRED_<N>` у опроса/чек-листа/пересылки заводит запрос,
    *  а не бросается. Опционален — без него отказ бросается как раньше. */
   repay?: RepayRequestHandler
+  /** Отказ HTTP-пути отправки (пересылка, опрос, чек-лист) → событие
+   *  `rt:message_send_error` (tweb `onMessagesSendError`, :5822). Опционален. */
+  reportSendError?: (peerId: number, err: unknown) => void
 }

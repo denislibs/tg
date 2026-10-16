@@ -22,7 +22,7 @@ func NewReactionsHandler(repo usecasereactions.CatalogRepo) *ReactionsHandler {
 func (h *ReactionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.repo.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load reactions")
+		writeDomainError(w, err, "could not load reactions")
 		return
 	}
 	if list == nil {

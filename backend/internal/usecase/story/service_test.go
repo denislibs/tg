@@ -862,7 +862,7 @@ func TestActivateStealth_SetsWindowAndPurges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if m.ActiveUntil.Before(before.Add(stealthFuturePeriod-time.Minute)) || m.CooldownUntil.Before(before) {
+	if m.ActiveUntil.Before(before.Add(domain.StealthFuturePeriod-time.Minute)) || m.CooldownUntil.Before(before) {
 		t.Fatalf("unexpected window: %+v", m)
 	}
 	if !repo.purgeCalled || repo.purgedSince.After(before) {

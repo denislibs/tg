@@ -43,7 +43,7 @@ func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, te
 	if text == "" && mediaID == nil {
 		return domain.SuggestedPostInfo{}, domain.ErrInvalid
 	}
-	if utf8.RuneCountInString(text) > maxMessageRunes {
+	if utf8.RuneCountInString(text) > domain.MaxMessageRunes {
 		return domain.SuggestedPostInfo{}, domain.ErrTooLong
 	}
 	// Медиа должно принадлежать автору (как в Send).

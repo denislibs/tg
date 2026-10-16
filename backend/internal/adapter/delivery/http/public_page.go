@@ -57,6 +57,18 @@ func NewPublicHandler(uc *usecasepublic.Interactor, media *usecasemedia.Interact
 // проксирует хост PublicLinkOrigin целиком.
 func (h *PublicHandler) Mount(r chi.Router) {
 	r.Use(middleware.StripSlashes)
+	// HEAD отвечает как GET: превьюеры и мониторинги шлют его. Не middleware.GetHead:
+	// тот сверяет сдвинутый путь с КОРНЕВЫМ mux, и /tme/langpack, /tme/tme,
+	// /tme/bot/… совпадали с корневыми маршрутами — HEAD давал 405. HEAD-маршрутов
+	// здесь нет, поэтому подмена безусловная.
+	r.Use(headAsGet)
+	// Неизвестный путь хоста страниц читает человек в браузере: страница, а не
+	// JSON `METHOD_INVALID` корневого роутера (router.go).
+	r.NotFound(h.notFoundPage)
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Allow", "GET, HEAD")
+		h.render(w, http.StatusMethodNotAllowed, notFoundView(h))
+	})
 	r.Get("/", h.Root)
 	r.Get("/{username}", h.Page)
 	r.Get("/{username}/photo", h.Photo)
@@ -69,6 +81,19 @@ func (h *PublicHandler) Mount(r chi.Router) {
 	r.Get("/addstickers/{name}", h.StickerSet)
 	r.Get("/addemoji/{name}", h.StickerSet)
 	r.Get("/addlist/{slug}", h.AddList)
+}
+
+// notFoundPage — HTML 404 для пути или метода, которых у хоста страниц нет (страницы
+// читает человек в браузере, а не клиент API).
+func (h *PublicHandler) notFoundPage(w http.ResponseWriter, _ *http.Request) {
+	h.render(w, http.StatusNotFound, notFoundView(h))
+}
+
+func notFoundView(h *PublicHandler) pageView {
+	return pageView{
+		PageTitle: "Messenger", NoIndex: true, OGTitle: "Messenger",
+		ButtonText: "Открыть Messenger", ButtonHref: h.app + "/",
+	}
 }
 
 // Root — корень хоста страниц: у t.me это редирект на сайт, у нас — в клиент.
@@ -526,4 +551,13 @@ func (h *PublicHandler) PostPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.serveMedia(w, r, p.MediaID)
+}
+
+func headAsGet(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			chi.RouteContext(r.Context()).RouteMethod = http.MethodGet
+		}
+		next.ServeHTTP(w, r)
+	})
 }

@@ -386,6 +386,25 @@ describe('pending: ошибка, ретрай, отмена', () => {
     expect(p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, date: 1 })).toHaveLength(1)
   })
 
+  // Ф7-И1: NACK сокета не несёт пира — отказ отправки объявляется воркером с пиром
+  // бабла (tweb `message_error{peerId, error}`), по нему главный поток открывает
+  // попап медленного режима.
+  it('отказ с причиной объявляет sendError(peerId бабла, причина)', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [cid(10)])
+    const sendError = vi.fn()
+    const p = newPendingMethods({ ...ctx, sendError })
+    p.beforeMessageSending(evt())
+
+    p.failPendingMessage('c-1', 'SLOWMODE_WAIT_30')
+    expect(sendError).toHaveBeenCalledWith(1, 'SLOWMODE_WAIT_30')
+
+    sendError.mockClear()
+    p.failPendingMessage('c-1') // аплоад сорвался — причины нет, события нет
+    p.failPendingMessage('unknown', 'SLOWMODE_WAIT_5') // бабла нет — события нет
+    expect(sendError).not.toHaveBeenCalled()
+  })
+
   // Порт tweb `hasOutgoingMessage` (appMessagesManager.ts:10047-10055) — его читает
   // подсказка медленного режима: неотправленное, в том числе упавшее, держит пира.
   it('hasOutgoingMessage: есть у пира бабл в пути или с ошибкой — до ack/отмены', () => {

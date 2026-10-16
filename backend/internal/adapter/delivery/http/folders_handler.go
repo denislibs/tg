@@ -73,7 +73,7 @@ func (h *FoldersHandler) mapErr(w http.ResponseWriter, err error) {
 		errors.Is(err, usecasefolders.ErrNoIncludes):
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 	}
 }
 

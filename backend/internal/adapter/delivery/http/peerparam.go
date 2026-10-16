@@ -81,7 +81,7 @@ func peerChatIDForRead(w http.ResponseWriter, r *http.Request, res readPeerResol
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
 	default:
-		writeError(w, http.StatusInternalServerError, "peer lookup failed")
+		writeDomainError(w, err, "peer lookup failed")
 	}
 	return 0, false
 }
@@ -121,7 +121,7 @@ func resolvePeer(w http.ResponseWriter, r *http.Request, res PeerResolver, peer 
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
 	default:
-		writeError(w, http.StatusInternalServerError, "peer lookup failed")
+		writeDomainError(w, err, "peer lookup failed")
 	}
 	return 0, false
 }
