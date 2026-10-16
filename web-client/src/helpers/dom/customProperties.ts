@@ -4,7 +4,7 @@
 // Расхождения с оригиналом:
 //  1. `CustomProperty` — строка: у оригинала это объединение имён переменных темы
 //     (`AppColorName` и соседи), у нас такого перечня нет.
-//  2. `getPropertyAsSize` (:76-90) не перенесён: у оригинала его единственный
+//  2. `getPropertyAsSize` (:62-75) не перенесён: у оригинала его единственный
 //     вызов закомментирован (`emoticonsDropdown/tab.ts:256`), у нас вызывающих нет.
 import { MOUNT_CLASS_TO } from '@config/debug'
 import rootScope from '@lib/rootScope'
