@@ -1,86 +1,77 @@
 // Порт tweb `helpers/dom/customProperties.ts` (812502980) 1:1: имя — без `--` (префикс добавляет
 // getProperty), кэш по [день, ночь], скрытый `.night`-элемент, сброс на theme_changed и resize.
-import {MOUNT_CLASS_TO} from '@config/debug';
-import rootScope from '@lib/rootScope';
-import mediaSizes from '@helpers/mediaSizes';
+//
+// Расхождения с оригиналом:
+//  1. `CustomProperty` — строка: у оригинала это объединение имён переменных темы
+//     (`AppColorName` и соседи), у нас такого перечня нет.
+//  2. `getPropertyAsSize` (:76-90) не перенесён: у оригинала его единственный
+//     вызов закомментирован (`emoticonsDropdown/tab.ts:256`), у нас вызывающих нет.
+import { MOUNT_CLASS_TO } from '@config/debug'
+import rootScope from '@lib/rootScope'
+import mediaSizes from '@helpers/mediaSizes'
 
-export type CustomProperty = string;
+export type CustomProperty = string
 
 export class CustomProperties {
-  private cache: {[k in CustomProperty]?: [string, string]};
-  private computedStyle: CSSStyleDeclaration;
-  private nightComputedStyle: CSSStyleDeclaration;
-  private nightElement: HTMLElement;
+  private cache: { [k in CustomProperty]?: [string, string] }
+  private computedStyle: CSSStyleDeclaration | undefined
+  private nightComputedStyle: CSSStyleDeclaration | undefined
+  private nightElement: HTMLElement
 
   constructor() {
-    this.cache = {};
+    this.cache = {}
 
-    this.nightElement = document.createElement('div');
-    this.nightElement.className = 'night';
-    this.nightElement.style.display = 'none';
-    document.body.append(this.nightElement);
+    this.nightElement = document.createElement('div')
+    this.nightElement.className = 'night'
+    this.nightElement.style.display = 'none'
+    document.body.append(this.nightElement)
 
-    rootScope.addEventListener('theme_changed', this.resetCache);
-    mediaSizes.addEventListener('resize', this.resetCache);
+    rootScope.addEventListener('theme_changed', this.resetCache)
+    mediaSizes.addEventListener('resize', this.resetCache)
   }
 
   protected resetCache = () => {
-    this.computedStyle = undefined;
-    const cache = this.cache;
-    this.cache = {};
+    this.computedStyle = undefined
+    const cache = this.cache
+    this.cache = {}
 
     for(const i in cache) {
-      this.getProperty(i as CustomProperty);
+      this.getProperty(i)
     }
-  };
+  }
 
-  public getProperty(name: CustomProperty, night?: boolean) {
-    const values = this.cache[name];
-    const index = night ? 1 : 0;
+  public getProperty(name: CustomProperty, night?: boolean): string {
+    const values = this.cache[name]
+    const index = night ? 1 : 0
     if(values?.[index]) {
-      return values[index];
+      return values[index]
     }
 
-    this.computedStyle ??= window.getComputedStyle(document.documentElement);
-    this.nightComputedStyle ??= window.getComputedStyle(this.nightElement);
+    this.computedStyle ??= window.getComputedStyle(document.documentElement)
+    this.nightComputedStyle ??= window.getComputedStyle(this.nightElement)
 
-    const value = (night ? this.nightComputedStyle : this.computedStyle).getPropertyValue('--' + name).trim();
-    return this.setPropertyCache(name, value, night);
+    const value = (night ? this.nightComputedStyle : this.computedStyle).getPropertyValue('--' + name).trim()
+    return this.setPropertyCache(name, value, night)
   }
 
-  public getPropertyAsColor(name: CustomProperty) {
+  public getPropertyAsColor(name: CustomProperty): string {
     if(name[0] === '#') {
-      return name;
+      return name
     }
 
-    const value = this.getProperty(name);
+    const value = this.getProperty(name)
     if(value[0] === '#') {
-      return value;
+      return value
     }
 
-    return `rgb(${value})`;
+    return `rgb(${value})`
   }
 
-  public getPropertyAsSize(name: CustomProperty) {
-    const value = this.getProperty(name);
-    let size: number;
-
-    if(value[value.length - 1] === '%') {
-
-    } else if(value.indexOf('rem')) {
-      size = +value.replace('rem', '') * 16;
-    } else {
-      size = +value.replace('px', '');
-    }
-
-    return size;
-  }
-
-  public setPropertyCache(name: CustomProperty, value: string, night?: boolean) {
-    return (this.cache[name] ??= [] as any)[night ? 1 : 0] = value;
+  public setPropertyCache(name: CustomProperty, value: string, night?: boolean): string {
+    return (this.cache[name] ??= ['', ''])[night ? 1 : 0] = value
   }
 }
 
-const customProperties = new CustomProperties();
-MOUNT_CLASS_TO && (MOUNT_CLASS_TO.customProperties = customProperties);
-export default customProperties;
+const customProperties = new CustomProperties()
+if(MOUNT_CLASS_TO) MOUNT_CLASS_TO.customProperties = customProperties
+export default customProperties
