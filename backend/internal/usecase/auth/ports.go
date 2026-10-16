@@ -231,3 +231,17 @@ type QRStore interface {
 }
 
 const QRLoginTTL = 60 * time.Second
+
+// PasswordAttemptStore — счётчик неверных облачных паролей и блокировка (Б-4,
+// М1-5), общий для всех экземпляров сервера (Redis). Ключ — пара (userID,
+// deviceID): сессия-устройство при проверке пароля в сессии, deviceID =
+// loginAttemptScope (0) — шаг входа check_password.
+type PasswordAttemptStore interface {
+	// Locked — остаток блокировки (0 — свободно).
+	Locked(ctx context.Context, userID, deviceID int64) (time.Duration, error)
+	// Fail засчитывает неудачу атомарно: инкремент счётчика, его срок — 24 ч от
+	// последней неудачи, при f ≥ 5 — блокировка passwordLockFor(f). Возвращает f.
+	Fail(ctx context.Context, userID, deviceID int64) (int, error)
+	// Reset — верный пароль: удалить счётчик и блокировку.
+	Reset(ctx context.Context, userID, deviceID int64) error
+}

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,81 @@ func checkPassword(hash, input string) bool {
 	return trimmed != input && domain.CheckPasswordHash(hash, trimmed)
 }
 
+// Растущее ожидание после неверных облачных паролей (Б-4, М1-5; параметры —
+// решение В-S2). Первые passwordFreeFails-1 неудач подряд — без блокировки
+// (остаётся лимитер ручки), с passwordFreeFails-й — блокировка
+// min(passwordLockBase × 2^(f−passwordFreeFails), passwordLockMax). Счётчик
+// живёт passwordLockMax от последней неудачи, верный пароль его обнуляет.
+// Формулу повторяет Lua-скрипт Redis-стора (adapter/cache/redis/pwattempts.go).
+const (
+	passwordFreeFails = 5
+	passwordLockBase  = time.Minute
+	passwordLockMax   = 24 * time.Hour
+)
+
+// loginAttemptScope — deviceID счётчика неудач шага входа check_password (сессии
+// ещё нет). Реальных сессий с id 0 нет, счётчики входа и сессий не пересекаются.
+const loginAttemptScope int64 = 0
+
+// passwordLockFor — блокировка после f-й неудачи подряд (0 — без блокировки).
+func passwordLockFor(f int) time.Duration {
+	if f < passwordFreeFails {
+		return 0
+	}
+	// 2^11 минут уже больше суток: больший показатель не нужен и не переполнит.
+	return min(passwordLockBase<<min(f-passwordFreeFails, 11), passwordLockMax)
+}
+
+// passwordFlood — заперта ли пара (пользователь, deviceID): ErrPasswordFlood с
+// остатком в целых секундах вверх (≥ 1). Без стора и при его сбое — nil:
+// сбой Redis не должен запирать пароль всем.
+func (i *Interactor) passwordFlood(ctx context.Context, userID, deviceID int64) error {
+	if i.pwTries == nil {
+		return nil
+	}
+	left, err := i.pwTries.Locked(ctx, userID, deviceID)
+	if err != nil {
+		i.logf("password attempts: locked user=%d device=%d: %v", userID, deviceID, err)
+		return nil
+	}
+	if left <= 0 {
+		return nil
+	}
+	return domain.ErrPasswordFlood{Seconds: max(1, int(math.Ceil(left.Seconds())))}
+}
+
+// passwordAttempt засчитывает исход сверки: неудача растит счётчик, успех его
+// обнуляет. Сбой стора — в лог, без роста.
+func (i *Interactor) passwordAttempt(ctx context.Context, userID, deviceID int64, ok bool) {
+	if i.pwTries == nil {
+		return
+	}
+	var err error
+	if ok {
+		err = i.pwTries.Reset(ctx, userID, deviceID)
+	} else {
+		_, err = i.pwTries.Fail(ctx, userID, deviceID)
+	}
+	if err != nil {
+		i.logf("password attempts: record user=%d device=%d ok=%v: %v", userID, deviceID, ok, err)
+	}
+}
+
+// checkCurrent сверяет текущий облачный пароль в сессии deviceID: в блокировке —
+// ErrPasswordFlood без сверки; неверный — неудача и ErrBadPassword; верный —
+// сброс счётчика.
+func (i *Interactor) checkCurrent(ctx context.Context, userID, deviceID int64, hash, password string) error {
+	if err := i.passwordFlood(ctx, userID, deviceID); err != nil {
+		return err
+	}
+	ok := checkPassword(hash, password)
+	i.passwordAttempt(ctx, userID, deviceID, ok)
+	if !ok {
+		return domain.ErrBadPassword
+	}
+	return nil
+}
+
 // PasswordState — состояние облачного пароля для экрана Two-Step Verification.
 type PasswordState struct {
 	Enabled bool
@@ -63,7 +139,7 @@ func (i *Interactor) PasswordState(ctx context.Context, userID int64) (PasswordS
 // SetPassword ставит или меняет облачный пароль. При уже включённом пароле
 // current обязателен и сверяется. Hint не должен совпадать с паролем (tweb
 // PasswordAsHintError).
-func (i *Interactor) SetPassword(ctx context.Context, userID int64, current, newPassword, hint, email string) error {
+func (i *Interactor) SetPassword(ctx context.Context, userID, deviceID int64, current, newPassword, hint, email string) error {
 	// Пароль сохраняется как есть — без TrimSpace: иначе хеш считается от
 	// другой строки, чем потом сверяется, и « abc » не проходит проверку.
 	// Проверка ниже — валидация «не пустой», а не нормализация.
@@ -77,8 +153,10 @@ func (i *Interactor) SetPassword(ctx context.Context, userID int64, current, new
 	if err != nil {
 		return err
 	}
-	if hash != nil && !checkPassword(*hash, current) {
-		return domain.ErrBadPassword
+	if hash != nil {
+		if err := i.checkCurrent(ctx, userID, deviceID, *hash, current); err != nil {
+			return err
+		}
 	}
 	if email == "" {
 		email = curEmail // не затирать почту при смене пароля без неё
@@ -100,19 +178,19 @@ func (i *Interactor) SetPassword(ctx context.Context, userID int64, current, new
 
 // VerifyPassword сверяет текущий пароль (вход в настройки 2FA, tweb
 // AppTwoStepVerificationEnterPasswordTab).
-func (i *Interactor) VerifyPassword(ctx context.Context, userID int64, password string) error {
+func (i *Interactor) VerifyPassword(ctx context.Context, userID, deviceID int64, password string) error {
 	hash, _, _, err := i.pw.Password(ctx, userID)
 	if err != nil {
 		return err
 	}
-	if hash == nil || !checkPassword(*hash, password) {
+	if hash == nil {
 		return domain.ErrBadPassword
 	}
-	return nil
+	return i.checkCurrent(ctx, userID, deviceID, *hash, password)
 }
 
 // RemovePassword выключает облачный пароль (нужен текущий).
-func (i *Interactor) RemovePassword(ctx context.Context, userID int64, current string) error {
+func (i *Interactor) RemovePassword(ctx context.Context, userID, deviceID int64, current string) error {
 	hash, _, _, err := i.pw.Password(ctx, userID)
 	if err != nil {
 		return err
@@ -120,8 +198,8 @@ func (i *Interactor) RemovePassword(ctx context.Context, userID int64, current s
 	if hash == nil {
 		return nil
 	}
-	if !checkPassword(*hash, current) {
-		return domain.ErrBadPassword
+	if err := i.checkCurrent(ctx, userID, deviceID, *hash, current); err != nil {
+		return err
 	}
 	return i.pw.SetPassword(ctx, userID, nil, "", "")
 }
@@ -157,7 +235,17 @@ func (i *Interactor) CheckPassword(ctx context.Context, rawToken, password, devi
 	if err != nil {
 		return SignInResult{}, err
 	}
-	if hash == nil || !checkPassword(*hash, password) {
+	// Потолок на пользователя (остаток М1-1): токен ограничивает 5 попыток, но
+	// новый токен давал новые; неудачи шага входа копятся по (пользователь, 0).
+	// В блокировке токен не сгорает и его счётчик не растёт.
+	if err := i.passwordFlood(ctx, userID, loginAttemptScope); err != nil {
+		return SignInResult{}, err
+	}
+	ok := hash != nil && checkPassword(*hash, password)
+	if hash != nil {
+		i.passwordAttempt(ctx, userID, loginAttemptScope, ok)
+	}
+	if !ok {
 		// Токен переживает опечатку (не гоняем OTP заново), НО не бесконечно:
 		// после maxPasswordAttempts неудач сжигаем его — иначе перебор облачного
 		// пароля в пределах TTL (в паре с rate-limit роута по реальному IP).

@@ -30,7 +30,7 @@ func (m *fakeMailer) SendRecoveryCode(_ context.Context, email, code string) err
 func twoFactorLogin(t *testing.T, i *Interactor, codes *fakeCodeRepo, phone, email string) (int64, string) {
 	t.Helper()
 	res := registerUser(t, i, phone, "Восстановление", "", "dev", "test")
-	if err := i.SetPassword(context.Background(), res.User.ID, "", "s3cret", "hint", email); err != nil {
+	if err := i.SetPassword(context.Background(), res.User.ID, 1, "", "s3cret", "hint", email); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	return res.User.ID, passwordStep(t, i, codes, phone)

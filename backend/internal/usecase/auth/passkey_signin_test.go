@@ -14,7 +14,7 @@ func TestPasskeySignIn_PasswordEnabled_ReturnsPasswordStep(t *testing.T) {
 	i, _, devices, _ := newInteractor()
 	reg := registerUser(t, i, "+79990004455", "Кот", "", "dev", "test")
 	userID := reg.User.ID
-	if err := i.SetPassword(ctx, userID, "", "s3cret", "кот", ""); err != nil {
+	if err := i.SetPassword(ctx, userID, 1, "", "s3cret", "кот", ""); err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
 	before := len(devices.byID)

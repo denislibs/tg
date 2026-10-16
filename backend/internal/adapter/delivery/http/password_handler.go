@@ -39,12 +39,11 @@ const (
 
 // allowCheck — пускает ли проверку пароля; при отказе уже написан 420
 // FLOOD_WAIT_<N> (tweb ждёт N секунд и повторяет, apiManager.ts:759-791).
-func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord) bool {
+func (h *PasswordHandler) allowCheck(w http.ResponseWriter, r *http.Request, user domain.UserRecord, deviceID int64) bool {
 	if ok, wait := h.limiter.allowWait("mepw-ip:"+netx.ClientIP(r), 0.2, 5); !ok {
 		writeFloodWait(w, wait)
 		return false
 	}
-	deviceID, _ := DeviceIDFromContext(r.Context())
 	if ok, wait := h.limiter.allowWait(fmt.Sprintf("mepw-user:%d:%d", user.ID, deviceID), pwUserRPS, pwUserBurst); !ok {
 		writeFloodWait(w, wait)
 		return false
@@ -66,7 +65,8 @@ func (h *PasswordHandler) State(w http.ResponseWriter, r *http.Request) {
 // Set — POST /me/password {current_password?, new_password, hint, email}.
 func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, _ := DeviceIDFromContext(r.Context())
+	if !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -79,7 +79,7 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.SetPassword(r.Context(), user.ID, b.CurrentPassword, b.NewPassword, b.Hint, b.Email)
+	err := h.uc.SetPassword(r.Context(), user.ID, deviceID, b.CurrentPassword, b.NewPassword, b.Hint, b.Email)
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
@@ -95,7 +95,8 @@ func (h *PasswordHandler) Set(w http.ResponseWriter, r *http.Request) {
 // перед входом в настройки 2FA.
 func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, _ := DeviceIDFromContext(r.Context())
+	if !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -105,7 +106,7 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.VerifyPassword(r.Context(), user.ID, b.Password)
+	err := h.uc.VerifyPassword(r.Context(), user.ID, deviceID, b.Password)
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
@@ -120,7 +121,8 @@ func (h *PasswordHandler) Verify(w http.ResponseWriter, r *http.Request) {
 // Remove — DELETE /me/password {current_password}.
 func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	if !h.allowCheck(w, r, user) {
+	deviceID, _ := DeviceIDFromContext(r.Context())
+	if !h.allowCheck(w, r, user, deviceID) {
 		return
 	}
 	var b struct {
@@ -130,7 +132,7 @@ func (h *PasswordHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	err := h.uc.RemovePassword(r.Context(), user.ID, b.CurrentPassword)
+	err := h.uc.RemovePassword(r.Context(), user.ID, deviceID, b.CurrentPassword)
 	if errors.Is(err, domain.ErrBadPassword) {
 		writeError(w, http.StatusForbidden, "invalid password")
 		return
