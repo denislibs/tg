@@ -96,7 +96,7 @@ export function newChannelsManager({ rest, beforeSending, failSending, applySche
     async createChannel(args: { title: string; about?: string; username?: string; isPublic?: boolean }): Promise<number> {
       const r = await rest.post<MessagesChatFull>('/channels', {
         title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
-      })
+      }, { stopTime: -1 }) // создание не идемпотентно, 500 возможен после коммита: повтор создал бы второй канал
       peers.saveApiPeers(r)
       const chat = r?.chats?.[0]
       return chat ? getPeerId({ _: 'peerChannel', channel_id: chat.id }) : 0

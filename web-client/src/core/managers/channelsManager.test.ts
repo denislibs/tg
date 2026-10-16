@@ -39,7 +39,7 @@ describe('ChannelsManager.createChannel', () => {
     const id = await mgr.createChannel({ title: 'News', isPublic: true })
     expect(id).toBe(-42)
     expect(peers.saveApiPeers).toHaveBeenCalledWith(card)
-    expect(post).toHaveBeenCalledWith('/channels', { title: 'News', about: '', username: '', is_public: true })
+    expect(post).toHaveBeenCalledWith('/channels', { title: 'News', about: '', username: '', is_public: true }, { stopTime: -1 })
   })
 })
 

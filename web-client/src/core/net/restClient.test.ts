@@ -162,6 +162,35 @@ describe('RestClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
+    it('500 через готовый канал DNP повторяется так же', async () => {
+      vi.useFakeTimers()
+      const call = vi.fn()
+        .mockResolvedValueOnce({ status: 500, body: { _: 'error', code: 500, text: 'x' } })
+        .mockResolvedValueOnce({ status: 200, body: { ok: 1 } })
+      const rc = new RestClient('/api', () => 'tok', undefined, { isReady: () => true, call })
+      const p = rc.post('/x', {})
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(p).resolves.toEqual({ ok: 1 })
+      expect(call).toHaveBeenCalledTimes(2)
+    })
+
+    it('420 и 500 в одном запросе: FLOOD_WAIT пережидается, паузы 500 идут с 1 с', async () => {
+      vi.useFakeTimers()
+      const flood = () => new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_2' }), { status: 420 })
+      const fetchMock = useFetch(flood, fail500, ok)
+      const p = new RestClient('/api', () => null).get('/x')
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1000)
+      await expect(p).resolves.toEqual({ ok: 1 })
+    })
+
+    it('rawError отключает и пережидание FLOOD_WAIT (tweb :759)', async () => {
+      const fetchMock = useFetch(() => new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_2' }), { status: 420 }), ok)
+      await expect(new RestClient('/api', () => null).post('/x', {}, { rawError: true })).rejects.toMatchObject({ status: 420 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
     it('прочие отказы (400, 502) не повторяются', async () => {
       for (const status of [400, 502]) {
         const fetchMock = useFetch(() => new Response('{}', { status }), ok)

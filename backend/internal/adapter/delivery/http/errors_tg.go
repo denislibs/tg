@@ -18,7 +18,7 @@ import (
 //	ErrSlowmodeWait → 420 SLOWMODE_WAIT_<N>
 //	ErrTooLong   → 400 too long           ErrScheduleTooMuch → 400 SCHEDULE_TOO_MUCH
 //	ErrUnavailable (и обёртки: забытая проводка, выключенная фича) → 503 unavailable
-//	SQLSTATE 23505/23P01 → 409 conflict, прочие 22xxx/23xxx → 400 invalid
+//	SQLSTATE 23505/23P01 → 409 conflict, прочие 22xxx/23xxx и 54000 → 400 invalid
 //
 // Всё остальное — 500 с прежним текстом ручки (fallback). Имена — только те,
 // что tweb разбирает (apiManager.ts:715-812, appImManager.ts:551-565,
@@ -72,7 +72,7 @@ func writeSQLStateError(w http.ResponseWriter, err error) bool {
 	switch code := pg.SQLState(); {
 	case code == "23505", code == "23P01": // unique_violation, exclusion_violation
 		writeError(w, http.StatusConflict, "conflict")
-	case strings.HasPrefix(code, "22"), strings.HasPrefix(code, "23"):
+	case strings.HasPrefix(code, "22"), strings.HasPrefix(code, "23"), code == "54000": // 54000 — строка индекса длиннее предела
 		writeError(w, http.StatusBadRequest, "invalid")
 	default:
 		return false

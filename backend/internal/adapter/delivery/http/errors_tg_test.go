@@ -69,6 +69,7 @@ func TestWriteDomainError_SQLState(t *testing.T) {
 		{"22008", http.StatusBadRequest, "invalid"}, // дата вне диапазона
 		{"23503", http.StatusBadRequest, "invalid"}, // внешний ключ
 		{"23514", http.StatusBadRequest, "invalid"}, // CHECK
+		{"54000", http.StatusBadRequest, "invalid"}, // строка индекса длиннее предела
 		{"23505", http.StatusConflict, "conflict"},  // дубль
 		{"23P01", http.StatusConflict, "conflict"},  // exclusion
 		{"40001", http.StatusInternalServerError, "fallback text"},

@@ -41,3 +41,13 @@ describe('BotsManager.callback', () => {
     expect(body).not.toHaveProperty('message_id')
   })
 })
+
+// tweb appInlineBotsManager.ts:47: getInlineBotResults с stopTime -1 — 500 не повторяется.
+describe('BotsManager.inline', () => {
+  it('запрос выдачи идёт со stopTime -1', async () => {
+    const get = vi.fn().mockResolvedValue({ results: [], users: [] })
+    await newBotsManager({ rest: { get, post: vi.fn() } as never }).inline(5, 'q a')
+
+    expect(get).toHaveBeenCalledWith('/bots/5/inline?q=q%20a', undefined, { stopTime: -1 })
+  })
+})

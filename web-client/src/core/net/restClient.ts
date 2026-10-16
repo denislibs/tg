@@ -28,7 +28,8 @@ function errorOf(status: number, body: unknown): HttpError {
 
 /**
  * Подмножество `options` tweb `invokeApi`, которое влияет на повтор отказа.
- * `rawError` — отказ сразу вызывающему, без повтора (tweb `!options.rawError`);
+ * `rawError` — отказ сразу вызывающему, без повтора ни 420, ни 500 (tweb
+ * `!options.rawError`, apiManager.ts:759,:800);
  * `stopTime` — момент (мс, `Date.now()`), после которого 500 не повторяется;
  * `-1` у tweb значит «не повторять» (appInlineBotsManager.ts:47,:250).
  */
@@ -209,7 +210,7 @@ export class RestClient {
         return await this.requestOnce<R>(method, path, body, extraHeaders)
       } catch (e) {
         const wait = floodWaitSeconds(e)
-        if (wait !== undefined) {
+        if (wait !== undefined && !opts?.rawError) {
           if (wait > FLOOD_MAX_TIMEOUT) throw e
           await pause(wait * 1000)
         } else if (e instanceof HttpError && e.status === 500 && !opts?.rawError) {

@@ -5,10 +5,16 @@ package http
 // поэтому 500, который при повторе случится снова (детерминированный), зациклит
 // его. Повтор включается, только если перечень ручек с детерминированным 500 пуст.
 //
-// Как строится перечень. Охрана TestNo500OutsideDomainError гарантирует, что 500
-// пишет только разборщик writeDomainError (его fallback). Значит, ручка отдаёт
-// 500 ровно тогда, когда до writeDomainError (или до помощника, который её
-// зовёт) доезжает ошибка, которую ни ручка, ни разборщик не разобрали. Тест
+// Как строится перечень. Охрана TestNo500OutsideDomainError гарантирует, что
+// ветки `writeError(w, 500, …)` в пакете http пишет только разборщик
+// writeDomainError (его fallback); другие способы записать 500 (`botErr`,
+// `http.Error`, `WriteHeader`) она не видит — для них у ручек клиента (`/api/*`)
+// сегодня нет вхождений, Bot API клиент не вызывает. Паника ручки тоже даёт 500
+// (middleware.Recoverer в router.go, тело пустое) — детерминированная паника
+// этим тестом не ловится и считается багом сервера, а не отказом. Значит, ручка
+// отдаёт 500 по ошибке ровно тогда, когда до writeDomainError (или до
+// помощника, который её зовёт) доезжает ошибка, которую ни ручка, ни разборщик
+// не разобрали. Тест
 // строит SSA всего модуля и для каждого вызова разборщика вычисляет, какие
 // ошибки могут прийти в его аргумент, — поток значений через возвраты функций,
 // фи-узлы, локальные ячейки (в том числе захваченные замыканиями), обёртки
@@ -18,7 +24,7 @@ package http
 //   - сигнальные ошибки модуля (var ErrX / errX любого пакета: domain, usecase,
 //     repo …) — разобраны, если ручка, разборщик или помощник сравнивают с ними
 //     (errors.Is / ==) её саму или ошибку, которую она оборачивает;
-//   - безымянные errors.New / fmt.Errorf без %w в usecase, domain и репозиториях;
+//   - безымянные errors.New / fmt.Errorf без %w в любом пакете модуля;
 //   - ошибки чужих пакетов (pgx, Redis, MinIO, json …).
 //
 // Классы, где 500 правомерен (сбой окружения или нарушенный инвариант сервера, а
@@ -31,6 +37,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -48,11 +55,23 @@ const o5Mod = "github.com/messenger-denis/backend/internal/"
 // o5Benign — источники, на которых 500 правомерен и повтор не зациклит клиент
 // (или зациклит ровно так же, как tweb на внутренней ошибке сервера TG).
 var o5Benign = map[string]string{
-	"chat.errScheduledRaced":   "гонка двух публикаций одного отложенного — повтор правомерен",
-	"chat.errGiveawayRaced":    "гонка розыгрыша с удалением чата — повтор правомерен",
-	"chat.ErrPreviewTransient": "сбой сети при сборке превью ссылки",
+	"chat.errScheduledRaced": "гонка двух публикаций одного отложенного — повтор правомерен",
+	"chat.errGiveawayRaced":  "гонка розыгрыша с удалением чата — повтор правомерен",
 	`anon usecase/chat/scheduled.go "scheduled %d: not a message"`:       "инвариант: строка отложенного всегда даёт MessageReal",
 	`anon usecase/chat/scheduled.go "scheduled copy: nothing published"`: "инвариант: доставка одной копии возвращает одну копию",
+}
+
+// o5BenignAt — исключения на конкретную ручку (ключ — вхождение целиком).
+var o5BenignAt = map[string]string{
+	`LangPackHandler).Difference ← ext strconv.Atoi`: "неточность потока: Atoi разбирает from_version в самой ручке, и её отказ — 400 FROM_VERSION_INVALID до обращения к usecase",
+}
+
+// o5BenignAnon — безымянные ошибки, означающие порчу данных сервера (строка
+// langpack в БД без текста и форм): 500 здесь правомерен, это баг данных, а не
+// свойство запроса.
+var o5BenignAnon = []string{
+	`anon adapter/repo/postgres/langpackrepo.go "langpack: строка %q не несёт ни текста, ни форм"`,
+	`anon domain/mtlangpack.go "langpack: строка %q — %s"`,
 }
 
 // o5BenignExt — ошибки чужих пакетов по префиксу имени.
@@ -95,7 +114,11 @@ func TestOnly500_NoDeterministicSources(t *testing.T) {
 			if a.isHandled(k, handled) || o5IsBenign(k) {
 				continue
 			}
-			bad = append(bad, fmt.Sprintf("%s ← %s", strings.TrimPrefix(strings.ReplaceAll(h.String(), o5Mod, ""), "(*adapter/delivery/http."), k))
+			entry := fmt.Sprintf("%s ← %s", strings.TrimPrefix(strings.ReplaceAll(h.String(), o5Mod, ""), "(*adapter/delivery/http."), k)
+			if o5BenignAt[entry] != "" {
+				continue
+			}
+			bad = append(bad, entry)
 		}
 	}
 	sort.Strings(bad)
@@ -105,7 +128,7 @@ func TestOnly500_NoDeterministicSources(t *testing.T) {
 }
 
 func o5IsBenign(k string) bool {
-	if o5Benign[k] != "" {
+	if o5Benign[k] != "" || slices.Contains(o5BenignAnon, k) {
 		return true
 	}
 	if rest, ok := strings.CutPrefix(k, "ext "); ok {
@@ -362,8 +385,7 @@ func (a *o5) callSet(c ssa.CallInstruction, in *ssa.Function, vis map[ssa.Value]
 				}
 				return out
 			}
-			pp := strings.TrimPrefix(in.Pkg.Pkg.Path(), o5Mod)
-			if strings.HasPrefix(pp, "usecase/") || pp == "domain" || strings.HasPrefix(pp, "adapter/repo/") || strings.HasPrefix(pp, "adapter/cache/") {
+			if a.inMod(in) {
 				file := a.prog.Fset.Position(c.Pos()).Filename
 				if i := strings.Index(file, "/internal/"); i >= 0 {
 					file = file[i+len("/internal/"):]
