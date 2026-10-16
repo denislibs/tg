@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 73,
+      "version": 74,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -83,6 +83,10 @@
         {
           "key": "AccountSettings.SpeakersAndCamera",
           "value": "Speakers and Camera"
+        },
+        {
+          "key": "ActionYouCreateGroup",
+          "value": "You created the group"
         },
         {
           "key": "ActionsChartTitle",
@@ -7600,7 +7604,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 72,
+      "version": 73,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10506,6 +10510,10 @@
         {
           "key": "ActionsChartTitle",
           "value": "Действия"
+        },
+        {
+          "key": "ActionYouCreateGroup",
+          "value": "Вы создали группу"
         },
         {
           "key": "TopDaysOfWeekChartTitle",

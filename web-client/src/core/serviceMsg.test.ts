@@ -73,7 +73,7 @@ describe('serviceMsgText', () => {
       .toBe('Алиса создал(а) группу «Наш чат»')
     // своё — «Вы», без имени из зеркала (tweb :344-353, `ActionYouCreateGroup`)
     expect(serviceMsgText(pill({ _: 'messageActionChatCreate', title: 'Наш чат', users: [BOB] }, { out: true })))
-      .toBe('Вы создали группу «Наш чат»')
+      .toBe('You created the group «Наш чат»')
     expect(serviceMsgText(pill({ _: 'messageActionChatAddUser', users: [BOB] }))).toBe('Алиса добавил(а) Боб')
     expect(serviceMsgText(pill({ _: 'messageActionChatLeave', user_id: ALICE }))).toBe('Алиса покинул(а) группу')
   })

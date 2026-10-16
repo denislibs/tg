@@ -62,9 +62,10 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     // Своё — «Вы» (tweb `messageActionTextNewUnsafe.ts:344-353`, ключ
     // `ActionYouCreateGroup`), а не имя из зеркала: своей карточки там может не
     // быть на первой отрисовке, и строка читалась «Удалённый аккаунт создал(а)…».
+    // Название в конце — наше прежнее отступление (у tweb ключи без него).
     case 'messageActionChatCreate':
       return out ?
-        [t('Вы создали группу «'), t(a.title), t('»')] :
+        [t(I18n.format('ActionYouCreateGroup', true)), t(' «'), t(a.title), t('»')] :
         [actor, t(' создал(а) группу «'), t(a.title), t('»')]
     case 'messageActionChatAddUser': return [actor, t(' добавил(а) '), ...users(a.users)]
     // Синтетические конструкторы — их производит уточнение на границе разбора

@@ -17,7 +17,11 @@ import pause from '@helpers/schedulers/pause'
 import styles from './chatTips.module.scss'
 
 const sizes = vi.hoisted(() => ({ isLessThanFloatingLeftSidebar: false }))
-vi.mock('@helpers/mediaSizes', () => ({ useMediaSizes: () => sizes }))
+// инстанс — настоящий: его слушает `customProperties` (сброс кэша на `resize`)
+vi.mock('@helpers/mediaSizes', async(importOriginal) => ({
+  ...await importOriginal<typeof import('@helpers/mediaSizes')>(),
+  useMediaSizes: () => sizes,
+}))
 
 /** `appImManager` в объёме, который читает колода: пир верхнего чата и `peer_changed`. */
 type FakeImManager = {

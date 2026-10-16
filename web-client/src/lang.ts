@@ -28,6 +28,7 @@ const lang = {
   'AccountSettings.Notifications': 'Notifications and Sounds',
   'AccountSettings.PrivacyAndSecurity': 'Privacy and Security',
   'AccountSettings.SpeakersAndCamera': 'Speakers and Camera',
+  ActionYouCreateGroup: 'You created the group',
   ActionsChartTitle: 'Actions',
   Add: 'Add',
   AddContact: 'Add to contacts',

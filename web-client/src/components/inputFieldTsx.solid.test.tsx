@@ -37,7 +37,8 @@ describe('InputFieldTsx', () => {
       <InputFieldTsx label="EditProfile.FirstNameLabel" instanceRef={(f) => { field = f }} class="own" />
     ), document.body)
 
-    const container = document.body.firstElementChild as HTMLElement
+    // в body есть и скрытый `.night` `customProperties` (tweb кладёт его туда же)
+    const container = document.body.querySelector<HTMLElement>(':scope > .input-field')!
     expect(container).toBe(field.container)
     expect([...container.classList]).toEqual(['input-field', 'own'])
     expect([...container.children].map((el) => el.tagName.toLowerCase() + (el.className ? '.' + el.className.replace(/ /g, '.') : ''))).toEqual([
