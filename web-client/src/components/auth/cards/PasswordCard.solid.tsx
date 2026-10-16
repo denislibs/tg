@@ -91,7 +91,11 @@ export default function PasswordCard(props: { spec: Spec }): JSX.Element {
   // номера, отказ показываем плашкой «Sorry».
   const resetAccount = async () => {
     setBusy(true)
-    const res = await managers.auth.resetAccount(token())
+    // Сетевой сбой менеджер отдаёт исключением — карточка не запирается.
+    const res = await managers.auth.resetAccount(token()).catch((err: unknown) => {
+      console.error('PasswordCard: resetAccount error:', err)
+      return { error: 'failed' as const }
+    })
     setBusy(false)
     if ('ok' in res) {
       navigate({ name: 'signIn' })

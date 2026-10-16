@@ -106,8 +106,8 @@ func (f fakePasskeyRepo) ByCredID(_ context.Context, credID string) (domain.Pass
 func (f fakePasskeyRepo) UpdateCredential(context.Context, int64, []byte) error { return nil }
 
 // finishWithAssertion — begin (настоящая церемония) + finish с синтаксически
-// верным assertion, у которого подпись не сходится: разбор проходит, колбэк
-// поиска credential зовётся, проверка подписи — нет.
+// верным, но недействительным assertion (чужой challenge, нет подписи): разбор
+// проходит, колбэк поиска credential зовётся, проверка assertion — нет.
 func finishWithAssertion(t *testing.T, h *PasskeyHandler, rawID []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	begin := httptest.NewRecorder()
@@ -138,7 +138,7 @@ func finishWithAssertion(t *testing.T, h *PasskeyHandler, rawID []byte) *httptes
 
 // Ф7-И2 (правка 10): ключ, которого нет в базе, — 400 PASSKEY_CREDENTIAL_NOT_FOUND
 // (tweb passkeyLoginButton.tsx:72-73 — тост Login.Passkey.Error.NotFound);
-// знакомый ключ с неверной подписью — прежний 401 `passkey login failed`
+// знакомый ключ с недействительным assertion — прежний 401 `passkey login failed`
 // (прочие отказы tweb показывают общим тостом, :74-76).
 func TestPasskeyFinishLogin_CredentialNotFound(t *testing.T) {
 	known := []byte("known-credential")
@@ -157,6 +157,6 @@ func TestPasskeyFinishLogin_CredentialNotFound(t *testing.T) {
 	}
 	rec = finishWithAssertion(t, h, known)
 	if e := wireErrorOf(rec); rec.Code != http.StatusUnauthorized || e.Text != "passkey login failed" {
-		t.Fatalf("знакомый ключ, неверная подпись = %d %s; want 401 passkey login failed", rec.Code, rec.Body)
+		t.Fatalf("знакомый ключ, недействительный assertion = %d %s; want 401 passkey login failed", rec.Code, rec.Body)
 	}
 }

@@ -30,9 +30,9 @@ export interface ProfileDeps {
   getMe?: () => PeerProfile | null
 }
 
-// SetUsernameResult is a discriminated outcome so the USERNAME_OCCUPIED /
-// USERNAME_INVALID cases survive the SharedWorker RPC boundary (where HttpError
-// identity would be lost).
+// SetUsernameResult is a discriminated outcome for the USERNAME_OCCUPIED /
+// USERNAME_INVALID cases (the HttpError class itself does not cross the
+// SharedWorker RPC boundary; only its type/status fields do).
 export type SetUsernameResult =
   | { user: PeerProfile }
   | { taken: true }

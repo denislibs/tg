@@ -199,6 +199,20 @@ describe('PasswordCard.solid: отказ сброса аккаунта (2FA_RECE
     })
   })
 
+  it('сетевой сбой сброса — плашка Login.Error.Generic, карточка не заперта', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    confirmationPopupMock.mockResolvedValue(undefined)
+    const { forgotLink, submitBtn } = mount({
+      requestPasswordRecovery: vi.fn().mockResolvedValue({ error: 'password_recovery_na' }),
+      resetAccount: vi.fn().mockRejectedValue(new Error('offline')),
+    })
+    forgotLink().click()
+    await vi.waitFor(() => expect(confirmationPopupMock).toHaveBeenCalledTimes(3))
+    expect(confirmationPopupMock.mock.calls[2][0]).toMatchObject({ descriptionLangKey: 'Login.Error.Generic' })
+    await vi.waitFor(() => expect(submitBtn().disabled).toBe(false))
+    consoleError.mockRestore()
+  })
+
   it('confirm_wait — Login.ResetAccountFail.TextWait с остатком', async () => {
     const opts = await resetFlow({ error: 'confirm_wait', wait: 3600 })
     expect(opts).toMatchObject({

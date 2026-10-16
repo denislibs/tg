@@ -84,12 +84,20 @@ export type SignInOutcome =
   | { passwordNeeded: true; passwordToken: string; hint: string; user?: undefined; signUpRequired?: undefined }
   | { signUpRequired: true; signUpToken: string; user?: undefined; passwordNeeded?: undefined }
 
-// Имя отказа для карточки — поле результата, а не исключение: так его разбирают
-// requestCode, signUp и вход по ключу доступа (план Ф-7, Task 10, Step 3а). Имя —
-// `HttpError.type` (у оригинала `ApiError.type`); пустое имя (чужое тело: 502/504
-// от nginx) и исключение не-HttpError (сеть) — 'UNKNOWN'.
+// Имя отказа для карточки — поле результата: так его разбирают requestCode,
+// signUp и вход по ключу доступа (план Ф-7, Task 10, Step 3а). Через worker-RPC
+// теряется класс `HttpError` (`instanceof`), а `type`/`status` доезжают полями
+// ошибки (rpc/superMessagePort.ts) — поэтому `signIn` по-прежнему отказывает
+// исключением, и карточка читает его `type`. Имя — `HttpError.type` (у
+// оригинала `ApiError.type`); пустое имя (чужое тело: 502/504 от nginx) и
+// исключение не-HttpError (сеть, сбой сохранения сессии) — 'UNKNOWN', а само
+// исключение — в консоль воркера, чтобы стек не терялся.
 export type ErrorResult = { error: string }
-const errorResult = (e: unknown): ErrorResult => ({ error: (e instanceof HttpError && e.type) || 'UNKNOWN' })
+const errorResult = (e: unknown): ErrorResult => {
+  if (e instanceof HttpError) return { error: e.type || 'UNKNOWN' }
+  console.error('auth: отказ без имени:', e)
+  return { error: 'UNKNOWN' }
+}
 
 // Запрос кода входа (tweb `auth.sendCode`, SignInCard.tsx:120-146).
 export type RequestCodeResult = { ok: true } | ErrorResult
@@ -111,7 +119,7 @@ export type PasskeyLoginResult =
 // (`apiManager.ts:759-791`), поэтому до менеджера пауза не доходит.
 export type RecoveryRequestResult =
   | { emailPattern: string }
-  | { error: 'password_token_expired' | 'password_recovery_na' | 'unavailable' | 'failed' }
+  | { error: 'password_token_expired' | 'password_recovery_na' | 'failed' }
 
 // Подтверждение кода с почты: сессия либо причина отказа. Различается только
 // неверный код (`CODE_INVALID`, tweb EmailRecoverCard.tsx:47-48), всё прочее —
@@ -239,8 +247,9 @@ export type LoginTokenResult =
   | { status: 'pending'; token: string /* hex */; expires: number /* unix-с */ }
   | { status: 'success'; user: PeerProfile }
   | { status: 'password'; passwordToken: string; hint: string }
-  // Отказы, которые цикл карточки переживает. `HttpError` не переживает границу
-  // worker-RPC, поэтому класс ошибки определяется здесь и уходит значением.
+  // Отказы, которые цикл карточки переживает. Класс `HttpError` (и сетевой сбой
+  // против отказа API) через worker-RPC не различить, поэтому класс ошибки
+  // определяется здесь и уходит значением.
   /** `AUTH_TOKEN_EXPIRED`: цикл идёт дальше (tweb SignQRCard.tsx:179-181). */
   | { status: 'expired' }
   /** Сбой сети / 5xx / 408: подождать шаг и повторить (у tweb это делает `invokeApi`). */
@@ -436,9 +445,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         return { emailPattern: res.email_pattern }
       } catch (e) {
         if (!(e instanceof HttpError)) throw e
-        if (e.status === 401) return { error: 'password_token_expired' }
+        if (e.type === 'password_token_expired') return { error: 'password_token_expired' }
         if (e.type === 'PASSWORD_RECOVERY_NA') return { error: 'password_recovery_na' }
-        if (e.status === 503) return { error: 'unavailable' }
         return { error: 'failed' }
       }
     },

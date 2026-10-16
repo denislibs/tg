@@ -149,7 +149,9 @@ func TestMePassword_HashInvalid_HTTP(t *testing.T) {
 }
 
 // `account.deleteAccount{reason}` (tweb appAccountManager.ts:481, PasswordCard.tsx:89):
-// тело с `reason` принимается, исход прежний.
+// тело с `reason` принимается, исход прежний. Проверяется только исход: лишний
+// ключ JSON-декодер принимал и раньше, `reason` сервер не читает (план — «принять
+// и не использовать»).
 func TestAccountReset_AcceptsReason_HTTP(t *testing.T) {
 	h := newTestRouter(t)
 	token, _ := loginViaHTTP(t, h, "+79990180008")

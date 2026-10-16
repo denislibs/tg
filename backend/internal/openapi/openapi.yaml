@@ -235,7 +235,7 @@ paths:
               properties: { phone: { type: string, example: "+79990000000" } }
       responses:
         "200": { description: code issued, content: { application/json: { schema: { $ref: "#/components/schemas/OK" } } } }
-        "400": { description: phone required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "400": { description: PHONE_NUMBER_INVALID (empty or no digits), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /auth/sign_in:
     post:

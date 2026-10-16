@@ -456,8 +456,12 @@ describe('AuthManager', () => {
         .resolves.toEqual({ error: 'failed' })
     })
 
-    it('requestPasswordRecovery: PASSWORD_RECOVERY_NA — password_recovery_na', async () => {
+    it('requestPasswordRecovery: ветвление по имени, не по статусу', async () => {
       await expect(make(named(400, 'PASSWORD_RECOVERY_NA')).requestPasswordRecovery('t')).resolves.toEqual({ error: 'password_recovery_na' })
+      await expect(make(named(401, 'password_token_expired')).requestPasswordRecovery('t')).resolves.toEqual({ error: 'password_token_expired' })
+      // Чужой 401 без нашего имени — не «сессия истекла».
+      await expect(make(reject(new HttpError(401, 'HTTP 401'))).requestPasswordRecovery('t')).resolves.toEqual({ error: 'failed' })
+      await expect(make(named(503, 'password recovery unavailable')).requestPasswordRecovery('t')).resolves.toEqual({ error: 'failed' })
     })
   })
 

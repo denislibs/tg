@@ -142,6 +142,8 @@ func (h *AuthHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.svc.RequestCode(r.Context(), body.Phone)
+	// Защитная ветка: предикат usecase тот же, что проверка выше, но правило
+	// формы номера принадлежит usecase — расхождение не должно дать 500.
 	if errors.Is(err, usecaseauth.ErrPhoneNumberInvalid) {
 		writeError(w, http.StatusBadRequest, "PHONE_NUMBER_INVALID")
 		return
