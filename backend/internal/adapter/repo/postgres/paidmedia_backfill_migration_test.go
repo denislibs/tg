@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
@@ -11,7 +12,9 @@ import (
 // копия продавалась пересылающим (своя строка paid_media без источника), зеркало
 // платного поста раздавалось даром (строки paid_media нет). После миграции обе
 // продаются предложением исходника, а бесплатные копии не трогаются.
-const paidBackfillPrevVersion = 183
+// 0192 не зависит от 0184–0191 (зарезервированы планами): откат — ровно на один шаг,
+// до 191, а не до 183, иначе тест гонял бы чужие миграции вниз и вверх.
+const paidBackfillPrevVersion = 191
 
 func TestMigration0192_PaidMediaBackfillOffers(t *testing.T) {
 	pool, url := storepostgres.NewTestDBWithURL(t)
@@ -55,8 +58,28 @@ func TestMigration0192_PaidMediaBackfillOffers(t *testing.T) {
 	free := msg(alice, 4, 0, false)
 	freeCopy := msg(bob, 5, free, false)
 	freeMirror := msg(alice, 6, free, true)
+	// покупатель старой копии: платил пересылающему (разблокировка лежит на копии)
+	carol := seedUser(t, pool, "+79990000253")
+	exec(`INSERT INTO paid_media_unlocks (message_id, user_id) VALUES ($1, $2)`, oldCopy, carol)
+	// цепочка: копия новой формы от копии старой (source = oldCopy, как писал Offers
+	// до схлопывания), её покупатель разблокировал предложение oldCopy
+	dave := seedUser(t, pool, "+79990000254")
+	for _, uid := range []int64{carol, dave} {
+		exec(`INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, chat, uid)
+	}
+	chained := msg(bob, 7, paid, false)
+	exec(`INSERT INTO paid_media (message_id, price_stars, source_message_id) VALUES ($1, 30, $2)`, chained, oldCopy)
+	exec(`INSERT INTO paid_media_unlocks (message_id, user_id) VALUES ($1, $2)`, oldCopy, dave)
+	// отложенная пересылка старой копии хранит offer_id = oldCopy
+	var sched int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO scheduled_messages (chat_id, sender_id, send_at, params)
+		 VALUES ($1, $2, now() + interval '1 day', $3::jsonb) RETURNING id`,
+		chat, bob, fmt.Sprintf(`{"fwd":{"offer_id":%d,"offer_price":30}}`, oldCopy)).Scan(&sched); err != nil {
+		t.Fatal(err)
+	}
 
-	if err := storepostgres.MigrateUpTo(url, paidBackfillPrevVersion+9); err != nil {
+	if err := storepostgres.MigrateUpTo(url, paidBackfillPrevVersion+1); err != nil {
 		t.Fatalf("миграция 0192: %v", err)
 	}
 
@@ -85,6 +108,25 @@ func TestMigration0192_PaidMediaBackfillOffers(t *testing.T) {
 	for _, id := range []int64{free, freeCopy, freeMirror} {
 		if _, _, ok := source(id); ok {
 			t.Fatalf("бесплатное сообщение %d стало платным", id)
+		}
+	}
+	// цепочка схлопнута до исходника
+	if _, src, ok := source(chained); !ok || src != paid {
+		t.Fatalf("копия от копии: ok=%v src=%d, want %d", ok, src, paid)
+	}
+	var offer int64
+	if err := pool.QueryRow(ctx, `SELECT (params->'fwd'->>'offer_id')::bigint FROM scheduled_messages WHERE id=$1`, sched).Scan(&offer); err != nil || offer != paid {
+		t.Fatalf("отложенная пересылка: offer_id=%d err=%v, want %d", offer, err, paid)
+	}
+	// покупки не потеряны: разблокировки копии и цепочки переехали на исходник
+	access := NewMediaAccessRepo(pool)
+	for name, uid := range map[string]int64{"покупатель старой копии": carol, "покупатель цепочки": dave} {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM paid_media_unlocks WHERE message_id=$1 AND user_id=$2`, paid, uid).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("%s: разблокировка исходника n=%d err=%v", name, n, err)
+		}
+		if ok, err := access.CanAccess(ctx, uid, mediaID); err != nil || !ok {
+			t.Fatalf("%s не скачивает после миграции: ok=%v err=%v", name, ok, err)
 		}
 	}
 
