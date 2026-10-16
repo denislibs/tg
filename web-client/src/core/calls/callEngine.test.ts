@@ -261,6 +261,20 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
     expect(net.iceFetches).toBe(1)
   })
 
+  it('/calls/ice висит: через 10 с — откат, следующий вызов идёт новым запросом', async () => {
+    const A = await net.side(1)
+    net.iceHang = true
+    let done = false
+    const first = A.engine.iceServers().then((s) => { done = true; return s })
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(A.engine.hasTurnServer(await first)).toBe(false)
+    net.iceHang = false
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(true)
+    expect(net.iceFetches).toBe(2)
+  })
+
   it('одновременные запросы конфига (несколько pc mesh) — один /calls/ice', async () => {
     const A = await net.side(1)
     const all = await Promise.all([A.engine.iceServers(), A.engine.iceServers(), A.engine.iceServers()])

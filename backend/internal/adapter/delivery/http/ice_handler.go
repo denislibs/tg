@@ -25,8 +25,9 @@ type ICEHandler struct {
 }
 
 func NewICEHandler(turnHost, turnSecret string) *ICEHandler {
-	// ttl — сутки: relay-звонок и групповой mesh целиком зависят от кредов TURN (coturn проверяет
-	// метку истечения на каждом Refresh/CreatePermission), звонок не должен рваться на её границе.
+	// ttl — сутки: relay-звонок и групповой mesh целиком зависят от кредов TURN. coturn проверяет
+	// метку при аутентификации новой аллокации (идущая живёт на запомненном ключе), и pc mesh для
+	// участника, вошедшего позже, не должен упираться в её границу.
 	return &ICEHandler{turnHost: turnHost, turnSecret: turnSecret, ttl: 24 * time.Hour, limiter: newKeyRateLimiter()}
 }
 
