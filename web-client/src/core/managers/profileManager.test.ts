@@ -90,24 +90,33 @@ describe('ProfileManager.setUsername', () => {
     expect('user' in res && res.user.user.username).toBe('denis_m')
   })
 
-  it('maps a 409 to { taken: true }', async () => {
+  // Ф7-И2: ветвление по ИМЕНИ отказа (tweb appBotsManager.ts:202-203), оба — 400.
+  it('USERNAME_OCCUPIED -> { taken: true }', async () => {
     const put = vi.fn(async () => {
-      throw new HttpError(409, 'username_taken')
+      throw new HttpError(400, 'USERNAME_OCCUPIED', 'USERNAME_OCCUPIED')
     })
     const mgr = newProfileManager({ rest: { put } as unknown as RestClient })
     expect(await mgr.setUsername('taken')).toEqual({ taken: true })
   })
 
-  it('maps a 400 to { invalid: true }', async () => {
+  it('USERNAME_INVALID -> { invalid: true }', async () => {
     const put = vi.fn(async () => {
-      throw new HttpError(400, 'username_format')
+      throw new HttpError(400, 'USERNAME_INVALID', 'USERNAME_INVALID')
     })
     const mgr = newProfileManager({ rest: { put } as unknown as RestClient })
     expect(await mgr.setUsername('ab')).toEqual({ invalid: true })
   })
 
+  it('прочие отказы пробрасываются', async () => {
+    const put = vi.fn(async () => {
+      throw new HttpError(400, 'invalid body', 'invalid body')
+    })
+    const mgr = newProfileManager({ rest: { put } as unknown as RestClient })
+    await expect(mgr.setUsername('x')).rejects.toBeInstanceOf(HttpError)
+  })
+
   // Stage 1C.2 (Task 1): смена username меняет `me` — тот же контракт, что update().
-  it('успех зовёт onMeChanged; 409/400 — нет (пользователь не изменился)', async () => {
+  it('успех зовёт onMeChanged; отказ — нет (пользователь не изменился)', async () => {
     const onMeChanged = vi.fn()
     const okMgr = newProfileManager({ rest: { put: vi.fn(async () => RAW) } as unknown as RestClient, onMeChanged })
     await okMgr.setUsername('denis_m')
@@ -115,7 +124,7 @@ describe('ProfileManager.setUsername', () => {
 
     onMeChanged.mockClear()
     const takenMgr = newProfileManager({
-      rest: { put: vi.fn(async () => { throw new HttpError(409, 'x') }) } as unknown as RestClient,
+      rest: { put: vi.fn(async () => { throw new HttpError(400, 'USERNAME_OCCUPIED', 'USERNAME_OCCUPIED') }) } as unknown as RestClient,
       onMeChanged,
     })
     await takenMgr.setUsername('taken')

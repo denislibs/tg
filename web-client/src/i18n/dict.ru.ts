@@ -1398,10 +1398,10 @@ const ru = {
   'Privacy.Passkeys.Caption': 'Ключ доступа надёжно хранится в Вашем менеджере паролей. [Подробнее >]()',
   'Login.Passkey.Action': 'Войти по ключу доступа',
   'Login.Passkey': 'Войти по ключу доступа >',
-  // Отказ входа по ключу (tweb langSign.ts:36). Отдельного «ключ не привязан
-  // ни к одному аккаунту» (`Login.Passkey.Error.NotFound`, :37) у нас нет —
-  // бэкенд отвечает одним 401 на любой отказ, различать нечем.
+  // Отказ входа по ключу (tweb langSign.ts:53-54): общий и «ключ не привязан
+  // ни к одному аккаунту» (PASSKEY_CREDENTIAL_NOT_FOUND, Ф7-И2).
   'Login.Passkey.Error': 'Что-то пошло не так',
+  'Login.Passkey.Error.NotFound': 'Этот ключ доступа не привязан ни к одному аккаунту',
   // Экран входа (tweb langSign.ts). `**…**` — жирный, ' > ' — стрелка-иконка,
   // '\n' — перенос строки; разбор — ЯДРО i18n (`I18n.superFormatter`,
   // lib/langPack.ts), а не локальный хелпер (задача 6 волны 3 снесла React
@@ -1431,19 +1431,15 @@ const ru = {
   FirstName: 'Имя (обязательно)',
   LastName: 'Фамилия (необязательно)',
   StartMessaging: 'Начать общение',
-  'Login.Register.NameRequired': 'Пожалуйста, введите имя',
-  'Login.Register.NameTooLong': 'Слишком длинное имя',
-  'Login.Error.FloodWait': 'Слишком много попыток. Попробуйте позже.',
   // Восстановление доступа по почте (tweb Login.ResetPassword.*)
   'Login.ForgotPassword': 'Забыли пароль?',
   'Login.ResetPassword.Title': 'Сброс пароля',
   'Login.ResetPassword.Subtitle':
     'Введите код, который мы только что отправили\nна вашу почту **%s**.',
-  'Login.Code.Expired': 'Код истёк. Запросите новый.',
   'Login.SessionExpired': 'Сессия истекла. Войдите заново.',
   // Сброс аккаунта, когда почта восстановления не привязана
   // (tweb Login.ResetPassword.NoEmailText / Login.ResetPassword.ResetAccount /
-  // Login.ResetAccount.Title / Login.ResetAccount.Text / Login.ResetAccountFail.Title)
+  // Login.ResetAccount.Title / Login.ResetAccount.Text / Login.ResetAccountFail.*)
   'Login.ResetPassword.NoEmailText':
     'Поскольку при установке пароля Вы не указали резервный e-mail, Вам остаётся либо вспомнить пароль, либо сбросить аккаунт.',
   'Login.ResetPassword.ResetAccount': 'Сбросить аккаунт',
@@ -1451,6 +1447,10 @@ const ru = {
   'Login.ResetAccount.Text':
     'Это действие нельзя отменить.\n\nЕсли Вы сбросите аккаунт, все Ваши сообщения и чаты будут удалены.',
   'Login.ResetAccountFail.Title': 'Извините',
+  'Login.ResetAccountFail.TextCancelled':
+    'Недавние попытки сбросить этот аккаунт были отменены его активным пользователем. Попробуйте снова через 7 дней.',
+  'Login.ResetAccountFail.TextWait':
+    'Поскольку аккаунт активен и защищён паролем, в целях безопасности мы удалим его через неделю.\n\nВы можете отменить это в любой момент.\n\nСбросить аккаунт можно будет через: %s.',
   'Login.ResetPassword.HasEmail':
     'К аккаунту привязана почта восстановления — сбросьте пароль по ней.',
   // Черновики (tweb Draft/PrivacyDeleteCloudDrafts)

@@ -72,7 +72,7 @@ function mount(
   const managers = {
     auth: {
       nearestCountry: overrides.nearestCountry ?? vi.fn().mockResolvedValue(''),
-      requestCode: overrides.requestCode ?? vi.fn().mockResolvedValue(undefined),
+      requestCode: overrides.requestCode ?? vi.fn().mockResolvedValue({ ok: true }),
       passkeyLoginBegin: overrides.passkeyLoginBegin ?? vi.fn(),
       passkeyLoginFinish: overrides.passkeyLoginFinish ?? vi.fn(),
     },
@@ -163,23 +163,32 @@ describe('SignInCard.solid: ввод номера → отправка кода 
     expect(navigate).toHaveBeenCalledWith({ name: 'authCode', payload: { phone: '+7' } })
   })
 
-  it('ошибка сервера — поле уходит в error, перехода нет, след в консоли остаётся', async () => {
-    // Красное поле — УТВЕРЖДЕНИЕ «номер неверный», а под ним может лежать что
-    // угодно (сеть, воркер, сломанный RPC). У tweb ветка `default:` пишет
-    // `console.error('auth.sendCode error:', err)` и печатает `err.type` на
-    // кнопке (`SignInCard.tsx:151-153`) — чужую ошибку за ошибку ввода
-    // оригинал не выдаёт; у нас различать нечем, но след обязан быть.
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { navigate, managers } = mount()
-    ;(managers.auth.requestCode as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('nope'))
+  // Ф7-И2 (правка 8): порт tweb SignInCard.tsx:136-146 — имя отказа доезжает
+  // полем результата `requestCode`.
+  it('PHONE_NUMBER_INVALID — поле в error, подпись Login.PhoneLabelInvalid, кнопка Login.Next', async () => {
+    const requestCode = vi.fn().mockResolvedValue({ error: 'PHONE_NUMBER_INVALID' })
+    const { navigate, tel } = mount({ requestCode })
     const button = host!.querySelector('button.btn-primary.btn-color-primary') as HTMLButtonElement
 
     button.click()
-    const tel = () => host!.querySelectorAll('[contenteditable]')[1] as HTMLElement
     await vi.waitFor(() => expect(tel().className).toMatch(/error/))
+    expect(host!.textContent).toContain('Phone Number Invalid')
+    expect(button.textContent).toBe('Next')
     expect(navigate).not.toHaveBeenCalled()
-    expect(consoleError).toHaveBeenCalled()
+  })
 
+  it('прочий отказ — имя в кнопку, поле НЕ красится, след в консоли', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const requestCode = vi.fn().mockResolvedValue({ error: 'FLOOD_WAIT_61' })
+    const { navigate, tel } = mount({ requestCode })
+    const button = host!.querySelector('button.btn-primary.btn-color-primary') as HTMLButtonElement
+
+    button.click()
+    await vi.waitFor(() => expect(button.textContent).toBe('FLOOD_WAIT_61'))
+    expect(tel().className).not.toMatch(/error/)
+    expect(host!.textContent).not.toContain('Phone Number Invalid')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith('auth.sendCode error:', 'FLOOD_WAIT_61')
     consoleError.mockRestore()
   })
 })
@@ -264,6 +273,40 @@ describe('SignInCard.solid: вход по ключу доступа', () => {
     await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
     expect(toIm).not.toHaveBeenCalled()
     expect(navigate).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  // Ф7-И2 (правка 10): отказ finish — полем `{error}`, тост по имени
+  // (tweb passkeyLoginButton.tsx:72-76); в мессенджер не пускаем.
+  it('{error: PASSKEY_CREDENTIAL_NOT_FOUND} — тост NotFound, toIm не зван', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ error: 'PASSKEY_CREDENTIAL_NOT_FOUND' })
+    const { toIm, navigate } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error.NotFound' }))
+    expect(toIm).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(passkeyBtn.disabled).toBe(false))
+    consoleError.mockRestore()
+  })
+
+  it('{error: UNKNOWN} — общий тост Login.Passkey.Error', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const passkeyLoginBegin = vi.fn().mockResolvedValue(BEGIN)
+    const passkeyLoginFinish = vi.fn().mockResolvedValue({ error: 'UNKNOWN' })
+    const { toIm } = mount({ passkeyLoginBegin, passkeyLoginFinish })
+
+    const passkeyBtn = [...host!.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('Passkey')) as HTMLButtonElement
+    passkeyBtn.click()
+
+    await vi.waitFor(() => expect(vi.mocked(toastNew)).toHaveBeenCalledWith({ langPackKey: 'Login.Passkey.Error' }))
+    expect(toIm).not.toHaveBeenCalled()
     consoleError.mockRestore()
   })
 

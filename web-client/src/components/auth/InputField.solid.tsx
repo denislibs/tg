@@ -28,8 +28,8 @@
 // ядра — SignUp просит только plain-text имя); `validate`/`isValid`/
 // `isValidToChange`/`required` (React SignUpCard проверяет пустоту САМ, без
 // встроенной валидации поля); `setState`/`InputState`/`setError` (у SignUp
-// нет серверной ошибки уровня ПОЛЯ — только `NameRequired`/`NameTooLong`
-// текстом); `placeholder`/`placeholderAsElement`; `autocomplete`;
+// серверная ошибка уходит в кнопку, а поле красит только проп `error` —
+// аналог `input.classList.add('error')` tweb); `placeholder`/`placeholderAsElement`; `autocomplete`;
 // `withLinebreaks`/`plainText`-режим на `<input>`; `originalValue`/
 // `isChanged`/`setOriginalValue`/`setDraftValue` (черновики — не наш REST-
 // поток регистрации); `select()`/`setHidden`/`toggleForceFocus`;
@@ -49,6 +49,8 @@ export type InputFieldSolidProps = {
   label: JSX.Element
   /** лимит длины: сверх него на поле `.error`, у подписи — счётчик остатка (tweb) */
   maxLength?: number
+  /** `.error` от владельца (tweb `input.classList.add('error')` на пустом имени, SignUpCard.tsx:88) */
+  error?: boolean
   autoFocus?: boolean
   onInput: (value: string) => void
   onEnter?: () => void
@@ -101,7 +103,7 @@ export default function InputField(props: InputFieldSolidProps): JSX.Element {
   const length = () => [...props.value].length
   const diff = () => (props.maxLength === undefined ? Infinity : props.maxLength - length())
   const showLengthOn = () => (props.maxLength === undefined ? 0 : Math.min(40, Math.round(props.maxLength / 3)))
-  const error = () => diff() < 0
+  const error = () => diff() < 0 || !!props.error
 
   return (
     <div class="input-field">

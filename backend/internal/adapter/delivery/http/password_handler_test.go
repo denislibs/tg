@@ -90,7 +90,7 @@ func TestPasswordLimiter_PerIPBucket(t *testing.T) {
 	// С одного IP шестой запрос — отказ, даже от другой сессии и другого
 	// пользователя: ведро IP общее.
 	for n := 1; n <= 5; n++ {
-		if rec := e.verify(t, int64(n), "198.51.100.7", "неверный"); rec.Code != http.StatusForbidden {
+		if rec := e.verify(t, int64(n), "198.51.100.7", "неверный"); rec.Code != http.StatusBadRequest {
 			t.Fatalf("попытка %d: %d %s", n, rec.Code, rec.Body.String())
 		}
 	}
