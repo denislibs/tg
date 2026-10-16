@@ -57,7 +57,11 @@ func NewPublicHandler(uc *usecasepublic.Interactor, media *usecasemedia.Interact
 // проксирует хост PublicLinkOrigin целиком.
 func (h *PublicHandler) Mount(r chi.Router) {
 	r.Use(middleware.StripSlashes)
-	r.Use(middleware.GetHead) // HEAD отвечает как GET: превьюеры и мониторинги шлют его
+	// HEAD отвечает как GET: превьюеры и мониторинги шлют его. Не middleware.GetHead:
+	// тот сверяет сдвинутый путь с КОРНЕВЫМ mux, и /tme/langpack, /tme/tme,
+	// /tme/bot/… совпадали с корневыми маршрутами — HEAD давал 405. HEAD-маршрутов
+	// здесь нет, поэтому подмена безусловная.
+	r.Use(headAsGet)
 	// Неизвестный путь хоста страниц читает человек в браузере: страница, а не
 	// JSON `METHOD_INVALID` корневого роутера (router.go).
 	r.NotFound(h.notFoundPage)
@@ -547,4 +551,13 @@ func (h *PublicHandler) PostPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.serveMedia(w, r, p.MediaID)
+}
+
+func headAsGet(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			chi.RouteContext(r.Context()).RouteMethod = http.MethodGet
+		}
+		next.ServeHTTP(w, r)
+	})
 }

@@ -2524,7 +2524,9 @@ func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.
 			writeJSON(w, status, emptyStarReactionUpdates())
 			return
 		}
-		writeError(w, status, "could not render star reaction")
+		// Без списания (GET) — через разборщик: сообщение, удалённое между
+		// запросами (ErrNotFound), — 404, а не детерминированный 500.
+		writeDomainError(w, fullErr, "could not render star reaction")
 		return
 	}
 	reactions := full

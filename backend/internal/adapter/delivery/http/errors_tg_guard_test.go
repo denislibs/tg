@@ -20,7 +20,8 @@ import (
 // цепочка `if errors.Is(…) {403}; if err != nil {500}` и `switch … default` —
 // превращает новый отказ usecase (ErrSlowmodeWait, ErrPrivacy, плата, …) в
 // детерминированный 500, который клиент вправе повторять (tweb
-// apiManager.ts:800-808). Ловятся и `http.StatusInternalServerError`, и литерал 500.
+// apiManager.ts:800-808). Ловятся `http.StatusInternalServerError`, литерал 500
+// и статус-переменная (её значение охрана не видит).
 func TestNo500OutsideDomainError(t *testing.T) {
 	allowed := map[string]string{
 		"writeDomainError":   "сам разборщик",
@@ -57,6 +58,9 @@ func TestNo500OutsideDomainError(t *testing.T) {
 						if a.Value == "500" {
 							bad = append(bad, fset.Position(c.Pos()).String())
 						}
+					default:
+						// Статус переменной охрана не видит: им может оказаться 500.
+						bad = append(bad, fset.Position(c.Pos()).String()+" (статус не константа)")
 					}
 					return true
 				})

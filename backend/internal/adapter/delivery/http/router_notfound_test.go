@@ -97,9 +97,13 @@ func TestRouter_PublicHost_MethodNotAllowedIsHTML(t *testing.T) {
 // HEAD на страницу хоста — как GET (а не «страницы нет»).
 func TestRouter_PublicHost_HeadIsLikeGet(t *testing.T) {
 	h := notFoundRouter()
-	get := doReq(t, h, http.MethodGet, "/tme/", nil, nil)
-	head := doReq(t, h, http.MethodHead, "/tme/", nil, nil)
-	if head.Code != get.Code {
-		t.Fatalf("HEAD %d, GET %d", head.Code, get.Code)
+	// /tme/langpack, /tme/tme, /tme/bot/1/photo: сдвинутый путь совпадает с
+	// корневым маршрутом — middleware.GetHead сверял его с корнем и HEAD давал 405.
+	for _, path := range []string{"/tme/", "/tme/alice", "/tme/langpack", "/tme/tme", "/tme/bot/1/photo"} {
+		get := doReq(t, h, http.MethodGet, path, nil, nil)
+		head := doReq(t, h, http.MethodHead, path, nil, nil)
+		if head.Code != get.Code {
+			t.Fatalf("%s: HEAD %d, GET %d", path, head.Code, get.Code)
+		}
 	}
 }
