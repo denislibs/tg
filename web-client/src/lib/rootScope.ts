@@ -35,6 +35,7 @@ import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
 import type { MyDocument } from '@core/media/messageMedia'
 import type { PeerBlockEvt } from '@core/managers/privacyManager'
+import type { UnconfirmedAuthorization } from '@core/managers/sessionsManager'
 import type { BotCommand } from '@core/peers/peer'
 import type { DraftUpdatedEvt } from '@core/managers/draftsManager'
 import type { NotifyTypeUpdate } from '@core/managers/notifyManager'
@@ -338,6 +339,10 @@ export type BroadcastEvents = {
   // tweb appProfileManager.ts:1560-1569 — бот сменил список команд для этого пира
   // (кадр `updateBotCommands`). Шлёт воркер; проектор правит закэшированную карточку.
   'bot_commands': [{ peerId: PeerId; botId: number; commands: BotCommand[] }]
+  // tweb rootScope.ts:269 / appAccountManager.ts:203-209 — запросы «это вы?» о новом входе.
+  // Шлёт владелец сессий в воркере (`sessionsManager`): кадр `updateNewAuthorization`, ответ
+  // списка сессий, срок и свежесть текущей сессии. Тело — видимый список целиком.
+  'unconfirmed_authorizations_update': [UnconfirmedAuthorization[]]
   // tweb rootScope.ts:73 — история очищена у себя (`chats.clearHistory`, tweb
   // `flushHistory` :6685). Шлёт воркер во все вкладки; `dialog` — строка, какой она
   // у владельца в момент отправки, ДО перечитывания у сервера (`reloadConversation`

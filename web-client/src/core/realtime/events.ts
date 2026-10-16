@@ -175,6 +175,10 @@ export const RT = {
   // `auto_delete_period_update` (rootScope.ts:271) и сам не рассылается: имя
   // нужно только полноте реестра `UPDATE_RT`.
   peerHistoryTTL: 'rt:peer_history_ttl',
+  // «Новый вход» (М1-3): воркер отдаёт кадр владельцу сессий (`sessions.processNewAuthorizationUpdate`)
+  // и объявляет вкладкам событие tweb `unconfirmed_authorizations_update`; имя нужно
+  // только полноте реестра `UPDATE_RT`.
+  newAuthorization: 'rt:new_authorization',
   // rt:state / rt:state_synchronizing / rt:state_synchronized — УВЕДОМЛЕНИЯ
   // «что-то изменилось», НЕ источник значения. Значение — всегда через RPC
   // managers.realtime.getStatus() (realtime.ts, докблок метода — там же разбор,
@@ -832,6 +836,23 @@ export interface PrivacyEvt { _: 'updatePrivacy'; key: { _: string }; rules: imp
  */
 export interface PeerHistoryTTLEvt { _: 'updatePeerHistoryTTL'; peer: Peer; ttl_period?: number }
 /**
+ * updateNewAuthorization#8951abef flags:# unconfirmed:flags.0?true hash:long
+ * date:flags.0?int device:flags.0?string location:flags.0?string = Update;
+ *
+ * «Новый вход» (layer.d.ts:2869-2879). С `pFlags.unconfirmed` — на аккаунте появилась
+ * неподтверждённая сессия, остальные устройства спрашивают «это вы?»; без флага (и без
+ * `date`/`device`/`location`) — запрос по `hash` снимается: ответили или сессию закрыли.
+ * У конструктора без флагов `pFlags` на проводе опущен. Курсор едет в конверте.
+ */
+export interface NewAuthorizationEvt {
+  _: 'updateNewAuthorization'
+  pFlags?: { unconfirmed?: true }
+  hash: string | number
+  date?: number
+  device?: string
+  location?: string
+}
+/**
  * Объединение `Update` — все кадры, у которых ЕСТЬ конструктор.
  *
  * Отсюда выводится `UpdatePredicate`, и он же держит реестр маршрутизации
@@ -892,6 +913,7 @@ export type Update =
   | PrivacyEvt
   | BotCommandsEvt
   | PeerHistoryTTLEvt
+  | NewAuthorizationEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']

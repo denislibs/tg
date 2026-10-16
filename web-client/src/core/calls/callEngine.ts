@@ -35,19 +35,33 @@ import {
 // пределах одной сети).
 const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
-// ICE-конфиг с бэка (STUN + эфемерные TURN-креды), кэш до истечения TTL.
-let cachedIce: { servers: RTCIceServer[]; until: number } | null = null
+// ICE-конфиг с бэка (STUN + эфемерные TURN-креды). Кэш короткий: креды TURN проверяются coturn
+// на каждом запросе (Allocate, Refresh, CreatePermission), и relay-звонок, начатый с почти
+// истёкшими кредами, оборвался бы посреди разговора; у tweb они выдаются на каждый звонок
+// (callInstance.ts:676-688). Серверный TTL — сутки (ice_handler.go), кэш лишь склеивает
+// несколько pc одного входа в звонок.
+const ICE_CACHE_MS = 60_000
+// Запас до истечения кредов, после которого последний успешный конфиг уже не отдаём.
+const ICE_EXPIRY_MARGIN_MS = 60_000
+let cachedIce: { servers: RTCIceServer[]; until: number; expires: number } | null = null
 export async function iceServers(): Promise<RTCIceServer[]> {
   if (cachedIce && Date.now() < cachedIce.until) return cachedIce.servers
   try {
     const cfg = await managers().calls.iceConfig()
     if (cfg.servers.length) {
-      // обновляем за 5 минут до истечения кредов
-      cachedIce = { servers: cfg.servers, until: Date.now() + Math.max(60, cfg.ttlSeconds - 300) * 1000 }
+      const now = Date.now()
+      cachedIce = { servers: cfg.servers, until: now + ICE_CACHE_MS, expires: now + cfg.ttlSeconds * 1000 }
       return cfg.servers
     }
-  } catch { /* бэк недоступен — деградация до STUN */ }
+  } catch { /* сбой запроса: ниже — последний успешный конфиг, пока его креды живы */ }
+  // Сбой /calls/ice (420 лимитер, 5xx, обновление токена) не должен превращать relay-pc в pc без
+  // единого кандидата: креды ещё действуют — берём последний успешный конфиг, а не STUN-only.
+  if (cachedIce && Date.now() < cachedIce.expires - ICE_EXPIRY_MARGIN_MS) return cachedIce.servers
   return FALLBACK_ICE
+}
+/** Есть ли среди серверов хоть один TURN (`turn:`/`turns:`) — без него `relay` не собрать кандидатов. */
+export function hasTurnServer(servers: RTCIceServer[]): boolean {
+  return servers.some((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u) => /^turns?:/i.test(u)))
 }
 const RING_TIMEOUT_MS = 45_000 // tweb: 45s до missed
 
@@ -270,9 +284,18 @@ async function startRtc(withVideo: boolean, alive: () => boolean) {
   stopSound()
   playSound('voip_connecting')
 
+  // Политика ICE — по p2p_allowed звонка (tweb callInstance.ts:1283-1287: `isP2p ? 'all' : 'relay'`).
+  // Не `true` (в т.ч. поля нет) — закрываемся: relay. Без TURN relay не соберёт ни одного кандидата,
+  // поэтому звонок не начинается, а не переходит молча на 'all' (IP ушёл бы собеседнику).
+  const iceTransportPolicy: RTCIceTransportPolicy = call.p2pAllowed === true ? 'all' : 'relay'
   const servers = await iceServers()
   if (!alive()) return
-  pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', certificates: [ident.cert] })
+  if (iceTransportPolicy === 'relay' && !hasTurnServer(servers)) {
+    console.warn('[call] relay-only call without TURN server')
+    failE2E('after-answer')
+    return
+  }
+  pc = new RTCPeerConnection({ iceServers: servers, bundlePolicy: 'max-bundle', iceTransportPolicy, certificates: [ident.cert] })
 
   pc.onicecandidate = (e) => {
     if (e.candidate) sendFrame('call_signal', { ice: e.candidate.toJSON() })
@@ -675,6 +698,7 @@ export function handleFrame(evt: CallFrameEvt) {
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
       outgoing: false, video, phase: 'incoming',
+      p2pAllowed: d.p2p_allowed === true,
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })
@@ -718,7 +742,8 @@ export function handleFrame(evt: CallFrameEvt) {
       if (call.outgoing && call.phase === 'outgoing' && ident && dhPubRaw) { // call_request уже ушёл
         // 'connecting' сразу: кадры call_signal отвечающего, пришедшие, пока звено крутит
         // криптографию, должны встать в очередь за ним, а не быть отброшены фильтром по фазе
-        store().patch({ phase: 'connecting' })
+        // p2p_allowed звонка — из call_accept (серверное поле, tweb callInstance.ts:690-694)
+        store().patch({ phase: 'connecting', p2pAllowed: d.p2p_allowed === true })
         enqueue((alive) => onCallAccept(d, alive), true)
       }
       break

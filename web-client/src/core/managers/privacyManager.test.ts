@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { RestClient } from '../net/restClient'
 
-import { fromPrivacyRules, newPrivacyManager, toPrivacyRules, type PrivacyRule } from './privacyManager'
+import { fromPrivacyRules, newPrivacyManager, PRIVACY_KEYS, privacyKeyOfTag, toPrivacyRules, type PrivacyRule } from './privacyManager'
 
 const rules = (r: PrivacyRule) => ({ _: 'account.privacyRules', rules: toPrivacyRules(r), chats: [], users: [] })
 
@@ -27,7 +27,7 @@ describe('privacyManager', () => {
 
     const list = await detached()
 
-    expect(list).toHaveLength(12)
+    expect(list).toHaveLength(13)
     expect(get).toHaveBeenCalledWith('/me/privacy/privacyKeyStatusTimestamp')
   })
 
@@ -82,6 +82,22 @@ describe('privacyManager', () => {
       '/me/privacy/privacyKeyMessages',
       '/me/privacy/privacyKeyReadTime',
     ])
+  })
+
+  // Б-8 (М3-2): «Peer-to-Peer» — ключ звонков (tweb privacy/calls.tsx:19-27,
+  // `inputPrivacyKeyPhoneP2P`); адресуется конструктором схемы и стоит в списке сразу за `calls`.
+  it('phone_p2p адресуется конструктором privacyKeyPhoneP2P, в списке сразу за calls', async () => {
+    const get = vi.fn(async () => rules({ key: 'phone_p2p', value: 'nobody', allowUserIds: [], denyUserIds: [] }))
+    const put = vi.fn(async () => rules({ key: 'phone_p2p', value: 'nobody', allowUserIds: [], denyUserIds: [] }))
+    const mgr = newPrivacyManager({ rest: { get, put } as unknown as RestClient })
+
+    expect(await mgr.rule('phone_p2p')).toEqual({ key: 'phone_p2p', value: 'nobody', allowUserIds: [], denyUserIds: [] })
+    await mgr.setRule({ key: 'phone_p2p', value: 'nobody', allowUserIds: [], denyUserIds: [] })
+
+    expect(get).toHaveBeenCalledWith('/me/privacy/privacyKeyPhoneP2P')
+    expect(put).toHaveBeenCalledWith('/me/privacy/privacyKeyPhoneP2P', { rules: [{ _: 'privacyValueDisallowAll' }] })
+    expect(privacyKeyOfTag('privacyKeyPhoneP2P')).toBe('phone_p2p')
+    expect(PRIVACY_KEYS[PRIVACY_KEYS.indexOf('calls') + 1]).toBe('phone_p2p')
   })
 
   // Порт `appProfileManager.getProfile` (tweb): ответ `users.getFullUser` несёт

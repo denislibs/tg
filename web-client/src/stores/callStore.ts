@@ -40,6 +40,11 @@ export interface ActiveCall {
       установлении звонка. Обе стороны видят одинаковую цепочку — сверяют голосом
       (Telegram-модель верификации против MITM). undefined, пока ключи не обменяны. */
   e2eFingerprint?: string[]
+  /** Разрешено ли звонку прямое соединение: флаг ставит СЕРВЕР по правилам «Peer-to-Peer» обеих
+      сторон (tweb `call.pFlags.p2p_allowed`, callInstance.ts:690-694) — у отвечающего он приходит
+      в call_request, у звонящего в call_accept. true → ICE `all`, иначе (в т.ч. поле не пришло)
+      только через TURN (`relay`), чтобы не раскрывать IP. */
+  p2pAllowed?: boolean
 }
 
 interface CallState {

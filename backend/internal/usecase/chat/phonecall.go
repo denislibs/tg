@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -71,6 +72,10 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 		return nil // кадр вне звонка
 	}
 	var stateErr error
+	// p2p_allowed — серверное поле звонка (tweb callInstance.ts:690-694: флаг
+	// `p2p_allowed` ставит сервер, клиент правила не смотрит). Присланное
+	// клиентом значение не принимается никогда: оно убрало бы защиту IP.
+	delete(data, "p2p_allowed")
 	if frameType == "call_request" {
 		if i.privacy != nil {
 			ok, err := i.privacy.Check(ctx, toUserID, fromUserID, domain.PrivacyCalls)
@@ -82,11 +87,19 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 				return i.publisher.PublishToUser(ctx, fromUserID, decline)
 			}
 		}
+		// Сбой чтения правила P2P звонок не теряет: закрываемся — звонок идёт
+		// только через TURN (IP не раскрывается), как при запрете.
+		p2p, err := i.p2pAllowed(ctx, fromUserID, toUserID)
+		if err != nil {
+			log.Printf("phonecall: p2p_allowed caller=%d callee=%d: %v", fromUserID, toUserID, err)
+			p2p = false
+		}
 		video, _ := data["video"].(bool)
-		ok, err := i.openPhoneCall(ctx, domain.PhoneCall{ID: callID, CallerID: fromUserID, CalleeID: toUserID, Video: video})
+		c, ok, err := i.openPhoneCall(ctx, domain.PhoneCall{ID: callID, CallerID: fromUserID, CalleeID: toUserID, Video: video, P2PAllowed: p2p})
 		if err != nil || !ok {
 			return err
 		}
+		data["p2p_allowed"] = c.P2PAllowed
 	} else if i.phoneCalls != nil {
 		c, err := i.phoneCalls.Get(ctx, callID)
 		if errors.Is(err, domain.ErrNotFound) {
@@ -100,6 +113,9 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 		}
 		if (frameType == "call_accept" || frameType == "call_decline") && (fromUserID != c.CalleeID || c.Answered()) {
 			return nil
+		}
+		if frameType == "call_accept" {
+			data["p2p_allowed"] = c.P2PAllowed
 		}
 	}
 	if frameType == "call_accept" {
@@ -129,28 +145,46 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 	return errors.Join(err, stateErr)
 }
 
+// p2pAllowed — можно ли звонку между callerID и calleeID идти напрямую: оба
+// не запретили прямое соединение правилом phone_p2p (tweb
+// privacy/calls.tsx:19-27 — «Peer-to-Peer»). Прямой звонок открывает каждой
+// стороне IP другой, поэтому запрет любой из сторон переводит звонок на TURN.
+// Правила проверяются в обе стороны, блок-лист Check учитывает сам. Без
+// движка приватности ограничений нет.
+func (i *Interactor) p2pAllowed(ctx context.Context, callerID, calleeID int64) (bool, error) {
+	if i.privacy == nil {
+		return true, nil
+	}
+	ok, err := i.privacy.Check(ctx, calleeID, callerID, domain.PrivacyPhoneP2P)
+	if err != nil || !ok {
+		return false, err
+	}
+	return i.privacy.Check(ctx, callerID, calleeID, domain.PrivacyPhoneP2P)
+}
+
 func validCallID(id string) bool { return id != "" && len(id) <= maxCallIDLen }
 
-// openPhoneCall заводит звонок. Повтор call_request с тем же call_id состояние
-// не трогает (Create — «если нет») и пропускается, только если это тот же
-// звонок тех же сторон: чужой call_id не перехватить. Без хранилища звонков —
-// как прежде, без сверки.
-func (i *Interactor) openPhoneCall(ctx context.Context, c domain.PhoneCall) (bool, error) {
+// openPhoneCall заводит звонок и отдаёт звонок, как он лежит в хранилище.
+// Повтор call_request с тем же call_id состояние не трогает (Create — «если
+// нет») и пропускается, только если это тот же звонок тех же сторон: чужой
+// call_id не перехватить; значение P2PAllowed берётся из записи, а не из
+// повторного расчёта. Без хранилища звонков — как прежде, без сверки.
+func (i *Interactor) openPhoneCall(ctx context.Context, c domain.PhoneCall) (domain.PhoneCall, bool, error) {
 	if i.phoneCalls == nil {
-		return true, nil
+		return c, true, nil
 	}
 	created, err := i.phoneCalls.Create(ctx, c)
 	if err != nil || created {
-		return created, err
+		return c, created, err
 	}
 	cur, err := i.phoneCalls.Get(ctx, c.ID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return false, nil
+		return c, false, nil
 	}
 	if err != nil {
-		return false, err
+		return c, false, err
 	}
-	return cur.CallerID == c.CallerID && cur.CalleeID == c.CalleeID, nil
+	return cur, cur.CallerID == c.CallerID && cur.CalleeID == c.CalleeID, nil
 }
 
 // acceptPhoneCall отмечает ответ — только от адресата этого звонка. true —

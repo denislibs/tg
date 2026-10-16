@@ -29,7 +29,7 @@ import (
 
 // Значения дискриминатора `_` объединения PrivacyKey.
 //
-// Ровно те десять, которые мы производим. Наши прежние строки и есть эти
+// Ровно те одиннадцать, которые мы производим. Наши прежние строки и есть эти
 // конструкторы — с точностью до имени: «время захода» в схеме называется
 // `privacyKeyStatusTimestamp`, а «звонки» — `privacyKeyPhoneCall`.
 const (
@@ -40,6 +40,7 @@ const (
 	PrivacyKeyAboutTag           = "privacyKeyAbout"
 	PrivacyKeyBirthdayTag        = "privacyKeyBirthday"
 	PrivacyKeyPhoneCallTag       = "privacyKeyPhoneCall"
+	PrivacyKeyPhoneP2PTag        = "privacyKeyPhoneP2P"
 	PrivacyKeyForwardsTag        = "privacyKeyForwards"
 	PrivacyKeyChatInviteTag      = "privacyKeyChatInvite"
 	PrivacyKeyVoiceMessagesTag   = "privacyKeyVoiceMessages"
@@ -64,6 +65,7 @@ var privacyKeyTags = map[PrivacyKey]string{
 	PrivacyAbout:        PrivacyKeyAboutTag,
 	PrivacyBirthday:     PrivacyKeyBirthdayTag,
 	PrivacyCalls:        PrivacyKeyPhoneCallTag,
+	PrivacyPhoneP2P:     PrivacyKeyPhoneP2PTag,
 	PrivacyForwards:     PrivacyKeyForwardsTag,
 	PrivacyChatInvite:   PrivacyKeyChatInviteTag,
 	PrivacyVoices:       PrivacyKeyVoiceMessagesTag,

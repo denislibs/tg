@@ -1,8 +1,11 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
@@ -54,12 +57,20 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 	// «Текущая» — ФЛАГ конструктора, а не булево поле рядом: прежде ехало
 	// `current: false`, то есть «выключено» имело значение. Ноль вместо адреса
 	// у текущей строки ставит сам конструктор — см. докблок Authorization.
+	now := time.Now()
 	out := make([]domain.Authorization, 0, len(devices))
 	for _, d := range devices {
-		out = append(out, domain.NewAuthorization(d, d.ID == current))
+		out = append(out, domain.NewAuthorization(d, d.ID == current, now))
 	}
 	writeJSON(w, http.StatusOK, domain.NewAccountAuthorizations(out))
 }
+
+// Тексты 406 при свежей текущей сессии: tweb разбирает любой FRESH_* одинаково
+// (helpers/getAuthorizationErrorLangKey.ts, global.d.ts:210-211).
+const (
+	freshResetForbidden  = "FRESH_RESET_AUTHORISATION_FORBIDDEN"  // завершение сессий
+	freshChangeForbidden = "FRESH_CHANGE_AUTHORIZATION_FORBIDDEN" // подтверждение входа
+)
 
 // writeTerminateError — общие отказы завершения сессий.
 //
@@ -70,9 +81,14 @@ func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
 // пропускает токен: тот же ответ, что у currentDeviceID. Прочий ErrNotFound
 // (например, цели) сюда не попадает.
 func writeTerminateError(w http.ResponseWriter, err error, msg string) {
+	writeSessionError(w, err, freshResetForbidden, msg)
+}
+
+// writeSessionError — отказы ручек сессий; freshText — текст 406 свежей сессии.
+func writeSessionError(w http.ResponseWriter, err error, freshText, msg string) {
 	switch {
 	case errors.Is(err, domain.ErrFreshAuthorization):
-		writeError(w, http.StatusNotAcceptable, "FRESH_RESET_AUTHORISATION_FORBIDDEN")
+		writeError(w, http.StatusNotAcceptable, freshText)
 	case errors.Is(err, domain.ErrNoCurrentSession):
 		writeError(w, http.StatusUnauthorized, "no session")
 	default:
@@ -138,4 +154,46 @@ func (h *SessionHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// Settings — POST /sessions/{deviceID}/settings {"confirmed": true}
+// (account.changeAuthorizationSettings): «Да, это я» о неподтверждённом входе
+// (tweb appAccountManager.ts:457-478). Остальные поля тела (call_requests_disabled,
+// encrypted_requests_disabled) не читаются: потребителя у них у нас нет.
+//
+// Порядок отказов: нет строки текущей сессии → 401; свежая текущая → 406
+// FRESH_CHANGE_AUTHORIZATION_FORBIDDEN; цель — текущая или 0 → 400; цели нет →
+// 404. Без confirmed (или с false) менять нечего — boolTrue.
+func (h *SessionHandler) Settings(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	current, ok := currentDeviceID(w, r)
+	if !ok {
+		return
+	}
+	deviceID, ok := pathInt(w, r, "deviceID")
+	if !ok {
+		return
+	}
+	var body struct {
+		Confirmed *bool `json:"confirmed"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.Confirmed == nil || !*body.Confirmed {
+		writeJSON(w, http.StatusOK, domain.NewBool(true))
+		return
+	}
+	err := h.svc.ConfirmSession(r.Context(), user.ID, current, deviceID)
+	switch {
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "current session is not confirmable by hash")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "session not found")
+	case err != nil:
+		writeSessionError(w, err, freshChangeForbidden, "could not confirm session")
+	default:
+		writeJSON(w, http.StatusOK, domain.NewBool(true))
+	}
 }
