@@ -21,6 +21,7 @@ let willSendWebPage: unknown = null
 
 let setPeer = vi.fn()
 let isForum = false
+let mountedChat: ReturnType<typeof createTestChat> | undefined
 
 function mount() {
   const managers: BubblesManagers = {
@@ -44,6 +45,7 @@ function mount() {
     appImManager: { setPeer },
     isForum,
   })
+  mountedChat = chat
   return bubbles = mountTestBubbles(chat, managers)
 }
 
@@ -114,7 +116,7 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     await settle()
     expect(setPeer).toHaveBeenCalledTimes(1)
     expect(setPeer).toHaveBeenCalledWith({ peerId: PEER })
-    expect(feed.chat.peerId).toBe(0)
+    expect(mountedChat?.peerId).toBe(0)
   })
 
   it('форум выключили — тоже заново; признак не сменился — без переоткрытия', async() => {
