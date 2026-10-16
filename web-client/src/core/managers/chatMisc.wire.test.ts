@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { RestClient } from '../net/restClient'
 
 import { newChatsManager } from './chatsManager'
+import { generateMessageId } from '../history/messageId'
 import { newPrivacyManager } from './privacyManager'
 import { newTranslationMethods } from './messages/translationMethods'
 import { newReactionMethods } from './messages/reactionMethods'
@@ -26,9 +27,12 @@ describe('мелкие витрины чата — конструкторы, а 
     const get = vi.fn(async () => ({ _: 'outboxReadDate', date: 1787334148 }))
     const mgr = newChatsManager({ rest: { get } as unknown as RestClient } as never)
 
-    const r = await mgr.getReadDate(5, 7)
+    const r = await mgr.getReadDate(5, generateMessageId(7))
 
     expect(r).toEqual({ readAt: new Date(1787334148 * 1000).toISOString() })
+    // в путь — СЕРВЕРНЫЙ номер (tweb `messages.getOutboxReadDate` с
+    // `getServerMessageId(mid)`); клиентский давал 404 (P0 2026-10-16)
+    expect(get).toHaveBeenCalledWith('/chats/5/messages/7/read_date')
   })
 
   it('перевод читается из ВЕКТОРА строк, а не из пары {text, source}', async () => {

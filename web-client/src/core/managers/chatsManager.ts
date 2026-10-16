@@ -120,7 +120,7 @@ export function newChatsManager({ rest, peers, messages, getFunnel, dialogs, bro
     async getReadDate(peerId: number, msgId: number): Promise<ReadDateResult> {
       try {
         // Конструктор `outboxReadDate`: дата в СЕКУНДАХ эпохи, как у всех дат схемы.
-        const r = await rest.get<{ _: 'outboxReadDate'; date: number }>(`/chats/${peerId}/messages/${msgId}/read_date`)
+        const r = await rest.get<{ _: 'outboxReadDate'; date: number }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/read_date`)
         return { readAt: new Date(r.date * 1000).toISOString() }
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) return { restricted: true }
