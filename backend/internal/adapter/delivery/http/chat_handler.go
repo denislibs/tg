@@ -363,6 +363,17 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 		}
 		peers = append(peers, domain.PeerID(v))
 	}
+	// `state` читается ДО строк. Кадр, закоммиченный между чтениями, даёт
+	// state.pts < курсора клиента — клиент повторит запрос (tweb :6313-6319), а не
+	// примет возможно устаревшую строку за свежую. Это не гарантия свежести:
+	// строки идут из кэша диалогов (ListDialogs, TTL 15 с, сброс после коммита),
+	// и они могут отстать от state: в окне между коммитом и сбросом, а также до конца TTL,
+	// если параллельное чтение, начатое до коммита, положит старый снимок после сброса.
+	state, err := h.svc.UpdatesState(r.Context(), h.meID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		return
+	}
 	res, err := h.svc.PeerDialogs(r.Context(), h.meID(r), peers)
 	if err != nil {
 		writeDomainError(w, err, "could not get dialogs")
@@ -377,7 +388,7 @@ func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
 	for _, m := range wire {
 		messages = append(messages, m)
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesPeerDialogs(res.Dialogs, messages, res.Chats, res.Users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesPeerDialogs(res.Dialogs, messages, res.Chats, res.Users, state))
 }
 
 type sendBody struct {

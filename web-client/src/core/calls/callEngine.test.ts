@@ -238,11 +238,57 @@ describe('callEngine: кэш ICE-конфига короткий', () => {
     expect(A.engine.hasTurnServer(again)).toBe(true)
   })
 
-  it('сбой /calls/ice и креды истекли — STUN-only (relay-звонок честно не начнётся)', async () => {
+  it('сбой /calls/ice, кредам осталось меньше часа — STUN-only: звонок на них оборвался бы на первом Refresh', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()
     net.iceFail = true
-    await vi.advanceTimersByTimeAsync(86_400_000 - 30_000) // до истечения осталось 30 с < запаса 60 с
+    await vi.advanceTimersByTimeAsync(86_400_000 - 30 * 60_000) // до истечения 30 мин < запаса 1 ч
     expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+  })
+
+  it('сбой /calls/ice, кредам осталось больше часа — ещё последний успешный конфиг', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    net.iceFail = true
+    await vi.advanceTimersByTimeAsync(86_400_000 - 61 * 60_000)
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(true)
+  })
+
+  it('первый же запрос /calls/ice упал, конфига ещё не было — STUN-only', async () => {
+    const A = await net.side(1)
+    net.iceFail = true
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(false)
+    expect(net.iceFetches).toBe(1)
+  })
+
+  it('/calls/ice висит: через 10 с — откат, следующий вызов идёт новым запросом', async () => {
+    const A = await net.side(1)
+    net.iceHang = true
+    let done = false
+    const first = A.engine.iceServers().then((s) => { done = true; return s })
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(A.engine.hasTurnServer(await first)).toBe(false)
+    net.iceHang = false
+    expect(A.engine.hasTurnServer(await A.engine.iceServers())).toBe(true)
+    expect(net.iceFetches).toBe(2)
+  })
+
+  it('/calls/ice висит после кэша, креды живы: через 10 с — последний конфиг с TURN', async () => {
+    const A = await net.side(1)
+    await A.engine.iceServers()
+    await vi.advanceTimersByTimeAsync(61_000)
+    net.iceHang = true
+    const again = A.engine.iceServers()
+    await vi.advanceTimersByTimeAsync(10_500)
+    expect(A.engine.hasTurnServer(await again)).toBe(true)
+  })
+
+  it('одновременные запросы конфига (несколько pc mesh) — один /calls/ice', async () => {
+    const A = await net.side(1)
+    const all = await Promise.all([A.engine.iceServers(), A.engine.iceServers(), A.engine.iceServers()])
+    expect(net.iceFetches).toBe(1)
+    expect(all.every((s) => A.engine.hasTurnServer(s))).toBe(true)
   })
 })

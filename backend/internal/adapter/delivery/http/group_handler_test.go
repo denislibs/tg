@@ -264,8 +264,10 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 }
 
 // `messages.importChatInvite`: вступление по ссылке без одобрения отдаёт
-// `Updates` с чатом ссылки в chats[0] (по нему клиент открывает чат), повтор —
-// тот же ответ без повторного вступления (`chatInviteAlready` оригинала).
+// `messages.chatInviteJoinResultOk{updates}` с чатом ссылки в updates.chats[0]
+// (tweb `processChatInviteJoinResult` берёт `result.updates`, затем открывает
+// `chats[0]`), повтор — тот же ответ без повторного вступления
+// (`chatInviteAlready` оригинала).
 func TestImportChatInvite_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990002011")
@@ -289,13 +291,17 @@ func TestImportChatInvite_HTTP(t *testing.T) {
 		}
 		var out struct {
 			Underscore string `json:"_"`
-			Chats      []struct {
-				ID int64 `json:"id"`
-			} `json:"chats"`
+			Updates    struct {
+				Underscore string `json:"_"`
+				Chats      []struct {
+					ID int64 `json:"id"`
+				} `json:"chats"`
+			} `json:"updates"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
-		if out.Underscore != "updates" || len(out.Chats) != 1 || -out.Chats[0].ID != peerID {
-			t.Fatalf("join #%d = %s; ожидался updates с чатом %d в chats[0]", i, rec.Body.String(), peerID)
+		if out.Underscore != "messages.chatInviteJoinResultOk" || out.Updates.Underscore != "updates" ||
+			len(out.Updates.Chats) != 1 || -out.Updates.Chats[0].ID != peerID {
+			t.Fatalf("join #%d = %s; ожидался messages.chatInviteJoinResultOk с updates.chats[0] = чат %d", i, rec.Body.String(), peerID)
 		}
 	}
 }
