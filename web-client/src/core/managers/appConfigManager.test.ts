@@ -211,7 +211,14 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
     }
   })
 
-  it('пока медленный запрос в полёте, новые вызовы не плодят запросов', async() => {
+  /** Разрешился ли промис к этому моменту — без продвижения таймеров. */
+  function track<T>(promise: Promise<T>) {
+    const state = { done: false, value: undefined as T | undefined }
+    void promise.then((value) => { state.done = true; state.value = value })
+    return state
+  }
+
+  it('пока медленный запрос в полёте, новые вызовы не плодят запросов; после потолка отвечают сразу', async() => {
     vi.useFakeTimers()
     try {
       const { mgr, get, clock } = setup()
@@ -222,9 +229,123 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
       clock.now += 5000
       await vi.advanceTimersByTimeAsync(5000)
       // Потолок от начала полёта истёк: следующий вызов отвечает сразу, без новых 5 с.
-      await expect(mgr.getAppConfig()).resolves.toEqual({})
-      await expect(mgr.getConfig()).resolves.toEqual({})
+      const app = track(mgr.getAppConfig())
+      const cfg = track(mgr.getConfig())
+      await vi.advanceTimersByTimeAsync(0)
+      expect(app).toEqual({ done: true, value: {} })
+      expect(cfg).toEqual({ done: true, value: {} })
       expect(get).toHaveBeenCalledTimes(2) // по одному на ручку
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('пришедший посреди полёта ждёт только остаток потолка от начала запроса', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get, clock } = setup()
+      get.mockImplementation(() => new Promise(() => {}))
+      void mgr.getAppConfig()
+      void mgr.getConfig()
+      await vi.advanceTimersByTimeAsync(0)
+      clock.now += 3000
+      await vi.advanceTimersByTimeAsync(3000)
+      const app = track(mgr.getAppConfig())
+      const cfg = track(mgr.getConfig())
+      await vi.advanceTimersByTimeAsync(0) // вызовы прочитали часы при T0+3000
+      clock.now += 1999
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(app.done).toBe(false)
+      expect(cfg.done).toBe(false)
+      clock.now += 1
+      await vi.advanceTimersByTimeAsync(1)
+      expect(app.done).toBe(true)
+      expect(cfg.done).toBe(true)
+      expect(get).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('часы перевели назад посреди полёта — ожидание всё равно не дольше потолка', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get, clock } = setup()
+      get.mockImplementation(() => new Promise(() => {}))
+      void mgr.getAppConfig()
+      void mgr.getConfig()
+      await vi.advanceTimersByTimeAsync(0)
+      clock.now -= 3600e3
+      const app = track(mgr.getAppConfig())
+      const cfg = track(mgr.getConfig())
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(app).toEqual({ done: true, value: {} })
+      expect(cfg).toEqual({ done: true, value: {} })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // tweb `invokeApiSingleProcess` (apiManagerMethods.ts:184-199): `overwrite` не делит
+  // висящий запрос, а шлёт новый; ответ старого подменяется ответом нового.
+  it('overwrite во время полёта шлёт новый запрос; поздний ответ старого не затирает новый', async() => {
+    const { mgr, get, store } = setup()
+    const answers: Array<(v: unknown) => void> = []
+    get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+
+    const first = mgr.getAppConfig()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    const second = mgr.getAppConfig(true)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+
+    answers[0](CFG_A) // старый запрос ответил первым
+    answers[1](CFG_B)
+
+    await expect(first).resolves.toMatchObject({ hash: 222 })
+    await expect(second).resolves.toMatchObject({ hash: 222 })
+    await expect(mgr.getAppConfig()).resolves.toMatchObject({ hash: 222 })
+    expect(get).toHaveBeenCalledTimes(2)
+    // Ответ старого запроса не применялся вовсе: ни в память, ни на диск.
+    expect(store.set).toHaveBeenCalledTimes(1)
+    expect((store.store.get('appConfig') as MTAppConfig).hash).toBe(222)
+  })
+
+  it('overwrite во время полёта: отказ старого запроса не ставит паузу, старый вызывающий получает новый ответ', async() => {
+    const { mgr, get } = setup()
+    const answers: Array<{ resolve: (v: unknown) => void, reject: (e: unknown) => void }> = []
+    get.mockImplementation(() => new Promise((resolve, reject) => { answers.push({ resolve, reject }) }))
+
+    const first = mgr.getAppConfig()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    const second = mgr.getAppConfig(true)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+
+    answers[0].reject(new HttpError(500, 'x'))
+    answers[1].resolve(CFG_A)
+
+    await expect(first).resolves.toMatchObject({ hash: 111 })
+    await expect(second).resolves.toMatchObject({ hash: 111 })
+  })
+
+  it('overwrite после истёкшего потолка висящего запроса — новый запрос, а не старая копия', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get, clock } = setup()
+      const answers: Array<(v: unknown) => void> = []
+      get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+      void mgr.getAppConfig()
+      await vi.advanceTimersByTimeAsync(0)
+      clock.now += 5000
+      await vi.advanceTimersByTimeAsync(5000)
+
+      const fresh = track(mgr.getAppConfig(true))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(fresh.done).toBe(false)
+      answers[1](CFG_A)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fresh.done).toBe(true)
+      expect(fresh.value).toMatchObject({ hash: 111 })
     } finally {
       vi.useRealTimers()
     }
@@ -272,6 +393,23 @@ describe('getConfig (apiManagerMethods.ts:310-322)', () => {
     expect(get).toHaveBeenCalledWith('/help/config')
 
     await expect(mgr.getConfig(true)).resolves.toMatchObject({ edit_time_limit: 60 })
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('overwrite во время полёта шлёт новый запрос; поздний ответ старого не затирает новый', async() => {
+    const { mgr, get } = setup()
+    const answers: Array<(v: unknown) => void> = []
+    get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+
+    const first = mgr.getConfig()
+    const second = mgr.getConfig(true)
+    expect(get).toHaveBeenCalledTimes(2)
+    answers[0](CONFIG) // старый ответил, пока новый в полёте
+    answers[1]({ ...CONFIG, edit_time_limit: 60 })
+
+    await expect(first).resolves.toMatchObject({ edit_time_limit: 60 })
+    await expect(second).resolves.toMatchObject({ edit_time_limit: 60 })
+    await expect(mgr.getConfig()).resolves.toMatchObject({ edit_time_limit: 60 })
     expect(get).toHaveBeenCalledTimes(2)
   })
 

@@ -25,15 +25,17 @@ import type { RestClient } from '../net/restClient'
  *     читает `undefined`, как у tweb на ключе без значения). Пустой ответ не
  *     запоминается: следующий вызов идёт в сеть.
  *  3. Отказ не повторяется на каждый вызов: после него `RETRY_PAUSE_MS` отдаётся копия
- *     (или пустой объект) без запроса, а ожидание вызывающего ограничено `REQUEST_TIMEOUT_MS`: меню чата
- *     и реакция ждут конфиг и не должны висеть на мёртвой сети. Потолок — для ВЫЗЫВАЮЩЕГО: запрос
- *     дорабатывает в фоне, и поздний ответ всё равно ложится в кэш. Воркер прогревает конфиг на
- *     старте (tweb `appMessagesManager.ts:757`), поэтому на живой сети ожидания нет.
+ *     (или пустой объект) без запроса. Меню чата и реакция ждут конфиг и не должны висеть
+ *     на мёртвой сети: ответ ждут не дольше `REQUEST_TIMEOUT_MS` от НАЧАЛА запроса, а кто
+ *     пришёл позже, сразу получает копию (или пустой объект). Запрос при этом не бросается:
+ *     он дорабатывает в фоне, и поздний ответ всё равно ложится в кэш. Воркер прогревает
+ *     конфиг на старте (tweb `appMessagesManager.ts:757`), поэтому на живой сети ожидания нет.
+ *     Зависший запрос (у `fetch` нет своего таймаута) не перезапускается, пока не завершится
+ *     или пока не позовут `overwrite`.
  *  4. Кэш в KV привязан к origin, а не к серверу или аккаунту: значений, зависящих от
  *     пользователя, в конфиге нет (подписка читается живым геттером), а при смене бэкенда
  *     на том же origin старые флаги живут до суток.
- *  5. `overwrite` во время идущего полёта делит его (запрос ушёл до вызова).
- *  6. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
+ *  5. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
  *     его `expires` не читается (tweb его тоже не читает — `config` обновляется
  *     переподключением, которого у REST нет, только `overwrite`).
  */
@@ -89,6 +91,12 @@ interface AppConfigDeps {
   now?: () => number
 }
 
+/** Идущий запрос `/help/*` и момент его старта (мс по `now`, от него считается потолок). */
+interface Flight<T> {
+  promise: Promise<T>
+  startedAt: number
+}
+
 const CACHE_KEY = 'appConfig'
 /** Пауза после отказа сети: в это время запрос не шлётся (расхождение 3). */
 const RETRY_PAUSE_MS = 30e3
@@ -132,8 +140,7 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
   let loaded: Promise<void> | undefined
   /** `requestedAppConfig` (:342): после первого ответа в этой жизни воркера возраст копии не смотрим. */
   let requestedAppConfig = false
-  let appConfigFlight: Promise<MTAppConfig> | undefined
-  let appConfigFlightStart = 0
+  let appConfigFlight: Flight<MTAppConfig> | undefined
   /** Раньше этого момента после отказа запрос не повторяется. */
   let retryAt = 0
 
@@ -143,11 +150,12 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
    * (на сети с RTT дольше потолка конфиг иначе не приехал бы никогда). Поток `flight` сам
    * не отклоняется: отказы разобраны внутри `request*`.
    */
-  function raceTimeout<T>(flight: Promise<T>, startedAt: number, fallback: () => T): Promise<T> {
+  function raceTimeout<T>({ promise: flight, startedAt }: Flight<T>, fallback: () => T): Promise<T> {
     return new Promise<T>((resolve) => {
       // Ждём только остаток потолка от НАЧАЛА полёта: когда он истёк, все следующие
-      // вызывающие получают копию сразу, а не по 5 с на каждый клик.
-      const left = startedAt + REQUEST_TIMEOUT_MS - now()
+      // вызывающие получают копию сразу, а не по 5 с на каждый клик. Сверху — сам потолок:
+      // `now` — стенные часы, и перевод их назад не должен растянуть ожидание.
+      const left = Math.min(REQUEST_TIMEOUT_MS, startedAt + REQUEST_TIMEOUT_MS - now())
       if (left <= 0) { resolve(fallback()); return }
       const timer = setTimeout(() => resolve(fallback()), left)
       flight.then(
@@ -157,9 +165,38 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
     })
   }
 
+  /**
+   * Порт `invokeApiSingleProcess` (`apiManagerMethods.ts:170-222`): без `overwrite` вызов
+   * делит идущий запрос; с `overwrite` всегда шлётся новый, и он становится текущим. Когда
+   * старый запрос завершится, его ответ (или отказ) не обрабатывается, а его вызывающие
+   * получают ответ нового (`getNewPromise`, :189-199). Слот освобождает только текущий запрос.
+   */
+  function singleProcess<R, T>(
+    slot: { get: () => Flight<T> | undefined, set: (flight: Flight<T> | undefined) => void },
+    overwrite: boolean | undefined,
+    invoke: () => Promise<R>,
+    processResult: (result: R) => T,
+    processError: () => T,
+  ): Flight<T> {
+    const old = slot.get()
+    if (old && !overwrite) return old
+    const flight = { startedAt: now() } as Flight<T>
+    const newer = () => {
+      const current = slot.get()
+      return current === flight ? undefined : current?.promise
+    }
+    flight.promise = invoke()
+      .then((result) => newer() ?? processResult(result), () => newer() ?? processError())
+      .finally(() => { if (slot.get() === flight) slot.set(undefined) })
+    slot.set(flight)
+    return flight
+  }
+
+  const appConfigSlot = { get: () => appConfigFlight, set: (f: Flight<MTAppConfig> | undefined) => { appConfigFlight = f } }
+
   let config: MTConfig | undefined
-  let configFlight: Promise<MTConfig> | undefined
-  let configFlightStart = 0
+  let configFlight: Flight<MTConfig> | undefined
+  const configSlot = { get: () => configFlight, set: (f: Flight<MTConfig> | undefined) => { configFlight = f } }
   let configRetryAt = 0
 
   function hydrate(): Promise<void> {
@@ -172,9 +209,14 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
     })()
   }
 
-  async function requestAppConfig(): Promise<MTAppConfig> {
+  /** Расхождение 2: просроченная копия лучше пустого ответа; расхождение 3: и пауза. */
+  function failAppConfig(): MTAppConfig {
+    retryAt = now() + RETRY_PAUSE_MS
+    return appConfig ?? {}
+  }
+
+  function applyAppConfig(res: HelpAppConfig): MTAppConfig {
     try {
-      const res = await rest.get<HelpAppConfig>('/help/app_config', { hash: appConfig?.hash || 0 })
       requestedAppConfig = true
       retryAt = 0
       // `processResult` (:355-359): NotModified оставляет прежний конфиг.
@@ -189,9 +231,7 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
       })
       return fresh
     } catch {
-      // Расхождение 2: просроченная копия лучше пустого ответа; расхождение 3: и пауза.
-      retryAt = now() + RETRY_PAUSE_MS
-      return appConfig ?? {}
+      return failAppConfig()
     }
   }
 
@@ -205,33 +245,34 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
       return appConfig
     }
     if (!overwrite && now() < retryAt) return appConfig ?? {}
-    if (!appConfigFlight) {
-      appConfigFlightStart = now()
-      appConfigFlight = requestAppConfig().finally(() => { appConfigFlight = undefined })
-    }
-    return raceTimeout(appConfigFlight, appConfigFlightStart, () => appConfig ?? {})
-  }
-
-  async function requestConfig(): Promise<MTConfig> {
-    try {
-      const res = await rest.get<Config.config>('/help/config')
-      config = res
-      configRetryAt = 0
-      return res
-    } catch {
-      configRetryAt = now() + RETRY_PAUSE_MS
-      return {}
-    }
+    const flight = singleProcess(
+      appConfigSlot,
+      overwrite,
+      () => rest.get<HelpAppConfig>('/help/app_config', { hash: appConfig?.hash || 0 }),
+      applyAppConfig,
+      failAppConfig,
+    )
+    return raceTimeout(flight, () => appConfig ?? {})
   }
 
   function getConfig(overwrite?: boolean): Promise<MTConfig> {
     if (config && !overwrite) return Promise.resolve(config)
     if (!overwrite && now() < configRetryAt) return Promise.resolve({})
-    if (!configFlight) {
-      configFlightStart = now()
-      configFlight = requestConfig().finally(() => { configFlight = undefined })
-    }
-    return raceTimeout(configFlight, configFlightStart, () => ({}))
+    const flight = singleProcess(
+      configSlot,
+      overwrite,
+      () => rest.get<Config.config>('/help/config'),
+      (res) => {
+        config = res
+        configRetryAt = 0
+        return res
+      },
+      () => {
+        configRetryAt = now() + RETRY_PAUSE_MS
+        return {}
+      },
+    )
+    return raceTimeout(flight, () => ({}))
   }
 
   return {
