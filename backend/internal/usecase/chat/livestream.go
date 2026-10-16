@@ -86,11 +86,12 @@ func (i *Interactor) viewerCount(ctx context.Context, chatID int64) int {
 	if i.groupCalls == nil {
 		return 0
 	}
-	ids, err := i.groupCalls.Participants(ctx, chatID)
+	// все в звонке, зрители эфира тоже (Participants — только mesh)
+	n, err := i.groupCalls.Size(ctx, chatID)
 	if err != nil {
 		return 0
 	}
-	return len(ids)
+	return n
 }
 
 // StartLivestream запускает трансляцию (только админ) и возвращает креды OBS.

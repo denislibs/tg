@@ -180,6 +180,12 @@ func (s *GroupCallStore) Participants(ctx context.Context, chatID int64) ([]int6
 	return parseIDs(vals), nil
 }
 
+// Size — все в звонке, зрители эфира тоже.
+func (s *GroupCallStore) Size(ctx context.Context, chatID int64) (int, error) {
+	n, err := s.client.SCard(ctx, groupCallKey(chatID)).Result()
+	return int(n), err
+}
+
 func parseIDs(vals []string) []int64 {
 	out := make([]int64, 0, len(vals))
 	for _, v := range vals {

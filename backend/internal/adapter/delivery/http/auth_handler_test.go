@@ -211,6 +211,12 @@ func (m *memGroupCalls) Participants(_ context.Context, chatID int64) ([]int64, 
 	return append([]int64(nil), m.byID[chatID]...), nil
 }
 
+func (m *memGroupCalls) Size(_ context.Context, chatID int64) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.byID[chatID]), nil
+}
+
 func (m *memGroupCalls) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

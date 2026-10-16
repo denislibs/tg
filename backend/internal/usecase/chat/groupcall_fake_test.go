@@ -126,6 +126,12 @@ func (f *fakeCallStore) Participants(_ context.Context, chatID int64) ([]int64, 
 	return slices.DeleteFunc(slices.Clone(f.parts[chatID]), func(id int64) bool { return slices.Contains(f.viewers[chatID], id) }), nil
 }
 
+func (f *fakeCallStore) Size(_ context.Context, chatID int64) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.parts[chatID]), nil
+}
+
 func (f *fakeCallStore) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {
 	f.mu.Lock()
 	f.activeAmongCalls++

@@ -392,6 +392,9 @@ func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
 	if ids, _ := s.Participants(ctx, 5); len(ids) != 3 {
 		t.Fatalf("участники = %v, want 3 (без 11 зрителей)", ids)
 	}
+	if n, _ := s.Size(ctx, 5); n != 14 {
+		t.Fatalf("Size = %d, want 14 (счётчик «смотрят» — со зрителями)", n)
+	}
 	if n, _ := mr.Members(groupCallKey(5)); len(n) != 14 {
 		t.Fatalf("множество звонка = %v, want 14: звонок «идёт» и по зрителям", n)
 	}

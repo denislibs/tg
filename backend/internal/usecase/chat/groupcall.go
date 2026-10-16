@@ -275,8 +275,13 @@ func (i *Interactor) publishGroupCallUpdate(ctx context.Context, chatID, userID 
 	if err != nil {
 		return
 	}
-	// participants — участники mesh, без зрителей эфира (store.Participants)
+	size, err := i.groupCalls.Size(ctx, chatID)
+	if err != nil {
+		return
+	}
+	// participants — участники mesh, без зрителей эфира (store.Participants); size — все в звонке,
+	// с ними: счётчик «смотрят» на экране эфира
 	i.publishPeerFrame(ctx, chatID, members, 0, "group_call_update", map[string]any{
-		"user_id": userID, "action": action, "participants": participants,
+		"user_id": userID, "action": action, "participants": participants, "size": size,
 	})
 }

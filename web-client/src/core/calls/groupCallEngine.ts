@@ -72,6 +72,8 @@ export interface GroupCallFrame {
     forbidden?: boolean
     action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
+    /** все в звонке, зрители эфира тоже (participants — только mesh) */
+    size?: number
     from_user_id?: number
     sdp?: RTCSessionDescriptionInit
     /** Номер обмена: у offer — счётчик отправителя, у answer — номер offer, на который он. */
@@ -391,7 +393,7 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id, !!d.forbidden)
       return
     }
-    store().setActive(d.peer_id, d.participants ?? [])
+    store().setActive(d.peer_id, d.participants ?? [], d.size)
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }

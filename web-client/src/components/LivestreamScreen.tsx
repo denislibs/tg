@@ -15,8 +15,8 @@ export default function LivestreamScreen({ chatName }: { chatName: string }) {
   const t = useT()
   const tArgs = useTArgs()
   const chatId = useLivestreamStore((st) => st.watchingPeerId)
-  // зрители = участники группового звонка чата (зритель регистрируется как участник)
-  const viewers = useGroupCallStore((st) => (chatId != null ? st.activeByChat[chatId]?.length ?? 0 : 0))
+  // зрители = все в звонке чата (зритель регистрируется в нём без pc, group_call_update.size)
+  const viewers = useGroupCallStore((st) => (chatId != null ? st.sizeByChat[chatId] ?? 0 : 0))
 
   if (chatId == null) return null
 

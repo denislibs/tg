@@ -647,6 +647,14 @@ describe('groupCallEngine: предел участников (К3)', () => {
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
   })
 
+  it('group_call_update: participants — mesh, size — все в звонке (счётчик «смотрят» эфира)', () => {
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 9, action: 'joined', participants: [2], size: 40 } })
+    expect(store.useGroupCallStore.getState().activeByChat[PEER]).toEqual([2])
+    expect(store.useGroupCallStore.getState().sizeByChat[PEER]).toBe(40)
+    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 9, action: 'joined', participants: [2, 3] } })
+    expect(store.useGroupCallStore.getState().sizeByChat[PEER]).toBe(2) // старый сервер: размера нет — длина списка
+  })
+
   it('4 других и мы сами в списке (повторный вход) — входим', async () => {
     store.useGroupCallStore.getState().setActive(PEER, [1, 2, 3, 4, 5])
     await engine.joinGroupCall(PEER)
