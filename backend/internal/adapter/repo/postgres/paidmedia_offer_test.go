@@ -104,3 +104,43 @@ func TestPaidMedia_LockOnlyOnPaidMessagePath(t *testing.T) {
 		t.Fatalf("фото чата закрыто замком платного сообщения: ok=%v err=%v", ok, err)
 	}
 }
+
+// Отложенная пересылка платного (предложение — в params, строки paid_media у
+// неё нет) байты без покупки не открывает: ветка отложенных CanAccess заперта,
+// пока файл заперт зрителю платным сообщением (контрольное ревью p0-fix-4, №1).
+func TestPaidMedia_ScheduledForwardStaysLocked(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	alice := seedUser(t, pool, "+79990000241")
+	bob := seedUser(t, pool, "+79990000242")
+	chat := seedPrivateChat(t, pool, alice, bob)
+	var mediaID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO media (owner_id, bucket, object_key, mime) VALUES ($1,'media','paid-sched','image/jpeg') RETURNING id`,
+		alice).Scan(&mediaID); err != nil {
+		t.Fatal(err)
+	}
+	paid := seedMessage(t, pool, chat, alice, 1)
+	if _, err := pool.Exec(ctx, `UPDATE messages SET media_id=$1 WHERE id=$2`, mediaID, paid); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewPaidMediaRepo(pool)
+	if err := repo.SetPrice(ctx, paid, 30, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO scheduled_messages (chat_id, sender_id, type, text, media_id, send_at) VALUES ($1,$2,'photo','',$3, now() + interval '1 day')`,
+		chat, bob, mediaID); err != nil {
+		t.Fatal(err)
+	}
+	access := NewMediaAccessRepo(pool)
+	if ok, err := access.CanAccess(ctx, bob, mediaID); err != nil || ok {
+		t.Fatalf("отложенная пересылка открыла платное без покупки: ok=%v err=%v", ok, err)
+	}
+	if _, err := repo.Unlock(ctx, paid, bob); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := access.CanAccess(ctx, bob, mediaID); err != nil || !ok {
+		t.Fatalf("купивший не качает: ok=%v err=%v", ok, err)
+	}
+}

@@ -77,12 +77,17 @@ func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, er
 //   - вложение или картинка превью ссылки (messages.web_page_media_id,
 //     миграция 0092) сообщения, которое зритель видит в читаемом чате
 //     (messageVisibleTo: удалённое, скрытое у себя, очищенное и скрытая
-//     предыстория не качаются);
+//     предыстория не качаются); вложение платного сообщения, не купленное
+//     зрителем, не качается (paidMediaLockedFor) — замок закрывает ТОЛЬКО этот
+//     путь, другие пути к тому же файлу открыты;
 //   - вложение или картинка превью СВОЕГО отложенного в читаемом чате
 //     (scheduled_messages.media_id / web_page_media_id): ленту отложенных
 //     видит только автор, а у отложенной пересылки и её карточки владелец
 //     файла — автор источника, и без этой ветки файл пропадал бы вместе с
-//     источником (находка 7 ревью S1);
+//     источником (находка 7 ревью S1). Отложенная пересылка платного несёт
+//     предложение в params, а не строкой paid_media, поэтому её вложение
+//     заперто, пока файл заперт зрителю в любом платном сообщении: иначе
+//     пересылка в отложенные открывала бы байты без покупки;
 //   - медиа истории, которую зритель видит (storyVisibleTo — то же правило, что
 //     у ленты, просмотра и закреплённых профиля): живой либо закреплённой.
 //
@@ -108,6 +113,8 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   SELECT 1 FROM scheduled_messages sm
 		     WHERE (sm.media_id=$1 OR sm.web_page_media_id=$1) AND sm.sender_id=$2
 		       AND `+chatReadableBy("sm.chat_id", "$2")+`
+		       AND NOT (sm.media_id=$1 AND EXISTS (
+		         SELECT 1 FROM messages pm_m WHERE pm_m.media_id=$1 AND `+paidMediaLockedFor("pm_m", "$2")+`))
 		   UNION ALL
 		   SELECT 1 FROM stories s
 		     WHERE s.media_id=$1 AND (s.expires_at > now() OR s.pinned)
