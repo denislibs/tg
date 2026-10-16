@@ -3,6 +3,7 @@ package contacts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"slices"
 	"strings"
@@ -35,9 +36,10 @@ type Interactor struct {
 	emit    SnapshotEmitter
 }
 
-// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
-// domain-ошибка, чтобы ручка ответила 500 и записала в лог, а не тихим 404.
-var errMediaReaderUnwired = errors.New("media reader не подключён")
+// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: ручка
+// отвечает 503 (domain.ErrUnavailable), а не тихим 404 и не 500 — 500 клиент
+// повторяет (tweb apiManager.ts:800-808), а проводка при повторе не появится.
+var errMediaReaderUnwired = fmt.Errorf("media reader не подключён: %w", domain.ErrUnavailable)
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
 
