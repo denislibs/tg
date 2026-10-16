@@ -35,7 +35,10 @@ import type { RestClient } from '../net/restClient'
  *  4. Кэш в KV привязан к origin, а не к серверу или аккаунту: значений, зависящих от
  *     пользователя, в конфиге нет (подписка читается живым геттером), а при смене бэкенда
  *     на том же origin старые флаги живут до суток.
- *  5. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
+ *  5. Перечитывание конфигов на входе в аккаунт (tweb `apiManager.ts:111-121`: `user_auth` →
+ *     `updateConfig` → `getConfig(true)` + `getAppConfig(true)`) не портировано: `onLoggedIn`
+ *     воркера зовёт оба геттера без `overwrite` (известный долг, «Не закрыто» Ф7-К).
+ *  6. `getConfig` держит ответ до конца жизни воркера, как `this.config` у tweb;
  *     его `expires` не читается (tweb его тоже не читает — `config` обновляется
  *     переподключением, которого у REST нет, только `overwrite`).
  */
@@ -167,9 +170,11 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
 
   /**
    * Порт `invokeApiSingleProcess` (`apiManagerMethods.ts:170-222`): без `overwrite` вызов
-   * делит идущий запрос; с `overwrite` всегда шлётся новый, и он становится текущим. Когда
-   * старый запрос завершится, его ответ (или отказ) не обрабатывается, а его вызывающие
-   * получают ответ нового (`getNewPromise`, :189-199). Слот освобождает только текущий запрос.
+   * делит идущий запрос; с `overwrite` всегда шлётся новый, и он становится текущим. Если
+   * старый запрос завершился, пока текущим остаётся другой, его ответ (или отказ) не
+   * обрабатывается, а его вызывающие получают ответ нового (`getNewPromise`, :189-199). Если
+   * слот к этому моменту уже освобождён (новый ответил раньше), ответ старого обрабатывается,
+   * как у tweb, и заменяет конфиг. Слот освобождает только текущий запрос (:210-216).
    */
   function singleProcess<R, T>(
     slot: { get: () => Flight<T> | undefined, set: (flight: Flight<T> | undefined) => void },
@@ -272,7 +277,7 @@ export function newAppConfigManager({ rest, kv, isPremium, now = Date.now }: App
         return {}
       },
     )
-    return raceTimeout(flight, () => ({}))
+    return raceTimeout(flight, () => config ?? {})
   }
 
   return {

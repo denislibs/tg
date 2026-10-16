@@ -288,7 +288,7 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
 
   // tweb `invokeApiSingleProcess` (apiManagerMethods.ts:184-199): `overwrite` не делит
   // висящий запрос, а шлёт новый; ответ старого подменяется ответом нового.
-  it('overwrite во время полёта шлёт новый запрос; поздний ответ старого не затирает новый', async() => {
+  it('overwrite во время полёта шлёт новый запрос; старый ответил раньше нового — его вызывающие получают ответ нового', async() => {
     const { mgr, get, store } = setup()
     const answers: Array<(v: unknown) => void> = []
     get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
@@ -325,6 +325,46 @@ describe('getAppConfig (apiManagerMethods.ts:340-366)', () => {
 
     await expect(first).resolves.toMatchObject({ hash: 111 })
     await expect(second).resolves.toMatchObject({ hash: 111 })
+  })
+
+  it('старый запрос ответил, пока новый в полёте: обычный вызов делит новый, а не шлёт третий', async() => {
+    const { mgr, get } = setup()
+    const answers: Array<(v: unknown) => void> = []
+    get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+
+    void mgr.getAppConfig()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    const second = mgr.getAppConfig(true)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    answers[0](CFG_A)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const third = mgr.getAppConfig()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Старый ждёт ответа нового (getNewPromise), слот занят новым: третьего запроса нет.
+    // Проверка `slot.get() === flight` в `finally` при этом не наблюдаема — `finally` старого
+    // срабатывает только после ответа нового; она защитная, как у tweb (:210-216).
+    expect(get).toHaveBeenCalledTimes(2)
+    answers[1](CFG_B)
+    await expect(third).resolves.toMatchObject({ hash: 222 })
+    await expect(second).resolves.toMatchObject({ hash: 222 })
+  })
+
+  it('старый ответил ПОСЛЕ нового: слот уже пуст, его ответ применяется, как у tweb (getNewPromise :189-199)', async() => {
+    const { mgr, get, store } = setup()
+    const answers: Array<(v: unknown) => void> = []
+    get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+
+    const first = mgr.getAppConfig()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    const second = mgr.getAppConfig(true)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    answers[1](CFG_B)
+    await expect(second).resolves.toMatchObject({ hash: 222 })
+    answers[0](CFG_A)
+
+    await expect(first).resolves.toMatchObject({ hash: 111 })
+    expect((store.store.get('appConfig') as MTAppConfig).hash).toBe(111)
   })
 
   it('overwrite после истёкшего потолка висящего запроса — новый запрос, а не старая копия', async() => {
@@ -396,7 +436,7 @@ describe('getConfig (apiManagerMethods.ts:310-322)', () => {
     expect(get).toHaveBeenCalledTimes(2)
   })
 
-  it('overwrite во время полёта шлёт новый запрос; поздний ответ старого не затирает новый', async() => {
+  it('overwrite во время полёта шлёт новый запрос; старый ответил раньше нового — его вызывающие получают ответ нового', async() => {
     const { mgr, get } = setup()
     const answers: Array<(v: unknown) => void> = []
     get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
@@ -411,6 +451,24 @@ describe('getConfig (apiManagerMethods.ts:310-322)', () => {
     await expect(second).resolves.toMatchObject({ edit_time_limit: 60 })
     await expect(mgr.getConfig()).resolves.toMatchObject({ edit_time_limit: 60 })
     expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('старый вызывающий на висящем запросе после потолка получает конфиг, который уже привёз overwrite', async() => {
+    vi.useFakeTimers()
+    try {
+      const { mgr, get } = setup()
+      const answers: Array<(v: unknown) => void> = []
+      get.mockImplementation(() => new Promise((resolve) => { answers.push(resolve) }))
+      const first = mgr.getConfig()
+      const second = mgr.getConfig(true)
+      expect(get).toHaveBeenCalledTimes(2)
+      answers[1](CONFIG)
+      await expect(second).resolves.toMatchObject({ edit_time_limit: 172800 })
+      await vi.advanceTimersByTimeAsync(5000)
+      await expect(first).resolves.toMatchObject({ edit_time_limit: 172800 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('отказ сети — пустой конфиг, не кэшируется', async() => {
