@@ -65,7 +65,11 @@ export class FakePC {
     FakePC.all.push(this)
   }
   getConfiguration() { return this.config }
-  setConfiguration(config: RTCConfiguration) { this.config = config }
+  /** Строже браузера: certificates в setConfiguration не принимаются вовсе, движок их не передаёт. */
+  setConfiguration(config: RTCConfiguration) {
+    if (config.certificates) throw new DOMException('certificates must not be passed', 'InvalidModificationError')
+    this.config = { ...this.config, ...config }
+  }
   get cert() { return (this.config.certificates?.[0] as unknown as { tag: string } | undefined)?.tag ?? '' }
   private negotiate() { queueMicrotask(() => { if (!this.closed && this.signalingState === 'stable') this.onnegotiationneeded?.() }) }
   addTransceiver(kind: string) { this.transceivers.push({ receiver: { track: { kind } } }); this.negotiate() }

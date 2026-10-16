@@ -269,8 +269,8 @@ func TestJoinGroupCall_FullCall_Rejected(t *testing.T) {
 }
 
 // Зритель эфира (кадр group_call_join с viewer) не mesh: предел участников на него не
-// действует, а в списке viewers кадра group_call_update он помечен — клиент не считает его
-// участником при проверке предела. Без активного эфира зрителем не стать.
+// действует, в Participants (список для offer, реле сигналов, group_call_update) его нет.
+// Без активного эфира зрителем не стать, участник mesh зрителем не становится.
 func TestJoinGroupCallAsViewer(t *testing.T) {
 	e := newCallEnv(t)
 	ctx := context.Background()
@@ -295,10 +295,29 @@ func TestJoinGroupCallAsViewer(t *testing.T) {
 	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, 99); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("зритель не из чата: %v, want ErrNotFound", err)
 	}
-	frames := groupCallFramesFor(t, e.pub, callOwner)
-	last := frames[len(frames)-1]
-	if v, _ := last["viewers"].([]any); len(v) != 1 || v[0] != float64(callMember) {
-		t.Fatalf("viewers в кадре = %v, want [%d]", last["viewers"], callMember)
+	ids, err := e.in.GroupCallParticipants(ctx, e.chatID, callOwner)
+	if err != nil || slices.Contains(ids, callMember) || len(ids) != domain.GroupCallMaxParticipants {
+		t.Fatalf("GET участников = %v (%v): зритель в списке для offer", ids, err)
+	}
+	// реле: ни от зрителя, ни к зрителю
+	if err := e.in.RelayGroupCallSignal(ctx, callMember, e.chatID, 9001, map[string]any{"candidate": 1}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("сигнал от зрителя: %v, want ErrForbidden", err)
+	}
+	if err := e.in.RelayGroupCallSignal(ctx, 9001, e.chatID, callMember, map[string]any{"candidate": 1}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("сигнал зрителю: %v, want ErrForbidden", err)
+	}
+	// участник mesh, открывший эфир второй вкладкой, зрителем не становится и из счёта не выпадает
+	if err := e.in.LeaveGroupCall(ctx, e.chatID, 9001); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.in.JoinGroupCall(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.in.JoinGroupCallAsViewer(ctx, e.chatID, callOwner); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := e.in.GroupCallParticipants(ctx, e.chatID, callOwner); !slices.Contains(ids, callOwner) {
+		t.Fatalf("участник mesh стал зрителем: %v", ids)
 	}
 }
 

@@ -87,7 +87,14 @@ function lastGoodIce(): RTCIceServer[] {
  * они пошли бы с кредами, выданными на вход в звонок, и после их истечения получили бы 401.
  */
 export function applyIceServers(pc: RTCPeerConnection, servers: RTCIceServer[]) {
-  try { pc.setConfiguration({ ...pc.getConfiguration(), iceServers: servers }) } catch { /* pc закрыт */ }
+  // Без certificates: по спецификации setConfiguration сверяет их с прежними, а менять нужно
+  // только iceServers (остальные поля в getConfiguration уже те, что заданы при создании).
+  const { certificates: _certificates, ...config } = pc.getConfiguration()
+  try {
+    pc.setConfiguration({ ...config, iceServers: servers })
+  } catch (e) {
+    if (pc.signalingState !== 'closed') console.warn('[call] не удалось обновить креды TURN в идущем pc', e)
+  }
 }
 /**
  * Плановое обновление кредов, пока идёт звонок (К1): за ICE_REFRESH_MARGIN_MS до истечения конфиг

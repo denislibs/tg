@@ -980,9 +980,9 @@ type GroupCallStore interface {
 	// JoinViewer — зритель эфира: в Participants он есть, но предел Join его не считает.
 	JoinViewer(ctx context.Context, chatID, userID int64) (first bool, err error)
 	Leave(ctx context.Context, chatID, userID int64) (last bool, err error)
+	// Participants — участники mesh: без зрителей эфира (JoinViewer). У зрителя нет pc, ему не
+	// шлют offer и сигналы, и он не получает их.
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
-	// Viewers — зрители эфира среди Participants.
-	Viewers(ctx context.Context, chatID int64) ([]int64, error)
 	// ActiveAmong — подмножество chatIDs, где в звонке есть участники (одним
 	// запросом на пачку).
 	ActiveAmong(ctx context.Context, chatIDs []int64) (map[int64]bool, error)

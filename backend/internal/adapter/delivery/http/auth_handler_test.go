@@ -176,6 +176,10 @@ func (m *memGroupCalls) Join(_ context.Context, chatID, userID int64, _ int) (bo
 	return first, nil
 }
 
+func (m *memGroupCalls) JoinViewer(ctx context.Context, chatID, userID int64) (bool, error) {
+	return m.Join(ctx, chatID, userID, 0)
+}
+
 func (m *memGroupCalls) JoinIfActive(ctx context.Context, chatID, userID int64, limit int) (bool, error) {
 	m.mu.Lock()
 	active := len(m.byID[chatID]) > 0

@@ -297,6 +297,20 @@ describe('callEngine: ICE-конфиг и срок кредов', () => {
     expect(pcOf(A)!.getConfiguration().bundlePolicy).toBe('max-bundle') // остальная конфигурация цела
   })
 
+  it('applyIceServers: отказ браузера пишется в журнал, закрытый pc молчит', async () => {
+    const A = await net.side(1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const pc = new FakePC({ bundlePolicy: 'max-bundle' }) as unknown as RTCPeerConnection
+      pc.setConfiguration = () => { throw new DOMException('x', 'InvalidModificationError') }
+      A.engine.applyIceServers(pc, [])
+      expect(warn).toHaveBeenCalledTimes(1)
+      ;(pc as unknown as { signalingState: string }).signalingState = 'closed'
+      A.engine.applyIceServers(pc, [])
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally { warn.mockRestore() }
+  })
+
   it('keepIceFresh: сбой обновления — повтор через 30 с, а не сразу и не через час', async () => {
     const A = await net.side(1)
     await A.engine.iceServers()

@@ -368,8 +368,8 @@ func TestGroupCallStore_ConcurrentJoinRespectsLimit(t *testing.T) {
 	}
 }
 
-// Зрители эфира лежат в том же множестве, но предел mesh их не считает: шестой зритель
-// входит, пять зрителей не отнимают у участников места.
+// Зрители эфира лежат в том же множестве (звонок «идёт» и с ними), но предел mesh их не
+// считает, а Participants их не отдаёт: у зрителя нет pc, ему не шлют offer и сигналы.
 func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
 	s, mr := newTestGroupCallStore(t)
 	ctx := context.Background()
@@ -389,11 +389,21 @@ func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
 	if _, err := s.JoinViewer(ctx, 5, 200); err != nil {
 		t.Fatalf("зритель в полный звонок: %v", err)
 	}
-	if ids, _ := s.Participants(ctx, 5); len(ids) != 14 {
-		t.Fatalf("участники = %v, want 14 (3 + 11 зрителей)", ids)
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 3 {
+		t.Fatalf("участники = %v, want 3 (без 11 зрителей)", ids)
 	}
-	if v, _ := s.Viewers(ctx, 5); len(v) != 11 {
-		t.Fatalf("зрители = %v, want 11", v)
+	if n, _ := mr.Members(groupCallKey(5)); len(n) != 14 {
+		t.Fatalf("множество звонка = %v, want 14: звонок «идёт» и по зрителям", n)
+	}
+	// участник mesh зрителем не становится: иначе вторая вкладка с эфиром выводила бы его из счёта
+	if _, err := s.JoinViewer(ctx, 5, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Join(ctx, 5, 4, 3); !errors.Is(err, domain.ErrGroupCallFull) {
+		t.Fatalf("после JoinViewer участника mesh предел не держится: %v", err)
+	}
+	if ids, _ := s.Participants(ctx, 5); !slices.Contains(ids, 1) {
+		t.Fatalf("участник mesh выпал из Participants: %v", ids)
 	}
 	// оба ключа живут вместе: вход участника продлевает и множество зрителей
 	mr.FastForward(groupCallTTL - time.Minute)
@@ -401,8 +411,8 @@ func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	mr.FastForward(2 * time.Minute)
-	if v, _ := s.Viewers(ctx, 5); len(v) != 11 {
-		t.Fatalf("зрители после продления = %v: множество зрителей истекло раньше звонка", v)
+	if ids, _ := s.Participants(ctx, 5); len(ids) != 3 {
+		t.Fatalf("после продления участники = %v: множество зрителей истекло раньше звонка", ids)
 	}
 	// зритель, ставший участником, начинает считаться
 	if _, err := s.Join(ctx, 5, 100, 3); !errors.Is(err, domain.ErrGroupCallFull) {
@@ -411,7 +421,7 @@ func TestGroupCallStore_ViewersOutsideLimit(t *testing.T) {
 	if last, _ := s.Leave(ctx, 5, 100); last {
 		t.Fatal("выход зрителя помечен переходом")
 	}
-	if v, _ := s.Viewers(ctx, 5); slices.Contains(v, 100) {
+	if n, _ := mr.Members(groupCallViewersKey(5)); slices.Contains(n, "100") {
 		t.Fatal("выход не убрал зрителя из множества зрителей")
 	}
 }

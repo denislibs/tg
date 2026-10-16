@@ -271,16 +271,12 @@ func (i *Interactor) publishGroupCallUpdate(ctx context.Context, chatID, userID 
 	if err != nil {
 		return
 	}
-	viewers, err := i.groupCalls.Viewers(ctx, chatID)
-	if err != nil {
-		return
-	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
 		return
 	}
-	// viewers — подмножество participants (зрители эфира): клиент не считает их участниками mesh
+	// participants — участники mesh, без зрителей эфира (store.Participants)
 	i.publishPeerFrame(ctx, chatID, members, 0, "group_call_update", map[string]any{
-		"user_id": userID, "action": action, "participants": participants, "viewers": viewers,
+		"user_id": userID, "action": action, "participants": participants,
 	})
 }

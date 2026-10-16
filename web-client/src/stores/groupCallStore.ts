@@ -20,10 +20,8 @@ interface GroupCallState {
   participants: Record<number, GroupCallParticipant>
   /** версия медиапотоков: engine инкрементит при ontrack → ре-рендер тайлов */
   streamsVersion: number
-  /** участники идущих звонков по всем чатам (для баннера Join) */
+  /** участники mesh идущих звонков по всем чатам (для баннера Join); зрители эфира не входят */
   activeByChat: Record<number, number[]>
-  /** зрители эфира среди activeByChat: pc не держат, в предел mesh не входят */
-  viewersByChat: Record<number, number[]>
 
   setJoined: (peerId: number) => void
   setConnecting: (v: boolean) => void
@@ -31,7 +29,7 @@ interface GroupCallState {
   upsertParticipant: (p: GroupCallParticipant) => void
   removeParticipant: (userId: number) => void
   bumpStreams: () => void
-  setActive: (peerId: number, userIds: number[], viewers?: number[]) => void
+  setActive: (peerId: number, userIds: number[]) => void
   reset: () => void
 }
 
@@ -43,7 +41,6 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
   participants: {},
   streamsVersion: 0,
   activeByChat: {},
-  viewersByChat: {},
 
   setJoined: (peerId) => set({ peerId, connecting: false }),
   setConnecting: (v) => set({ connecting: v }),
@@ -57,7 +54,7 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
       return { participants: next }
     }),
   bumpStreams: () => set((s) => ({ streamsVersion: s.streamsVersion + 1 })),
-  setActive: (peerId, userIds, viewers = []) =>
-    set((s) => ({ activeByChat: { ...s.activeByChat, [peerId]: userIds }, viewersByChat: { ...s.viewersByChat, [peerId]: viewers } })),
+  setActive: (peerId, userIds) =>
+    set((s) => ({ activeByChat: { ...s.activeByChat, [peerId]: userIds } })),
   reset: () => set({ peerId: null, connecting: false, micOn: true, camOn: false, participants: {}, streamsVersion: 0 }),
 }))

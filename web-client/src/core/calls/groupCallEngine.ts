@@ -72,8 +72,6 @@ export interface GroupCallFrame {
     forbidden?: boolean
     action?: 'joined' | 'left' | 'rejected'
     participants?: number[]
-    /** зрители эфира среди participants */
-    viewers?: number[]
     from_user_id?: number
     sdp?: RTCSessionDescriptionInit
     /** Номер обмена: у offer — счётчик отправителя, у answer — номер offer, на который он. */
@@ -265,9 +263,7 @@ export async function joinGroupCall(peerId: number, withVideo = false) {
   // микрофона. Решает сервер (rejected), здесь — по известному списку; нет конфига — решит он.
   // У tweb отказа «звонок полон» нет (видеочат через SFU): тост — общий, как у отказа сервера.
   const { groupcall_video_participants_max: max } = await managers().appConfig.getAppConfig()
-  const { activeByChat, viewersByChat } = store()
-  const viewers = viewersByChat[peerId] ?? []
-  const others = (activeByChat[peerId] ?? []).filter((id) => id !== useChatsStore.getState().meId && !viewers.includes(id))
+  const others = (store().activeByChat[peerId] ?? []).filter((id) => id !== useChatsStore.getState().meId)
   if (max != null && others.length >= max) {
     store().reset()
     toastNew({ langPackKey: 'Error.AnError' })
@@ -395,7 +391,7 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
       if (d.user_id === useChatsStore.getState().meId) handleJoinRejected(d.peer_id, !!d.forbidden)
       return
     }
-    store().setActive(d.peer_id, d.participants ?? [], d.viewers ?? [])
+    store().setActive(d.peer_id, d.participants ?? [])
     if (store().peerId === d.peer_id && d.action === 'left' && d.user_id != null) {
       closePeer(d.user_id)
     }

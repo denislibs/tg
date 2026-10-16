@@ -647,12 +647,6 @@ describe('groupCallEngine: предел участников (К3)', () => {
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
   })
 
-  it('зрители эфира в предел не входят: 5 других, из них 3 зрителя — входим', async () => {
-    engine.handleGroupCallFrame({ t: 'group_call_update', d: { peer_id: PEER, user_id: 9, action: 'joined', participants: [2, 3, 4, 5, 6], viewers: [4, 5, 6] } })
-    await engine.joinGroupCall(PEER)
-    expect(sendCallFrame).toHaveBeenCalledWith({ type: 'group_call_join', data: { peer_id: PEER } })
-  })
-
   it('4 других и мы сами в списке (повторный вход) — входим', async () => {
     store.useGroupCallStore.getState().setActive(PEER, [1, 2, 3, 4, 5])
     await engine.joinGroupCall(PEER)

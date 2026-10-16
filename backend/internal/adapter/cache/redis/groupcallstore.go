@@ -75,9 +75,11 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 redis.call('EXPIRE', KEYS[2], ARGV[2])
 return 0`)
 
-// groupCallJoinViewer: зритель эфира, без предела. 1 — переход 0→1, как у groupCallJoin.
+// groupCallJoinViewer: зритель эфира, без предела. Участник mesh не «понижается» до зрителя (вторая
+// вкладка, открывшая эфир): иначе он выпал бы из счёта предела. 1 — переход 0→1, как у groupCallJoin.
 var groupCallJoinViewer = goredis.NewScript(`
 local before = redis.call('SCARD', KEYS[1])
+if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 and redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 0 then return 0 end
 redis.call('SADD', KEYS[1], ARGV[1])
 redis.call('SADD', KEYS[2], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[2])
@@ -171,26 +173,21 @@ func (s *GroupCallStore) Leave(ctx context.Context, chatID, userID int64) (bool,
 }
 
 func (s *GroupCallStore) Participants(ctx context.Context, chatID int64) ([]int64, error) {
-	return s.members(ctx, groupCallKey(chatID))
-}
-
-// Viewers — зрители эфира среди Participants.
-func (s *GroupCallStore) Viewers(ctx context.Context, chatID int64) ([]int64, error) {
-	return s.members(ctx, groupCallViewersKey(chatID))
-}
-
-func (s *GroupCallStore) members(ctx context.Context, key string) ([]int64, error) {
-	vals, err := s.client.SMembers(ctx, key).Result()
+	vals, err := s.client.SDiff(ctx, groupCallKey(chatID), groupCallViewersKey(chatID)).Result()
 	if err != nil {
 		return nil, err
 	}
+	return parseIDs(vals), nil
+}
+
+func parseIDs(vals []string) []int64 {
 	out := make([]int64, 0, len(vals))
 	for _, v := range vals {
 		if id, e := strconv.ParseInt(v, 10, 64); e == nil {
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // ActiveAmong — чаты среди chatIDs, где звонок идёт (ключ жив): один pipeline.

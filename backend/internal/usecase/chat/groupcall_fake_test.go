@@ -89,16 +89,14 @@ func (f *fakeCallStore) JoinViewer(_ context.Context, chatID, userID int64) (boo
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	first := len(f.parts[chatID]) == 0
+	if slices.Contains(f.parts[chatID], userID) && !slices.Contains(f.viewers[chatID], userID) {
+		return false, nil // участник mesh зрителем не становится
+	}
 	f.add(chatID, userID)
 	f.viewers[chatID] = append(f.viewers[chatID], userID)
 	return first, nil
 }
 
-func (f *fakeCallStore) Viewers(_ context.Context, chatID int64) ([]int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.viewers[chatID]), nil
-}
 
 // JoinIfActive — как Redis-стор: пустой звонок не создаётся.
 func (f *fakeCallStore) JoinIfActive(_ context.Context, chatID, userID int64, limit int) (bool, error) {
@@ -126,7 +124,7 @@ func (f *fakeCallStore) Leave(_ context.Context, chatID, userID int64) (bool, er
 func (f *fakeCallStore) Participants(_ context.Context, chatID int64) ([]int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.parts[chatID]), nil
+	return slices.DeleteFunc(slices.Clone(f.parts[chatID]), func(id int64) bool { return slices.Contains(f.viewers[chatID], id) }), nil
 }
 
 func (f *fakeCallStore) ActiveAmong(_ context.Context, chatIDs []int64) (map[int64]bool, error) {

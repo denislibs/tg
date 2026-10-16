@@ -57,7 +57,11 @@ export class FakePC {
 
   constructor(public config: RTCConfiguration = {}) { FakePC.configs.push(config); FakePC.all.push(this) }
   getConfiguration() { return this.config }
-  setConfiguration(config: RTCConfiguration) { this.config = config }
+  /** Как браузер: certificates, пришедшие в setConfiguration, должны совпасть с прежними (InvalidModificationError). */
+  setConfiguration(config: RTCConfiguration) {
+    if (config.certificates) throw new DOMException('certificates differ', 'InvalidModificationError')
+    this.config = config
+  }
 
   private run<T>(body: () => T): Promise<T> {
     if (this.closed) return Promise.reject(invalidState('closed'))
