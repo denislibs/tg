@@ -579,8 +579,7 @@ export const AppChatTypeTab =
 // её редактор (`editChatInviteLink.solid.tsx`); общее — `chatInviteLinkShared.ts`.
 // Список открывает редактор чата (`editChat`, 0б-1), остальные — сам список.
 // `getInitArgs` висит на конструкторе, как у оригинала: предзагрузку зовёт
-// открывающий. Расхождения: `adminId` у списка нет (О-121), `onUpdate` у ссылки —
-// тоже (его зовёт только список заявок, О-122); `getInitArgs` берёт `managers`
+// открывающий. Расхождения: `onUpdate` у ссылки нет (его зовёт только список заявок, О-122); `getInitArgs` берёт `managers`
 // первым аргументом (DI-ручки вне вкладки нет — расхождение 6
 // `chatInviteLinkShared.ts`).
 import { getChatInviteLinksInitArgs, type ChatInvite, type ChatInviteActions } from '../sidebarRight/tabs/chatInviteLinkShared'
@@ -614,6 +613,8 @@ export const AppChatInviteLinkTab =
 
 type AppChatInviteLinksTabPayload = {
   chatId: ChatId,
+  /** tweb `:699-712`: ссылки одного админа (открывает создатель из раздела «Ссылки других админов»). */
+  adminId?: UserId,
   p?: ReturnType<typeof getChatInviteLinksInitArgs>
 }
 

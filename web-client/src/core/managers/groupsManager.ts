@@ -228,6 +228,9 @@ export interface ChatInviteExported {
 /** Контейнеры ответа: одна ссылка и список. */
 export interface MessagesExportedChatInvite { _: 'messages.exportedChatInvite'; invite: ChatInviteExported }
 export interface MessagesExportedChatInvites { _: 'messages.exportedChatInvites'; count: number; invites: ChatInviteExported[] }
+/** Создатель ссылок чата со счётчиками (`messages.getAdminsWithInvites`, tweb `chatAdminWithInvites`). */
+export interface ChatAdminWithInvites { _: 'chatAdminWithInvites'; admin_id: UserId; invites_count: number; revoked_invites_count: number }
+export interface MessagesChatAdminsWithInvites { _: 'messages.chatAdminsWithInvites'; admins: ChatAdminWithInvites[]; users?: UserReal[] }
 
 /**
  * Хеш ссылки-приглашения — хвост её адреса. Сервер отдаёт путь диплинка
@@ -734,12 +737,6 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
       const r = await rest.post<MessagesExportedChatInvite>(`/chats/${peerId}/invite_links`, { title: opts?.title, usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
       return mapInvite(r.invite)
     },
-    // revoked=true — список отозванных ссылок (Telegram getExportedChatInvites
-    // revoked flag); по умолчанию — активные.
-    async listInvites(peerId: number, revoked = false): Promise<InviteLink[]> {
-      const r = await rest.get<MessagesExportedChatInvites>(`/chats/${peerId}/invite_links${revoked ? '?revoked=true' : ''}`)
-      return (r.invites ?? []).map(mapInvite)
-    },
     // ── Ссылки в форме оригинала — порт `appChatInvitesManager` (tweb
     // `lib/appManagers/appChatInvitesManager.ts`) в объёме вкладок ссылок
     // правой колонки (`sidebarRight/tabs/chatInviteLink*.solid.tsx`, 0б-3).
@@ -747,17 +744,26 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
     // публичным адресом (`toPublicInvite`), как у оригинала. Ответы —
     // конструкторы провода, без переклейки в плоскую витрину.
     //
-    // Нет на бэкенде (О-120…О-124 волны 7): `admin_id`-фильтр и
-    // `getAdminsWithInvites`, постоянная ссылка (`permanent`,
+    // Нет на бэкенде (О-120, О-122…О-124 волны 7): постоянная ссылка (`permanent`,
     // `messages.exportedChatInviteReplaced`), заявки по ссылке (`requested`),
     // подписки (`subscription_pricing`), страницы и поиск вступивших.
 
-    /** tweb `getExportedChatInvites({chatId, revoked})` (без `adminId` — О-121). Карточки
-     *  создателей (`users`) — в зеркало: строка «Ссылку создал» читает их синхронно. */
-    async getExportedChatInvites({ chatId, revoked }: { chatId: ChatId; revoked?: boolean }): Promise<MessagesExportedChatInvites> {
-      const r = await rest.get<MessagesExportedChatInvites & { users?: UserReal[] }>(`/chats/${chatPeerId(chatId)}/invite_links${revoked ? '?revoked=true' : ''}`)
+    /** tweb `getExportedChatInvites({chatId, revoked, adminId})` (`appChatInvitesManager.ts:114-131`).
+     *  Без `adminId` сервер отдаёт ссылки самого актора (tweb шлёт `inputUserSelf`); чужие —
+     *  только создателю чата (Б-6). Карточки создателей (`users`) — в зеркало: строка
+     *  «Ссылку создал» читает их синхронно. */
+    async getExportedChatInvites({ chatId, revoked, adminId }: { chatId: ChatId; revoked?: boolean; adminId?: UserId }): Promise<MessagesExportedChatInvites> {
+      const query = [revoked ? 'revoked=true' : '', adminId ? `admin_id=${adminId}` : ''].filter(Boolean).join('&')
+      const r = await rest.get<MessagesExportedChatInvites & { users?: UserReal[] }>(`/chats/${chatPeerId(chatId)}/invite_links${query ? `?${query}` : ''}`)
       peers.saveApiPeers({ users: r.users })
       return { _: r._, count: r.count, invites: (r.invites ?? []).map(toPublicInvite) }
+    },
+    /** tweb `getAdminsWithInvites(chatId)` (`:179-186`): создатели ссылок чата со счётчиками —
+     *  только создателю чата; карточки админов (`users`) — в зеркало. */
+    async getAdminsWithInvites(chatId: ChatId): Promise<MessagesChatAdminsWithInvites> {
+      const r = await rest.get<MessagesChatAdminsWithInvites>(`/chats/${chatPeerId(chatId)}/admins_with_invites`)
+      peers.saveApiPeers({ users: r.users })
+      return r
     },
     /** tweb `exportChatInvite` (без `stars` — О-123). `usageLimit: 0` — без лимита, `expireDate: 0` — бессрочно. */
     async exportChatInvite({ chatId, title, requestNeeded, usageLimit, expireDate }: {
@@ -793,9 +799,9 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
     async deleteExportedChatInvite(chatId: ChatId, link: string): Promise<void> {
       await rest.del(`/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link)}`)
     },
-    /** tweb `deleteRevokedExportedChatInvites(chatId, adminId)` (без `adminId` — О-121). */
-    async deleteRevokedExportedChatInvites(chatId: ChatId): Promise<void> {
-      await rest.del(`/chats/${chatPeerId(chatId)}/revoked_invite_links`)
+    /** tweb `deleteRevokedExportedChatInvites(chatId, adminId)` (`:165-170`); без `adminId` — свои отозванные. */
+    async deleteRevokedExportedChatInvites(chatId: ChatId, adminId?: UserId): Promise<void> {
+      await rest.del(`/chats/${chatPeerId(chatId)}/revoked_invite_links${adminId ? `?admin_id=${adminId}` : ''}`)
     },
     /**
      * tweb `appChatInvitesManager.getChatInviteImporters` (:188-218). Заявки

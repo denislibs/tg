@@ -659,10 +659,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `AreYouSureDeleteThisChatSavedMessages`.
 // Ф7-Г (платное сообщение с согласием): у ru +1 ключ tweb lang.ts:4907 —
 // `PaidMessages.PriceChanged` (плашка «Цена изменилась» над чатом).
+// М2-1 (ссылки-приглашения других админов, Б-6): у ru +4 ключа tweb lang.ts —
+// `LinksCreatedByOtherAdmins`, `LinksCreatedByThisAdmin`, `ManageLinks.Admin.Permanent.Desc`
+// и плюральный `InviteLinkCount` (`plural` 65 → 66).
 // М2-3 (Б-9, отказ входа в видеочат): у ru +1 ключ tweb lang.ts:4594 —
 // `VoiceChat.Chat.Ended` («Видеочат завершён.»), тост appImManager.ts:2372.
 const COMPOSITION = {
-  ru: { keys: 1818, plural: 65 },
+  ru: { keys: 1834, plural: 67 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -872,8 +875,13 @@ const COMPOSITION = {
 // Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
 // Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
 // Ф-5 C2 — у ru +6 ключей превью ссылки (разбор — там же).
+// М2-1 — у ru +4 ключа ссылок других админов (разбор — там же).
+// М1-3 — у ru +10 ключей `UnconfirmedAuth*` плашки «новый вход» (tweb lang.ts:324-336).
+// М3-2 — у ru +2 ключа tweb lang.ts:1594, :4456: секция «Peer-to-Peer» вкладки «Звонки»
+// (`PrivacyP2PHeader`, `PrivacySettingsController.P2p.Desc`).
+// М2-3 — у ru +1 ключ `VoiceChat.Chat.Ended` тоста отказа входа в видеочат (разбор — там же).
 const FINGERPRINT = {
-  ru: 'fbb3377e',
+  ru: '9daff83c',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',
@@ -1156,6 +1164,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     AttachGif: 'GIF — аббревиатура формата, не переводится',
     AppName: 'название продукта — «Telegram» не переводится (заголовок попапа без своего, tweb peer.ts:58)',
     'Calls.Status.Group': 'чистый шаблон «(N) время» без слов — tweb lang.ts:2020, в русском Telegram тот же',
+    PrivacyP2PHeader: 'технический термин «Peer-to-Peer» — заголовок секции приватности звонков, в русском Telegram так же',
   },
   uk: {
     'Premium.Boarding.Title': 'назва продукту — «Telegram Premium» не перекладається',

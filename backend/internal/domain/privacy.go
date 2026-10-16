@@ -13,6 +13,7 @@ const (
 	PrivacyAbout        PrivacyKey = "about"          // кто видит «О себе»
 	PrivacyBirthday     PrivacyKey = "birthday"       // кто видит день рождения
 	PrivacyCalls        PrivacyKey = "calls"          // кто может мне звонить
+	PrivacyPhoneP2P     PrivacyKey = "phone_p2p"      // с кем звонок идёт напрямую (иначе только через TURN)
 	PrivacyForwards     PrivacyKey = "forwards"       // кто может ссылаться на аккаунт при пересылке
 	PrivacyChatInvite   PrivacyKey = "chat_invite"    // кто может приглашать меня в группы
 	PrivacyMessages     PrivacyKey = "messages"       // кто может отправлять мне сообщения
@@ -23,7 +24,7 @@ const (
 // PrivacyKeys — канонический порядок ключей (порядок секции Privacy в tweb).
 var PrivacyKeys = []PrivacyKey{
 	PrivacyPhoneNumber, PrivacyAddedByPhone, PrivacyLastSeen, PrivacyProfilePhoto,
-	PrivacyAbout, PrivacyCalls, PrivacyForwards, PrivacyChatInvite,
+	PrivacyAbout, PrivacyCalls, PrivacyPhoneP2P, PrivacyForwards, PrivacyChatInvite,
 	PrivacyVoices, PrivacyMessages, PrivacyBirthday, PrivacyReadTime,
 }
 

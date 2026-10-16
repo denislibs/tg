@@ -35,10 +35,13 @@ type phoneCallRecord struct {
 	CallerID int64 `json:"caller_id"`
 	CalleeID int64 `json:"callee_id"`
 	Video    bool  `json:"video"`
+	// P2PAllowed без поля (запись старого бэкенда) читается как false: звонок,
+	// заведённый до этой версии, идёт через TURN, а не в обход правила.
+	P2PAllowed bool `json:"p2p_allowed"`
 }
 
 func (s *PhoneCallStore) Create(ctx context.Context, c domain.PhoneCall) (bool, error) {
-	b, err := json.Marshal(phoneCallRecord{CallerID: c.CallerID, CalleeID: c.CalleeID, Video: c.Video})
+	b, err := json.Marshal(phoneCallRecord{CallerID: c.CallerID, CalleeID: c.CalleeID, Video: c.Video, P2PAllowed: c.P2PAllowed})
 	if err != nil {
 		return false, err
 	}
@@ -85,7 +88,7 @@ func decodePhoneCall(id string, rec, acc *goredis.StringCmd) (domain.PhoneCall, 
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return domain.PhoneCall{}, err
 	}
-	c := domain.PhoneCall{ID: id, CallerID: r.CallerID, CalleeID: r.CalleeID, Video: r.Video}
+	c := domain.PhoneCall{ID: id, CallerID: r.CallerID, CalleeID: r.CalleeID, Video: r.Video, P2PAllowed: r.P2PAllowed}
 	switch v, err := acc.Result(); {
 	case errors.Is(err, goredis.Nil):
 	case err != nil:

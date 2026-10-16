@@ -49,7 +49,7 @@ func (i *Interactor) RequestPasswordRecovery(ctx context.Context, rawPasswordTok
 		return RecoveryRequest{}, ErrLoginStepsUnavailable
 	}
 	tokenHash := domain.HashToken(rawPasswordToken)
-	userID, err := i.pw.PasswordTokenUser(ctx, tokenHash)
+	userID, approved, err := i.pw.PasswordTokenUser(ctx, tokenHash)
 	if err != nil {
 		return RecoveryRequest{}, err // ErrNotFound → токен истёк
 	}
@@ -87,7 +87,7 @@ func (i *Interactor) RequestPasswordRecovery(ctx context.Context, rawPasswordTok
 		return RecoveryRequest{}, err
 	}
 	// Шаг пароля продлеваем: восстановление по почте длиннее ввода пароля.
-	if err := i.pw.SavePasswordToken(ctx, tokenHash, userID, now.Add(passwordTokenTTL)); err != nil {
+	if err := i.pw.SavePasswordToken(ctx, tokenHash, userID, now.Add(passwordTokenTTL), approved); err != nil {
 		return RecoveryRequest{}, err
 	}
 	i.recFails.clear(tokenHash) // новый код — новый лимит попыток
@@ -128,7 +128,9 @@ func (i *Interactor) ConfirmPasswordRecovery(ctx context.Context, rawPasswordTok
 	if err != nil {
 		return SignInResult{}, err
 	}
-	res, err := i.mintSession(ctx, user, deviceName, platform)
+	// approved не берём: восстановление по почте — путь при угнанной почте, его вход всегда
+	// спрашивается (решение М1-3 по ревью, контракт).
+	res, err := i.mintSession(ctx, user, deviceName, platform, false)
 	if err != nil {
 		return SignInResult{}, err
 	}

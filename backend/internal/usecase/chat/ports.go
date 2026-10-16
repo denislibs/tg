@@ -318,15 +318,21 @@ type GroupRepo interface {
 type InviteRepo interface {
 	Create(ctx context.Context, chatID, createdBy int64, token, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error)
 	GetByToken(ctx context.Context, token string) (domain.InviteLink, error) // domain.ErrNotFound
-	// List returns a chat's invite links: active ones (revoked=false) or the
-	// revoked ones (revoked=true), newest first.
-	List(ctx context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error)
+	// GetInChat — ссылка чата по токену, ВКЛЮЧАЯ отозванную (GetByToken отозванные
+	// скрывает, а владельца нужно знать и у них); нет в этом чате — domain.ErrNotFound.
+	GetInChat(ctx context.Context, chatID int64, token string) (domain.InviteLink, error)
+	// ListBy returns the invite links created by createdBy in a chat: active ones
+	// (revoked=false) or the revoked ones (revoked=true), newest first.
+	ListBy(ctx context.Context, chatID, createdBy int64, revoked bool) ([]domain.InviteLink, error)
+	// CountsByAdmin — по каждому создателю ссылок чата: сколько неотозванных и
+	// отозванных (tweb messages.getAdminsWithInvites), по возрастанию admin_id.
+	CountsByAdmin(ctx context.Context, chatID int64) ([]domain.AdminInvites, error)
 	// IncUses засчитывает вход; лимит использований исчерпан — domain.ErrForbidden.
 	IncUses(ctx context.Context, id int64) error
 	// Delete hard-deletes a single link (matched by chat+token); no-op if absent.
 	Delete(ctx context.Context, chatID int64, token string) error
-	// DeleteAllRevoked hard-deletes every revoked link of the chat.
-	DeleteAllRevoked(ctx context.Context, chatID int64) error
+	// DeleteRevokedBy hard-deletes the revoked links of the chat created by createdBy.
+	DeleteRevokedBy(ctx context.Context, chatID, createdBy int64) error
 	// Update applies the edited fields of an invite link (matched by chat+token)
 	// and returns the updated row. Unset fields (see domain.InviteEdit) are left
 	// unchanged. domain.ErrNotFound if no such link.
