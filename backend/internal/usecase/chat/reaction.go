@@ -58,7 +58,9 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 		if s, e := i.groups.Settings(ctx, chatID); e == nil {
 			switch s.ReactionsMode {
 			case "none":
-				return domain.ErrForbidden
+				// Для клиента «реакция не принята» одно: REACTION_INVALID откатывает
+				// локальную реакцию (tweb appReactionsManager.ts:977-989).
+				return domain.ErrBadReaction
 			case "some":
 				if !slices.Contains(s.ReactionsAllowed, emoji) {
 					return domain.ErrBadReaction

@@ -108,10 +108,17 @@ func TestPostStats_HTTP(t *testing.T) {
 		t.Fatalf("recent post mismatch: %s", rec.Body.String())
 	}
 
-	// Non-member is forbidden.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+itoa(post.ID)+"/stats", tokenC, nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for non-member, got %d %s", rec.Code, rec.Body.String())
+	// Не админ: имя TG CHAT_ADMIN_REQUIRED (400) — tweb bubbles.ts:6135.
+	for _, path := range []string{"/chats/" + cid + "/messages/" + itoa(post.ID) + "/stats", "/channels/" + cid + "/stats"} {
+		rec = authedReq(t, h, http.MethodGet, path, tokenC, nil)
+		var e struct {
+			Code int    `json:"code"`
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &e)
+		if rec.Code != http.StatusBadRequest || e.Text != "CHAT_ADMIN_REQUIRED" {
+			t.Fatalf("%s не-админом: %d %s; want 400 CHAT_ADMIN_REQUIRED", path, rec.Code, rec.Body.String())
+		}
 	}
 
 	// Missing post → 404.

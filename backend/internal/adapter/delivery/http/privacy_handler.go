@@ -45,7 +45,7 @@ func (h *PrivacyHandler) Rule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := h.uc.Rule(r.Context(), user.ID, key)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewAccountPrivacyRules(domain.PrivacyRulesOf(rule), nil, nil))
@@ -75,7 +75,7 @@ func (h *PrivacyHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewAccountPrivacyRules(domain.PrivacyRulesOf(rule), nil, nil))
@@ -88,7 +88,7 @@ func (h *PrivacyHandler) Blocked(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	users, total, err := h.uc.Blocked(r.Context(), user.ID, offset, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	// Раскладка contacts.blockedSlice: СТРОКИ блокировки (кто и когда) отдельно,
@@ -123,7 +123,7 @@ func (h *PrivacyHandler) Block(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -138,7 +138,7 @@ func (h *PrivacyHandler) Unblock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.uc.Unblock(r.Context(), user.ID, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
@@ -158,7 +158,7 @@ func (h *PrivacyHandler) Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
+		writeDomainError(w, err, "internal")
 		return
 	}
 	writeJSON(w, http.StatusOK, p)

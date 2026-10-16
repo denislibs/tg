@@ -38,7 +38,7 @@ func (h *ChatHandler) SuggestBirthday(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "suggest birthday failed")
+		writeDomainError(w, err, "suggest birthday failed")
 		return
 	}
 	writeMessage(w, r, h.svc, msg)

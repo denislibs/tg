@@ -49,3 +49,13 @@ type ErrAllowPaymentRequired struct{ Stars int64 }
 func (e ErrAllowPaymentRequired) Error() string {
 	return fmt.Sprintf("ALLOW_PAYMENT_REQUIRED_%d", e.Stars)
 }
+
+// ErrSlowmodeWait — отказ медленного режима с остатком ожидания. Seconds —
+// целые секунды (≥ 1) до конца окна; на проводе SLOWMODE_WAIT_<N> (tweb
+// appImManager.ts:551-565 берёт N из `error.type`). errors.Is(err, ErrSlowmode)
+// остаётся истинным: прежние проверки по сентинелу продолжают работать.
+type ErrSlowmodeWait struct{ Seconds int }
+
+func (e ErrSlowmodeWait) Error() string { return fmt.Sprintf("SLOWMODE_WAIT_%d", e.Seconds) }
+
+func (e ErrSlowmodeWait) Is(target error) bool { return target == ErrSlowmode }

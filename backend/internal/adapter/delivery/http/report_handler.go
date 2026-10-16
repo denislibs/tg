@@ -57,7 +57,7 @@ func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 	if len(b.Seqs) > 0 {
 		bySeq, err := h.peers.MessageIDsBySeqs(r.Context(), chatID, b.Seqs)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "message lookup failed")
+			writeDomainError(w, err, "message lookup failed")
 			return
 		}
 		msgIDs = make([]int64, 0, len(b.Seqs))
@@ -80,7 +80,7 @@ func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not submit report")
+		writeDomainError(w, err, "could not submit report")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

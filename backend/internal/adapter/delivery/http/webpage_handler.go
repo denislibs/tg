@@ -22,8 +22,8 @@ func (h *ChatHandler) GetWebPage(w http.ResponseWriter, r *http.Request) {
 	// Каждый промах кэша — поход сервера на чужой сайт: частота на
 	// пользователя ограничена (плашка tweb переживает отказ — просто не
 	// показывается, input.ts:3594-3600).
-	if !h.limiter.allow("webpage:"+strconv.FormatInt(h.meID(r), 10), 1, 10) {
-		writeError(w, http.StatusTooManyRequests, "too many requests")
+	if ok, wait := h.limiter.allowWait("webpage:"+strconv.FormatInt(h.meID(r), 10), 1, 10); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesWebPage(url, h.svc.GetWebPage(r.Context(), url)))

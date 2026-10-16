@@ -160,6 +160,19 @@ describe('MessagesManager.forwardMessages', () => {
     expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null, schedule_date: 0, schedule_repeat_period: 0 })
   })
 
+  // Ф7-И1: HTTP 420 SLOWMODE_WAIT_<N> у пересылки объявляется как отказ отправки
+  // пира (tweb forwardMessages → onMessagesSendError → попап медленного режима) и
+  // пробрасывается вызывающему; прочие отказы события не рождают.
+  it('SLOWMODE_WAIT_N объявляется rt:message_send_error и пробрасывается', async () => {
+    const rest = {
+      post: async () => { throw new HttpError(420, 'SLOWMODE_WAIT_20', 'SLOWMODE_WAIT_20') },
+    } as unknown as RestClient
+    const broadcast = vi.fn()
+    const mgr = newMessagesManager({ rest, broadcast })
+    await expect(mgr.forwardMessages(1, 2, [cid(3)])).rejects.toMatchObject({ status: 420 })
+    expect(broadcast).toHaveBeenCalledWith('rt:message_send_error', { peerId: 1, error: { type: 'SLOWMODE_WAIT_20' } })
+  })
+
   // Ф7-Г (MC-06): allow_paid_stars у пересылки — сумма ЗА ПАЧКУ: цена одного
   // сообщения × число сообщений (tweb forwardMessagesInner, appMessagesManager.ts:5634).
   it('allow_paid_stars = цена × число сообщений пачки', async () => {
@@ -211,7 +224,8 @@ describe('MessagesManager.forwardMessages', () => {
     const rest = { post: async () => { throw new HttpError(403, 'ALLOW_PAYMENT_REQUIRED_15', 'ALLOW_PAYMENT_REQUIRED_15') } } as unknown as RestClient
     const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
     await expect(mgr.forwardMessages(1, 2, [cid(3)], { noRepay: true })).rejects.toBeInstanceOf(HttpError)
-    expect(events).toEqual([])
+    // запрос оплаты не заведён; остаётся только общее объявление отказа
+    expect(events).toEqual([RT.messageSendError])
   })
 
   it('прочие отказы пересылки по-прежнему бросаются вызывающему', async () => {
@@ -226,7 +240,7 @@ describe('MessagesManager.forwardMessages', () => {
     const rest = { post: async () => { throw new HttpError(400, 'BALANCE_TOO_LOW', 'BALANCE_TOO_LOW') } } as unknown as RestClient
     const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
     await expect(mgr.forwardMessages(1, 2, [cid(3)], { confirmedPaymentResult: { starsAmount: 5 } })).rejects.toBeInstanceOf(HttpError)
-    expect(events).toEqual([])
+    expect(events).toEqual([RT.messageSendError])
   })
 
   // tweb `forwardMessagesInner`: `silent` и `top_msg_id` (корень темы/треда у

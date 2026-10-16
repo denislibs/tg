@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -24,6 +25,28 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 	// Договорённость о проводе — заголовком запроса, до всех витрин: тот же
 	// приём, что подпротокол `tl.1` у сокета (см. wiretl.go).
 	r.Use(WireTL)
+	// Неизвестный маршрут и неразрешённый метод — конструктор error с именем
+	// METHOD_INVALID (В-М1), а не text/plain chi: у клиента пустой type
+	// запускал бы ветку tweb `UNKNOWN` (apiManager.ts:810) — повтор раз в
+	// секунду. Подроутеры (/langpack…) наследуют обработчики корня; хост
+	// страниц /tme ставит свой HTML (public_page.go::Mount).
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusNotFound, "METHOD_INVALID")
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		// Allow — как у chi по умолчанию (свой обработчик список методов не
+		// получает, поэтому спрашиваем роутер).
+		var allowed []string
+		for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions} {
+			if r.Match(chi.NewRouteContext(), m, req.URL.Path) {
+				allowed = append(allowed, m)
+			}
+		}
+		if len(allowed) > 0 {
+			w.Header().Set("Allow", strings.Join(allowed, ", "))
+		}
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_INVALID")
+	})
 
 	// Privacy как read-model-шов для хендлеров (аватар/онлайн с учётом правил);
 	// typed-nil не заворачиваем в интерфейс, чтобы nil-проверки работали.

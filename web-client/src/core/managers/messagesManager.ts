@@ -511,8 +511,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsL
   // Запросы на повторную оплату (tweb `RepayRequestHandler`): события уходят
   // вкладкам, подтверждение приходит их RPC (`confirmRepayRequest` ниже).
   const repay = newRepayRequestHandler({ dispatch: (event, payload) => broadcast?.(event, payload) })
+  // Одно событие на HTTP-вызов (tweb шлёт `message_error` на каждое сообщение пачки,
+  // appMessagesManager.ts:5805-5838); после заведённого запроса оплаты (`registerHttpRepay`)
+  // события нет. Потребитель один — попап медленного режима, ему этого достаточно.
+  const reportSendError = (peerId: number, err: unknown): void => {
+    if (err instanceof HttpError) broadcast?.(RT.messageSendError, { peerId, error: { type: err.type } })
+  }
   const ctx = {
-    rest, patchMsg, getMeId, getReactionsLimit, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf, repay,
+    rest, patchMsg, getMeId, getReactionsLimit, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf, repay, reportSendError,
     // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
     applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
   }
@@ -527,6 +533,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsL
     isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
     isForum: (peerId) => isForum(getPeer?.(peerId) as Chat | undefined),
     emit: emitOps,
+    sendError: (peerId, type) => broadcast?.(RT.messageSendError, { peerId, error: { type } }),
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
     // (пин проводки — core/workerCore.send.test.ts).
@@ -1483,6 +1490,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getReactionsL
           peerId: toPeerId, messageCount: msgIds.length,
           repay: (confirmedPaymentResult) => { void api.forwardMessages(toPeerId, fromPeerId, msgIds, { ...opts, confirmedPaymentResult }).catch(() => {}) },
         })) return []
+        reportSendError(toPeerId, err)
         throw err
       }
       // Отложенные копии — не история: ответ — `Updates` с

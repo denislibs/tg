@@ -409,17 +409,17 @@ func TestPasswordRecovery_HTTP(t *testing.T) {
 		t.Fatalf("мёртвый resend_after всё ещё едет: %s", rec.Body.String())
 	}
 
-	// Повтор до истечения таймера — 429 с retry_after.
+	// Повтор до истечения таймера — 420 FLOOD_WAIT_<N> (как у оригинала).
 	rec = postJSON(t, h, "/auth/password/recover", map[string]string{"password_token": step.PasswordToken})
-	if rec.Code != http.StatusTooManyRequests {
+	if rec.Code != 420 {
 		t.Fatalf("повторная отправка: %d %s", rec.Code, rec.Body.String())
 	}
 	// Остаток секунд едет ВНУТРИ кода (форма оригинала: FLOOD_WAIT_<N>), а не
 	// соседним ключом: у конструктора `error` параметров ровно два.
 	var retry wireError
 	_ = json.Unmarshal(rec.Body.Bytes(), &retry)
-	if !strings.HasPrefix(retry.Text, "RESEND_TOO_SOON_") || waitSeconds(retry.Text) <= 0 {
-		t.Fatalf("429 тело = %s", rec.Body.String())
+	if !floodWaitRe.MatchString(retry.Text) || waitSeconds(retry.Text) <= 0 {
+		t.Fatalf("420 тело = %s; want FLOOD_WAIT_N", rec.Body.String())
 	}
 
 	// Неверный код — 401.
@@ -543,9 +543,28 @@ func TestCancelWebToken_SharesImportBucket(t *testing.T) {
 		}
 	}
 	rec := postJSON(t, h, "/auth/web_token/cancel", map[string]string{"web_auth_token": "deadbeef"})
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("cancel после пяти импортов: %d %s", rec.Code, rec.Body.String())
+	if e := wireErrorOf(rec); rec.Code != 420 || !floodWaitRe.MatchString(e.Text) {
+		t.Fatalf("cancel после пяти импортов: %d %s; want 420 FLOOD_WAIT_N", rec.Code, rec.Body.String())
 	}
+}
+
+// Ф7-И1 (MC-08): превышение лимитера — 420 FLOOD_WAIT_<N>, а не 429. tweb
+// ждёт N секунд и повторяет сам (apiManager.ts:759-791); 429 он не разбирает.
+func TestSignIn_RateLimit_FloodWait(t *testing.T) {
+	h := newTestRouter(t)
+	var rec *httptest.ResponseRecorder
+	for n := 0; n < 11; n++ { // burst 10, 11-й — отказ
+		rec = postJSON(t, h, "/auth/sign_in", map[string]string{"phone": "+79990170001", "code": "99999"})
+	}
+	if e := wireErrorOf(rec); rec.Code != 420 || !floodWaitRe.MatchString(e.Text) {
+		t.Fatalf("11-й sign_in: %d %s; want 420 FLOOD_WAIT_N", rec.Code, rec.Body.String())
+	}
+}
+
+func wireErrorOf(rec *httptest.ResponseRecorder) wireError {
+	var e wireError
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	return e
 }
 
 // wireError — тело отказа: конструктор `error{code, text}` (см. разбор
